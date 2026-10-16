@@ -2,7 +2,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { criarPlanos } from '../../scripts/pagarme-assinatura/criar-planos-sandbox.mjs';
-import { assinaturasDeTeste } from '../../scripts/pagarme-assinatura/assinatura-teste-sandbox.mjs';
+import { assinaturasDeTeste, TEXTO_ACEITE } from '../../scripts/pagarme-assinatura/assinatura-teste-sandbox.mjs';
+import { TEXTO_ACEITE_ASSINATURA } from '../../supabase/functions/assinatura-auditor/core.ts';
+
+test('o script usa o mesmo texto de aceite que o servidor exige', () => {
+  assert.equal(TEXTO_ACEITE, TEXTO_ACEITE_ASSINATURA);
+});
 
 function fetchFalso(responder) {
   const chamadas = [];
@@ -115,8 +120,10 @@ test('assinaturasDeTeste com pk_test_x: 3 tokenizações + 3 POST na função, s
     for (const k of proibidas) assert.ok(!chaves.has(k), `body da função não pode ter "${k}"`);
     assert.doesNotMatch(c.init.body, /4000000000000010/);
     assert.equal(c.body.card_token, `token_${i * 2 + 1}`);
-    assert.equal(c.body.relatorio_aceite, true);
+    assert.ok(!('relatorio_aceite' in c.body), 'a caixa opcional saiu do contrato');
     assert.equal(c.body.termos_aceite, true);
+    assert.equal(c.body.aceite_texto, TEXTO_ACEITE_ASSINATURA);
+    assert.equal(c.body.telefone, '11999999999');
     assert.equal(c.body.documento, '11144477735');
   });
   assert.deepEqual(funcao.map((c) => c.body.plano), ['mensal', 'semanal', 'agencia']);

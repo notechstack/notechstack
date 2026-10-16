@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lerConfig, processarCheckout, respostaGet } from "../../supabase/functions/assinatura-auditor/core.ts";
+import {
+  TEXTO_ACEITE_ASSINATURA,
+  lerConfig,
+  processarCheckout,
+  respostaGet,
+} from "../../supabase/functions/assinatura-auditor/core.ts";
 
 // Tudo simulado: nenhuma chamada real ao Pagar.me, nenhuma chave real.
 const ENV = {
@@ -24,9 +29,8 @@ function pedido(extra = {}) {
     documento: "123.456.789-09",
     telefone: "(11) 98765-4321",
     card_token: "token_abc123",
-    relatorio_aceite: true,
-    relatorio_aceite_texto: " Quero receber o relatorio no WhatsApp ",
     termos_aceite: true,
+    aceite_texto: TEXTO_ACEITE_ASSINATURA,
     ...extra,
   };
 }
@@ -119,25 +123,29 @@ test("corpo do /subscriptions: plano certo, card_token, nenhum campo de cartao",
   assert.deepEqual(c.body.metadata, { origem: "auditor", plano: "agencia" });
 });
 
-test("CNPJ vira company e sem telefone (aceite false) nao manda phones", async () => {
+test("CNPJ vira company e o WhatsApp vai em phones e no registro", async () => {
   const { deps, chamadas } = falsos();
-  const r = await processarCheckout(
-    pedido({ documento: "12.345.678/0001-95", telefone: undefined, relatorio_aceite: false }), deps);
+  const r = await processarCheckout(pedido({ documento: "12.345.678/0001-95" }), deps);
   assert.equal(r.http, 200);
   assert.equal(chamadas.fetch[0].body.customer.type, "company");
-  assert.ok(!("phones" in chamadas.fetch[0].body.customer));
-  assert.equal(chamadas.registrar[0].relatorio_aceite, false);
-  assert.equal(chamadas.registrar[0].relatorio_aceite_texto, null);
+  assert.deepEqual(chamadas.fetch[0].body.customer.phones.mobile_phone, { country_code: "55", area_code: "11", number: "987654321" });
+  assert.equal(chamadas.registrar[0].whatsapp, "11987654321");
 });
 
+// Aceite unico e obrigatorio (Lucca, 16/10): Termos + relatorio no WhatsApp. Sem ele, nenhuma chamada ao Pagar.me.
 for (const [nome, extra] of [
-  ['aceite "true" em string', { relatorio_aceite: "true" }],
-  ["aceite true sem telefone", { telefone: undefined }],
-  ["aceite true sem texto", { relatorio_aceite_texto: "   " }],
+  ["sem WhatsApp", { telefone: undefined }],
+  ["WhatsApp vazio", { telefone: "" }],
+  ["aceite ausente", { termos_aceite: undefined }],
+  ["aceite desmarcado", { termos_aceite: false }],
+  ['aceite "true" em string', { termos_aceite: "true" }],
+  ["texto do aceite ausente", { aceite_texto: undefined }],
+  ["texto livre no lugar do aceite", { aceite_texto: "Quero receber o relatorio no WhatsApp" }],
+  ["texto da antiga caixa opcional", {
+    aceite_texto: "Quero receber o relatório do Auditor no WhatsApp da nó (+55 11 93928-9413), no telefone que informei acima. Opcional.",
+  }],
   ["campo cvv no body", { cvv: "123" }],
   ["campo card no body", { card: { number: "4000000000000010" } }],
-  ["termos ausente", { termos_aceite: undefined }],
-  ['termos "true" em string', { termos_aceite: "true" }],
   ["card_token sem prefixo token_", { card_token: "card_123" }],
   ["documento com 12 digitos", { documento: "123456789012" }],
   ["e-mail invalido", { email: "maria@exemplo" }],
@@ -164,20 +172,24 @@ test("plano sem plan_id -> 409 PLANO_INDISPONIVEL sem fetch", async () => {
   assert.equal(chamadas.fetch.length, 0);
 });
 
-test("ok -> 200 pendente e o registrar recebe aceite true + texto", async () => {
+test("ok -> 200 pendente e o registrar recebe WhatsApp + texto fixo do aceite", async () => {
   const { deps, chamadas } = falsos();
-  const r = await processarCheckout(pedido(), deps);
+  // Espacos e quebras do textContent do navegador sao normalizados; o que se grava e a constante do servidor.
+  const r = await processarCheckout(
+    pedido({ aceite_texto: `  ${TEXTO_ACEITE_ASSINATURA.replace("Sei que", "\n   Sei   que")} ` }), deps);
   assert.deepEqual(r, { http: 200, body: { ok: true, status: "pendente", assinatura_id: UUID } });
   assert.deepEqual(chamadas.registrar, [{
     plano: "semanal",
     nome: "Maria Teste",
     email: "maria@exemplo.com",
+    whatsapp: "11987654321",
     customer_id: "cus_x",
     subscription_id: "sub_x",
     status: "pendente",
-    relatorio_aceite: true,
-    relatorio_aceite_texto: "Quero receber o relatorio no WhatsApp",
+    aceite_texto: TEXTO_ACEITE_ASSINATURA,
   }]);
+  assert.ok(TEXTO_ACEITE_ASSINATURA.includes("relatório do Auditor chega no WhatsApp que informei"));
+  assert.ok(TEXTO_ACEITE_ASSINATURA.includes("Termos de Uso") && TEXTO_ACEITE_ASSINATURA.includes("Política de Privacidade"));
   assert.ok(!JSON.stringify(chamadas.log).includes("maria@exemplo.com"), "log com e-mail");
   assert.ok(!JSON.stringify(chamadas.log).includes("12345678909"), "log com documento");
 });

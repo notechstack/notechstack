@@ -1,4 +1,6 @@
-/* Assinatura do Auditor: 3 planos + checkout. Cartão é tokenizado direto no Pagar.me; só o token vai à nossa função (CONTRATO.md). */
+/* Assinatura do Auditor: 3 planos + checkout. Cartão é tokenizado direto no Pagar.me; só o token vai à nossa função (CONTRATO.md).
+   Decisões de Lucca (16/10): os planos ficam na tela final da retrospectiva (não na LP); aceite único e obrigatório dos Termos,
+   que já diz que o relatório chega no WhatsApp informado (não há mais caixa separada do relatório). */
 (function () {
   'use strict';
   var SUPABASE_BASE = 'https://sdeowbqmwkwseyktyemn.supabase.co'; // mesma base de auditor.js
@@ -13,6 +15,8 @@
   /* ---------- funções puras (testáveis sem DOM) ---------- */
   function soDigitos(v) { return String(v == null ? '' : v).replace(/\D/g, ''); }
   function texto(v) { return String(v == null ? '' : v).trim(); }
+  /* textContent do label com espaços normalizados: é o que vai em aceite_texto, igual ao que a pessoa leu. */
+  function normalizarTexto(v) { return texto(v).replace(/\s+/g, ' '); }
 
   function validar(d) {
     d = d || {};
@@ -22,35 +26,30 @@
     var doc = soDigitos(d.documento);
     if (doc.length !== 11 && doc.length !== 14) erros.push('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
     var tel = soDigitos(d.telefone);
-    if (tel && (tel.length < 10 || tel.length > 11)) erros.push('O telefone com DDD precisa ter 10 ou 11 dígitos.');
-    if (d.relatorio_aceite === true && !tel) erros.push('Para receber o relatório no WhatsApp, informe o telefone com DDD.');
+    if (tel.length < 10 || tel.length > 11) erros.push('Informe o WhatsApp com DDD (10 ou 11 dígitos): é nele que o relatório chega.');
     var num = soDigitos(d.numero_cartao);
     if (num.length < 13 || num.length > 19) erros.push('Confira o número do cartão.');
     if (texto(d.nome_cartao).length < 2) erros.push('Informe o nome impresso no cartão.');
     if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(texto(d.validade))) erros.push('Informe a validade do cartão no formato MM/AA.');
     var cvv = soDigitos(d.cvv);
     if (cvv.length < 3 || cvv.length > 4) erros.push('Informe o CVV (3 ou 4 dígitos).');
-    if (d.termos_aceite !== true) erros.push('É preciso aceitar os Termos de uso e a Política de privacidade.');
+    if (d.termos_aceite !== true) erros.push('Para pagar, marque o aceite dos Termos de Uso e da Política de Privacidade (o relatório chega no WhatsApp informado).');
     return erros;
   }
 
-  /* Nunca inclui número, nome impresso, validade ou CVV: só o token do Pagar.me. */
+  /* Corpo do POST, exatamente estas chaves. Nunca inclui número, nome impresso, validade ou CVV: só o token do Pagar.me. */
   function montarPedido(d, cardToken, textoAceite) {
     d = d || {};
-    var aceite = d.relatorio_aceite === true;
-    var tel = soDigitos(d.telefone);
-    var pedido = {
+    return {
       plano: d.plano,
       nome: texto(d.nome),
       email: texto(d.email),
       documento: soDigitos(d.documento),
+      telefone: soDigitos(d.telefone),
       card_token: cardToken,
-      relatorio_aceite: aceite,
-      relatorio_aceite_texto: aceite ? (texto(textoAceite) || null) : null,
-      termos_aceite: true
+      termos_aceite: true,
+      aceite_texto: normalizarTexto(textoAceite)
     };
-    if (tel) pedido.telefone = tel;
-    return pedido;
   }
 
   function mensagem(resp) {
@@ -65,7 +64,7 @@
   function medicaoLiberada(info) { return !!(info && info.venda_aberta === true && info.medicao_liberada === true); }
 
   var raiz = typeof window !== 'undefined' ? window : {};
-  raiz.noAssinatura = { PLANOS: PLANOS, validar: validar, montarPedido: montarPedido, mensagem: mensagem, medicaoLiberada: medicaoLiberada };
+  raiz.noAssinatura = { PLANOS: PLANOS, validar: validar, montarPedido: montarPedido, mensagem: mensagem, medicaoLiberada: medicaoLiberada, normalizarTexto: normalizarTexto };
 
   /* ---------- tela (só com a seção de planos na página) ---------- */
   if (typeof document === 'undefined' || !document.getElementById('planos')) return;
@@ -150,8 +149,7 @@
       nome_cartao: $('au-cc-nome').value,
       validade: $('au-cc-validade').value,
       cvv: $('au-cc-cvv').value,
-      termos_aceite: $('au-ck-termos').checked,
-      relatorio_aceite: $('au-ck-relatorio').checked
+      termos_aceite: $('au-ck-termos').checked
     };
   }
 
@@ -181,7 +179,7 @@
     var erros = validar(d);
     if (erros.length) { mostrar(erros.join(' '), true); return; }
     var codigo = d.plano;
-    var textoAceite = $('au-ck-relatorio-texto').textContent;
+    var textoAceite = normalizarTexto($('au-ck-termos-rotulo').textContent);
     estado.enviando = true;
     btnAssinar.disabled = true;
     mostrar('Processando o pagamento…');

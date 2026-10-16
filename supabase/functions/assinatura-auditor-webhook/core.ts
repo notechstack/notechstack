@@ -49,6 +49,21 @@ export function mapearEvento(
   return { subscriptionId: idDaAssinatura(t, obj(data)), status: statusDoTipo(t) };
 }
 
+// created_at do topo do payload do webhook (hora do aviso no Pagar.me): vai para p_evento_em e decide a
+// ordem dos avisos no banco. String ISO valida -> ISO normalizada em UTC; qualquer outra coisa -> null
+// (o banco usa a hora do recebimento). Sem fuso no texto, vale UTC.
+const ISO_DATA_HORA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/i;
+
+export function eventoEmDoPayload(body: unknown): string | null {
+  const bruto = obj(body).created_at;
+  if (typeof bruto !== "string") return null;
+  const limpo = bruto.trim();
+  if (!ISO_DATA_HORA.test(limpo)) return null;
+  const comFuso = /(Z|[+-]\d{2}:\d{2})$/i.test(limpo) ? limpo : `${limpo}Z`;
+  const ms = Date.parse(comFuso);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
 // Payload gravado no banco: so id, tipo, ids e status. Nada de cartao, e-mail, documento ou telefone.
 export function envelopeSeguro(
   eventId: string,

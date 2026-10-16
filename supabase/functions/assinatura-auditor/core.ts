@@ -17,6 +17,17 @@ const API_PADRAO = "https://api.pagar.me/core/v5";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CAMPOS_CARTAO = ["card", "card_number", "number", "cvv", "holder_name", "exp_month", "exp_year"];
 
+// Texto exato da caixa de aceite (obrigatoria) da tela de planos no fim da retrospectiva: Termos + relatorio no
+// WhatsApp, decisao de Lucca em 16/10. O banco grava ESTA constante, nunca a string do cliente. Mudar o texto da
+// caixa exige mudar esta constante junto (front.test.mjs e checkout-core.test.mjs conferem).
+export const TEXTO_ACEITE_ASSINATURA =
+  "Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp " +
+  "que informei acima, enviado pelo número da nó (+55 11 93928-9413).";
+
+function normalizarTexto(texto: string): string {
+  return texto.normalize("NFC").replace(/\s+/g, " ").trim();
+}
+
 export type Config = {
   ambiente: Ambiente;
   apiUrl: string;
@@ -33,21 +44,21 @@ export type Pedido = {
   nome: string;
   email: string;
   documento: string;
-  telefone: string | null;
+  // WhatsApp com DDD, so digitos: obrigatorio, e para onde vai o relatorio.
+  telefone: string;
   card_token: string;
-  relatorio_aceite: boolean;
-  relatorio_aceite_texto: string | null;
+  aceite_texto: string;
 };
 
 export type LinhaAssinatura = {
   plano: CodigoPlano;
   nome: string;
   email: string;
+  whatsapp: string;
   customer_id: string | null;
   subscription_id: string;
   status: "pendente" | "recusada";
-  relatorio_aceite: boolean;
-  relatorio_aceite_texto: string | null;
+  aceite_texto: string;
 };
 
 export type Deps = {
@@ -126,12 +137,10 @@ export function validarPedido(body: unknown):
     return invalido("Informe o CPF (11 números) ou o CNPJ (14 números).");
   }
 
-  let telefone: string | null = null;
-  if (b.telefone !== undefined && b.telefone !== null && b.telefone !== "") {
-    telefone = typeof b.telefone === "string" ? b.telefone.replace(/\D/g, "") : "";
-    if (telefone.length < 10 || telefone.length > 11) {
-      return invalido("Confira o telefone: use o DDD e o número (10 ou 11 números).");
-    }
+  const telefone = typeof b.telefone === "string" ? b.telefone.replace(/\D/g, "") : "";
+  if (!telefone) return invalido("Informe o WhatsApp com DDD: é nele que chega o relatório do Auditor.");
+  if (telefone.length < 10 || telefone.length > 11) {
+    return invalido("Confira o WhatsApp: use o DDD e o número (10 ou 11 números).");
   }
 
   const cardToken = typeof b.card_token === "string" ? b.card_token : "";
@@ -139,21 +148,14 @@ export function validarPedido(body: unknown):
     return invalido("Não conseguimos ler o cartão. Confira os dados do cartão e tente de novo.");
   }
 
-  if (typeof b.relatorio_aceite !== "boolean") {
-    return invalido("Diga se quer ou não receber o relatório marcando ou desmarcando a caixa.");
+  // Aceite unico e obrigatorio: Termos + relatorio no WhatsApp informado. Sem ele, nao ha assinatura.
+  if (b.termos_aceite !== true) {
+    return invalido("Para assinar, aceite os Termos e o envio do relatório no seu WhatsApp.");
   }
-  const aceite = b.relatorio_aceite;
-
-  let aceiteTexto: string | null = null;
-  if (aceite) {
-    if (!telefone) return invalido("Para receber o relatório, informe um telefone com DDD.");
-    aceiteTexto = typeof b.relatorio_aceite_texto === "string" ? b.relatorio_aceite_texto.trim() : "";
-    if (aceiteTexto.length < 1 || aceiteTexto.length > 500) {
-      return invalido("Não conseguimos registrar o seu aceite do relatório. Recarregue a página e tente de novo.");
-    }
+  const recebido = typeof b.aceite_texto === "string" ? normalizarTexto(b.aceite_texto) : "";
+  if (recebido !== TEXTO_ACEITE_ASSINATURA) {
+    return invalido("Não conseguimos registrar o seu aceite. Recarregue a página e tente de novo.");
   }
-
-  if (b.termos_aceite !== true) return invalido("Para assinar, é preciso aceitar os termos.");
 
   return {
     ok: true,
@@ -164,8 +166,7 @@ export function validarPedido(body: unknown):
       documento,
       telefone,
       card_token: cardToken,
-      relatorio_aceite: aceite,
-      relatorio_aceite_texto: aceiteTexto,
+      aceite_texto: TEXTO_ACEITE_ASSINATURA,
     },
   };
 }
@@ -177,16 +178,14 @@ export function corpoAssinatura(pedido: Pedido, planId: string) {
     email: pedido.email,
     document: pedido.documento,
     type: pedido.documento.length === 14 ? "company" : "individual",
-  };
-  if (pedido.telefone) {
-    customer.phones = {
+    phones: {
       mobile_phone: {
         country_code: "55",
         area_code: pedido.telefone.slice(0, 2),
         number: pedido.telefone.slice(2),
       },
-    };
-  }
+    },
+  };
   return {
     plan_id: planId,
     payment_method: "credit_card",
@@ -270,11 +269,11 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     plano: pedido.plano,
     nome: pedido.nome,
     email: pedido.email,
+    whatsapp: pedido.telefone,
     customer_id: typeof customerId === "string" ? customerId : null,
     subscription_id: subId,
     status: statusInicial(sub),
-    relatorio_aceite: pedido.relatorio_aceite,
-    relatorio_aceite_texto: pedido.relatorio_aceite_texto,
+    aceite_texto: pedido.aceite_texto,
   };
 
   let registro: { id: string; status: string };

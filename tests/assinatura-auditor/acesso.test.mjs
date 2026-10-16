@@ -11,14 +11,24 @@ const ACESSO_DOWN = new URL("../../supabase/rollback/20261016200100_auditor_aces
 
 const db = new PGlite();
 
-async function assinatura(subId, status, aceite = true) {
+// O aceite e obrigatorio (sempre true, com data, texto e whatsapp).
+async function assinatura(subId, status) {
   await db.query(
     `insert into public.auditor_assinaturas
-       (plano, nome, email, pagarme_subscription_id, status, relatorio_aceite, relatorio_aceite_em, relatorio_aceite_texto)
-     values ('mensal', 'Teste', $1, $2, $3, $4, case when $4 then now() end, case when $4 then 'aceito' end)`,
-    [`${subId}@exemplo.com`, subId, status, aceite],
+       (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+     values ('mensal', 'Teste', $1, '11987654321', $2, $3, now(), 'aceito')`,
+    [`${subId}@exemplo.com`, subId, status],
   );
 }
+
+// Aviso pela funcao real do webhook, com created_at do Pagar.me.
+async function aplicar(id, tipo, subId, status, eventoEm) {
+  const { rows } = await db.query(
+    "select public.aplicar_evento_assinatura_auditor($1, $2, $3, $4, '{}'::jsonb, $5::timestamptz) as r",
+    [id, tipo, subId, status, eventoEm]);
+  return rows[0].r;
+}
+const diasAtras = (d) => new Date(Date.now() - d * 86400000).toISOString();
 
 // Evento ja recebido ha N dias (recebido_em no passado).
 async function evento(id, subId, statusAplicado, diasAtras) {
@@ -49,12 +59,19 @@ test.before(async () => {
 
 test.after(async () => { await db.close(); });
 
-test("paga com aceite entra na lista; sem aceite nao entra", async () => {
+test("paga entra na lista e a lista traz o whatsapp; linha sem aceite nem chega a existir", async () => {
   await assinatura("sub_paga", "paga");
   await evento("hook_paga_1", "sub_paga", "paga", 10);
-  await assinatura("sub_paga_sem_aceite", "paga", false);
   assert.equal(await naLista("sub_paga"), true);
-  assert.equal(await naLista("sub_paga_sem_aceite"), false);
+  const { rows } = await db.query(
+    "select whatsapp from public.auditor_lista_envio_relatorio where pagarme_subscription_id = 'sub_paga'");
+  assert.deepEqual(rows, [{ whatsapp: "11987654321" }]);
+  await assert.rejects(
+    db.query(`insert into public.auditor_assinaturas
+                (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite, relatorio_aceite_em, relatorio_aceite_texto)
+              values ('mensal', 'X', 'x@exemplo.com', '11987654321', 'sub_sem_aceite', 'paga', false, now(), 'x')`),
+    /auditor_assinaturas_aceite_obrigatorio/,
+  );
 });
 
 test("pendente e cancelada nao entram", async () => {
@@ -99,6 +116,31 @@ test("recusa antiga antes de um pagamento novo nao conta", async () => {
   assert.equal(await naLista("sub_voltou"), true);
 });
 
+test("o prazo conta do created_at do aviso (evento_em), nao da hora em que chegou", async () => {
+  await assinatura("sub_em", "recusada");
+  await evento("hook_em_paga", "sub_em", "paga", 30);
+  // recebido agora, mas o Pagar.me diz que a recusa foi ha 4 dias
+  await db.query(
+    `insert into public.auditor_assinatura_eventos (gateway_event_id, tipo, pagarme_subscription_id, status_aplicado, evento_em)
+     values ('hook_em_rec', 'teste', 'sub_em', 'recusada', now() - interval '4 days')`);
+  assert.equal(await naLista("sub_em"), false);
+});
+
+test("F-01 na lista real: cancelada + charge.paid atrasado fica fora; paga + falha atrasada fica dentro", async () => {
+  await assinatura("sub_f01_c", "pendente");
+  await aplicar("hook_f01_c1", "invoice.paid", "sub_f01_c", "paga", diasAtras(10));
+  await aplicar("hook_f01_c2", "subscription.canceled", "sub_f01_c", "cancelada", diasAtras(2));
+  const r = await aplicar("hook_f01_c3", "charge.paid", "sub_f01_c", "paga", diasAtras(5));
+  assert.equal(r.ignorado, "cancelada_final");
+  assert.equal(await naLista("sub_f01_c"), false);
+
+  await assinatura("sub_f01_p", "pendente");
+  await aplicar("hook_f01_p1", "invoice.paid", "sub_f01_p", "paga", diasAtras(1));
+  const r2 = await aplicar("hook_f01_p2", "invoice.payment_failed", "sub_f01_p", "recusada", diasAtras(2));
+  assert.equal(r2.ignorado, "fora_de_ordem");
+  assert.equal(await naLista("sub_f01_p"), true);
+});
+
 test("a tolerancia troca num lugar so (parametro da funcao)", async () => {
   const { rows } = await db.query(
     `select public.auditor_assinatura_com_acesso('recusada', now() - interval '4 days', true) as padrao,
@@ -121,6 +163,9 @@ test("rollback volta a lista para 'aceitou e paga' e a migration reaplica limpa"
   assert.equal(fn.rows[0].n, 0);
   assert.equal(await naLista("sub_rec_1d"), false); // sem tolerancia
   assert.equal(await naLista("sub_paga"), true);
+  const { rows } = await db.query(
+    "select whatsapp from public.auditor_lista_envio_relatorio where pagarme_subscription_id = 'sub_paga'");
+  assert.deepEqual(rows, [{ whatsapp: "11987654321" }]); // rollback mantem a coluna da lista de envio
   await db.exec(await readFile(ACESSO, "utf8"));
   assert.equal(await naLista("sub_rec_1d"), true);
 });

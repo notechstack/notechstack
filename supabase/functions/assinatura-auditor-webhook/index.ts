@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { log } from "../_shared/logger.ts";
-import { envelopeSeguro, mapearEvento } from "./core.ts";
+import { envelopeSeguro, eventoEmDoPayload, mapearEvento } from "./core.ts";
 
 const json = (status: number, body: unknown) => new Response(
   JSON.stringify(body),
@@ -43,6 +43,8 @@ Deno.serve(async (request) => {
     if (!eventId || !tipo) return json(400, { ok: false, error_code: "EVENTO_INVALIDO" });
 
     const { subscriptionId, status } = mapearEvento(tipo, data);
+    // created_at do aviso no Pagar.me: o banco usa para ignorar aviso fora de ordem (achado F-01).
+    const eventoEm = eventoEmDoPayload(body);
     const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     const { data: result, error } = await sb.rpc("aplicar_evento_assinatura_auditor", {
       p_gateway_event_id: eventId,
@@ -50,6 +52,7 @@ Deno.serve(async (request) => {
       p_subscription_id: subscriptionId,
       p_status: status,
       p_payload: envelopeSeguro(eventId, tipo, data),
+      p_evento_em: eventoEm,
     });
     if (error) {
       log("error", "assinatura_auditor_webhook_rpc_failed", { gateway_event_id: eventId, tipo });
@@ -62,9 +65,11 @@ Deno.serve(async (request) => {
       tipo,
       subscription_id: subscriptionId,
       status,
+      evento_em: eventoEm,
       applied: Boolean(result?.applied),
       duplicado: Boolean(result?.duplicado),
       encontrada: result?.encontrada ?? null,
+      ignorado: result?.ignorado ?? null,
     });
     // 200 tambem para duplicado e tipo desconhecido: o Pagar.me nao precisa reenviar.
     return json(200, { ok: true, ...(result || {}) });

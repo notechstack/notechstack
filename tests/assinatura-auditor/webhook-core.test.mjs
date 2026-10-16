@@ -1,6 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { envelopeSeguro, mapearEvento } from "../../supabase/functions/assinatura-auditor-webhook/core.ts";
+import { envelopeSeguro, eventoEmDoPayload, mapearEvento } from "../../supabase/functions/assinatura-auditor-webhook/core.ts";
+
+test("created_at do topo do payload -> ISO em UTC; invalido ou ausente -> null", () => {
+  assert.equal(eventoEmDoPayload({ id: "hook_1", created_at: "2026-10-16T12:34:56Z" }), "2026-10-16T12:34:56.000Z");
+  assert.equal(eventoEmDoPayload({ created_at: "2026-10-16T12:34:56.5935744Z" }), "2026-10-16T12:34:56.593Z");
+  assert.equal(eventoEmDoPayload({ created_at: "2026-10-16T09:34:56-03:00" }), "2026-10-16T12:34:56.000Z");
+  assert.equal(eventoEmDoPayload({ created_at: " 2026-10-16T12:34:56 " }), "2026-10-16T12:34:56.000Z"); // sem fuso: UTC
+  for (const ruim of [undefined, null, "", "ontem", "2026-10-16", "16/10/2026 12:00", "2026-13-40T99:00:00Z", 1760618096000, {}]) {
+    assert.equal(eventoEmDoPayload({ created_at: ruim }), null, `aceitou ${JSON.stringify(ruim)}`);
+  }
+  assert.equal(eventoEmDoPayload(null), null);
+  // so o topo: created_at dentro de data nao conta
+  assert.equal(eventoEmDoPayload({ data: { created_at: "2026-10-16T12:34:56Z" } }), null);
+});
 
 test("invoice.paid e charge.paid -> paga", () => {
   assert.equal(mapearEvento("invoice.paid", { subscription: { id: "sub_1" } }).status, "paga");

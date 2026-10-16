@@ -34,25 +34,27 @@ revoke all on function public.auditor_assinatura_com_acesso(text, timestamptz, b
 grant execute on function public.auditor_assinatura_com_acesso(text, timestamptz, boolean, timestamptz, interval)
   to service_role;
 
--- Lista de envio do relatorio: quem aceitou e tem acesso pela politica acima.
--- Mesmas colunas, na mesma ordem, da view da 200000 (create or replace exige isso).
+-- Lista de envio do relatorio: todo assinante (o aceite e obrigatorio) com acesso pela politica acima.
+-- Expoe o whatsapp: e a lista de envio.
+-- Mesmas colunas, na mesma ordem, da view da 200000 e do rollback (create or replace exige isso).
+-- Hora de cada aviso = created_at do Pagar.me (evento_em); sem ele, a hora do recebimento.
 create or replace view public.auditor_lista_envio_relatorio
 with (security_invoker = true) as
-select a.id, a.plano, a.nome, a.email, a.pagarme_subscription_id,
+select a.id, a.plano, a.nome, a.email, a.whatsapp, a.pagarme_subscription_id,
        a.relatorio_aceite_em, a.ultimo_evento_em
   from public.auditor_assinaturas a
   left join lateral (
-    select max(e.recebido_em) as ultima_paga
+    select max(coalesce(e.evento_em, e.recebido_em)) as ultima_paga
       from public.auditor_assinatura_eventos e
      where e.pagarme_subscription_id = a.pagarme_subscription_id
        and e.status_aplicado = 'paga'
   ) p on true
   left join lateral (
-    select min(e.recebido_em) as recusada_desde
+    select min(coalesce(e.evento_em, e.recebido_em)) as recusada_desde
       from public.auditor_assinatura_eventos e
      where e.pagarme_subscription_id = a.pagarme_subscription_id
        and e.status_aplicado = 'recusada'
-       and e.recebido_em > coalesce(p.ultima_paga, '-infinity'::timestamptz)
+       and coalesce(e.evento_em, e.recebido_em) > coalesce(p.ultima_paga, '-infinity'::timestamptz)
   ) r on true
  where a.relatorio_aceite = true
    and public.auditor_assinatura_com_acesso(a.status, r.recusada_desde, p.ultima_paga is not null);

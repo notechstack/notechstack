@@ -33,7 +33,7 @@
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
 <link rel="stylesheet" href="/shared/topography.css?v=2">
-<link rel="stylesheet" href="/agentes/auditor/auditor.css?v=8">
+<link rel="stylesheet" href="/agentes/auditor/auditor.css?v=7">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_auditor_consent';</script>
@@ -52,8 +52,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <script src="/shared/topography.js?v=2" defer></script>
 <script src="/agentes/auditor/auditor.js?v=9" defer></script>
-<script src="/agentes/auditor/assinatura-medicao.js?v=1" defer></script>
-<script src="/agentes/auditor/assinatura.js?v=1" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -159,69 +157,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     </ol>
   </section>
 
-  <!-- Planos: textos aprovados por Lucca em 16/10 (fontes/proposta-planos-T1.md). Botões começam desabilitados; assinatura.js libera só com venda_aberta. -->
-  <section class="au-secao au-painel au-planos" id="planos" aria-labelledby="au-planos-titulo">
-    <h2 id="au-planos-titulo">Planos: o relatório refeito sozinho, no seu WhatsApp</h2>
-    <p class="au-planos-lead">Assinando, o relatório do Auditor é refeito no ritmo do plano e chega no WhatsApp da nó, com link para o relatório completo no app.</p>
-    <ul class="au-planos-grid">
-      <li class="au-plano" data-plano="mensal">
-        <h3 class="au-plano-nome">Mensal</h3>
-        <p class="au-plano-frase">Uma vez por mês, a nota da sua implementação e o que fazer com ela.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 47</span><span class="au-plano-periodo">/mês</span></p>
-        <p class="au-plano-quem"><strong>Para quem:</strong> quem anuncia com uma conta só e quer acompanhar sem olhar painel.</p>
-        <ul class="au-plano-itens">
-          <li>1 site + as contas de anúncio conectadas, Facebook e Google.</li>
-          <li>As 10 checagens do site refeitas a cada envio.</li>
-          <li>Nota de 0 a 10 dos últimos 30 dias, com o placar ok · atenção · problema.</li>
-          <li>Retrospectiva completa no app: site, Meta, horário, Google e caminho do clique.</li>
-          <li>Leituras do agente em Meta e Google: público que mais respondeu, posicionamento, tempo de engajamento por canal.</li>
-          <li>Pontos de atenção, cada um com uma recomendação de uma linha.</li>
-        </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Mensal (1 relatório por mês).</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó, com link para o relatório no app.</dd></div>
-        </dl>
-        <button type="button" class="ag-btn ag-btn--primario au-plano-btn" data-plano="mensal" disabled>Assinatura em breve</button>
-      </li>
-      <li class="au-plano au-plano--recomendado" data-plano="semanal">
-        <span class="au-plano-selo">Recomendado</span>
-        <h3 class="au-plano-nome">Semanal</h3>
-        <p class="au-plano-frase">Toda segunda, o que mudou nos seus anúncios antes de o problema virar gasto.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 97</span><span class="au-plano-periodo">/mês</span></p>
-        <p class="au-plano-quem"><strong>Para quem:</strong> quem mexe em campanha toda semana e quer pegar tag quebrada ou investimento fora de hora cedo.</p>
-        <ul class="au-plano-itens">
-          <li>Tudo do Mensal.</li>
-          <li>Resumo "o que mudou desde o último relatório": checagem que caiu, atenção que continua, dado novo.</li>
-          <li>"Quando seu público responde": mapa de dia × hora, com a parte do investimento fora do horário que traz clique.</li>
-          <li>"Onde o clique se perde": funil do anúncio ao evento-chave, cruzado com o tempo de resposta do site.</li>
-          <li>Aviso de conexão vencida com o botão "Reconectar", para o relatório não parar sem você saber.</li>
-        </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Semanal (cerca de 4 por mês) + o fechamento do mês.</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó, com link para o relatório no app.</dd></div>
-        </dl>
-        <button type="button" class="ag-btn ag-btn--primario au-plano-btn" data-plano="semanal" disabled>Assinatura em breve</button>
-      </li>
-      <li class="au-plano" data-plano="agencia">
-        <h3 class="au-plano-nome">Agência</h3>
-        <p class="au-plano-frase">Os relatórios de todos os seus clientes no seu WhatsApp, prontos para repassar.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 197</span><span class="au-plano-periodo">/mês</span><span class="au-plano-cota">até 5 clientes</span></p>
-        <p class="au-plano-quem"><strong>Para quem:</strong> agência ou gestor de tráfego que cuida de vários anunciantes.</p>
-        <ul class="au-plano-itens">
-          <li>Tudo do Semanal, para até 5 clientes (cada cliente = 1 site + as contas dele).</li>
-          <li>Um relatório semanal por cliente e um resumo mensal com a nota de cada um lado a lado.</li>
-          <li>O link do relatório de cada cliente pode ser repassado ao cliente final.</li>
-        </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Semanal por cliente + resumo mensal.</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó para a agência, com um link por cliente.</dd></div>
-        </dl>
-        <button type="button" class="ag-btn ag-btn--primario au-plano-btn" data-plano="agencia" disabled>Assinatura em breve</button>
-      </li>
-    </ul>
-    <p class="au-planos-nota">Os 3 primeiros diagnósticos continuam grátis, direto no app. Assinatura com cobrança mensal no cartão de crédito.</p>
-  </section>
-
   <section class="au-secao au-faq" aria-labelledby="au-faq-titulo">
     <h2 id="au-faq-titulo">Perguntas Frequentes</h2>
     <div class="au-faq-lista">
@@ -253,61 +188,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <p class="au-faq-nota">Detalhes na nossa <a href="/privacidade/#auditor">política de privacidade</a> · <button type="button" class="au-link-btn" data-consent-prefs>Preferências de cookies</button></p>
   </section>
 </main>
-
-<!-- Checkout da assinatura: inputs do cartão SEM name (nunca vão por formulário); assinatura.js tokeniza no Pagar.me e manda só o token -->
-<dialog class="au-checkout" id="au-checkout" aria-labelledby="au-checkout-titulo">
-  <form class="au-checkout-form" id="au-checkout-form" novalidate>
-    <h2 class="au-checkout-titulo" id="au-checkout-titulo">Assinar o Auditor</h2>
-    <p class="au-checkout-plano">Plano escolhido: <strong id="au-checkout-plano"></strong></p>
-
-    <fieldset class="au-fieldset">
-      <legend>Seus dados</legend>
-      <label class="au-label" for="au-as-nome">Nome</label>
-      <input class="au-input" id="au-as-nome" name="nome" type="text" autocomplete="name" required>
-      <label class="au-label" for="au-as-email">E-mail</label>
-      <input class="au-input" id="au-as-email" name="email" type="email" inputmode="email" autocomplete="email" required>
-      <label class="au-label" for="au-as-documento">CPF ou CNPJ</label>
-      <input class="au-input" id="au-as-documento" name="documento" type="text" inputmode="numeric" required>
-      <label class="au-label" for="au-as-telefone">Telefone com DDD</label>
-      <input class="au-input" id="au-as-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel-national" aria-describedby="au-as-telefone-nota">
-      <p class="au-ajuda" id="au-as-telefone-nota">Obrigatório se quiser o relatório no WhatsApp.</p>
-    </fieldset>
-
-    <fieldset class="au-fieldset">
-      <legend>Cartão de crédito</legend>
-      <label class="au-label" for="au-cc-numero">Número do cartão</label>
-      <input class="au-input" id="au-cc-numero" type="text" inputmode="numeric" autocomplete="cc-number" required>
-      <label class="au-label" for="au-cc-nome">Nome impresso no cartão</label>
-      <input class="au-input" id="au-cc-nome" type="text" autocomplete="cc-name" required>
-      <div class="au-checkout-grid2">
-        <div>
-          <label class="au-label" for="au-cc-validade">Validade (MM/AA)</label>
-          <input class="au-input" id="au-cc-validade" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/AA" required>
-        </div>
-        <div>
-          <label class="au-label" for="au-cc-cvv">CVV</label>
-          <input class="au-input" id="au-cc-cvv" type="password" inputmode="numeric" autocomplete="cc-csc" required>
-        </div>
-      </div>
-      <p class="au-ajuda">Os dados do cartão vão direto para o Pagar.me; a nó recebe só um código de pagamento.</p>
-    </fieldset>
-
-    <div class="au-check">
-      <input type="checkbox" id="au-ck-termos" required>
-      <label for="au-ck-termos">Li e aceito os <a href="/termos/">Termos de uso</a> e a <a href="/privacidade/">Política de privacidade</a>.</label>
-    </div>
-    <div class="au-check">
-      <input type="checkbox" id="au-ck-relatorio">
-      <label for="au-ck-relatorio"><span id="au-ck-relatorio-texto">Quero receber o relatório do Auditor no WhatsApp da nó (+55 11 93928-9413), no telefone que informei acima. Opcional.</span></label>
-    </div>
-
-    <p class="au-checkout-msg" id="au-checkout-msg" role="alert" hidden></p>
-    <div class="au-checkout-botoes">
-      <button type="button" class="ag-btn ag-btn--secundario" id="au-checkout-cancelar">Cancelar</button>
-      <button type="submit" class="ag-btn ag-btn--primario" id="au-checkout-assinar">Assinar</button>
-    </div>
-  </form>
-</dialog>
 
 <!-- Pop-up de cookies: abre sozinho sem escolha salva em localStorage 'no_auditor_consent'; não bloqueia a página -->
 <div class="au-cookies" id="au-cookies" role="dialog" aria-modal="false" aria-labelledby="au-cookies-titulo" aria-describedby="au-cookies-desc" hidden>

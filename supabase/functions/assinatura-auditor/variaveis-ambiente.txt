@@ -1,6 +1,6 @@
 # Assinatura do Auditor no Pagar.me (TASK-mvbcb35pbn0). SO OS NOMES: os valores Lucca cadastra
 # nos secrets do Supabase (supabase secrets set NOME=...) ou num arquivo local fora do Git.
-# Nenhuma chave real neste arquivo. Conteudo pronto para o .env.example (o arquivo .env* e bloqueado aos agentes).
+# Nenhuma chave real neste arquivo. Os mesmos nomes, sem valor, estao em supabase/functions/.env.example.
 
 # Chave secreta da conta Pagar.me da no (a mesma conta do site da no). sk_test_... no sandbox.
 PAGARME_ASSINATURA_SECRET_KEY=

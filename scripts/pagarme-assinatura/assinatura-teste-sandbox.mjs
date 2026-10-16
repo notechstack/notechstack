@@ -10,7 +10,8 @@ import { PLANOS } from './planos.mjs';
 const API_PADRAO = 'https://api.pagar.me/core/v5';
 export const FUNCAO_URL_PADRAO = 'http://127.0.0.1:54321/functions/v1/assinatura-auditor';
 const CARTAO_TESTE_APROVADO = '4000000000000010';
-const TEXTO_ACEITE = 'Quero receber o relatório do Auditor no WhatsApp da nó (+55 11 93928-9413), no telefone que informei acima. Opcional.';
+// Igual a TEXTO_ACEITE_ASSINATURA de supabase/functions/assinatura-auditor/core.ts (scripts.test.mjs confere).
+export const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).';
 
 export async function assinaturasDeTeste({ fetch, env, funcaoUrl = FUNCAO_URL_PADRAO }) {
   const pk = String((env && env.PAGARME_ASSINATURA_PUBLIC_KEY) || '');
@@ -40,9 +41,8 @@ export async function assinaturasDeTeste({ fetch, env, funcaoUrl = FUNCAO_URL_PA
       documento: '11144477735', // CPF de teste com dígitos verificadores válidos
       telefone: '11999999999',
       card_token: cardToken,
-      relatorio_aceite: true,
-      relatorio_aceite_texto: TEXTO_ACEITE,
-      termos_aceite: true
+      termos_aceite: true,
+      aceite_texto: TEXTO_ACEITE
     };
     const res = await fetch(destino, {
       method: 'POST',
@@ -62,6 +62,13 @@ if (rodadoDireto) {
   const arg = process.argv.slice(2).find((a) => a.startsWith('--funcao-url='));
   const funcaoUrl = arg ? arg.slice('--funcao-url='.length) : FUNCAO_URL_PADRAO;
   assinaturasDeTeste({ fetch: globalThis.fetch, env: process.env, funcaoUrl })
-    .then((lista) => { for (const r of lista) console.log(`${r.codigo}: HTTP ${r.http} ${JSON.stringify(r.resposta)}`); })
+    .then((lista) => {
+      for (const r of lista) console.log(`${r.codigo}: HTTP ${r.http} ${JSON.stringify(r.resposta)}`);
+      // Achado F-07: venda fechada (403) ou qualquer recusa nao pode terminar como sucesso.
+      if (lista.some((r) => r.http !== 200 || !r.resposta || r.resposta.ok !== true)) {
+        console.error('ALGUMA_ASSINATURA_FALHOU: confira AUDITOR_VENDA_ABERTA=sim e as variaveis do sandbox');
+        process.exitCode = 1;
+      }
+    })
     .catch((e) => { console.error(e && e.message ? e.message : 'erro'); process.exitCode = 1; });
 }

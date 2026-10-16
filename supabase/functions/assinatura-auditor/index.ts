@@ -74,11 +74,11 @@ Deno.serve(async (request) => {
           p_plano: row.plano,
           p_nome: row.nome,
           p_email: row.email,
+          p_whatsapp: row.whatsapp,
           p_customer_id: row.customer_id,
           p_subscription_id: row.subscription_id,
           p_status: row.status,
-          p_relatorio_aceite: row.relatorio_aceite,
-          p_relatorio_aceite_texto: row.relatorio_aceite_texto,
+          p_aceite_texto: row.aceite_texto,
         });
         if (error || !data?.id) throw new Error("registrar_assinatura_auditor_falhou");
         // Log sem dado pessoal: so plano, ids do gateway e resultado.
