@@ -1,0 +1,110 @@
+/* nó · tech stack — tokens canônicos do design system v1.0.0 (08/10/2026)
+   Fonte: Claude Design "n-tech-stack" (styles.css) + prancha "Sistema Visual Instagram"
+   + identidade v2 (notechstack/brand, jul/2026). Decisão: design-system-nó-oficial-v1.
+   Regra: componente lê token; nunca hex solto, nunca outra fonte além de Sora e JetBrains Mono. */
+
+:root {
+  /* ── Núcleo nó · identidade v2 · ordem canônica azul → vermelho → âmbar → verde ── */
+  --no-azul: #3D63DB;            /* lidera a série Percurso ("COMO FUNCIONA"); info, conteúdo; vertical roteador */
+  --no-vermelho: #E0543C;        /* destaque, alerta, alteração solicitada; vertical hotelaria */
+  --no-ambar: #EDA33B;           /* lidera a série Método; nó principal (IA & sistemas); cor padrão da marca-mãe */
+  --no-verde: #30A46C;           /* lidera a série Por dentro; sucesso, publicado; vertical saúde */
+
+  --no-azul-claro: #E9EEFB;      /* fundo suave do azul (chip, destaque de etapa) */
+  --no-vermelho-claro: #FBEAE5;
+  --no-ambar-claro: #FCF3E0;
+  --no-verde-claro: #E5F4EC;
+
+  --no-tinta: #141414;           /* fundo dark e texto principal; a palavra "nó" é tinta ou osso, nunca colorida */
+  --no-osso: #FAFAF7;            /* fundo claro e texto sobre tinta */
+  --no-cinza: #6B6F76;           /* texto secundário sobre osso (4.8:1) */
+  --no-borda: #ECEBE6;           /* separadores e bordas sobre osso */
+
+  /* ── Texto na cor da série (sobre fundo claro e sobre o próprio tom claro) ── */
+  --no-texto: #3C3F44;           /* corpo explicativo sobre osso (10:1) */
+  --no-ambar-texto: #8A6216;     /* âmbar legível sobre osso/âmbar-claro (5.0:1); âmbar puro não vira texto em fundo claro */
+  --no-verde-texto: #227F52;     /* verde legível sobre osso (4.8:1) e verde-claro (4.4:1, só >= 24px) */
+  --no-verde-texto-escuro: #1F5F40; /* corpo sobre verde-claro (6.7:1) */
+  --no-vermelho-texto: #B33B26;  /* vermelho legível sobre osso (5.6:1) e vermelho-claro (5.0:1) */
+  /* azul sobre osso e azul-claro usa --no-azul direto (5.0:1 e 4.5:1) */
+
+  /* ── Superfícies e texto no modo escuro (peças em tinta) ── */
+  --no-tinta-2: #1F1F1F;         /* card sobre tinta */
+  --no-tinta-borda: #2E2E2E;     /* borda de card e trilho de percurso sobre tinta */
+  --no-tinta-3: #3A3A3A;         /* ponto inativo e linha tracejada sobre tinta */
+  --no-texto-dark: #E4E4E1;      /* corpo explicativo sobre tinta (14:1) */
+  --no-cinza-dark: #9AA0A6;      /* rodapé e texto secundário sobre tinta (7.0:1) */
+  --no-label-dark: #C6C8CC;      /* label neutro sobre tinta (11:1) */
+  --no-azul-dark: #93AEF2;       /* texto azul sobre tinta (8.4:1); --no-azul puro só em número grande */
+  --no-verde-dark: #6FCF9E;      /* texto verde sobre tinta (9.7:1) e chip com texto tinta */
+  /* âmbar sobre tinta usa --no-ambar direto (8.7:1) */
+
+  /* ── Neutros de apoio ── */
+  --no-branco: #FFFFFF;          /* janela de produto e card sobre osso */
+  --no-inativo: #C9CBCF;         /* ponto inativo, borda tracejada, seta; decorativo, nunca texto (1.5:1) */
+  --no-cinza-inativo: #9A9EA5;   /* rótulo inativo do percurso; FRACO (2.6:1), ver regras de contraste */
+  --no-reservado-1: #EDECE6;     /* listras do espaço reservado (claro) */
+  --no-reservado-2: #F5F4EF;
+  --no-reservado-dark-1: #242424;/* listras do espaço reservado (escuro) */
+  --no-reservado-dark-2: #2C2C2C;
+  --no-mesa: #E7E6E1;            /* fundo da prancha de apresentação; não entra na peça */
+
+  /* ── Sub-marcas (Claude Design) ── */
+  --health-dark: #10291C;
+  --health-acc: var(--no-verde);
+  --health-claro: #F6FAF7;
+  --roteador-dark: #0A2540;
+  --roteador-acc: var(--no-azul);
+  --roteador-claro: #F4F7FA;
+
+  /* ── Tipografia ── */
+  --font-core: 'Sora', system-ui, -apple-system, sans-serif;           /* display ao corpo */
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;              /* labels, métricas, datas, tokens */
+  --peso-display: 800;   /* headline de capa, wordmark, número de etapa */
+  --peso-titulo: 700;    /* título interno */
+  --peso-subtitulo: 600; /* botão, item de lista curto */
+  --peso-texto: 400;     /* texto explicativo nas peças */
+  --peso-corpo: 300;     /* corpo longo em web (300–400) */
+  --peso-label: 500;     /* JetBrains Mono */
+  --tracking-display: -0.04em;  /* capa: -0.035 a -0.04em; número de etapa: -0.05 a -0.06em */
+  --tracking-titulo: -0.02em;   /* título interno: -0.02 a -0.03em */
+  --tracking-wordmark: -0.05em;
+  --tracking-label: 0.16em;     /* labels mono UPPERCASE: 0.14 a 0.18em */
+
+  /* ── Espaço e grade (peças 1080 px de largura) ── */
+  --esp-1: 8px;
+  --esp-2: 16px;
+  --esp-3: 24px;
+  --esp-4: 32px;
+  --esp-5: 48px;
+  --esp-6: 72px;   /* margem da peça */
+  --esp-7: 96px;
+  --peca-margem: 72px;
+  --peca-colunas: 6;
+  --peca-gap: 24px;
+
+  /* ── Raios ── */
+  --raio-tag: 6px;     /* tag de ator (CLIENTE / NÓ), label sólido */
+  --raio-chip: 8px;    /* chip mono (entrega, status, anotação) */
+  --raio-botao: 12px;  /* botão de CTA em componente; 14px no encerramento */
+  --raio-card: 16px;   /* card de lista, linha de etapa, ferramenta */
+  --raio-janela: 18px; /* janela de produto dentro da peça */
+
+  /* ── Elevação ── */
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.07); /* nunca mais pesada que opacidade 0.07 */
+
+  /* ── Apelidos da identidade v2 (notechstack/brand/tokens/tokens.css), para código existente ── */
+  --no-azul-tint: var(--no-azul-claro);
+  --no-vermelho-tint: var(--no-vermelho-claro);
+  --no-ambar-tint: var(--no-ambar-claro);
+  --no-verde-tint: var(--no-verde-claro);
+  --no-font-sans: var(--font-core);
+  --no-font-mono: var(--font-mono);
+  --no-weight-display: var(--peso-display);
+  --no-weight-titulo: var(--peso-titulo);
+  --no-weight-subtitulo: var(--peso-subtitulo);
+  --no-weight-corpo: var(--peso-corpo);
+  --no-tracking-headline: -0.03em;
+  --no-tracking-label: var(--tracking-label);
+  --no-shadow-card: var(--shadow-card); /* a v2 usava 0 8px 24px rgba(20,20,20,.07); o Claude Design é a fonte vigente */
+}

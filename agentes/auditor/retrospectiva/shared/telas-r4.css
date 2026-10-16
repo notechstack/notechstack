@@ -1,0 +1,120 @@
+/* nó.agentes · rodada 4 (TASK-mv9ygtd3hgz): t01 ícones e link, t02 janelas com switch, t04 leitura por etapa, t06 medidor.
+   Só variáveis de tokens.css. Cores de marca de terceiros ficam só em marcas.svg. */
+
+.marca { width: 20px; height: 20px; flex: none; display: inline-block; vertical-align: middle; color: var(--no-tinta); }
+#sprite-marcas { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ── t01 ── */
+.botao--icone { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.link-site {
+  align-self: center; font: var(--peso-subtitulo) 14px/1.4 var(--font-core); color: var(--sobre);
+  text-decoration: underline; text-underline-offset: 3px; text-align: center; padding: 4px 8px;
+}
+
+/* ── t02 · janelas de provedor ── */
+.janela { padding: 0; gap: 0; overflow: hidden; }
+.janela__cab {
+  appearance: none; border: 0; background: none; width: 100%; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: var(--no-tinta);
+  font: var(--peso-subtitulo) 15px/1.2 var(--font-core);
+}
+.janela__cab .marca { width: 22px; height: 22px; }
+.janela__nome { flex: 1; }
+.janela__cont { font: var(--peso-label) 11px/1 var(--font-mono); color: var(--no-azul); letter-spacing: .04em; display: inline-block; }
+.janela__seta { width: 16px; height: 16px; color: var(--no-cinza); transition: transform .25s; }
+.janela__cab[aria-expanded="false"] .janela__seta { transform: rotate(-90deg); }
+.janela__cab:focus-visible { outline: 2px solid var(--no-azul); outline-offset: -2px; border-radius: var(--raio-card); }
+.janela__corpo { padding: 0 14px 4px; }
+#t02 .opcao { gap: 10px; padding: 8px 0; }
+.opcao__txt { flex: 1; min-width: 0; }
+.opcao__txt small { display: block; font: var(--peso-label) 10.5px/1.3 var(--font-mono); color: var(--no-cinza); }
+
+.fonte-logo { position: relative; flex: none; width: 30px; height: 30px; display: grid; place-items: center; }
+.fonte-logo .marca { width: 22px; height: 22px; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--no-osso); border: 1px solid var(--no-borda);
+  display: grid; place-items: center; font: var(--peso-label) 10.5px/1 var(--font-mono); letter-spacing: .02em; color: var(--no-tinta);
+}
+.selinho { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; border-radius: 50%; background: var(--no-osso); padding: 1px; color: var(--no-tinta); }
+.selinho .marca { width: 12px; height: 12px; display: block; }
+
+/* switch: input real (role=switch) sobre o trilho; a bolinha desliza com mola (status-mark.js) */
+.switch { position: relative; flex: none; width: 42px; height: 24px; border-radius: 12px; background: var(--no-inativo); transition: background-color .2s; }
+.switch:has(input:checked) { background: var(--no-azul); }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch__bolinha { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--no-osso); box-shadow: var(--shadow-card); pointer-events: none; }
+.switch:has(input:checked) .switch__bolinha { transform: translateX(18px); }
+.switch:has(input:focus-visible) { outline: 2px solid var(--no-azul); outline-offset: 2px; }
+.switch:has(input:disabled) { opacity: .55; }
+.switch:has(input:disabled) input { cursor: not-allowed; }
+.travado { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.travado small { font: var(--peso-label) 9.5px/1 var(--font-mono); color: var(--no-cinza); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ── StatusMark ── */
+.status-mark { display: inline-flex; align-items: center; gap: 6px; flex: none; line-height: 0; }
+.status-mark svg { display: block; overflow: visible; }
+.status-mark .sm-anel { transform-box: fill-box; transform-origin: center; }
+.status-mark.sm-girando .sm-anel { animation: sm-gira var(--sm-giro, 1100ms) linear infinite; }
+@keyframes sm-gira { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status-mark.sm-girando .sm-anel { animation: none; } }
+.janela { flex: none; }
+.status-mark path, .status-mark .sm-arco { transition: stroke-dashoffset .35s cubic-bezier(.22,1,.36,1); }
+.status-mark .sm-anel { transition: opacity .2s; }
+.status-mark[data-status="running"] .sm-arco { transition: none; }
+#t06 .status-mark.sm-girando .sm-anel { animation: none; } /* atenção = running parado */
+
+/* ── t04 · leitura ── */
+.geral { display: flex; flex-direction: column; gap: 10px; }
+.geral .num small { font-size: .42em; margin-left: 2px; }
+.barra-geral { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--sobre) 28%, transparent); overflow: hidden; }
+.barra-geral i { display: block; height: 100%; background: var(--sobre); transform-origin: left center; transform: scaleX(0); border-radius: inherit; }
+.fontes { list-style: none; margin: 0; padding: 4px 14px; gap: 0; }
+.fonte { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--no-borda); color: var(--no-cinza); }
+.fonte:last-child { border-bottom: 0; }
+.fonte .marca { width: 22px; height: 22px; opacity: .45; transition: opacity .3s; }
+.fonte.lendo .marca, .fonte.pronta .marca { opacity: 1; }
+.fonte__txt { flex: 1; min-width: 0; }
+.fonte__txt b { display: block; font: var(--peso-subtitulo) 14px/1.25 var(--font-core); color: var(--no-tinta); }
+.fonte__sub { display: inline-block; font: var(--peso-label) 10.5px/1.35 var(--font-mono); color: var(--no-cinza); }
+.fonte.lendo .fonte__sub { color: var(--no-azul); }
+.fonte__nota { display: block; font: var(--peso-texto) 10.5px/1.3 var(--font-mono); color: var(--no-cinza); }
+.fonte .sm { color: var(--no-azul); }
+#t04 .leitura { min-height: 1.15em; }
+
+/* ── t06 · medidor, segmentos, filtros, cartões ── */
+.medidor { display: flex; align-items: center; gap: 18px; }
+.medidor svg { width: 116px; height: 116px; flex: none; transform: rotate(-90deg); }
+.medidor__trilho { stroke: color-mix(in srgb, var(--no-tinta) 14%, transparent); }
+.medidor__arco { stroke: var(--no-tinta); }
+.medidor__txt { display: flex; flex-direction: column; gap: 4px; }
+.medidor__num { font: var(--peso-label) 64px/0.9 var(--font-mono); letter-spacing: -0.05em; }
+.medidor__num small { font-size: .3em; letter-spacing: 0; margin-left: 4px; }
+.segmentos { display: flex; gap: 3px; height: 12px; flex: none; }
+.barra-geral, .medidor, .filtros, .cartoes-chk, .fontes { flex: none; }
+.segmentos i { display: block; height: 100%; border-radius: 3px; transform-origin: left center; }
+.seg--ok { flex: 6; background: var(--no-verde); }
+.seg--atencao { flex: 2; background: var(--no-ambar-texto); }
+.seg--problema { flex: 1; background: var(--no-vermelho); }
+.seg--nv { flex: 1; background: var(--no-inativo); }
+.legenda-seg { display: flex; flex-wrap: wrap; gap: 4px 12px; font: var(--peso-label) 10.5px/1.2 var(--font-mono); letter-spacing: .04em; }
+.legenda-seg span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; background: var(--c); vertical-align: 0; }
+.filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+.filtro {
+  appearance: none; border: 1px solid color-mix(in srgb, var(--no-tinta) 30%, transparent); background: transparent; cursor: pointer;
+  font: var(--peso-label) 11.5px/1 var(--font-mono); color: var(--no-tinta); padding: 8px 11px; border-radius: 999px;
+}
+.filtro[aria-pressed="true"] { background: var(--no-tinta); color: var(--no-osso); border-color: var(--no-tinta); }
+.cartoes-chk { display: flex; flex-direction: column; gap: 6px; }
+#t06 .checagem {
+  appearance: none; width: 100%; text-align: left; cursor: pointer; border: 0; margin: 0;
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--no-osso); color: var(--no-tinta); box-shadow: var(--shadow-card);
+}
+#t06 .checagem[hidden] { display: none; }
+#t06 .checagem .sm { margin-top: -1px; }
+#t06 .checagem__txt { flex: 1; min-width: 0; }
+#t06 .checagem b { font: var(--peso-subtitulo) 13.5px/1.3 var(--font-core); }
+#t06 .checagem .ev { display: none; margin-top: 4px; font: var(--peso-texto) 11px/1.35 var(--font-mono); color: var(--no-texto); }
+#t06 .checagem[aria-expanded="true"] .ev { display: block; }
+#t06 .checagem .estado { padding: 5px 7px; font-size: 9.5px; }
+#t06 .checagem:focus-visible { outline: 2px solid var(--no-tinta); outline-offset: 2px; }

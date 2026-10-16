@@ -173,3 +173,16 @@ test('medicao do checkout segurada: so com venda aberta e medicao_liberada da fu
   assert.equal(liberada(null), false);
   assert.equal(liberada({ venda_aberta: true, medicao_liberada: true }), true);
 });
+
+// ── Rodada 3: a retrospectiva do site (logo depois da URL na LP) tem a MESMA tela de planos do protótipo ──
+// Todas as provas acima sobre a tela final valem para a cópia do site porque a seção t13 é idêntica.
+test('retrospectiva do site: tela de planos idêntica à do protótipo e JS da assinatura pela pasta da LP', () => {
+  const site = readFileSync(resolve(repo, 'agentes/auditor/retrospectiva/index.html'), 'utf8');
+  const t13 = (h) => lf(h).match(/<section id="t13"[\s\S]*?<\/section>/)[0];
+  assert.equal(t13(site), t13(html));
+  const telasSite = [...site.matchAll(/<section\b[^>]*\bdata-estado="([^"]*)"/g)].map((m) => m[1]);
+  assert.equal(telasSite.at(-1), 'planos', 'planos continua sendo a última tela');
+  assert.match(site, /<script src="\.\.\/assinatura-medicao\.js"><\/script>/);
+  assert.match(site, /<script src="\.\.\/assinatura\.js"><\/script>/);
+  assert.doesNotMatch(site, /(src|href)="\/repo\//, 'nenhum arquivo carregado pelo caminho da mesa (/repo/) na cópia do site');
+});

@@ -1,0 +1,64 @@
+/* Tela final "Planos" da retrospectiva + checkout da assinatura do Auditor (TASK-mvbcb35pbn0).
+   Só tokens do no-design-system (shared/tokens.css, carregado por no-ds.css); nenhum hex solto.
+   Textos e preços: fontes/proposta-planos-T1.md (aprovada por Lucca em 16/10).
+   Veio do auditor.css do HEAD anterior, adaptado ao molde mobile (390 px) e às classes .cartao/.botao do protótipo. */
+
+/* ── Cartões de plano: sobre osso, dentro da tela verde (texto pequeno fica sempre dentro de .cartao) ── */
+#t13 .planos { padding-bottom: 8px; }
+.au-plano { position: relative; gap: 10px; padding: 20px 18px 18px; }
+.au-plano--recomendado { outline: 2px solid var(--no-tinta); outline-offset: -2px; margin-top: 8px; }
+.au-plano-selo {
+  position: absolute; top: -11px; left: 16px;
+  font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+  padding: 6px 8px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso);
+}
+.au-plano-nome { margin: 0; font: var(--peso-titulo) 20px/1.15 var(--font-core); letter-spacing: var(--tracking-titulo); color: var(--no-tinta); }
+.au-plano-frase { font: var(--peso-texto) 14.5px/1.45 var(--font-core); color: var(--no-texto); text-wrap: pretty; }
+.au-plano-preco { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; }
+.au-plano-valor { font: var(--peso-label) 30px/1 var(--font-mono); letter-spacing: -0.03em; color: var(--no-tinta); }
+.au-plano-periodo { font: var(--peso-label) 13px/1.3 var(--font-mono); color: var(--no-cinza); }
+.au-plano-cota { flex-basis: 100%; font: var(--peso-label) 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--no-cinza); }
+.au-plano-quem { font: var(--peso-texto) 13.5px/1.45 var(--font-core); color: var(--no-texto); }
+.au-plano-quem b { font-weight: var(--peso-subtitulo); color: var(--no-tinta); }
+.au-plano-itens { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 5px; font: var(--peso-texto) 13.5px/1.45 var(--font-core); color: var(--no-texto); }
+.au-plano-itens li::marker { color: var(--no-verde-texto); }
+.au-plano-meta { margin: 0; display: flex; flex-direction: column; gap: 4px; font: var(--peso-texto) 12.5px/1.45 var(--font-core); color: var(--no-cinza); }
+.au-plano-meta div { display: flex; gap: 5px; flex-wrap: wrap; }
+.au-plano-meta dt { font-weight: var(--peso-subtitulo); color: var(--no-tinta); }
+.au-plano-meta dt::after { content: ':'; }
+.au-plano-meta dd { margin: 0; }
+.au-plano .au-plano-btn { margin-top: 4px; }
+.au-plano .au-plano-btn[disabled] { cursor: not-allowed; background: var(--no-borda); color: var(--no-cinza); }
+.au-plano .au-plano-btn:focus-visible { outline: 2px solid var(--no-azul); outline-offset: 2px; }
+.au-planos-lead, .au-planos-nota { padding: 14px 16px; }
+
+/* ── Checkout (dialog): fora da moldura, no top layer; campos legíveis, foco visível ── */
+.au-checkout {
+  width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; padding: 0;
+  border: 1px solid var(--no-borda); border-radius: var(--raio-janela); background: var(--no-osso); color: var(--no-tinta);
+  box-shadow: var(--shadow-card); font-family: var(--font-core);
+}
+.au-checkout::backdrop { background: color-mix(in srgb, var(--no-tinta) 55%, transparent); }
+.au-checkout-form { display: grid; gap: 16px; padding: 24px 20px 20px; }
+@media (min-width: 560px) { .au-checkout-form { padding: 28px 28px 24px; } }
+.au-checkout-titulo { margin: 0; font: var(--peso-titulo) 22px/1.2 var(--font-core); letter-spacing: var(--tracking-titulo); }
+.au-checkout-plano { margin: 0; font: var(--peso-texto) 15px/1.4 var(--font-core); color: var(--no-cinza); }
+.au-checkout-plano strong { font: var(--peso-label) 15px/1.4 var(--font-mono); color: var(--no-tinta); }
+.au-fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; min-width: 0; }
+.au-fieldset legend { padding: 0; margin: 0 0 6px; font: var(--peso-subtitulo) 15px/1.3 var(--font-core); }
+.au-label { margin-top: 6px; font: var(--peso-texto) 14px/1.4 var(--font-core); color: var(--no-texto); }
+.au-input {
+  width: 100%; min-height: 46px; padding: 10px 12px; border: 1.5px solid var(--no-inativo); border-radius: var(--raio-chip);
+  background: var(--no-branco); color: var(--no-tinta); font: var(--peso-texto) 16px/1.3 var(--font-core);
+}
+.au-input:focus-visible, .au-check input:focus-visible, .au-checkout-botoes .botao:focus-visible { outline: 2px solid var(--no-azul); outline-offset: 2px; }
+.au-checkout-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.au-ajuda { margin: 4px 0 0; font: var(--peso-texto) 13px/1.5 var(--font-core); color: var(--no-cinza); }
+.au-check { display: flex; gap: 10px; align-items: flex-start; font: var(--peso-texto) 14px/1.5 var(--font-core); color: var(--no-texto); }
+.au-check input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--no-azul); }
+.au-check a { color: var(--no-azul); font-weight: var(--peso-subtitulo); }
+.au-checkout-msg { margin: 0; padding: 10px 14px; border-radius: var(--raio-chip); background: var(--no-azul-claro); color: var(--no-tinta); font: var(--peso-texto) 14px/1.5 var(--font-core); }
+.au-checkout-msg.is-erro { background: var(--no-vermelho-claro); color: var(--no-vermelho-texto); }
+.au-checkout-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.au-checkout-botoes .botao--claro { box-shadow: inset 0 0 0 1.5px var(--no-tinta); }
+.au-checkout-botoes .botao[disabled] { opacity: .6; cursor: wait; }

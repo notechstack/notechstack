@@ -1,0 +1,15 @@
+/* nó.agentes · rodada 6 (TASK-mv9ygtd3hgz): menos texto de explicação, capa 2 em 1 com nota.
+   Só tokens. Dados de demonstração. */
+.texto--centro { text-align: center; }
+
+/* capa: últimos 30 dias de tráfego + nota de 0 a 10 */
+#t05 .nota { display: flex; flex-direction: column; gap: 14px; }
+#t05 .nota__num { font-size: 132px; }
+#t05 .nota__num small { font-size: .3em; margin-left: 8px; letter-spacing: 0; }
+.nota__trilho { height: 10px; border-radius: 6px; overflow: hidden; background: color-mix(in srgb, var(--sobre) 28%, transparent); }
+.nota__trilho i { display: block; height: 100%; width: calc(var(--p) * 1%); border-radius: inherit; background: var(--sobre); transform-origin: left center; }
+.resumo--3 { grid-template-columns: repeat(3, 1fr); }
+
+/* Google: o logo da fonte substitui o rótulo de texto do cartão */
+.marca--rot { width: 14px; height: 14px; margin: -2px 6px 0 0; }
+.metrica__solta { font: var(--peso-label) 26px/1.05 var(--font-mono); letter-spacing: -0.03em; color: var(--no-tinta); }

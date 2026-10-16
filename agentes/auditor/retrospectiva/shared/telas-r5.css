@@ -1,0 +1,89 @@
+/* nó.agentes · rodada 5 · duas telas especiais com gráfico animado.
+   #t-horario  "Quando seu público responde" (mapa de calor 7 dias × 6 faixas de 4 h)
+   #t-caminho  "Onde o clique se perde"      (funil de 5 degraus)
+   Só tokens. Estado final = padrão do CSS; o JS (telas-r5.js) só anima a partir do zero.
+   Dados de demonstração. */
+
+/* respiração comum: mínimo 12 px entre rótulo, título e número dentro dos cartões */
+#t-horario .cartao, #t-caminho .cartao { gap: 12px; }
+#t-horario .leituras, #t-caminho .leituras { gap: 12px; }
+#t-horario .insight__resposta { line-height: 1.3; text-wrap: pretty; }
+#t-horario .titulo, #t-caminho .num-legenda { text-wrap: balance; }
+#t-horario .cartao .rot, #t-caminho .cartao .rot { text-wrap: balance; }
+
+/* ── #t-horario · mapa de calor ── */
+#t-horario .hm {
+  display: grid; grid-template-columns: 30px repeat(6, minmax(0, 1fr)); gap: 5px;
+  margin: 0; padding: 0;
+}
+#t-horario .hm__hora, #t-horario .hm__dia {
+  font: var(--peso-label) 10.5px/1.3 var(--font-mono); color: var(--no-cinza); letter-spacing: .02em;
+}
+#t-horario .hm__hora { text-align: center; padding-bottom: 2px; }
+#t-horario .hm__dia { display: flex; align-items: center; color: var(--no-texto); }
+#t-horario .hm i {
+  display: block; aspect-ratio: 1 / 1; border-radius: var(--raio-tag);
+  background: color-mix(in srgb, var(--no-azul) 12%, var(--no-osso));
+  transform-origin: 50% 50%;
+}
+#t-horario .hm i.n2 { background: color-mix(in srgb, var(--no-azul) 30%, var(--no-osso)); }
+#t-horario .hm i.n3 { background: color-mix(in srgb, var(--no-azul) 50%, var(--no-osso)); }
+#t-horario .hm i.n4 { background: color-mix(in srgb, var(--no-azul) 72%, var(--no-osso)); }
+#t-horario .hm i.n5 { background: color-mix(in srgb, var(--no-azul) 94%, var(--no-osso)); }
+#t-horario .hm i.pico { background: var(--no-ambar); box-shadow: inset 0 0 0 2px var(--no-tinta); }
+
+#t-horario .hm__rodape { display: flex; flex-direction: column; gap: 12px; }
+#t-horario .hm__pico {
+  align-self: flex-end; display: inline-flex; align-items: center; gap: 6px;
+  font: var(--peso-label) 11px/1.3 var(--font-mono); color: var(--no-tinta);
+  padding: 6px 9px; border-radius: var(--raio-tag);
+  background: var(--no-ambar); box-shadow: inset 0 0 0 1.5px var(--no-tinta);
+}
+#t-horario .hm__pico::before { content: "↑"; font-weight: var(--peso-subtitulo); }
+#t-horario .hm__legenda {
+  display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none;
+  font: var(--peso-label) 10.5px/1.3 var(--font-mono); color: var(--no-cinza);
+}
+#t-horario .hm__legenda b { width: 12px; height: 12px; border-radius: 3px; background: color-mix(in srgb, var(--no-azul) var(--m), var(--no-osso)); }
+#t-horario .hm__legenda b:first-of-type { margin-left: 2px; }
+#t-horario .hm__legenda span:last-child { margin-left: 2px; }
+
+/* comparativo gasto × cliques (mesma linguagem do .recorte da rodada 4) */
+#t-horario .gasto-clique { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+#t-horario .gasto-clique li {
+  display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 8px;
+  font: var(--peso-texto) 12.5px/1.3 var(--font-core); color: var(--no-texto);
+}
+#t-horario .gasto-clique .trilho { height: 8px; border-radius: 4px; background: var(--no-borda); overflow: hidden; }
+#t-horario .gasto-clique .trilho i { display: block; height: 100%; width: calc(var(--p) * 1%); border-radius: inherit; background: var(--no-azul); transform-origin: left center; }
+#t-horario .gasto-clique li.gasto .trilho i { background: var(--no-ambar); }
+#t-horario .gasto-clique li.gasto { color: var(--no-tinta); font-weight: var(--peso-subtitulo); }
+#t-horario .gasto-clique .pct { font: var(--peso-label) 12px/1.3 var(--font-mono); text-align: right; color: var(--no-tinta); }
+
+/* ── #t-caminho · funil ── */
+#t-caminho .destaque { display: flex; flex-direction: column; gap: 10px; }
+#t-caminho .funil { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+#t-caminho .degrau { display: flex; flex-direction: column; gap: 6px; }
+#t-caminho .degrau__cab { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+#t-caminho .degrau__nome { font: var(--peso-texto) 13.5px/1.3 var(--font-core); color: var(--no-texto); }
+#t-caminho .degrau__valor { flex: none; font: var(--peso-label) 14px/1.3 var(--font-mono); color: var(--no-tinta); font-variant-numeric: tabular-nums; }
+#t-caminho .degrau__trilho { position: relative; height: 18px; display: flex; justify-content: center; }
+#t-caminho .degrau__barra {
+  position: relative; z-index: 1; display: block; height: 100%; width: calc(var(--w) * 1%);
+  border-radius: 4px; background: var(--no-azul); transform-origin: 50% 50%;
+}
+#t-caminho .degrau:last-child .degrau__barra { background: var(--no-tinta); }
+/* salto Cliques → Visitas: a largura do degrau anterior fica marcada em vermelho tracejado */
+#t-caminho .degrau__fantasma {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: calc(var(--w-antes) * 1%); transform: translateX(-50%);
+  border-radius: 4px; border: 1.5px dashed var(--no-vermelho);
+  background: color-mix(in srgb, var(--no-vermelho) 16%, var(--no-osso));
+}
+#t-caminho .degrau--perda .degrau__nome { color: var(--no-tinta); font-weight: var(--peso-subtitulo); }
+#t-caminho .perda {
+  align-self: center; display: inline-flex; align-items: center; gap: 8px; margin-top: 2px;
+  font: var(--peso-label) 11.5px/1.3 var(--font-mono); color: var(--no-vermelho-texto);
+  padding: 6px 10px; border-radius: var(--raio-tag); background: var(--no-vermelho-claro);
+}
+#t-caminho .perda::before { content: ""; flex: none; width: 3px; height: 14px; border-radius: 2px; background: var(--no-vermelho); }
+#t-caminho .funil__nota { font: var(--peso-texto) 10.5px/1.35 var(--font-mono); color: var(--no-cinza); }
