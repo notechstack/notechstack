@@ -168,15 +168,51 @@
     return n;
   }
 
+  /* c) modo limite (regra de Lucca: 3 diagnósticos grátis; o quarto pede assinatura). A LP, ao receber 429
+     limite_usuario, manda para cá com ?motivo=limite#t13. Sem diagnóstico na sessão, a sequência vira só [t13]
+     (mesmo mecanismo da sequência real: tira data-estado e põe hidden), sem o selo de demonstração. */
+  function querLimite(search) {
+    var partes = texto(search).replace(/^\?/, '').split('&');
+    for (var i = 0; i < partes.length; i++) {
+      var par = partes[i].split('=');
+      if (dec(par[0]) === 'motivo' && dec(par.slice(1).join('=')) === 'limite') return true;
+    }
+    return false;
+  }
+
+  function aplicarLimite(doc) {
+    var i;
+    doc.documentElement.classList.add('modo-limite');
+    var t13 = doc.getElementById('t13');
+    if (t13) {
+      var selo = t13.querySelector('.selo');
+      if (selo) selo.setAttribute('hidden', '');
+      setTexto(t13, '.rot', '3 diagnósticos grátis usados');
+      setTexto(t13, 'h1.titulo', 'Para seguir auditando, escolha um plano.');
+    }
+    var fora = DEMO.concat(['t01', 't06']);
+    for (i = 0; i < fora.length; i++) {
+      var s = doc.getElementById(fora[i]);
+      if (s) { s.removeAttribute('data-estado'); s.setAttribute('hidden', ''); }
+    }
+  }
+
   function iniciar() {
     var bruto = null;
     try { bruto = window.sessionStorage.getItem(CHAVE); } catch (e) { bruto = null; }
     var dados = ler(bruto);
-    if (!dados) return false;
-    aplicar(document, dados, window.location.search);
-    return true;
+    if (dados) {
+      aplicar(document, dados, window.location.search);
+      return true;
+    }
+    if (querLimite(window.location.search)) {
+      aplicarLimite(document);
+      /* abre direto na t13 (a navegação também cai nela por ser a única tela da sequência) */
+      try { if (window.location.hash !== '#t13' && window.history && window.history.replaceState) window.history.replaceState(null, '', '#t13'); } catch (e) {}
+    }
+    return false;
   }
 
-  window.NoDiagnosticoReal = { CHAVE: CHAVE, ler: ler, contar: contar, destinoApp: destinoApp, aplicar: aplicar, iniciar: iniciar };
+  window.NoDiagnosticoReal = { CHAVE: CHAVE, ler: ler, contar: contar, destinoApp: destinoApp, aplicar: aplicar, querLimite: querLimite, aplicarLimite: aplicarLimite, iniciar: iniciar };
   if (typeof document !== 'undefined' && document && document.getElementById) iniciar();
 })();

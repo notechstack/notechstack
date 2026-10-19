@@ -20,6 +20,24 @@ const ENV = {
 };
 const CAMPOS_CARTAO = ["card", "card_number", "number", "cvv", "holder_name", "exp_month", "exp_year"];
 const UUID = "00000000-0000-4000-8000-000000000001";
+// Endereco ficticio de teste (os nomes dos campos sao os que o front manda).
+const ENDERECO = {
+  cep: "01001000",
+  rua: "Praça da Sé",
+  numero: "100",
+  complemento: "Sala 2",
+  bairro: "Sé",
+  cidade: "São Paulo",
+  uf: "sp",
+};
+const ENDERECO_PAGARME = {
+  line_1: "100, Praça da Sé, Sé",
+  line_2: "Sala 2",
+  zip_code: "01001000",
+  city: "São Paulo",
+  state: "SP",
+  country: "BR",
+};
 
 function pedido(extra = {}) {
   return {
@@ -31,8 +49,13 @@ function pedido(extra = {}) {
     card_token: "token_abc123",
     termos_aceite: true,
     aceite_texto: TEXTO_ACEITE_ASSINATURA,
+    endereco: { ...ENDERECO },
     ...extra,
   };
+}
+
+function comEndereco(extra) {
+  return pedido({ endereco: { ...ENDERECO, ...extra } });
 }
 
 function falsos({ env = {}, resposta, redeFalha = false, registrarLanca = false } = {}) {
@@ -98,7 +121,7 @@ test("sem secret -> 500 CONFIG_AUSENTE sem fetch", async () => {
   assert.equal(chamadas.fetch.length, 0);
 });
 
-test("corpo do /subscriptions: plano certo, card_token, nenhum campo de cartao", async () => {
+test("corpo do /subscriptions: plano certo, card_token, card so com billing_address, nenhum dado de cartao", async () => {
   const { deps, chamadas } = falsos();
   await processarCheckout(pedido({ plano: "agencia" }), deps);
   assert.equal(chamadas.fetch.length, 1);
@@ -110,17 +133,91 @@ test("corpo do /subscriptions: plano certo, card_token, nenhum campo de cartao",
   assert.equal(c.body.plan_id, "plan_agencia");
   assert.equal(c.body.card_token, "token_abc123");
   assert.equal(c.body.payment_method, "credit_card");
-  assert.deepEqual(Object.keys(c.body).sort(), ["card_token", "customer", "metadata", "payment_method", "plan_id"]);
+  assert.deepEqual(Object.keys(c.body).sort(), ["card", "card_token", "customer", "metadata", "payment_method", "plan_id"]);
+  // O "card" enviado ao Pagar.me so carrega o endereco de cobranca (o token da v5 nao leva endereco).
+  assert.deepEqual(c.body.card, { billing_address: ENDERECO_PAGARME });
   const todas = chaves(c.body);
-  for (const campo of CAMPOS_CARTAO) assert.ok(!todas.includes(campo), `campo de cartao no corpo: ${campo}`);
+  for (const campo of CAMPOS_CARTAO.filter((k) => k !== "card")) {
+    assert.ok(!todas.includes(campo), `campo de cartao no corpo: ${campo}`);
+  }
   assert.deepEqual(c.body.customer, {
     name: "Maria Teste",
     email: "maria@exemplo.com",
     document: "12345678909",
     type: "individual",
     phones: { mobile_phone: { country_code: "55", area_code: "11", number: "987654321" } },
+    address: ENDERECO_PAGARME,
   });
   assert.deepEqual(c.body.metadata, { origem: "auditor", plano: "agencia" });
+});
+
+test("complemento vazio ou ausente -> sem line_2; uf minuscula vira maiuscula; cep com mascara aceito", async () => {
+  for (const extra of [{ complemento: "" }, { complemento: "   " }, { complemento: undefined }]) {
+    const { deps, chamadas } = falsos();
+    const r = await processarCheckout(comEndereco({ ...extra, cep: "01001-000", uf: "sp" }), deps);
+    assert.equal(r.http, 200);
+    const { line_2: _fora, ...semLine2 } = ENDERECO_PAGARME;
+    assert.deepEqual(chamadas.fetch[0].body.card.billing_address, semLine2);
+    assert.deepEqual(chamadas.fetch[0].body.customer.address, semLine2);
+    assert.ok(!("line_2" in chamadas.fetch[0].body.card.billing_address));
+  }
+});
+
+test("endereco nao vai para o banco nem para o log", async () => {
+  const { deps, chamadas } = falsos();
+  const r = await processarCheckout(pedido(), deps);
+  assert.equal(r.http, 200);
+  const gravado = JSON.stringify(chamadas.registrar);
+  const logado = JSON.stringify(chamadas.log);
+  for (const pedaco of ["01001000", "Praça da Sé", "Sala 2", "São Paulo"]) {
+    assert.ok(!gravado.includes(pedaco), `endereco no registro: ${pedaco}`);
+    assert.ok(!logado.includes(pedaco), `endereco no log: ${pedaco}`);
+  }
+  assert.ok(!("endereco" in chamadas.registrar[0]));
+});
+
+// Endereco de cobranca invalido ou ausente: 400 com a mensagem do endereco e nenhuma chamada ao Pagar.me.
+for (const [nome, corpo] of [
+  ["endereco ausente", pedido({ endereco: undefined })],
+  ["endereco null", pedido({ endereco: null })],
+  ["endereco em string", pedido({ endereco: "Praça da Sé, 100" })],
+  ["cep com 7 digitos", comEndereco({ cep: "0100100" })],
+  ["cep com 9 digitos", comEndereco({ cep: "010010000" })],
+  ["cep com letra", comEndereco({ cep: "0100100a" })],
+  ['uf "XX"', comEndereco({ uf: "XX" })],
+  ["uf ausente", comEndereco({ uf: undefined })],
+  ["rua com 1 letra", comEndereco({ rua: "R" })],
+  ["rua com 121 letras", comEndereco({ rua: "R".repeat(121) })],
+  ["numero vazio", comEndereco({ numero: "  " })],
+  ["numero com 21 caracteres", comEndereco({ numero: "1".repeat(21) })],
+  ["numero em number", comEndereco({ numero: 100 })],
+  ["complemento com 61 caracteres", comEndereco({ complemento: "c".repeat(61) })],
+  ["bairro com 1 letra", comEndereco({ bairro: "S" })],
+  ["cidade com 81 letras", comEndereco({ cidade: "c".repeat(81) })],
+  ["cidade ausente", comEndereco({ cidade: undefined })],
+]) {
+  test(`recusa ${nome} -> 400 DADOS_INVALIDOS (endereco) sem fetch`, async () => {
+    const { deps, chamadas } = falsos();
+    const r = await processarCheckout(corpo, deps);
+    assert.deepEqual(r, {
+      http: 400,
+      body: { ok: false, error_code: "DADOS_INVALIDOS", mensagem: "Confira o endereço de cobrança do cartão." },
+    });
+    assert.equal(chamadas.fetch.length, 0);
+    assert.equal(chamadas.registrar.length, 0);
+  });
+}
+
+test("limites do endereco aceitos: rua 120, numero 1 e 20, complemento 60, bairro e cidade 2 e 80", async () => {
+  for (const extra of [
+    { rua: "R".repeat(120), numero: "1", complemento: "c".repeat(60), bairro: "Sé", cidade: "c".repeat(80) },
+    { rua: "Ru", numero: "S/N 12345678901234", bairro: "b".repeat(80), cidade: "Ub", uf: " df " },
+  ]) {
+    const { deps, chamadas } = falsos();
+    const r = await processarCheckout(comEndereco(extra), deps);
+    assert.equal(r.http, 200, JSON.stringify(extra));
+    assert.equal(chamadas.fetch.length, 1);
+  }
 });
 
 test("CNPJ vira company e o WhatsApp vai em phones e no registro", async () => {

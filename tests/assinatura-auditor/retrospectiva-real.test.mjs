@@ -98,7 +98,8 @@ function montarDoc() {
       el('button', { type: 'button', class: 'filtro', 'data-filtro': 'problema' }, 'Problema · 1'),
       el('button', { type: 'button', class: 'filtro', 'data-filtro': 'nv' }, 'Não verif. · 1')),
     el('div', { class: 'cartoes-chk' }, card('ok', 'https', 'Site em HTTPS', 'certificado válido', 'ok'), card('problema', 'tempo_resposta', 'Tempo de resposta', '7,2 s', 'problema')));
-  const t13 = el('section', { id: 't13', 'data-estado': 'planos', class: 'tela' }, selo());
+  const t13 = el('section', { id: 't13', 'data-estado': 'planos', class: 'tela' }, selo(),
+    el('p', { class: 'rot rot-chip' }, 'Próximo passo'), el('h1', { class: 'titulo titulo--g' }, 'Três jeitos de seguir com o agente.'));
   const main = el('main', { id: 'celular' }, el('nav', { class: 'lateral' }), t01, ...DEMO.map(([id, est]) => el('section', { id, 'data-estado': est, class: 'tela' }, selo())), t06, t13);
   const root = el('html', {}, el('body', {}, main));
   root.documentElement = root;
@@ -108,14 +109,18 @@ function montarDoc() {
 }
 function carregar(doc, armazenado, search = '') {
   const idas = [];
+  const trocas = [];
   const ctx = {
-    window: { sessionStorage: { getItem: (k) => (k === 'no_auditor_diagnostico' ? armazenado : null) }, location: { search, href: '' } },
+    window: {
+      sessionStorage: { getItem: (k) => (k === 'no_auditor_diagnostico' ? armazenado : null) }, location: { search, href: '' },
+      history: { replaceState: (_e, _t, h) => trocas.push(h) }
+    },
     document: doc
   };
   vm.runInNewContext(js, ctx, { filename: 'diagnostico-real.js' });
   // o clique dos botões navega por window.location.href do contexto; aqui gravamos para conferir
   Object.defineProperty(ctx.window.location, 'href', { set: (u) => idas.push(u), get: () => idas.at(-1) || '' });
-  return { api: ctx.window.NoDiagnosticoReal, idas };
+  return { api: ctx.window.NoDiagnosticoReal, idas, trocas };
 }
 
 const DIAG = {
@@ -257,6 +262,64 @@ test('funções puras expostas: ler/contar/destinoApp', () => {
   assert.deepEqual(plano(api.contar(d.checagens, null)), { ok: 2, atencao: 1, problema: 1, nao_verificavel: 0, total: 4 });
   assert.equal(api.destinoApp(''), 'https://app.notechstack.com.br/?origem=auditor');
   assert.equal(api.destinoApp('?utm_term=a+b'), 'https://app.notechstack.com.br/?origem=auditor&utm_term=a%20b');
+});
+
+// ── modo limite (rodada 5): 3 diagnósticos grátis usados; a LP manda para ?motivo=limite#t13 ──
+const ordemDemo = ['t01', ...telasDemo, 't06', 't13'];
+
+test('modo limite (?motivo=limite, sem diagnóstico): só t13 na sequência, selo escondido, textos trocados, abre na t13', () => {
+  const doc = montarDoc();
+  const { trocas } = carregar(doc, null, '?utm_source=meta&motivo=limite&fbclid=abc');
+  assert.ok(doc.documentElement.classList.contains('modo-limite'));
+  assert.equal(doc.documentElement.classList.contains('modo-real'), false);
+  assert.deepEqual(doc.querySelectorAll('section[data-estado]').map((s) => s.getAttribute('id')), ['t13']);
+  for (const id of [...telasDemo, 't01', 't06']) {
+    assert.ok(doc.getElementById(id), id + ' continua no DOM');
+    assert.ok(doc.getElementById(id).hasAttribute('hidden'), id + ' hidden');
+  }
+  assert.equal(doc.getElementById('t13').hasAttribute('hidden'), false);
+  assert.ok(doc.querySelector('#t13 .selo').hasAttribute('hidden'), 'sem o selo DEMONSTRAÇÃO');
+  assert.equal(doc.querySelector('#t13 .rot').textContent, '3 diagnósticos grátis usados');
+  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Para seguir auditando, escolha um plano.');
+  assert.deepEqual(trocas, ['#t13'], 'abre direto na t13');
+  assert.equal(doc.querySelector('#t01 .num').textContent, '10', 't01 de demonstração não é preenchida');
+});
+
+test('sem motivo=limite e sem diagnóstico: demonstração igual (outro motivo também não liga o modo limite)', () => {
+  for (const search of ['', '?utm_source=meta&fbclid=abc', '?motivo=outro', '?motivo_x=limite']) {
+    const doc = montarDoc();
+    const { trocas } = carregar(doc, null, search);
+    assert.equal(doc.documentElement.classList.contains('modo-limite'), false, search);
+    assert.equal(doc.documentElement.classList.contains('modo-real'), false, search);
+    assert.deepEqual(doc.querySelectorAll('section[data-estado]').map((s) => s.getAttribute('id')), ordemDemo, search);
+    assert.equal(doc.querySelector('#t13 .selo').hasAttribute('hidden'), false, search);
+    assert.equal(doc.querySelector('#t13 .selo').textContent, 'DEMONSTRAÇÃO');
+    assert.equal(doc.querySelector('#t13 .rot').textContent, 'Próximo passo');
+    assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Três jeitos de seguir com o agente.');
+    assert.deepEqual(trocas, [], search);
+  }
+});
+
+test('com diagnóstico + motivo=limite: o modo real vence (t01 → t06 → t13, textos da t13 intactos)', () => {
+  const doc = montarDoc();
+  const { trocas } = carregar(doc, JSON.stringify(DIAG), '?motivo=limite');
+  assert.ok(doc.documentElement.classList.contains('modo-real'));
+  assert.equal(doc.documentElement.classList.contains('modo-limite'), false);
+  assert.deepEqual(doc.querySelectorAll('section[data-estado]').map((s) => s.getAttribute('id')), ['t01', 't06', 't13']);
+  assert.equal(doc.querySelector('#t01 .num').textContent, '4');
+  assert.ok(doc.querySelector('#t13 .selo').hasAttribute('hidden'));
+  assert.equal(doc.querySelector('#t13 .rot').textContent, 'Próximo passo');
+  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Três jeitos de seguir com o agente.');
+  assert.deepEqual(trocas, []);
+});
+
+test('querLimite: só motivo=limite exato liga o modo', () => {
+  const { api } = carregar(montarDoc(), null);
+  assert.equal(api.querLimite('?motivo=limite'), true);
+  assert.equal(api.querLimite('?utm_source=a&motivo=limite#t13'.split('#')[0]), true);
+  assert.equal(api.querLimite(''), false);
+  assert.equal(api.querLimite('?motivo=limites'), false);
+  assert.equal(api.querLimite('?xmotivo=limite'), false);
 });
 
 // ── index.html copiado para o repo ──

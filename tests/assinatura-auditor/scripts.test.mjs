@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { criarPlanos } from '../../scripts/pagarme-assinatura/criar-planos-sandbox.mjs';
 import { assinaturasDeTeste, TEXTO_ACEITE } from '../../scripts/pagarme-assinatura/assinatura-teste-sandbox.mjs';
-import { TEXTO_ACEITE_ASSINATURA } from '../../supabase/functions/assinatura-auditor/core.ts';
+import { TEXTO_ACEITE_ASSINATURA, validarPedido } from '../../supabase/functions/assinatura-auditor/core.ts';
 
 test('o script usa o mesmo texto de aceite que o servidor exige', () => {
   assert.equal(TEXTO_ACEITE, TEXTO_ACEITE_ASSINATURA);
@@ -125,6 +125,12 @@ test('assinaturasDeTeste com pk_test_x: 3 tokenizações + 3 POST na função, s
     assert.equal(c.body.aceite_texto, TEXTO_ACEITE_ASSINATURA);
     assert.equal(c.body.telefone, '11999999999');
     assert.equal(c.body.documento, '11144477735');
+    // Endereço de cobrança fictício de teste (o token da v5 não leva endereço).
+    assert.deepEqual(c.body.endereco, {
+      cep: '01001000', rua: 'Praça da Sé', numero: '100', bairro: 'Sé', cidade: 'São Paulo', uf: 'SP'
+    });
+    // O corpo que o script manda passa na validação do servidor (sem precisar subir a função).
+    assert.equal(validarPedido(c.body).ok, true, JSON.stringify(validarPedido(c.body)));
   });
   assert.deepEqual(funcao.map((c) => c.body.plano), ['mensal', 'semanal', 'agencia']);
   assert.deepEqual(r.map((x) => [x.codigo, x.http, x.resposta.ok]), [['mensal', 200, true], ['semanal', 200, true], ['agencia', 200, true]]);

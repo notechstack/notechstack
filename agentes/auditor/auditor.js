@@ -195,9 +195,19 @@
       '<div class="au-fundo"><h3>Quer ir mais fundo? Conecte Meta e Google</h3><p>Eventos pelo servidor e o que roda dentro do GTM só aparecem com as contas conectadas: aí o auditor compara o que o site dispara com o que Meta e Google recebem.</p>' + ctaCadastro('Conectar Meta e Google') + '</div>' +
       '</div>', false);
   }
+  /* 429 limite_usuario (regra de Lucca: 3 diagnósticos grátis; o quarto pede assinatura): leva aos planos no fim
+     da retrospectiva (?motivo=limite#t13), com os mesmos utm_* e fbclid da navegação de sucesso. A LP segue sem preço. */
+  function planosLimiteUrl() {
+    var u = new URL(retrospectivaUrl());
+    u.searchParams.set('motivo', 'limite');
+    u.hash = 't13';
+    return u.toString();
+  }
   function renderLimite(data) {
     dl({ event: 'diagnostico_limite_usuario' });
-    render('<div class="au-box au-box--limite"><h2>Você já usou seus ' + esc(data.limite || 3) + ' diagnósticos gratuitos</h2><p>Crie sua conta para continuar auditando e conectar Meta e Google.</p>' + ctaCadastro('Criar minha conta') + '</div>', false);
+    render('<div class="au-box au-box--limite"><h2>Você já fez seus ' + esc((data && data.limite) || 3) + ' diagnósticos grátis</h2>' +
+      '<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp.</p>' +
+      '<a class="ag-btn ag-btn--primario" href="' + esc(planosLimiteUrl()) + '">Ver os planos</a></div>', false);
   }
   function renderTeto() {
     dl({ event: 'diagnostico_teto_atingido' });

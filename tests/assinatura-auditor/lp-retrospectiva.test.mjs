@@ -63,7 +63,7 @@ async function rodar({ status = 200, corpo = { status: 'entregue', report: REPOR
   ids['au-url'].value = 'lojaexemplo.com.br';
   ids['au-form'].ouvintes.submit({ preventDefault() {} });
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
-  return { estado: ids['au-estado'].innerHTML, sessao, abertas, janela, ids };
+  return { estado: ids['au-estado'].innerHTML, sessao, abertas, janela, ids, dataLayer: ctx.dataLayer || [] };
 }
 
 test('diagnóstico entregue: grava o resultado e abre a retrospectiva em #t01 com utm e fbclid', async () => {
@@ -94,12 +94,40 @@ test('sem sessionStorage: o relatório aparece na LP como antes e nada é aberto
 });
 
 test('limite, teto e falha continuam na LP, sem gravar nem abrir a retrospectiva', async () => {
-  for (const [status, texto] of [[429, /diagnósticos gratuitos/], [503, /teto diário/], [500, /Não conseguimos/]]) {
+  for (const [status, texto] of [[429, /diagnósticos grátis/], [503, /teto diário/], [500, /Não conseguimos/]]) {
     const { abertas, sessao, estado } = await rodar({ status, corpo: { limite: 3 } });
     assert.equal(abertas.length, 0, `status ${status}`);
     assert.equal(sessao.size, 0, `status ${status}`);
     assert.match(estado, texto);
   }
+});
+
+test('limite (429): "Ver os planos" leva a retrospectiva/?motivo=limite…#t13 com utm e fbclid, mantém o evento e não tem R$', async () => {
+  const { estado, dataLayer, abertas } = await rodar({ status: 429, corpo: { status: 'limite_usuario', limite: 3 } });
+  assert.ok(dataLayer.some((e) => e && e.event === 'diagnostico_limite_usuario'), 'evento diagnostico_limite_usuario');
+  assert.match(estado, /<h2>Você já fez seus 3 diagnósticos grátis<\/h2>/);
+  assert.match(estado, /<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp\.<\/p>/);
+  assert.doesNotMatch(estado, /R\$|Crie sua conta|Criar minha conta|app\.notechstack/, 'sem preço e sem cadastro do app');
+  const m = /<a class="ag-btn[^"]*" href="([^"]+)">Ver os planos<\/a>/.exec(estado);
+  assert.ok(m, 'link "Ver os planos" com a classe ag-btn');
+  assert.ok(m[1].endsWith('#t13'), 'termina em #t13');
+  const u = new URL(m[1].replace(/&amp;/g, '&'));
+  assert.equal(u.pathname, '/agentes/auditor/retrospectiva/');
+  assert.equal(u.searchParams.get('motivo'), 'limite');
+  assert.equal(u.searchParams.get('utm_source'), 'meta');
+  assert.equal(u.searchParams.get('utm_campaign'), 'c1');
+  assert.equal(u.searchParams.get('fbclid'), 'abc');
+  assert.equal(u.searchParams.get('outro'), null, 'só utm_*, fbclid e motivo');
+  assert.equal(u.hash, '#t13');
+  assert.equal(abertas.length, 0, 'não navega sozinho: a pessoa clica');
+});
+
+test('limite (429): número vem do servidor (padrão 3) e é escapado', async () => {
+  assert.match((await rodar({ status: 429, corpo: { limite: 5 } })).estado, /seus 5 diagnósticos grátis/);
+  assert.match((await rodar({ status: 429, corpo: {} })).estado, /seus 3 diagnósticos grátis/);
+  const { estado } = await rodar({ status: 429, corpo: { limite: '<img src=x>' } });
+  assert.doesNotMatch(estado, /<img/);
+  assert.match(estado, /&lt;img src=x&gt;/);
 });
 
 test('voltar da retrospectiva pelo navegador: a LP volta a aceitar outra URL', async () => {

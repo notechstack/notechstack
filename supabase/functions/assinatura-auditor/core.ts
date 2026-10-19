@@ -16,6 +16,11 @@ const CODIGOS = Object.keys(PLANOS) as CodigoPlano[];
 const API_PADRAO = "https://api.pagar.me/core/v5";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CAMPOS_CARTAO = ["card", "card_number", "number", "cvv", "holder_name", "exp_month", "exp_year"];
+const UFS = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA",
+  "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+const MSG_ENDERECO = "Confira o endereço de cobrança do cartão.";
 
 // Texto exato da caixa de aceite (obrigatoria) da tela de planos no fim da retrospectiva: Termos + relatorio no
 // WhatsApp, decisao de Lucca em 16/10. O banco grava ESTA constante, nunca a string do cliente. Mudar o texto da
@@ -48,6 +53,19 @@ export type Pedido = {
   telefone: string;
   card_token: string;
   aceite_texto: string;
+  // Endereco de cobranca do cartao: so vai ao Pagar.me (o token do cartao nao leva endereco na v5).
+  // Nao vai para o banco nem para log.
+  endereco: Endereco;
+};
+
+export type Endereco = {
+  cep: string; // 8 digitos
+  rua: string;
+  numero: string;
+  complemento: string; // "" quando nao informado
+  bairro: string;
+  cidade: string;
+  uf: string; // sigla maiuscula
 };
 
 export type LinhaAssinatura = {
@@ -111,6 +129,33 @@ function invalido(mensagem: string) {
   return { ok: false as const, error_code: "DADOS_INVALIDOS" as const, mensagem };
 }
 
+// Campos do endereco de cobranca como o front manda: {cep, rua, numero, complemento?, bairro, cidade, uf}.
+// Retorna null se ausente ou invalido (quem chama devolve 400 sem chamar o Pagar.me).
+export function lerEndereco(valor: unknown): Endereco | null {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return null;
+  const e = valor as Record<string, unknown>;
+  const texto = (v: unknown, min: number, max: number): string | null => {
+    if (typeof v !== "string") return null;
+    const t = normalizarTexto(v);
+    return t.length >= min && t.length <= max ? t : null;
+  };
+
+  // Aceita a mascara "01001-000"; o que sobra tem de ser exatamente 8 digitos.
+  const cep = typeof e.cep === "string" ? e.cep.replace(/[\s.-]/g, "") : "";
+  if (!/^\d{8}$/.test(cep)) return null;
+  const rua = texto(e.rua, 2, 120);
+  const numero = texto(e.numero, 1, 20);
+  const bairro = texto(e.bairro, 2, 80);
+  const cidade = texto(e.cidade, 2, 80);
+  if (rua === null || numero === null || bairro === null || cidade === null) return null;
+  const complemento = e.complemento === undefined || e.complemento === null ? "" : texto(e.complemento, 0, 60);
+  if (complemento === null) return null;
+  const uf = typeof e.uf === "string" ? e.uf.trim().toUpperCase() : "";
+  if (!UFS.has(uf)) return null;
+
+  return { cep, rua, numero, complemento, bairro, cidade, uf };
+}
+
 export function validarPedido(body: unknown):
   | { ok: true; pedido: Pedido }
   | { ok: false; error_code: "DADOS_INVALIDOS"; mensagem: string } {
@@ -143,6 +188,9 @@ export function validarPedido(body: unknown):
     return invalido("Confira o WhatsApp: use o DDD e o número (10 ou 11 números).");
   }
 
+  const endereco = lerEndereco(b.endereco);
+  if (!endereco) return invalido(MSG_ENDERECO);
+
   const cardToken = typeof b.card_token === "string" ? b.card_token : "";
   if (!cardToken.startsWith("token_")) {
     return invalido("Não conseguimos ler o cartão. Confira os dados do cartão e tente de novo.");
@@ -167,11 +215,26 @@ export function validarPedido(body: unknown):
       telefone,
       card_token: cardToken,
       aceite_texto: TEXTO_ACEITE_ASSINATURA,
+      endereco,
     },
   };
 }
 
+// Formato de endereco da API v5 do Pagar.me (billing_address do cartao e address do customer).
+export function enderecoPagarme(e: Endereco): Record<string, string> {
+  return {
+    line_1: `${e.numero}, ${e.rua}, ${e.bairro}`,
+    ...(e.complemento ? { line_2: e.complemento } : {}),
+    zip_code: e.cep,
+    city: e.cidade,
+    state: e.uf,
+    country: "BR",
+  };
+}
+
 // Corpo do POST /subscriptions. So o token do cartao; nada de numero, cvv ou validade.
+// O "card" daqui leva SO o billing_address (o token da v5 nao carrega endereco); o "card" vindo do navegador
+// continua recusado em validarPedido.
 export function corpoAssinatura(pedido: Pedido, planId: string) {
   const customer: Record<string, unknown> = {
     name: pedido.nome,
@@ -185,11 +248,13 @@ export function corpoAssinatura(pedido: Pedido, planId: string) {
         number: pedido.telefone.slice(2),
       },
     },
+    address: enderecoPagarme(pedido.endereco),
   };
   return {
     plan_id: planId,
     payment_method: "credit_card",
     card_token: pedido.card_token,
+    card: { billing_address: enderecoPagarme(pedido.endereco) },
     customer,
     metadata: { origem: "auditor", plano: pedido.plano },
   };
