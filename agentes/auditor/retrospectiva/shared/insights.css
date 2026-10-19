@@ -1,0 +1,72 @@
+/* nó.agentes · leituras do agente nas telas Meta (#t07) e Google (#t08). Rodadas 4 e 5.
+   Comentário de Lucca: sair do óbvio (alcance, impressões) e trazer o que a IA interpreta
+   a partir da leitura via API: público que mais respondeu, posicionamento, tempo de tela, canal.
+   Rodada 5: refino dos cartões — pergunta, resposta e gráfico com espaço próprio, quebras balanceadas,
+   unidade menor que o número, nada encostado. Só tokens; dados de demonstração. */
+.leituras { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; } /* rodada 6: faixa de demonstração saiu, folga do rodapé também */
+.leituras__cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px; padding: 0 2px; }
+.leituras__cab .rot { color: var(--sobre); white-space: nowrap; letter-spacing: .1em; }
+/* verde e vermelho só levam osso a partir de 24 px: nesses fundos o cabeçalho fica só com o selo (Karen, rodada 5) */
+[data-fundo="verde"] .leituras__cab .rot, [data-fundo="vermelho"] .leituras__cab .rot { display: none; }
+.selo-ia {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+  padding: 6px 8px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso);
+}
+.selo-ia::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--no-ambar); }
+
+/* cabeça do cartão: pergunta (rótulo) → resposta (frase) → gráfico, cada um com o seu espaço */
+.insight { gap: 0; }
+.insight__pergunta {
+  font: var(--peso-label) 11px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--no-cinza); text-wrap: balance;
+}
+.insight__resposta {
+  margin-top: 8px;
+  font: var(--peso-subtitulo) 19px/1.3 var(--font-core); letter-spacing: -0.015em; color: var(--no-tinta);
+  text-wrap: balance;
+}
+.insight__resposta em { font-style: normal; font: var(--peso-label) 1em/1 var(--font-mono); color: var(--no-azul); white-space: nowrap; }
+.insight > .recorte, .insight > .pilha-canal, .insight > .compara, .insight > .gasto-clique { margin-top: 16px; }
+.insight > .legenda-canal { margin-top: 12px; }
+
+/* barras horizontais de recorte (idade, posicionamento, aparelho) */
+.recorte { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.recorte li { display: grid; grid-template-columns: 84px 1fr 44px; align-items: center; gap: 10px; font: var(--peso-texto) 13px/1.25 var(--font-core); color: var(--no-texto); }
+.recorte li > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recorte .trilho { height: 8px; border-radius: 4px; background: var(--no-borda); overflow: hidden; }
+.recorte .trilho i { display: block; height: 100%; width: calc(var(--p) * 1%); border-radius: inherit; background: var(--no-azul); transform-origin: left center; }
+.recorte li.topo-recorte .trilho i { background: var(--no-ambar); }
+.recorte li.topo-recorte { color: var(--no-tinta); font-weight: var(--peso-subtitulo); }
+.recorte .pct { font: var(--peso-label) 12.5px/1 var(--font-mono); text-align: right; color: var(--no-tinta); }
+
+/* barra empilhada de canal */
+.pilha-canal { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
+.pilha-canal i { flex: var(--p) 0 0; transform-origin: left center; }
+.pilha-canal i:nth-child(1) { background: var(--no-ambar); }
+.pilha-canal i:nth-child(2) { background: var(--no-azul); }
+.pilha-canal i:nth-child(3) { background: var(--no-verde); }
+.pilha-canal i:nth-child(4) { background: var(--no-inativo); }
+.legenda-canal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 0; padding: 0; list-style: none; font: var(--peso-texto) 13px/1.3 var(--font-core); color: var(--no-texto); }
+.legenda-canal li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.legenda-canal li::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 2px; background: var(--c); }
+.legenda-canal li b { margin-left: auto; font: var(--peso-label) 12.5px/1 var(--font-mono); color: var(--no-tinta); }
+
+/* tempo de engajamento comparado: uma linha por canal, rótulo em cima, tempo grande, barra proporcional */
+.compara { display: flex; flex-direction: column; gap: 0; }
+.compara > div { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px 12px; padding: 14px 0; border-top: 1px solid var(--no-borda); }
+.compara > div:first-child { padding-top: 0; border-top: 0; }
+.compara > div:last-child { padding-bottom: 0; }
+.compara span { grid-column: 1; font: var(--peso-texto) 13px/1.35 var(--font-core); color: var(--no-texto); text-wrap: balance; }
+.compara b { grid-column: 2; font: var(--peso-label) 28px/1 var(--font-mono); letter-spacing: -0.03em; color: var(--no-tinta); white-space: nowrap; }
+.compara b small { font-size: .46em; letter-spacing: .02em; margin: 0 4px 0 2px; color: var(--no-cinza); }
+.compara b small:last-child { margin-right: 0; }
+.compara .trilho { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--no-borda); overflow: hidden; }
+.compara .trilho i { display: block; height: 100%; width: calc(var(--p) * 1%); border-radius: inherit; background: var(--no-azul); transform-origin: left center; }
+.compara > div:first-child .trilho i { background: var(--no-ambar); }
+
+/* frase da IA que cruza fontes */
+.leitura-ia { background: var(--no-tinta); color: var(--no-osso); gap: 10px; }
+.leitura-ia .rot { color: var(--no-label-dark); }
+.leitura-ia .texto { color: var(--no-osso); font-size: 15px; line-height: 1.5; }
+.leitura-ia .base { margin-top: 2px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--no-osso) 14%, transparent); font: var(--peso-texto) 11px/1.45 var(--font-mono); color: var(--no-cinza-dark); }

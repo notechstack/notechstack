@@ -1,0 +1,27 @@
+# Assinatura do Auditor no Pagar.me (TASK-mvbcb35pbn0). SO OS NOMES: os valores Lucca cadastra
+# nos secrets do Supabase (supabase secrets set NOME=...) ou num arquivo local fora do Git.
+# Nenhuma chave real neste arquivo. Os mesmos nomes, sem valor, estao em supabase/functions/.env.example.
+
+# Chave secreta da conta Pagar.me da no (a mesma conta do site da no). sk_test_... no sandbox.
+# Em producao e opcional: sem ela a funcao usa a PAGARME_SECRET_KEY do projeto (Lucca, 19/10).
+PAGARME_ASSINATURA_SECRET_KEY=
+# Chave publica da mesma conta. pk_test_... no sandbox. Vai ao navegador para tokenizar o cartao.
+PAGARME_ASSINATURA_PUBLIC_KEY=
+# Opcional. Padrao: https://api.pagar.me/core/v5
+PAGARME_ASSINATURA_API_URL=
+# sandbox (padrao) ou producao. Em sandbox a funcao recusa chave que nao comece com sk_test_.
+PAGARME_ASSINATURA_AMBIENTE=sandbox
+# Usuario e senha do Basic Auth que o Pagar.me usa ao chamar o webhook de assinatura.
+PAGARME_ASSINATURA_WEBHOOK_USER=
+PAGARME_ASSINATURA_WEBHOOK_PASS=
+# Ids plan_... que o script scripts/pagarme-assinatura/criar-planos-sandbox.mjs imprime.
+PAGARME_PLANO_MENSAL_ID=
+PAGARME_PLANO_SEMANAL_ID=
+PAGARME_PLANO_AGENCIA_ID=
+# "sim" libera o checkout. Qualquer outro valor deixa os botoes em "Assinatura em breve".
+AUDITOR_VENDA_ABERTA=
+# Ja existem no projeto (o Supabase injeta nas funcoes).
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+# "sim" libera a medicao do checkout (segurada ate a TASK da D4, decisao de Lucca em 16/10). Padrao: desligada.
+AUDITOR_MEDICAO_CHECKOUT=

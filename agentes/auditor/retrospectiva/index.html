@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nó.agentes · relatório de primeiro uso</title>
+<!-- Só faz sentido logo depois do diagnóstico na LP (sessionStorage); aberta direto mostra a demonstração.
+     Sem GTM por enquanto: a medição desta página espera a TASK da D4 (pixel respeitando a recusa), como a do checkout. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="shared/no-ds.css">
+<link rel="stylesheet" href="shared/telas-r4.css">
+<style>
+  /* Protótipo local, dados de demonstração. Só tokens da marca; nenhuma cor solta. */
+  html, body { margin: 0; height: 100%; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 56px;
+    background: var(--no-mesa); color: var(--no-tinta); font-family: var(--font-core);
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  p { margin: 0; }
+
+  /* ── Lateral (só em tela larga) ── */
+  .lateral { width: 230px; display: flex; flex-direction: column; gap: 18px; }
+  .lateral img { width: 72px; height: auto; }
+  .lateral .rot { color: var(--no-cinza); }
+  .lateral ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .lateral a {
+    display: flex; gap: 10px; padding: 8px 10px; border-radius: var(--raio-chip);
+    font: var(--peso-texto) 14px/1.3 var(--font-core); color: var(--no-texto); text-decoration: none;
+  }
+  .lateral a span { font: var(--peso-label) 12px/1.5 var(--font-mono); color: var(--no-cinza); }
+  .lateral a:hover { background: var(--no-osso); }
+  .lateral a[aria-current="true"] { background: var(--no-tinta); color: var(--no-osso); }
+  .lateral a[aria-current="true"] span { color: var(--no-label-dark); }
+  .legenda { font: var(--peso-label) 12px/1.5 var(--font-mono); color: var(--no-cinza); }
+  .dica { font: var(--peso-texto) 13px/1.45 var(--font-core); color: var(--no-cinza); }
+
+  /* ── Moldura de celular 390 × 844 ── */
+  .celular {
+    position: relative; width: 390px; height: 844px; flex: none; overflow: hidden;
+    border-radius: 40px; box-shadow: var(--shadow-card); background: var(--fundo);
+    user-select: none; cursor: pointer;
+  }
+  @media (max-width: 759px) {
+    body { display: block; }
+    .lateral { display: none; }
+    .celular { width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
+  }
+  /* ?captura: trava 390 × 844 para conferência no Edge headless (que monta a página com no mínimo ~500 px) */
+  html.captura body { display: block; }
+  html.captura .lateral { display: none; }
+  html.captura .celular { width: 390px; height: 844px; border-radius: 0; box-shadow: none; }
+
+  /* ── Cor por tela: uma cor domina ── */
+  [data-fundo="azul"]     { --fundo: var(--no-azul);     --sobre: var(--no-osso);  --ponto: var(--no-azul); }
+  [data-fundo="vermelho"] { --fundo: var(--no-vermelho); --sobre: var(--no-osso);  --ponto: var(--no-vermelho); }
+  [data-fundo="ambar"]    { --fundo: var(--no-ambar);    --sobre: var(--no-tinta); --ponto: var(--no-ambar); }
+  [data-fundo="verde"]    { --fundo: var(--no-verde);    --sobre: var(--no-osso);  --ponto: var(--no-verde); }
+  /* Verde e vermelho levam osso só a partir de 24 px: texto menor nessas telas fica dentro de .cartao */
+
+  /* ── Barrinhas tipo stories ── */
+  .progresso { position: absolute; z-index: 3; top: 12px; left: 14px; right: 14px; display: flex; gap: 4px; pointer-events: none; }
+  .progresso i { flex: 1; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--sobre) 32%, transparent); }
+  .progresso i.feito { background: var(--sobre); }
+
+  /* ── Tela ── */
+  .tela {
+    position: absolute; inset: 0; display: none; flex-direction: column; gap: 16px;
+    padding: 30px 22px 26px; background: var(--fundo); color: var(--sobre); overflow-y: auto;
+  }
+  /* rodada 7 (Lucca: telas com resolução diferente): a tela inteira não anima mais opacidade/posição.
+     Onde a animação trava (prévia da mesa, aba em segundo plano, economia de energia), a tela ficava desbotada.
+     O movimento continua nos elementos de dentro (retro-motion.js) e o estado final é o padrão do CSS. */
+  .tela.ativa { display: flex; }
+  .topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .lockup {
+    display: inline-flex; align-items: baseline; padding: 7px 11px 8px; border-radius: var(--raio-chip);
+    background: var(--no-tinta); color: var(--no-osso);
+  }
+  .lockup .no-wordmark { --fs: 17px; color: var(--no-osso); }
+  .lockup .no-wordmark__ponto { color: var(--ponto); }
+  .lockup .sub { font: var(--peso-corpo) 17px/1 var(--font-core); letter-spacing: -0.02em; color: var(--no-osso); }
+  .selo {
+    font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase;
+    padding: 7px 9px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso); white-space: nowrap;
+  }
+
+  .rot { font: var(--peso-label) 11px/1.35 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
+  .rot-chip { align-self: flex-start; padding: 7px 9px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso); }
+  .titulo { font: var(--peso-display) 30px/1.08 var(--font-core); letter-spacing: -0.03em; text-wrap: balance; }
+  .titulo--g { font-size: 36px; }
+  .texto { font: var(--peso-texto) 16px/1.45 var(--font-core); text-wrap: pretty; }
+  .num { font: var(--peso-label) 92px/0.9 var(--font-mono); letter-spacing: -0.05em; }
+  .num--m { font-size: 64px; }
+  .num small { font-size: .32em; letter-spacing: 0; margin-left: 6px; }
+  .num-legenda { font: var(--peso-subtitulo) 24px/1.15 var(--font-core); letter-spacing: -0.02em; }
+  .fim { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── Cartões (sempre sobre osso; texto lê token) ── */
+  /* rodada 5 (Lucca: cartões apertados): mais respiro interno, ritmo 8/12/16 e números com unidade menor */
+  .cartao {
+    background: var(--no-osso); color: var(--no-tinta); border-radius: var(--raio-card);
+    padding: 18px 18px 20px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 12px;
+  }
+  .cartao .texto { color: var(--no-texto); font-size: 14.5px; line-height: 1.5; }
+  .cartao .rot { color: var(--no-cinza); line-height: 1.4; }
+  .cartao .rot--cor { color: var(--no-azul); }
+  .pilhas { display: flex; flex-direction: column; gap: 12px; }
+  .linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .linha b { font: var(--peso-subtitulo) 15px/1.3 var(--font-core); text-wrap: balance; }
+  .linha .mono { font: var(--peso-label) 13px/1.3 var(--font-mono); color: var(--no-texto); white-space: nowrap; }
+  .metricas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cartao .metricas { gap: 16px; }
+  .metrica { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .metrica .valor { font: var(--peso-label) 26px/1.05 var(--font-mono); letter-spacing: -0.03em; color: var(--no-tinta); white-space: nowrap; }
+  .metrica .valor small { font-size: .5em; letter-spacing: .04em; margin-right: 4px; color: var(--no-cinza); }
+  .metrica .valor--off { font-size: 16px; color: var(--no-cinza); }
+  .cartao > .rot + .metricas { margin-top: 2px; }
+  /* modo real (diagnostico-real.js): a navegação lateral do protótipo some */
+  .modo-real .lateral { display: none; }
+  .resumo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .resumo .cartao { padding: 12px 10px; gap: 4px; }
+  .resumo .valor { font: var(--peso-label) 30px/1 var(--font-mono); }
+  .resumo .rot { font-size: 9.5px; letter-spacing: .08em; }
+
+  /* ── Estado de checagem / fonte ── */
+  .estado {
+    flex: none; font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+    padding: 6px 8px; border-radius: var(--raio-tag);
+  }
+  .estado--ok { background: var(--no-verde-claro); color: var(--no-verde-texto-escuro); }
+  .estado--atencao { background: var(--no-ambar-claro); color: var(--no-ambar-texto); }
+  .estado--problema { background: var(--no-vermelho-claro); color: var(--no-vermelho-texto); }
+  .estado--nv { background: var(--no-osso); color: var(--no-cinza); border: 1px dashed var(--no-inativo); }
+  .estado--lendo { background: var(--no-azul-claro); color: var(--no-azul); }
+
+  .checagens { padding: 6px 14px; gap: 0; }
+  .checagem { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--no-borda); }
+  .checagem:last-child { border-bottom: 0; }
+  .checagem b { display: block; font: var(--peso-subtitulo) 13.5px/1.25 var(--font-core); }
+  .checagem span.ev { display: block; margin-top: 2px; font: var(--peso-texto) 10.5px/1.3 var(--font-mono); color: var(--no-cinza); }
+
+  /* ── Botões ── */
+  .botao {
+    appearance: none; border: 0; cursor: pointer; width: 100%;
+    font: var(--peso-subtitulo) 16px/1 var(--font-core); padding: 17px 20px; border-radius: var(--raio-botao);
+    background: var(--no-tinta); color: var(--no-osso); text-align: center;
+  }
+  .botao--claro { background: var(--no-osso); color: var(--no-tinta); }
+  .botao--mini { width: auto; padding: 10px 14px; font-size: 14px; background: var(--no-azul); color: var(--no-osso); }
+  .duplo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .miuda { font: var(--peso-texto) 13px/1.4 var(--font-core); color: var(--sobre); text-wrap: pretty; }
+  /* rodada 5 · pós-venda: link de refazer com outra conta + cota de diagnósticos gratuitos (2/3) */
+  .link-refazer {
+    align-self: center; display: inline-flex; align-items: center; gap: 8px; padding: 10px 4px; margin-top: 2px;
+    font: var(--peso-subtitulo) 15px/1.2 var(--font-core); color: var(--sobre);
+    text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1.5px;
+  }
+  .link-refazer__seta { width: 18px; height: 18px; flex: none; }
+  .link-refazer__cota {
+    text-decoration: none; display: inline-block;
+    font: var(--peso-label) 11px/1 var(--font-mono); letter-spacing: .06em;
+    padding: 5px 7px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso);
+  }
+  .link-refazer:hover, .link-refazer:focus-visible { text-decoration-thickness: 2.5px; }
+  .link-refazer:focus-visible { outline: 2px solid var(--sobre); outline-offset: 3px; border-radius: var(--raio-tag); }
+  /* rodada 5 · planos: espaço reservado, sem preço */
+  .plano { border: 1.5px dashed var(--no-inativo); box-shadow: none; }
+  .plano--meio { border-style: solid; border-color: var(--no-tinta); }
+
+  /* ── Escolher contas: checkbox real, estilizado só com tokens ── */
+  .opcoes { display: flex; flex-direction: column; }
+  .opcao {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--no-borda);
+    font: var(--peso-texto) 13.5px/1.3 var(--font-core); color: var(--no-tinta); cursor: pointer;
+  }
+  .opcao input {
+    appearance: none; -webkit-appearance: none; flex: none; width: 20px; height: 20px; margin: 0;
+    border: 1.5px solid var(--no-inativo); border-radius: var(--raio-tag); background: var(--no-osso);
+    display: grid; place-content: center; cursor: pointer;
+  }
+  .opcao input::before {
+    content: ""; width: 10px; height: 5px; border-left: 2px solid var(--no-osso); border-bottom: 2px solid var(--no-osso);
+    transform: translateY(-1px) rotate(-45deg); opacity: 0;
+  }
+  .opcao input:checked { background: var(--no-azul); border-color: var(--no-azul); }
+  .opcao input:checked::before { opacity: 1; }
+  .opcao input:focus-visible { outline: 2px solid var(--no-azul); outline-offset: 2px; }
+
+  .toast {
+    position: absolute; z-index: 4; left: 18px; right: 18px; bottom: 18px; padding: 14px 16px; border-radius: var(--raio-card);
+    background: var(--no-tinta); color: var(--no-osso); font: var(--peso-texto) 14px/1.4 var(--font-core);
+    opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none;
+  }
+  .toast.ver { opacity: 1; transform: none; }
+</style>
+<link rel="stylesheet" href="shared/insights.css">
+<link rel="stylesheet" href="shared/telas-r5.css">
+<link rel="stylesheet" href="shared/telas-r6.css">
+<link rel="stylesheet" href="planos.css">
+</head>
+<body>
+<!-- Cópia inline de shared/marcas.svg: em file:// o <use> externo não renderiza no Chromium. Cores de marca de terceiros só aqui. -->
+<svg id="sprite-marcas" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <symbol id="m-google" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.980 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.570-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.930-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></symbol>
+  <symbol id="m-facebook" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6" fill="#FFFFFF"/><path fill="#0866FF" d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></symbol>
+  <symbol id="m-instagram" viewBox="0 0 24 24"><rect x="2.2" y="2.2" width="19.6" height="19.6" rx="5.6" fill="none" stroke="#E4405F" stroke-width="2.2"/><circle cx="12" cy="12" r="4.4" fill="none" stroke="#E4405F" stroke-width="2.2"/><circle cx="17.4" cy="6.6" r="1.35" fill="#E4405F"/></symbol>
+  <symbol id="m-meta" viewBox="0 0 24 24"><path fill="none" stroke="#0866FF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" d="M2.8 14.6c0-4.1 2-7.6 4.4-7.6 2.3 0 3.8 2.8 4.8 4.6 1-1.8 2.5-4.6 4.8-4.6 2.4 0 4.4 3.5 4.4 7.6 0 1.9-.9 2.9-2.2 2.9-2.2 0-4-3.4-7-8.5-3 5.1-4.8 8.5-7 8.5-1.3 0-2.2-1-2.2-2.900Z"/></symbol>
+  <symbol id="m-google-ads" viewBox="0 0 24 24"><path fill="#FBBC04" d="M7.5137 4.8438L1.5645 15.1484A4.5 4.5 0 0 1 4 14.4297c2.5597-.0075 4.6248 2.1585 4.4941 4.7148l3.2168-5.5723-3.6094-6.25c-.4499-.7793-.6322-1.6394-.5878-2.4784z"/><path fill="#4285F4" d="M23.4641 16.9287L15.4632 3.072C14.3586 1.1587 11.9121.5028 9.9988 1.6074S7.4295 5.1585 8.5341 7.0718l8.0009 13.8567c1.1046 1.9133 3.5511 2.5679 5.4644 1.4646 1.9134-1.1046 2.568-3.5511 1.4647-5.4644z"/><circle cx="4" cy="18.93" r="4" fill="#34A853"/></symbol>
+  <symbol id="m-analytics" viewBox="0 0 24 24"><path fill="#F9AB00" d="M22.84 2.9982v17.9987c.0086 1.6473-1.3197 2.9897-2.967 2.9984a2.9808 2.9808 0 01-.3677-.0208c-1.528-.226-2.6477-1.5558-2.6105-3.1V3.1204c-.0369-1.5458 1.0856-2.8762 2.6157-3.1 1.6361-.1915 3.1178.9796 3.3093 2.6158.014.1201.0208.241.0202.3619z"/><path fill="#E37400" d="M4.1326 18.0548c-1.6417 0-2.9726 1.3309-2.9726 2.9726C1.16 22.6691 2.4909 24 4.1326 24s2.9726-1.3309 2.9726-2.9726-1.331-2.9726-2.9726-2.9726zm7.8728-9.0098c-.0171 0-.0342 0-.0513.0003-1.6495.0904-2.9293 1.474-2.891 3.1256v7.9846c0 2.167.9535 3.4825 2.3505 3.763 1.6118.3266 3.1832-.7152 3.5098-2.327.04-.1974.06-.3983.0593-.5998v-8.9585c.003-1.6474-1.33-2.9852-2.9773-2.9882z"/></symbol>
+  <symbol id="m-search-console" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.6" fill="none" stroke="#4285F4" stroke-width="2.4"/><path d="M15 15l6 6" stroke="#4285F4" stroke-width="2.8" stroke-linecap="round"/><path d="M6.8 11.6l2.1-2.2 1.7 1.6 2.6-2.8" fill="none" stroke="#34A853" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="m-loja" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4h15L21 9H3z"/><path d="M3 9v1a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0V9"/><path d="M4.5 13v7h15v-7"/><path d="M10 20v-4.5h4V20"/></g></symbol>
+  <symbol id="i-seta" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<nav class="lateral" aria-label="Telas do protótipo">
+  <img src="shared/logo/no-tinta-ponto-ambar.svg" alt="nó">
+  <p class="rot">Telas</p>
+  <ol id="lista-telas">
+    <li><a href="#t01"><span>01</span>Boas-vindas · conectar</a></li>
+    <li><a href="#t02"><span>02</span>Escolher contas</a></li>
+    <li><a href="#t04"><span>03</span>Lendo as fontes</a></li>
+    <li><a href="#t05"><span>04</span>Capa · 30 dias e nota</a></li>
+    <li><a href="#t06"><span>05</span>Site · 10 checagens</a></li>
+    <li><a href="#t07"><span>06</span>Meta Ads</a></li>
+    <li><a href="#t-horario"><span>07</span>Quando seu público responde</a></li>
+    <li><a href="#t08"><span>08</span>Google</a></li>
+    <li><a href="#t-caminho"><span>09</span>Onde o clique se perde</a></li>
+    <li><a href="#t12"><span>10</span>O que vem agora</a></li>
+    <li><a href="#t13"><span>11</span>Planos</a></li>
+  </ol>
+  <p class="legenda">Protótipo local · dados de demonstração</p>
+  <p class="dica">Toque à direita avança, à esquerda volta. Setas do teclado também; espaço pausa.</p>
+</nav>
+
+<main class="celular" id="celular" data-fundo="azul" aria-live="polite">
+  <div class="progresso" id="progresso" aria-hidden="true"></div>
+
+  <!-- 01 · boas-vindas -->
+  <section id="t01" data-estado="boas-vindas-sem-conexao" data-fundo="azul" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot">Relatório de primeiro uso</p>
+    <h1 class="titulo titulo--g">Seu diagnóstico do site ficou pronto.</h1>
+    <div><p class="num">10</p><p class="num-legenda">checagens lidas no seu site</p></div>
+    <div class="resumo">
+      <div class="cartao"><span class="valor">6</span><span class="rot">ok</span></div>
+      <div class="cartao"><span class="valor">2</span><span class="rot">atenção</span></div>
+      <div class="cartao"><span class="valor">1</span><span class="rot">problema</span></div>
+      <div class="cartao"><span class="valor">1</span><span class="rot">não verif.</span></div>
+    </div>
+    <div class="fim">
+      <p class="texto texto--centro">Conecte suas contas e o relatório sai na hora.</p>
+      <button class="botao botao--icone" data-ir="t02"><svg class="marca" aria-hidden="true"><use href="#m-facebook"/></svg>Conectar com o Facebook</button>
+      <button class="botao botao--claro botao--icone" data-ir="t02"><svg class="marca" aria-hidden="true"><use href="#m-google"/></svg>Conectar com o Google</button>
+      <a href="#t05" data-ir="t05" class="link-site">Continuar só com o site</a>
+    </div>
+  </section>
+
+  <!-- 02 · escolher contas -->
+  <section id="t02" data-estado="escolher-contas" data-fundo="azul" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <h1 class="titulo">Contas conectadas. Escolha o que o agente lê.</h1>
+    <div class="cartao janela">
+      <button type="button" class="janela__cab" aria-expanded="true" aria-controls="j-facebook"><svg class="marca" aria-hidden="true"><use href="#m-facebook"/></svg><span class="janela__nome">Facebook</span><span class="janela__cont" data-contador>3 de 4 lidas</span><svg class="janela__seta" aria-hidden="true"><use href="#i-seta"/></svg></button>
+      <div class="janela__corpo opcoes" id="j-facebook">
+        <label class="opcao"><span class="fonte-logo"><svg class="marca" aria-hidden="true"><use href="#m-meta"/></svg></span><span class="opcao__txt">Loja Exemplo · conta de anúncio&nbsp;••4821</span><span class="switch"><input type="checkbox" role="switch" name="facebook" value="act_4821" checked><i class="switch__bolinha"></i></span></label>
+        <label class="opcao"><span class="fonte-logo"><svg class="marca" aria-hidden="true"><use href="#m-meta"/></svg></span><span class="opcao__txt">Loja Exemplo (antiga) · conta de anúncio&nbsp;••0193</span><span class="switch"><input type="checkbox" role="switch" name="facebook" value="act_0193"><i class="switch__bolinha"></i></span></label>
+        <label class="opcao"><span class="fonte-logo"><span class="avatar">LE</span><span class="selinho"><svg class="marca" aria-hidden="true"><use href="#m-facebook"/></svg></span></span><span class="opcao__txt">Página Loja Exemplo</span><span class="switch"><input type="checkbox" role="switch" name="facebook" value="pagina" checked><i class="switch__bolinha"></i></span></label>
+        <label class="opcao"><span class="fonte-logo"><span class="avatar">LE</span><span class="selinho"><svg class="marca" aria-hidden="true"><use href="#m-instagram"/></svg></span></span><span class="opcao__txt">Instagram @lojaexemplo</span><span class="switch"><input type="checkbox" role="switch" name="facebook" value="instagram" checked><i class="switch__bolinha"></i></span></label>
+      </div>
+    </div>
+    <div class="cartao janela">
+      <button type="button" class="janela__cab" aria-expanded="true" aria-controls="j-google"><svg class="marca" aria-hidden="true"><use href="#m-google"/></svg><span class="janela__nome">Google</span><span class="janela__cont" data-contador>3 de 3 lidas</span><svg class="janela__seta" aria-hidden="true"><use href="#i-seta"/></svg></button>
+      <div class="janela__corpo opcoes" id="j-google">
+        <label class="opcao"><span class="fonte-logo"><svg class="marca" aria-hidden="true"><use href="#m-google-ads"/></svg></span><span class="opcao__txt">Google Ads ••• 7890</span><span class="switch"><input type="checkbox" role="switch" name="google" value="ads" checked><i class="switch__bolinha"></i></span></label>
+        <label class="opcao"><span class="fonte-logo"><svg class="marca" aria-hidden="true"><use href="#m-analytics"/></svg></span><span class="opcao__txt">Analytics · Loja Exemplo GA4</span><span class="switch"><input type="checkbox" role="switch" name="google" value="ga4" checked><i class="switch__bolinha"></i></span></label>
+        <label class="opcao"><span class="fonte-logo"><svg class="marca" aria-hidden="true"><use href="#m-search-console"/></svg></span><span class="opcao__txt">Search Console · lojaexemplo.com.br</span><span class="switch"><input type="checkbox" role="switch" name="google" value="gsc" checked><i class="switch__bolinha"></i></span></label>
+      </div>
+    </div>
+    <div class="cartao janela">
+      <button type="button" class="janela__cab" aria-expanded="true" aria-controls="j-loja"><svg class="marca" aria-hidden="true"><use href="#m-loja"/></svg><span class="janela__nome">Loja</span><span class="janela__cont" data-contador>1 de 1 lidas</span><svg class="janela__seta" aria-hidden="true"><use href="#i-seta"/></svg></button>
+      <div class="janela__corpo opcoes" id="j-loja">
+        <label class="opcao"><span class="fonte-logo"><span class="avatar">LE</span><span class="selinho"><svg class="marca" aria-hidden="true"><use href="#m-loja"/></svg></span></span><span class="opcao__txt">lojaexemplo.com.br</span><span class="travado"><span class="switch"><input type="checkbox" role="switch" name="loja" value="site" checked disabled aria-describedby="loja-sempre"><i class="switch__bolinha"></i></span><small id="loja-sempre">sempre lido</small></span></label>
+      </div>
+    </div>
+    <div class="fim">
+      <p class="miuda texto--centro">Só leitura · últimos 30 dias</p>
+      <button class="botao" data-ir="t04">Gerar relatório</button>
+      <button class="botao botao--claro" data-ir="t01">Minha conta não apareceu</button>
+    </div>
+  </section>
+
+  <!-- 03 · lendo -->
+  <section id="t04" data-estado="lendo" data-fundo="azul" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <h1 class="titulo">Lendo suas contas.</h1>
+    <div class="geral" role="progressbar" aria-label="Leitura geral" aria-valuemin="0" aria-valuemax="100">
+      <p class="num num--m" data-geral>100<small>%</small></p>
+      <div class="barra-geral"><i></i></div>
+    </div>
+    <ul class="cartao fontes">
+      <li class="fonte" data-etapas="páginas|tags|10 checagens"><svg class="marca" aria-hidden="true"><use href="#m-loja"/></svg><div class="fonte__txt"><b>Site</b><span class="fonte__sub">páginas</span></div><span class="sm"></span></li>
+      <li class="fonte" data-etapas="campanhas|públicos|posicionamentos"><svg class="marca" aria-hidden="true"><use href="#m-meta"/></svg><div class="fonte__txt"><b>Meta Ads</b><span class="fonte__sub">campanhas</span></div><span class="sm"></span></li>
+      <li class="fonte" data-etapas="publicações|alcance"><svg class="marca" aria-hidden="true"><use href="#m-instagram"/></svg><div class="fonte__txt"><b>Página e Instagram</b><span class="fonte__sub">publicações</span></div><span class="sm"></span></li>
+      <li class="fonte" data-etapas="campanhas|palavras-chave|cliques"><svg class="marca" aria-hidden="true"><use href="#m-google-ads"/></svg><div class="fonte__txt"><b>Google Ads</b><span class="fonte__sub">campanhas</span></div><span class="sm"></span></li>
+      <li class="fonte" data-etapas="sessões|tempo de engajamento"><svg class="marca" aria-hidden="true"><use href="#m-analytics"/></svg><div class="fonte__txt"><b>Analytics</b><span class="fonte__sub">sessões</span></div><span class="sm"></span></li>
+      <li class="fonte" data-etapas="buscas"><svg class="marca" aria-hidden="true"><use href="#m-search-console"/></svg><div class="fonte__txt"><b>Search Console</b><span class="fonte__sub">buscas</span></div><span class="sm"></span></li>
+    </ul>
+    <p class="leitura" data-leitura="Lendo a Meta|Lendo o Google|Montando sua retrospectiva">Lendo a Meta</p>
+    <div class="fim"><p class="texto">Pode fechar. Avisamos quando terminar.</p></div>
+  </section>
+
+  <!-- 04 · capa -->
+  <section id="t05" data-estado="capa" data-fundo="verde" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot rot-chip">Últimos 30 dias de tráfego</p>
+    <div class="nota" role="img" aria-label="Nota 7,5 de 10">
+      <p class="num nota__num"><span data-nota="7.5">7,5</span><small>/10</small></p>
+      <div class="nota__trilho" aria-hidden="true"><i style="--p:75"></i></div>
+    </div>
+    <h1 class="titulo titulo--g">Sua implementação tirou 7,5.</h1>
+    <div class="fim">
+      <div class="resumo resumo--3">
+        <div class="cartao"><span class="valor">6</span><span class="rot">ok</span></div>
+        <div class="cartao"><span class="valor">3</span><span class="rot">atenção</span></div>
+        <div class="cartao"><span class="valor">1</span><span class="rot">falha</span></div>
+      </div>
+      <div class="cartao">
+        <div class="linha"><b>Loja Exemplo</b><span class="mono">15 set – 14 out</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 · site -->
+  <section id="t06" data-estado="site" data-fundo="ambar" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot">Site · 10 checagens</p>
+    <div class="medidor">
+      <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="medidor__trilho" cx="60" cy="60" r="50" fill="none" stroke-width="12"/><circle class="medidor__arco" cx="60" cy="60" r="50" fill="none" stroke-width="12" stroke-linecap="round" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="0.4"/></svg>
+      <div class="medidor__txt"><p class="medidor__num" role="img" aria-label="6 de 10 checagens ok"><span data-medidor>6</span><small>de 10 ok</small></p></div>
+    </div>
+    <div class="segmentos" aria-hidden="true"><i class="seg--ok"></i><i class="seg--atencao"></i><i class="seg--problema"></i><i class="seg--nv"></i></div>
+    <div class="filtros" role="group" aria-label="Filtrar checagens">
+      <button type="button" class="filtro" data-filtro="todas" aria-pressed="true">Todas · 10</button>
+      <button type="button" class="filtro" data-filtro="atencao" aria-pressed="false">Atenção · 2</button>
+      <button type="button" class="filtro" data-filtro="problema" aria-pressed="false">Problema · 1</button>
+      <button type="button" class="filtro" data-filtro="nv" aria-pressed="false">Não verif. · 1</button>
+    </div>
+    <div class="cartoes-chk">
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="https"><span class="sm"></span><span class="checagem__txt"><b>Site em HTTPS</b><span class="ev">certificado válido, http redireciona</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="gtm"><span class="sm"></span><span class="checagem__txt"><b>Google Tag Manager instalado</b><span class="ev">GTM-XXXXXXX encontrado</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="ga4"><span class="sm"></span><span class="checagem__txt"><b>Google Analytics 4</b><span class="ev">G-XXXXXXXXXX enviando page_view</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="meta_pixel"><span class="sm"></span><span class="checagem__txt"><b>Pixel da Meta</b><span class="ev">pixel carrega na página inicial</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="atencao" aria-expanded="false" data-checagem="duplicidade"><span class="sm"></span><span class="checagem__txt"><b>Tag repetida</b><span class="ev">GA4 carregado 2 vezes na mesma página</span></span><span class="estado estado--atencao">atenção</span></button>
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="google_ads"><span class="sm"></span><span class="checagem__txt"><b>Tag do Google Ads</b><span class="ev">AW-XXXXXXXXX encontrado</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="atencao" aria-expanded="false" data-checagem="consentimento"><span class="sm"></span><span class="checagem__txt"><b>Aviso de cookies/LGPD</b><span class="ev">aviso aparece depois das tags</span></span><span class="estado estado--atencao">atenção</span></button>
+      <button type="button" class="checagem" data-chk="ok" aria-expanded="false" data-checagem="meta_basicas"><span class="sm"></span><span class="checagem__txt"><b>Título, descrição e prévia social</b><span class="ev">título, descrição e og:image presentes</span></span><span class="estado estado--ok">ok</span></button>
+      <button type="button" class="checagem" data-chk="problema" aria-expanded="false" data-checagem="tempo_resposta"><span class="sm"></span><span class="checagem__txt"><b>Tempo de resposta</b><span class="ev">7,2 s até a página responder</span></span><span class="estado estado--problema">problema</span></button>
+      <button type="button" class="checagem" data-chk="nv" aria-expanded="false" data-checagem="eventos_servidor"><span class="sm"></span><span class="checagem__txt"><b>Eventos pelo servidor (CAPI/MP)</b><span class="ev">só aparece conectando Meta e Google</span></span><span class="estado estado--nv">não verificável</span></button>
+    </div>
+  </section>
+
+  <!-- 06 · meta -->
+  <section id="t07" data-estado="meta" data-fundo="azul" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot">Meta Ads · 30 dias</p>
+    <div><p class="num num--m"><small style="margin:0 6px 0 0">BRL</small>4.820</p><p class="num-legenda">de investimento na conta</p></div>
+    <div class="cartao grafico">
+      <div class="barras" aria-hidden="true"><i style="--h:.48"></i><i style="--h:.62"></i><i style="--h:.40"></i><i style="--h:.71"></i><i class="maior" style="--h:1"></i><i style="--h:.55"></i><i style="--h:.66"></i></div>
+    </div>
+    <div class="metricas">
+      <div class="cartao metrica"><span class="rot">Impressões</span><span class="valor">312 mil</span></div>
+      <div class="cartao metrica"><span class="rot">Cliques</span><span class="valor">6.140</span></div>
+    </div>
+    <div class="cartao metrica">
+      <span class="rot">Visualizações da página de destino</span><span class="valor valor--off">indisponível</span>
+    </div>
+    <div class="cartao" data-checagem="eventos_servidor">
+      <div class="linha"><b>Eventos pelo servidor (CAPI/MP)</b><span class="estado estado--atencao">atenção</span></div>
+      <p class="texto">Nenhum evento nos últimos 7 dias.</p>
+    </div>
+    <div class="leituras" data-leituras="meta">
+      <div class="leituras__cab"><span class="selo-ia">leitura do agente</span></div>
+      <div class="cartao insight">
+        <p class="insight__resposta">Mulheres de 25 a 34 anos: <em>41%</em> dos cliques</p>
+        <ul class="recorte">
+          <li class="topo-recorte"><span>25–34</span><span class="trilho"><i style="--p:41"></i></span><span class="pct">41%</span></li>
+          <li><span>35–44</span><span class="trilho"><i style="--p:27"></i></span><span class="pct">27%</span></li>
+          <li><span>18–24</span><span class="trilho"><i style="--p:18"></i></span><span class="pct">18%</span></li>
+          <li><span>45 ou mais</span><span class="trilho"><i style="--p:14"></i></span><span class="pct">14%</span></li>
+        </ul>
+      </div>
+      <div class="cartao insight">
+        <p class="insight__resposta">Reels do Instagram: <em>38%</em> dos cliques no link</p>
+        <ul class="recorte">
+          <li class="topo-recorte"><span>Reels IG</span><span class="trilho"><i style="--p:38"></i></span><span class="pct">38%</span></li>
+          <li><span>Feed IG</span><span class="trilho"><i style="--p:26"></i></span><span class="pct">26%</span></li>
+          <li><span>Stories</span><span class="trilho"><i style="--p:21"></i></span><span class="pct">21%</span></li>
+          <li><span>Feed FB</span><span class="trilho"><i style="--p:15"></i></span><span class="pct">15%</span></li>
+        </ul>
+      </div>
+      <div class="cartao leitura-ia">
+        <p class="texto">O Reels traz o clique mais barato, mas a página leva 7,2 s para abrir.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 · NOVA: quando seu público responde (rodada 5) -->
+  <section id="t-horario" data-estado="horario" data-fundo="ambar" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot">Meta + Analytics · 30 dias</p>
+    <h1 class="titulo">Seu público responde à noite.</h1>
+    <div class="cartao">
+      <div class="hm" role="img" aria-label="Mapa de calor de cliques por dia e faixa de horário. Pico de terça a quinta, das 20h às 24h.">
+        <span></span><span class="hm__hora">0h</span><span class="hm__hora">4h</span><span class="hm__hora">8h</span><span class="hm__hora">12h</span><span class="hm__hora">16h</span><span class="hm__hora">20h</span>
+        <span class="hm__dia">seg</span><i class="n1"></i><i class="n1"></i><i class="n2"></i><i class="n3"></i><i class="n3"></i><i class="n4"></i>
+        <span class="hm__dia">ter</span><i class="n1"></i><i class="n1"></i><i class="n2"></i><i class="n3"></i><i class="n4"></i><i class="n5 pico"></i>
+        <span class="hm__dia">qua</span><i class="n1"></i><i class="n1"></i><i class="n2"></i><i class="n3"></i><i class="n4"></i><i class="n5 pico"></i>
+        <span class="hm__dia">qui</span><i class="n1"></i><i class="n1"></i><i class="n3"></i><i class="n3"></i><i class="n4"></i><i class="n5 pico"></i>
+        <span class="hm__dia">sex</span><i class="n1"></i><i class="n1"></i><i class="n2"></i><i class="n3"></i><i class="n3"></i><i class="n4"></i>
+        <span class="hm__dia">sáb</span><i class="n2"></i><i class="n1"></i><i class="n2"></i><i class="n2"></i><i class="n3"></i><i class="n3"></i>
+        <span class="hm__dia">dom</span><i class="n2"></i><i class="n1"></i><i class="n1"></i><i class="n2"></i><i class="n3"></i><i class="n3"></i>
+      </div>
+      <div class="hm__rodape">
+        <p class="hm__pico">pico: ter–qui, 20h–24h</p>
+        <p class="hm__legenda" aria-label="Intensidade: de menos para mais cliques"><span>menos</span><b style="--m:12%"></b><b style="--m:30%"></b><b style="--m:50%"></b><b style="--m:72%"></b><b style="--m:94%"></b><span>mais</span></p>
+      </div>
+    </div>
+    <div class="leituras" data-leituras="horario">
+      <div class="leituras__cab"><span class="selo-ia">leitura do agente</span></div>
+      <div class="cartao insight">
+        <p class="insight__resposta"><em>18%</em> do investimento caiu entre 0h e 8h, faixa que trouxe <em>6%</em> dos cliques</p>
+        <ul class="gasto-clique">
+          <li class="gasto"><span>investimento</span><span class="trilho"><i style="--p:18"></i></span><span class="pct">18%</span></li>
+          <li><span>cliques</span><span class="trilho"><i style="--p:6"></i></span><span class="pct">6%</span></li>
+        </ul>
+      </div>
+      <div class="cartao leitura-ia">
+        <p class="texto">Teste concentrar a entrega à noite, de terça a quinta.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 · google -->
+  <section id="t08" data-estado="google" data-fundo="verde" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot rot-chip">Google · 30 dias</p>
+    <div><p class="num num--m">9.400</p><p class="num-legenda">sessões no Analytics</p></div>
+    <div class="cartao">
+      <div class="metricas"><div class="metrica"><span class="rot"><svg class="marca marca--rot" role="img" aria-label="Google Ads"><use href="#m-google-ads"/></svg>Gasto</span><span class="valor"><small>BRL</small>2.150</span></div><div class="metrica"><span class="rot">Cliques</span><span class="valor">1.980</span></div></div>
+    </div>
+    <div class="cartao">
+      <div class="metricas"><div class="metrica"><span class="rot"><svg class="marca marca--rot" role="img" aria-label="Analytics"><use href="#m-analytics"/></svg>Sessões</span><span class="valor">9.400</span></div><div class="metrica"><span class="rot">Eventos-chave</span><span class="valor">212</span></div></div>
+    </div>
+    <div class="cartao">
+      <div class="linha"><span class="rot"><svg class="marca marca--rot" role="img" aria-label="Search Console"><use href="#m-search-console"/></svg>Cliques na busca</span><span class="estado estado--atencao">atrasado</span></div>
+      <span class="valor metrica__solta">1.330</span>
+    </div>
+    <div class="leituras" data-leituras="google">
+      <div class="leituras__cab"><span class="selo-ia">leitura do agente</span></div>
+      <div class="cartao insight">
+        <p class="insight__resposta">Quem vem da busca fica <em>2,6×</em> mais no site</p>
+        <div class="compara">
+          <div><span>Busca orgânica</span><b>1<small>min</small>48<small>s</small></b><span class="trilho"><i style="--p:100"></i></span></div>
+          <div><span>Google Ads</span><b>0<small>min</small>41<small>s</small></b><span class="trilho"><i style="--p:38"></i></span></div>
+        </div>
+      </div>
+      <div class="cartao insight">
+        <p class="insight__resposta">Busca orgânica lidera: <em>44%</em> das sessões</p>
+        <div class="pilha-canal" aria-hidden="true"><i style="--p:44"></i><i style="--p:21"></i><i style="--p:18"></i><i style="--p:17"></i></div>
+        <ul class="legenda-canal">
+          <li style="--c: var(--no-ambar)">Orgânica <b>44%</b></li>
+          <li style="--c: var(--no-azul)">Google Ads <b>21%</b></li>
+          <li style="--c: var(--no-verde)">Social <b>18%</b></li>
+          <li style="--c: var(--no-inativo)">Direto <b>17%</b></li>
+        </ul>
+      </div>
+      <div class="cartao insight">
+        <p class="insight__resposta">Busca campeã, “tênis loja exemplo”: <em>312</em> cliques</p>
+        <ul class="recorte">
+          <li class="topo-recorte"><span>celular</span><span class="trilho"><i style="--p:78"></i></span><span class="pct">78%</span></li>
+          <li><span>computador</span><span class="trilho"><i style="--p:22"></i></span><span class="pct">22%</span></li>
+        </ul>
+      </div>
+      <div class="cartao leitura-ia">
+        <p class="texto">Revise a página de destino dos anúncios antes de aumentar o investimento.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 · NOVA: onde o clique se perde (rodada 5) -->
+  <section id="t-caminho" data-estado="caminho" data-fundo="vermelho" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot rot-chip">Meta + Google + site</p>
+    <div class="destaque"><p class="num num--m">55<small>%</small></p><p class="num-legenda">dos cliques pagos não viraram visita</p></div>
+    <div class="cartao">
+      <ol class="funil">
+        <li class="degrau">
+          <div class="degrau__cab"><span class="degrau__nome">Impressões</span><span class="degrau__valor" data-alvo="353" data-sufixo=" mil">353 mil</span></div>
+          <div class="degrau__trilho"><i class="degrau__barra" style="--w:100"></i></div>
+        </li>
+        <li class="degrau">
+          <div class="degrau__cab"><span class="degrau__nome">Cliques pagos</span><span class="degrau__valor" data-alvo="8120">8.120</span></div>
+          <div class="degrau__trilho"><i class="degrau__barra" style="--w:78"></i></div>
+        </li>
+        <li class="degrau degrau--perda">
+          <div class="degrau__cab"><span class="degrau__nome">Visitas vindas de anúncio</span><span class="degrau__valor" data-alvo="3650">3.650</span></div>
+          <div class="degrau__trilho"><span class="degrau__fantasma" style="--w-antes:78" aria-hidden="true"></span><i class="degrau__barra" style="--w:46"></i></div>
+          <p class="perda">−4.470 antes da página abrir</p>
+        </li>
+        <li class="degrau">
+          <div class="degrau__cab"><span class="degrau__nome">Visitas engajadas</span><span class="degrau__valor" data-alvo="1240">1.240</span></div>
+          <div class="degrau__trilho"><i class="degrau__barra" style="--w:30"></i></div>
+        </li>
+        <li class="degrau">
+          <div class="degrau__cab"><span class="degrau__nome">Eventos-chave</span><span class="degrau__valor" data-alvo="74">74</span></div>
+          <div class="degrau__trilho"><i class="degrau__barra" style="--w:12"></i></div>
+        </li>
+      </ol>
+    </div>
+    <div class="leituras" data-leituras="caminho">
+      <div class="leituras__cab"><span class="selo-ia">leitura do agente</span></div>
+      <div class="cartao leitura-ia">
+        <p class="texto">A maior perda é entre o clique e a página abrir: 7,2 s de resposta.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · pós-venda -->
+  <section id="t12" data-estado="pos-venda" data-fundo="azul" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot">O que vem agora</p>
+    <div style="display:flex; align-items:flex-end; gap:14px"><p class="num">4</p><h1 class="titulo" style="font-size:26px">Você ficou com 4 pontos de atenção.</h1></div>
+    <div class="pilhas">
+      <div class="cartao" data-checagem="tempo_resposta"><div class="linha"><b>Tempo de resposta</b><span class="estado estado--problema">problema</span></div><p class="texto">Revise imagens e scripts pesados que atrasam a página.</p></div>
+      <div class="cartao" data-checagem="duplicidade"><div class="linha"><b>Tag repetida</b><span class="estado estado--atencao">atenção</span></div><p class="texto">Deixe a tag do GA4 em um lugar só, de preferência no GTM.</p></div>
+      <div class="cartao" data-checagem="consentimento"><div class="linha"><b>Aviso de cookies/LGPD</b><span class="estado estado--atencao">atenção</span></div><p class="texto">Faça o aviso aparecer antes das tags.</p></div>
+      <div class="cartao" data-checagem="eventos_servidor"><div class="linha"><b>Eventos pelo servidor</b><span class="estado estado--atencao">atenção</span></div><p class="texto">Ative o envio de eventos pelo servidor.</p></div>
+    </div>
+    <div class="fim">
+      <button class="botao" data-acao="contato">Falar com a equipe nó</button>
+      <a href="#t01" data-ir="t01" class="link-refazer" aria-label="Refazer com outra conta. Restam 2 de 3 diagnósticos gratuitos.">
+        <svg class="link-refazer__seta" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 3.5 8.5l4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8.5h7.5a5 5 0 0 1 0 10H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+        <span>Refazer com outra conta</span>
+        <span class="link-refazer__cota" title="diagnósticos gratuitos restantes">2/3</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- 11 · planos (TASK-mvbcb35pbn0: os valores aparecem só aqui, no fim da retrospectiva; LP do auditor fica como aprovada).
+       Textos e preços: fontes/proposta-planos-T1.md, aprovada por Lucca em 16/10. Botões começam desabilitados; /repo/agentes/auditor/assinatura.js libera só com venda_aberta. -->
+  <section id="t13" data-estado="planos" data-fundo="verde" class="tela">
+    <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
+    <p class="rot rot-chip">Próximo passo</p>
+    <h1 class="titulo titulo--g">Três jeitos de seguir com o agente.</h1>
+    <div class="pilhas planos" id="planos">
+      <div class="cartao au-planos-lead"><p class="texto">O agente refaz o relatório sozinho e manda no seu WhatsApp. Entre os planos, muda o ritmo do envio.</p></div>
+
+      <div class="cartao au-plano" data-plano="mensal">
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Mensal</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 47</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">1 relatório por mês</p>
+        <ul class="au-plano-itens">
+          <li>Relatório todo mês no seu WhatsApp</li>
+          <li>1 site + contas Meta e Google</li>
+          <li>Nota de 0 a 10 com o placar ok · atenção · problema</li>
+          <li>O que corrigir, uma linha por ponto</li>
+        </ul>
+        <button type="button" class="botao au-plano-btn" data-plano="mensal" disabled>Assinatura em breve</button>
+      </div>
+
+      <div class="cartao au-plano au-plano--recomendado" data-plano="semanal">
+        <span class="au-plano-selo">Recomendado</span>
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Semanal</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 97</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">Toda segunda</p>
+        <ul class="au-plano-itens">
+          <li>Relatório toda segunda no seu WhatsApp</li>
+          <li>Tudo do Mensal + o que mudou na semana</li>
+          <li>Horário em que seu público responde</li>
+          <li>Onde o clique se perde, do anúncio ao site</li>
+        </ul>
+        <button type="button" class="botao au-plano-btn" data-plano="semanal" disabled>Assinatura em breve</button>
+      </div>
+
+      <div class="cartao au-plano" data-plano="agencia">
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Agência</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 197</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo au-ritmo--clientes" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i class="on"></i><i></i><i class="on"></i><i></i></span>
+          <span class="au-ritmo-linha"><i></i><i class="on"></i><i></i><i class="on"></i></span>
+          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">Personalizado</p>
+        <ul class="au-plano-itens">
+          <li>Envio personalizado por cliente, no seu WhatsApp</li>
+          <li>Até 5 clientes, 1 site + contas cada</li>
+          <li>Tudo do Semanal, por cliente</li>
+          <li>Link de cada relatório pronto para repassar</li>
+        </ul>
+        <button type="button" class="botao au-plano-btn" data-plano="agencia" disabled>Assinatura em breve</button>
+      </div>
+
+      <div class="cartao au-planos-nota"><p class="texto">3 diagnósticos grátis por pessoa. Do 4º em diante, só assinando. Cobrança mensal no cartão de crédito.</p></div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status">Protótipo: nenhuma mensagem é enviada daqui.</div>
+</main>
+<!-- Diagnóstico real da LP (sessionStorage.no_auditor_diagnostico): precisa rodar antes dos outros scripts. -->
+<script src="diagnostico-real.js"></script>
+
+<!-- Checkout da assinatura (fora da moldura do celular: showModal() usa o top layer e o clique no diálogo não troca de tela).
+     Inputs do cartão SEM name (nunca vão por formulário); assinatura.js tokeniza no Pagar.me e manda só o token.
+     Aceite único e obrigatório (decisão de Lucca, 16/10): Termos + relatório no WhatsApp informado. -->
+<dialog class="au-checkout" id="au-checkout" aria-labelledby="au-checkout-titulo">
+  <form class="au-checkout-form" id="au-checkout-form" novalidate>
+    <h2 class="au-checkout-titulo" id="au-checkout-titulo">Assinar o Auditor</h2>
+    <p class="au-checkout-plano">Plano escolhido: <strong id="au-checkout-plano"></strong></p>
+    <ol class="au-passos" aria-hidden="true"><li class="is-ativo" id="au-passo-1">1 · Seus dados</li><li id="au-passo-2">2 · Pagamento</li></ol>
+
+    <!-- Etapa 1: cadastro base + aceite dos Termos (pré-venda). Só com tudo válido abre a etapa 2. -->
+    <fieldset class="au-fieldset" id="au-etapa-1">
+      <legend>Seus dados</legend>
+      <div class="au-checkout-grid2">
+        <div>
+          <label class="au-label" for="au-as-nome">Nome</label>
+          <input class="au-input" id="au-as-nome" name="nome" type="text" autocomplete="given-name" required>
+        </div>
+        <div>
+          <label class="au-label" for="au-as-sobrenome">Sobrenome</label>
+          <input class="au-input" id="au-as-sobrenome" name="sobrenome" type="text" autocomplete="family-name" required>
+        </div>
+      </div>
+      <label class="au-label" for="au-as-email">E-mail</label>
+      <input class="au-input" id="au-as-email" name="email" type="email" inputmode="email" autocomplete="email" required>
+      <label class="au-label" for="au-as-telefone">WhatsApp (com DDD)</label>
+      <input class="au-input" id="au-as-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel-national" aria-describedby="au-as-telefone-nota" required>
+      <p class="au-ajuda" id="au-as-telefone-nota">É neste número que o relatório do Auditor chega.</p>
+      <div class="au-check">
+        <input type="checkbox" id="au-ck-termos" required>
+        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).</label>
+      </div>
+      <button type="button" class="botao au-etapa-btn" id="au-checkout-continuar">Continuar para o pagamento</button>
+    </fieldset>
+
+    <!-- Resumo da etapa 1 (aparece no lugar dela quando a etapa 2 abre) -->
+    <div class="au-resumo" id="au-etapa-1-resumo" hidden>
+      <p class="au-resumo-texto" id="au-resumo-texto"></p>
+      <button type="button" class="au-resumo-alterar" id="au-checkout-alterar">Alterar</button>
+    </div>
+
+    <!-- Etapa 2: pagamento. Inputs do cartão SEM name; endereço de cobrança vai no POST (o token do cartão não leva endereço). -->
+    <div class="au-etapa-2" id="au-etapa-2" hidden>
+      <fieldset class="au-fieldset">
+        <legend>Pagamento</legend>
+        <label class="au-label" for="au-as-documento">CPF ou CNPJ</label>
+        <input class="au-input" id="au-as-documento" name="documento" type="text" inputmode="numeric" required>
+        <label class="au-label" for="au-cc-numero">Número do cartão</label>
+        <input class="au-input" id="au-cc-numero" type="text" inputmode="numeric" autocomplete="cc-number" required>
+        <label class="au-label" for="au-cc-nome">Nome impresso no cartão</label>
+        <input class="au-input" id="au-cc-nome" type="text" autocomplete="cc-name" required>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-cc-validade">Validade (MM/AA)</label>
+            <input class="au-input" id="au-cc-validade" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/AA" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-cc-cvv">CVV</label>
+            <input class="au-input" id="au-cc-cvv" type="password" inputmode="numeric" autocomplete="cc-csc" required>
+          </div>
+        </div>
+        <p class="au-ajuda">Os dados do cartão vão direto para o Pagar.me; a nó recebe só um código de pagamento.</p>
+      </fieldset>
+
+      <fieldset class="au-fieldset">
+        <legend>Endereço de cobrança do cartão</legend>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-en-cep">CEP</label>
+            <input class="au-input" id="au-en-cep" name="cep" type="text" inputmode="numeric" autocomplete="postal-code" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-en-uf">UF</label>
+            <select class="au-input" id="au-en-uf" name="uf" autocomplete="address-level1" required>
+              <option value="">UF</option>
+              <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
+            </select>
+          </div>
+        </div>
+        <label class="au-label" for="au-en-rua">Rua</label>
+        <input class="au-input" id="au-en-rua" name="rua" type="text" autocomplete="address-line1" required>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-en-numero">Número</label>
+            <input class="au-input" id="au-en-numero" name="numero" type="text" inputmode="numeric" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-en-complemento">Complemento <span class="au-opcional">(opcional)</span></label>
+            <input class="au-input" id="au-en-complemento" name="complemento" type="text" autocomplete="address-line2">
+          </div>
+        </div>
+        <label class="au-label" for="au-en-bairro">Bairro</label>
+        <input class="au-input" id="au-en-bairro" name="bairro" type="text" required>
+        <label class="au-label" for="au-en-cidade">Cidade</label>
+        <input class="au-input" id="au-en-cidade" name="cidade" type="text" autocomplete="address-level2" required>
+      </fieldset>
+    </div>
+
+    <p class="au-checkout-msg" id="au-checkout-msg" role="alert" hidden></p>
+    <div class="au-checkout-botoes">
+      <button type="button" class="botao botao--claro" id="au-checkout-cancelar">Cancelar</button>
+      <button type="submit" class="botao" id="au-checkout-assinar" hidden>Pagar e assinar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="shared/vendor/motion-14.3.0.js"></script>
+<script src="shared/retro-motion.js"></script>
+<script src="shared/status-mark.js"></script>
+<script src="shared/nota.js"></script>
+<script src="shared/telas-r5.js"></script>
+<script>
+(function () {
+  if (/[?&]captura\b/.test(location.search)) document.documentElement.classList.add('captura');
+  var celular = document.getElementById('celular');
+  var telas = Array.prototype.slice.call(document.querySelectorAll('section[data-estado]'));
+  var progresso = document.getElementById('progresso');
+  var links = document.querySelectorAll('#lista-telas a');
+  var toast = document.getElementById('toast');
+  var atual = 0;
+
+  telas.forEach(function () { progresso.appendChild(document.createElement('i')); });
+  var barras = progresso.children;
+
+  function mostrar(i) {
+    atual = Math.max(0, Math.min(telas.length - 1, i));
+    telas.forEach(function (t, k) { t.classList.toggle('ativa', k === atual); });
+    for (var k = 0; k < barras.length; k++) barras[k].classList.toggle('feito', k <= atual);
+    celular.setAttribute('data-fundo', telas[atual].getAttribute('data-fundo'));
+    links.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + telas[atual].id ? 'true' : 'false'); });
+    telas[atual].scrollTop = 0;
+    if (window.RetroMotion) window.RetroMotion.aoMostrar(telas[atual], atual, { ir: ir, barras: barras });
+  }
+  function ir(i) {
+    i = Math.max(0, Math.min(telas.length - 1, i));
+    var alvo = '#' + telas[i].id;
+    if (location.hash === alvo) mostrar(i); else location.hash = alvo;
+  }
+  function deHash() {
+    var k = telas.findIndex(function (t) { return '#' + t.id === location.hash; });
+    mostrar(k < 0 ? 0 : k);
+  }
+
+  celular.addEventListener('click', function (e) {
+    var destino = e.target.closest('[data-ir]');
+    if (destino) { location.hash = '#' + destino.getAttribute('data-ir'); return; }
+    if (e.target.closest('[data-acao="contato"]')) {
+      toast.classList.add('ver'); setTimeout(function () { toast.classList.remove('ver'); }, 2200); return;
+    }
+    if (e.target.closest('button, a, label, input')) return;
+    var r = celular.getBoundingClientRect();
+    if (e.clientX - r.left < r.width / 2) ir(atual - 1); else ir(atual + 1);
+  });
+  document.addEventListener('keydown', function (e) {
+    /* dentro do checkout as setas movem o cursor nos campos, não trocam de tela */
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select, dialog')) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); ir(atual + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); ir(atual - 1); }
+  });
+  window.addEventListener('hashchange', deHash);
+  deHash();
+  /* ?captura&rolar: desce a tela ativa até o fim, para conferir o que fica abaixo da dobra */
+  if (/[?&]rolar\b/.test(location.search)) setTimeout(function () { telas[atual].scrollTop = 1e5; }, 400);
+})();
+</script>
+<script src="shared/insights.js"></script>
+<!-- Assinatura: JS do Auditor por caminho relativo (esta página vive em agentes/auditor/retrospectiva/). Sem CDN. -->
+<script src="../assinatura-medicao.js"></script>
+<script src="../assinatura.js"></script>
+</body>
+</html>

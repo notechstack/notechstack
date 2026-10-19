@@ -69,6 +69,12 @@ verify_jwt = false
 [functions.pagarme-webhook-no]
 verify_jwt = false
 
+[functions.assinatura-auditor]
+verify_jwt = false
+
+[functions.assinatura-auditor-webhook]
+verify_jwt = false
+
 [functions.skill-01-ativar-dashboard]
 verify_jwt = true
 

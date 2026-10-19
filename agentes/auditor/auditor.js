@@ -1,4 +1,4 @@
-/* Auditor de Integridade de Marketing: fluxo URL -> diagnóstico -> oferta -> cadastro. Contrato v1. */
+/* Auditor de Integridade de Marketing: fluxo URL -> diagnóstico -> retrospectiva (planos e checkout só no fim dela). Contrato v1. */
 (function () {
   'use strict';
   var SUPABASE_BASE = 'https://sdeowbqmwkwseyktyemn.supabase.co'; // mesma base de shared/telemetria.js
@@ -152,6 +152,27 @@
   }
   var LABEL = { ok: 'OK', atencao: 'Atenção', problema: 'Problema', nao_verificavel: 'Não verificável' };
 
+  /* Logo depois da URL, a pessoa segue para a retrospectiva (Lucca, 16/10): o diagnóstico vai no sessionStorage
+     (chave lida por retrospectiva/diagnostico-real.js) e os utm_* e o fbclid seguem na query. Os preços e o
+     checkout ficam só no fim da retrospectiva; esta página continua sem eles. Sem sessionStorage, o
+     relatório aparece aqui mesmo, como antes. */
+  var RETRO_KEY = 'no_auditor_diagnostico';
+  function retrospectivaUrl() {
+    var base = location.pathname.replace(/index\.html$/, '');
+    if (!/\/$/.test(base)) base += '/';
+    var u = new URL(base + 'retrospectiva/', location.origin);
+    var q = new URLSearchParams(location.search);
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'].forEach(function (k) { var v = q.get(k); if (v) u.searchParams.set(k, v); });
+    u.hash = 't01';
+    return u.toString();
+  }
+  function guardarDiagnostico(data) {
+    try {
+      sessionStorage.setItem(RETRO_KEY, JSON.stringify({ v: 1, salvo_em: Date.now(), cache: !!data.cache, report: data.report || {} }));
+      return sessionStorage.getItem(RETRO_KEY) !== null;
+    } catch (e) { return false; }
+  }
+
   function renderReport(data) {
     var r = data.report || {}, s = r.resumo || {}, checagens = r.checagens || [];
     var resumo = ['ok', 'atencao', 'problema', 'nao_verificavel'].map(function (k) {
@@ -174,9 +195,19 @@
       '<div class="au-fundo"><h3>Quer ir mais fundo? Conecte Meta e Google</h3><p>Eventos pelo servidor e o que roda dentro do GTM só aparecem com as contas conectadas: aí o auditor compara o que o site dispara com o que Meta e Google recebem.</p>' + ctaCadastro('Conectar Meta e Google') + '</div>' +
       '</div>', false);
   }
+  /* 429 limite_usuario (regra de Lucca: 3 diagnósticos grátis; o quarto pede assinatura): leva aos planos no fim
+     da retrospectiva (?motivo=limite#t13), com os mesmos utm_* e fbclid da navegação de sucesso. A LP segue sem preço. */
+  function planosLimiteUrl() {
+    var u = new URL(retrospectivaUrl());
+    u.searchParams.set('motivo', 'limite');
+    u.hash = 't13';
+    return u.toString();
+  }
   function renderLimite(data) {
     dl({ event: 'diagnostico_limite_usuario' });
-    render('<div class="au-box au-box--limite"><h2>Você já usou seus ' + esc(data.limite || 3) + ' diagnósticos gratuitos</h2><p>Crie sua conta para continuar auditando e conectar Meta e Google.</p>' + ctaCadastro('Criar minha conta') + '</div>', false);
+    render('<div class="au-box au-box--limite"><h2>Você já fez seus ' + esc((data && data.limite) || 3) + ' diagnósticos grátis</h2>' +
+      '<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp.</p>' +
+      '<a class="ag-btn ag-btn--primario" href="' + esc(planosLimiteUrl()) + '">Ver os planos</a></div>', false);
   }
   function renderTeto() {
     dl({ event: 'diagnostico_teto_atingido' });
@@ -246,11 +277,17 @@
       .then(function (r) {
         submit.disabled = false;
         if (r.status === 200 && r.data.status === 'entregue') {
-          renderReport(r.data);
           /* duplicado: o servidor já contou este event_id; não dispara de novo */
-          if (!r.data.duplicado && payload.consent === 'granted' && typeof window.fbq === 'function') {
-            window.fbq('trackCustom', 'DiagnosticoEntregue', {}, { eventID: r.data.event_id || tentativa.event_id });
+          var pixel = !r.data.duplicado && payload.consent === 'granted' && typeof window.fbq === 'function';
+          if (pixel) window.fbq('trackCustom', 'DiagnosticoEntregue', {}, { eventID: r.data.event_id || tentativa.event_id });
+          if (guardarDiagnostico(r.data)) {
+            render('<div class="au-box au-box--carregando"><h2>Diagnóstico pronto</h2><p>Abrindo o seu relatório…</p></div>', true);
+            submit.disabled = true;
+            /* folga para o pixel sair antes de trocar de página */
+            setTimeout(function () { location.assign(retrospectivaUrl()); }, pixel ? 400 : 0);
+            return;
           }
+          renderReport(r.data);
           return;
         }
         if (r.status === 400) { estado.innerHTML = ''; showInputError('URL inválida. Confira o endereço e tente de novo.'); return; }
@@ -263,6 +300,11 @@
       .catch(function () { submit.disabled = false; renderFalha(true); });
   }
   form.addEventListener('submit', function (ev) { ev.preventDefault(); enviar(false); });
+  /* Voltar da retrospectiva pelo navegador (página restaurada do cache): a LP volta a aceitar outra URL. */
+  window.addEventListener('pageshow', function (ev) {
+    if (!ev.persisted) return;
+    submit.disabled = false; estado.setAttribute('aria-busy', 'false'); estado.innerHTML = '';
+  });
   input.addEventListener('input', clearInputError);
   // Só em localhost: ?auto=<url> preenche e envia (prova visual com navegador headless).
   if (isLocal) {
