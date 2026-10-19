@@ -99,13 +99,17 @@ function tem(o: Record<string, unknown>, campo: string): boolean {
 }
 
 export function lerConfig(env: Record<string, string | undefined>): Config {
+  const ambiente: Ambiente = env.PAGARME_ASSINATURA_AMBIENTE === "producao" ? "producao" : "sandbox";
   return {
-    ambiente: env.PAGARME_ASSINATURA_AMBIENTE === "producao" ? "producao" : "sandbox",
+    ambiente,
     apiUrl: (env.PAGARME_ASSINATURA_API_URL || API_PADRAO).replace(/\/+$/, ""),
     vendaAberta: env.AUDITOR_VENDA_ABERTA === "sim",
     medicaoLiberada: env.AUDITOR_MEDICAO_CHECKOUT === "sim",
     publicKey: env.PAGARME_ASSINATURA_PUBLIC_KEY || "",
-    secretKey: env.PAGARME_ASSINATURA_SECRET_KEY || "",
+    // Producao (Lucca, 19/10): sem a chave propria, usa a PAGARME_SECRET_KEY da conta da no.
+    // Em sandbox nunca cai nela, entao a guarda sk_test_ continua valendo.
+    secretKey: env.PAGARME_ASSINATURA_SECRET_KEY
+      || (ambiente === "producao" ? env.PAGARME_SECRET_KEY || "" : ""),
     planIds: {
       mensal: env[PLANOS.mensal.env] || "",
       semanal: env[PLANOS.semanal.env] || "",

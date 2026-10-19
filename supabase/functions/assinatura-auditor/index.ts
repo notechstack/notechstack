@@ -6,6 +6,7 @@ import { lerConfig, processarCheckout, respostaGet } from "./core.ts";
 // Variaveis do CONTRATO.md (so nomes; valores ficam com Lucca).
 const NOMES_ENV = [
   "PAGARME_ASSINATURA_SECRET_KEY",
+  "PAGARME_SECRET_KEY",
   "PAGARME_ASSINATURA_PUBLIC_KEY",
   "PAGARME_ASSINATURA_API_URL",
   "PAGARME_ASSINATURA_AMBIENTE",

@@ -1,5 +1,8 @@
-// Cria os 3 planos do Auditor no Pagar.me SANDBOX (só sk_test_). Quem roda: Lucca, numa TASK futura.
+// Cria os 3 planos do Auditor no Pagar.me. Quem roda: Lucca.
+// Padrão (sandbox): só PAGARME_ASSINATURA_SECRET_KEY e só sk_test_ (senão CHAVE_NAO_SANDBOX).
 // Uso: node scripts/pagarme-assinatura/criar-planos-sandbox.mjs
+// Uso em produção: PAGARME_ASSINATURA_AMBIENTE=producao node scripts/pagarme-assinatura/criar-planos-sandbox.mjs
+//   chave = PAGARME_ASSINATURA_SECRET_KEY || PAGARME_SECRET_KEY; exige sk_ e recusa sk_test_ (CHAVE_NAO_PRODUCAO).
 // Imprime uma linha NOME_DA_VARIAVEL=plan_... por plano (id de plano não é segredo). Nunca imprime a chave.
 import { pathToFileURL } from 'node:url';
 import { Buffer } from 'node:buffer';
@@ -8,8 +11,15 @@ import { PLANOS, corpoDoPlano } from './planos.mjs';
 const API_PADRAO = 'https://api.pagar.me/core/v5';
 
 export async function criarPlanos({ fetch, env }) {
-  const secret = String((env && env.PAGARME_ASSINATURA_SECRET_KEY) || '');
-  if (!secret.startsWith('sk_test_')) throw new Error('CHAVE_NAO_SANDBOX');
+  env = env || {};
+  let secret;
+  if (env.PAGARME_ASSINATURA_AMBIENTE === 'producao') {
+    secret = String(env.PAGARME_ASSINATURA_SECRET_KEY || env.PAGARME_SECRET_KEY || '');
+    if (!secret.startsWith('sk_') || secret.startsWith('sk_test_')) throw new Error('CHAVE_NAO_PRODUCAO');
+  } else {
+    secret = String(env.PAGARME_ASSINATURA_SECRET_KEY || '');
+    if (!secret.startsWith('sk_test_')) throw new Error('CHAVE_NAO_SANDBOX');
+  }
   const apiUrl = String(env.PAGARME_ASSINATURA_API_URL || API_PADRAO).replace(/\/+$/, '');
   const authorization = `Basic ${Buffer.from(secret + ':').toString('base64')}`;
   const criados = [];

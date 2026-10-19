@@ -86,6 +86,31 @@ test('criarPlanos com id sem plan_: erro', async () => {
   await assert.rejects(criarPlanos({ fetch: f, env: { PAGARME_ASSINATURA_SECRET_KEY: 'sk_test_x' } }), /HTTP 200/);
 });
 
+test('criarPlanos em producao com só PAGARME_SECRET_KEY=sk_live_x: 3 POST /plans com Basic dessa chave', async () => {
+  const f = fetchFalso((url, body, n) => ({ json: { id: `plan_${n}` } }));
+  const r = await criarPlanos({ fetch: f, env: { PAGARME_ASSINATURA_AMBIENTE: 'producao', PAGARME_SECRET_KEY: 'sk_live_x' } });
+  assert.equal(f.chamadas.length, 3);
+  const auth = `Basic ${Buffer.from('sk_live_x:').toString('base64')}`;
+  for (const c of f.chamadas) {
+    assert.equal(c.url, 'https://api.pagar.me/core/v5/plans');
+    assert.equal(c.init.method, 'POST');
+    assert.equal(c.init.headers.Authorization, auth);
+  }
+  assert.deepEqual(r.map((x) => x.id), ['plan_1', 'plan_2', 'plan_3']);
+});
+
+test('criarPlanos em producao com sk_test_x: CHAVE_NAO_PRODUCAO e 0 fetch', async () => {
+  const f = fetchFalso(() => ({ json: { id: 'plan_x' } }));
+  await assert.rejects(criarPlanos({ fetch: f, env: { PAGARME_ASSINATURA_AMBIENTE: 'producao', PAGARME_SECRET_KEY: 'sk_test_x' } }), /CHAVE_NAO_PRODUCAO/);
+  assert.equal(f.chamadas.length, 0);
+});
+
+test('criarPlanos em sandbox com só PAGARME_SECRET_KEY=sk_test_x: CHAVE_NAO_SANDBOX e 0 fetch', async () => {
+  const f = fetchFalso(() => ({ json: { id: 'plan_x' } }));
+  await assert.rejects(criarPlanos({ fetch: f, env: { PAGARME_SECRET_KEY: 'sk_test_x' } }), /CHAVE_NAO_SANDBOX/);
+  assert.equal(f.chamadas.length, 0);
+});
+
 /* ---------- assinaturasDeTeste ---------- */
 
 for (const chave of ['pk_live_x', '', undefined]) {

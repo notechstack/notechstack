@@ -347,6 +347,24 @@ test("respostaGet nao contem a secret e lista os planos", () => {
   assert.equal(respostaGet(lerConfig({})).public_key, "");
 });
 
+test("producao usa a PAGARME_SECRET_KEY quando falta a propria; sandbox nunca usa", () => {
+  const prod = lerConfig({ PAGARME_ASSINATURA_AMBIENTE: "producao", PAGARME_SECRET_KEY: "sk_live_x" });
+  assert.equal(prod.ambiente, "producao");
+  assert.equal(prod.secretKey, "sk_live_x");
+  const propria = lerConfig({ PAGARME_ASSINATURA_AMBIENTE: "producao", PAGARME_SECRET_KEY: "sk_a", PAGARME_ASSINATURA_SECRET_KEY: "sk_b" });
+  assert.equal(propria.secretKey, "sk_b");
+  assert.equal(lerConfig({ PAGARME_SECRET_KEY: "sk_test_x" }).secretKey, "");
+  assert.ok(!JSON.stringify(respostaGet(prod)).includes("sk_live_x"));
+});
+
+test("sandbox so com a PAGARME_SECRET_KEY: CONFIG_AUSENTE e 0 chamada ao Pagar.me", async () => {
+  const env = { ...ENV, PAGARME_ASSINATURA_SECRET_KEY: "", PAGARME_SECRET_KEY: "sk_test_x" };
+  const { deps, chamadas } = falsos({ env });
+  const r = await processarCheckout(pedido(), deps);
+  assert.equal(r.body.error_code, "CONFIG_AUSENTE");
+  assert.equal(chamadas.fetch.length, 0);
+});
+
 test("compensacao cancela as faturas pendentes e a mensagem nao promete que nada foi cobrado", async () => {
   const { deps, chamadas } = falsos({ registrarLanca: true });
   const r = await processarCheckout(pedido(), deps);

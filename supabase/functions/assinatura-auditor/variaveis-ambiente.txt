@@ -3,6 +3,7 @@
 # Nenhuma chave real neste arquivo. Os mesmos nomes, sem valor, estao em supabase/functions/.env.example.
 
 # Chave secreta da conta Pagar.me da no (a mesma conta do site da no). sk_test_... no sandbox.
+# Em producao e opcional: sem ela a funcao usa a PAGARME_SECRET_KEY do projeto (Lucca, 19/10).
 PAGARME_ASSINATURA_SECRET_KEY=
 # Chave publica da mesma conta. pk_test_... no sandbox. Vai ao navegador para tokenizar o cartao.
 PAGARME_ASSINATURA_PUBLIC_KEY=
