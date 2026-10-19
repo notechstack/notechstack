@@ -75,8 +75,15 @@ Sem controle de `logo`: a LP não tem `<img>` de marca, e a única imagem da pá
 
 ## V2 — pedidos da Thaís (Base V1, enviado em 13/10/2026 16:09) · TASK-mvbfaammemy
 
-Estado em 16/10/2026 (rodada 3, 19:10): **aguardando o pacote**. O Base V1 está só
-em produção e o gate nega ao agente o conector Supabase (leitura de banco remoto
+Estado em 19/10/2026 (rodada 6, 10:05): **passo 1 feito**, aguardando a conferência do
+Oscar (passo 2). Lucca tirou o pacote do banco em 16/10 (`base-v1/LEIA-ME.md`, linha
+`editor_exports` `597eae29-bff4-4211-a140-1311f29d24ef`). Na rodada 6 o Dwight conferiu
+direto no banco, só leitura: `md5(changes::text)` = `72ea5277b21207d0c0d99a1b6b18bcd0`
+e 8 499 caracteres, iguais aos de `base-v1/changes.jsonb.txt`; é o último dos 7 envios
+do projeto; o projeto só tem a V1 (atual, com configuração e `"*"`, ponte ligada).
+
+Texto histórico das rodadas 1 a 3: o Base V1 estava só
+em produção e o gate negava ao agente o conector Supabase (leitura de banco remoto
 incluída, mesmo com a aprovação de Lucca). O bucket `editor-exports` é privado
 (`public = false`, leitura só por usuário autenticado com acesso ao projeto,
 migrations 20260915238000 e 20260916015006), então não há URL pública para baixar
@@ -198,7 +205,7 @@ pacote trouxer:
   do Oscar). Com `versionIdEsperado` diferente do `data-version-id` da cópia, nenhum
   item roda e o título é `HARNESS FALHA 0/x: versionId <medido> ≠ <esperado>`. A forma
   array antiga continua aceita, sem conferência de id.
-- Item: `{"n", "id", "selector"?, "field": "text|size|color|logo", "expected",
+- Item: `{"n", "id", "selector"?, "field": "text|size|color|logo|x|y", "expected",
   "negativo"?, "baseVersionId"?}`. Para id `auto:…`, o `selector` vem do `editor.css`
   do pacote. `baseVersionId` faz a sonda daquele item sair com outro id; com
   `"negativo": true`, prova que o runtime descarta mensagem de outra versão
@@ -221,8 +228,61 @@ de novo pelo Dwight. Controles do Andy: `versionIdEsperado` errado →
 `HARNESS FALHA 14/15: n=15` (a sonda aplicou, então o negativo tem dente). Rodada 2:
 controle com um valor errado de propósito → `HARNESS FALHA 13/14: n=9`.
 
-### Checklist (preenchido quando o pacote chegar)
+### Checklist do Base V1 (rodada 6, 19/10)
 
-| # | componente | campo | antes → depois | aplicado | Oscar |
+Aplicado direto na cópia por `base-v1/aplicar.mjs` (fora do git, como o pacote): 22 trocas
+de texto no bundle, cada uma exigindo exatamente 1 ocorrência antes de trocar, e o
+`<style id="no-base-v2">` antes do `</head>` com os seletores do `editor.css` do pacote
+(x/y, cor e `white-space: pre-line` onde a Thaís digitou quebra de linha, como o runtime
+mostrava com `<br>`). `data-version-id` continua o da V1 até o passo 4; os dois scripts
+do Editor continuam injetados, sem mudança. Conferência: `harness/checklist.v2.json`
+(Andy fez, Dwight revisou), 1 item por campo alterado + 2 negativos →
+**`HARNESS OK 30/30`** (Edge headless 1366×900).
+
+| # | componente | campo | antes → depois (resumo) | aplicado | Oscar |
 |---|---|---|---|---|---|
-| — | aguardando `base-v1/editor.md` | | | | |
+| 1-2 | `hero_texto` | x, y | 0,0 → 13,2 px | ok | |
+| 3 | `hero_texto` | text | novo texto "orientada pela psicanálise…" + 2 quebras no fim | ok | |
+| 4 | `marca_topo` | text | "Espaço / saúde mental" → "Thaís de Santis / Psicoterapia e psicanálise" | ok | |
+| 5 | `marca_topo` | color | #232b31 → #141414 (marca inteira) | ok | |
+| 6 | abertura, botão 2 | text | "Conhecer a clínica" → "Sobre mim" | ok | |
+| 7 | clínica, texto | text | troca o travessão por vírgula, "com a formação" | ok | |
+| 8 | clínica, psicanálise | text | travessão → vírgula | ok | |
+| 9 | experiências, fecho | text | esvaziado | ok | |
+| 10 | como funciona, passo 1 | text | descrição → "Consulte os horários disponíveis…" | ok | |
+| 11 | como funciona, suporte | text | → "Se preferir esclarecer alguma dúvida…" | ok | |
+| 12 | seção 5, texto | text | "começam a mudar" → "começam a ter outro sentido" | ok | |
+| 13 | quem atende, texto | text | corta o trecho depois de "ética" | ok | |
+| 14 | honorários, item 1 | text | "Sessão de 1 hora" → "Sessão de 50 minutos" | ok | |
+| 15-16 | honorários, item 2 | text | título e texto esvaziados | ok | |
+| 17 | honorários, item 1 | text | "para adultos" → "para adolescentes e adultos" | ok | |
+| 18 | conteúdos, texto | text | sem diferença no pacote (antes = depois) | nada a aplicar | |
+| 19 | dúvidas, título | text | esvaziado | ok | |
+| 20 | rodapé, ajuda | text | → "Precisa de ajuda? Entre em contato." | ok | |
+| 21 | rodapé, marca | text | → "Thaís de Santis / Psicologia e Psicanálise" | ok | |
+| 22-23 | quem atende, CRP | x, y | 0,0 → 3,8 px | ok | |
+| 24 | quem atende, CRP | text | tira "Responsável Técnica" (fica "· " no fim) | ok | |
+| 25 | rodapé, copyright | text | "Espaço Saúde Mental" → "Thaís de Santis" | ok | |
+| 26-28 | experiências, cartões 1, 2 e 4 | text | travessões removidos | ok | |
+| 29-30 | negativos | size / versão | `hero_cta` sem `size`; mensagem de outra versão descartada | barrados | |
+
+Como foi aplicado, para a conferência:
+
+- **Marca (4, 5, 21):** o mesmo componente `ag` desenha topo e rodapé. A linha 2 usa o
+  `light` do rodapé para ter textos diferentes, como a Thaís pediu. As duas linhas ficam
+  nos dois `<span>` da marca (serif e versalete), não em texto corrido: o runtime achata
+  os filhos ao trocar texto, como no traço de "contorno" (Ressalvas). A cor vai no botão
+  e nos dois `<span>`, como no preview dela.
+- **Passo 1 (10):** a Thaís manteve "Escolha um horário" e trocou só a descrição; troquei
+  só a descrição, e o título segue com o estilo dele.
+- **Esvaziados (9, 15, 16, 19):** texto vazio, elemento mantido, como ela viu no preview.
+  Tirar o bloco de verdade seria mudança estrutural e fica para quando levar ao site no
+  ar. O item 2 dos honorários fica como um marcador sem texto.
+- **Para confirmar com a Thaís no aceite da V2** (aplicado como enviado): "precisa
+  **para**, por dentro" (26, era "parar —"); "· " sobrando no fim do CRP (24); os dois
+  deslocamentos pequenos (1-2 e 22-23) parecem arrasto sem querer; a janela de
+  agendamento, fora do pacote, ainda diz "Precisa de ajuda? Fale com o Espaço." e a
+  duração da sessão vem de outro dado do agendamento.
+- **Limite conhecido:** x/y entram por folha de estilo (como o `editor.css`), então o
+  Editor da V2 lê 0 como posição inicial desses dois elementos; se a Thaís arrastar de
+  novo, eles partem de 0, não de 13 e 3.

@@ -74,6 +74,9 @@
     if (field === 'size') return cs.fontSize
     if (field === 'color') return toHex(cs.color)
     if (field === 'logo') return el.getAttribute('src')
+    // x/y (mover): o runtime aplica position:relative + left/top em px; estático (sem deslocamento) lê '0'.
+    if (field === 'x') return cs.position === 'static' ? '0' : String(Math.round(parseFloat(cs.left) || 0))
+    if (field === 'y') return cs.position === 'static' ? '0' : String(Math.round(parseFloat(cs.top) || 0))
     return null
   }
   function find(item) {
@@ -102,11 +105,13 @@
     if (item.field === 'size') return atual === '41px' ? '42' : '41'
     if (item.field === 'color') return atual === '#123456' ? '#654321' : '#123456'
     if (item.field === 'logo') return 'https://example.invalid/sonda-harness.png'
+    if (item.field === 'x' || item.field === 'y') return atual === '7' ? '9' : '7'
     return 'SONDA'
   }
   function expectedAfterProbe(field, probe) {
     if (field === 'size') return `${Number(probe)}px`
     if (field === 'color') return probe.toLowerCase()
+    if (field === 'x' || field === 'y') return probe
     return probe
   }
 
