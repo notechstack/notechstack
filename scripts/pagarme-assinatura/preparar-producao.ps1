@@ -44,10 +44,24 @@ function Supa([string[]]$a) {
     $saida = & supabase @a 2>&1
     $codigo = $LASTEXITCODE
   }
+  # Login vencido: o proprio roteiro abre o login do Supabase e tenta de novo, uma vez.
+  if ($codigo -ne 0 -and ($saida -join ' ') -match '401|Invalid access token|access token' -and -not $script:JaLogou) {
+    $script:JaLogou = $true
+    Write-Host 'O login do Supabase deste PC venceu. Vou abrir o login: no navegador, clique em Authorize e volte aqui.' -ForegroundColor Yellow
+    & supabase login 2>&1 | Out-Host
+    $saida = & supabase @a 2>&1
+    $codigo = $LASTEXITCODE
+  }
+  # CLI antiga nao conhece --use-api: publica sem ele.
+  if ($codigo -ne 0 -and $a -contains '--use-api' -and ($saida -join ' ') -match 'unknown flag') {
+    $semApi = @($a | Where-Object { $_ -ne '--use-api' })
+    $saida = & supabase @semApi 2>&1
+    $codigo = $LASTEXITCODE
+  }
   $ErrorActionPreference = 'Stop'
   if ($codigo -ne 0) {
     if (($saida -join ' ') -match '401|Invalid access token|access token') {
-      throw "O Supabase recusou o login deste PC. Rode:  supabase login   (abre o navegador; clique em Authorize) e depois rode este script de novo."
+      throw "O Supabase recusou o login. Em supabase.com/dashboard/account/tokens clique em Generate new token, copie e rode:  supabase login --token COLE_AQUI   e depois rode este script de novo."
     }
     throw "O comando 'supabase $($a[0]) $($a[1])' falhou: $($saida -join ' ')"
   }
