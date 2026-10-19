@@ -22,8 +22,10 @@ function Novo-Hex([int]$n) {
   -join ($b | ForEach-Object { $_.ToString('x2') })
 }
 
-function Ler-Chave([string]$pergunta, [string]$ensaio) {
-  if ($Ensaio) { return $ensaio }
+# O parametro NAO pode se chamar $ensaio: PowerShell ignora maiusculas e ele esconderia o -Ensaio do script
+# (foi assim que a pk_ENSAIO foi gravada no ar em 19/10).
+function Ler-Chave([string]$pergunta, [string]$valorEnsaio) {
+  if ($script:Ensaio) { return $valorEnsaio }
   $s = Read-Host -AsSecureString $pergunta
   $p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
   try { ([Runtime.InteropServices.Marshal]::PtrToStringBSTR($p)).Trim() } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }
