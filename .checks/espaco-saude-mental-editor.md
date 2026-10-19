@@ -171,6 +171,17 @@ Editor abriria com componentes, mas o preview não responderia (a cópia no ar, 
 id da V1, descarta as mensagens da V2) e a Thaís poderia mandar um pacote sem ver o
 efeito. Vazio é mais seguro que mudo.
 
+**Ajuste de 19/10 (rodada 7).** Oscar deu APPROVED (revisão 6, 30/30) e Lucca pediu PR,
+merge e deploy já, antes de publicar a V2 (no banco só existe a V1). Isso é seguro e
+divide o passo 5 em dois deploys:
+
+- **5a, agora:** PR, merge e deploy da branch como está (Base V1 aplicado, id da V1).
+  O Editor da V1 continua funcionando: o `data-version-id` da cópia segue o da V1, que
+  tem configuração e ponte ligada. A Thaís passa a ver as alterações dela no preview.
+- **Depois:** passos 3 (Lucca publica a V2), 4 (troca do id, Oscar confere), 5b (PR,
+  merge e deploy só da troca do id) e 6 (SQL), no mesmo período. O intervalo com o
+  Editor vazio fica só entre a publicação e o SQL, como antes.
+
 ### Allowlist e C3
 
 A V1 tem também o modo automático desde 02/10 (`"*": text, size, color, logo` no
