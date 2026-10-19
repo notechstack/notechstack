@@ -35,9 +35,23 @@ function Supa([string[]]$a) {
     Write-Host ('[ensaio] supabase ' + ($vis -join ' '))
     return '[]'
   }
-  $saida = & supabase @a
-  if ($LASTEXITCODE -ne 0) { throw "O comando 'supabase $($a[0]) $($a[1])' falhou. Se a mensagem falar de login, rode: supabase login   e depois rode este script de novo." }
-  return ($saida -join "`n")
+  $ErrorActionPreference = 'Continue'
+  $saida = & supabase @a 2>&1
+  $codigo = $LASTEXITCODE
+  # Token velho numa variavel de ambiente vence o 'supabase login': tira so desta janela e tenta de novo.
+  if ($codigo -ne 0 -and ($saida -join ' ') -match '401|Invalid access token' -and $env:SUPABASE_ACCESS_TOKEN) {
+    Remove-Item Env:SUPABASE_ACCESS_TOKEN -ErrorAction SilentlyContinue
+    $saida = & supabase @a 2>&1
+    $codigo = $LASTEXITCODE
+  }
+  $ErrorActionPreference = 'Stop'
+  if ($codigo -ne 0) {
+    if (($saida -join ' ') -match '401|Invalid access token|access token') {
+      throw "O Supabase recusou o login deste PC. Rode:  supabase login   (abre o navegador; clique em Authorize) e depois rode este script de novo."
+    }
+    throw "O comando 'supabase $($a[0]) $($a[1])' falhou: $($saida -join ' ')"
+  }
+  return (@($saida | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n")
 }
 
 Write-Host "== Auditor em producao (projeto $Projeto) ==" -ForegroundColor Cyan
