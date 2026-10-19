@@ -5,3 +5,7 @@
 # só a fonte da extração; ficam fora do git pra não pesar 30 MB no histórico.
 brand/mascote/*.mp4
 brand/mascote/no-mascote-vivo.html
+
+# Pacote do Editor enviado pela cliente (dado de cliente): fica só na máquina,
+# como insumo da TASK; o que entra no repo é a cópia aplicada e o checklist.
+.checks/espaco-saude-mental-v2/base-v1/

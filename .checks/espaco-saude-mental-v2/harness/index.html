@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>HARNESS iniciando</title>
+<style>
+  body { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; margin: 16px; color: #111; }
+  table { border-collapse: collapse; margin-top: 12px; }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  .ok { color: #0a6b3a; font-weight: 700; }
+  .falha { color: #b00020; font-weight: 700; }
+  .pendente { color: #666; }
+  iframe { width: 1280px; height: 800px; border: 1px solid #ccc; margin-top: 16px; }
+  #meta { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1 id="titulo">HARNESS iniciando</h1>
+<div id="meta"></div>
+<table id="tabela">
+  <thead><tr><th>n</th><th>id</th><th>campo</th><th>estático</th><th>editor</th><th>medido</th></tr></thead>
+  <tbody></tbody>
+</table>
+<iframe id="preview" src="/prototipos/espaco-saudemental/index.html"></iframe>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search)
+  const nomeChecklist = (params.get('checklist') || 'checklist.exemplo.json').replace(/[^\w.\-]/g, '')
+  const iframe = document.getElementById('preview')
+  const tbody = document.querySelector('#tabela tbody')
+  const meta = document.getElementById('meta')
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+  function setTitle(t) { document.title = t; document.getElementById('titulo').textContent = t }
+  function norm(s) { return String(s ?? '').replace(/\s+/g, ' ').trim() }
+  function toHex(rgb) {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb || '')
+    if (!m) return rgb || ''
+    return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')
+  }
+
+  const frameWin = await new Promise((resolve) => {
+    const pronto = () => iframe.contentDocument?.readyState === 'complete' && iframe.contentWindow.location.pathname.startsWith('/prototipos/')
+    if (pronto()) return resolve(iframe.contentWindow)
+    iframe.addEventListener('load', () => resolve(iframe.contentWindow), { once: true })
+  })
+  const doc = frameWin.document
+  const erros = []
+  frameWin.addEventListener('error', (e) => erros.push(String(e.message || e)))
+
+  const scriptEl = doc.querySelector('script[data-version-id]')
+  const projectId = scriptEl?.dataset.projectId
+  const versionId = scriptEl?.dataset.versionId
+  let allow = {}
+  try { allow = JSON.parse(scriptEl?.dataset.components || '{}') } catch {}
+  meta.textContent = `checklist: ${nomeChecklist}\nprojectId: ${projectId}\nversionId: ${versionId}\nallowlist: ${JSON.stringify(allow)}`
+
+  let checklist
+  try {
+    checklist = await (await fetch('/__harness/' + nomeChecklist, { cache: 'no-store' })).json()
+  } catch (e) {
+    setTitle('HARNESS FALHA 0/0: checklist ilegível')
+    return
+  }
+  // Forma array: só os itens, sem conferência de id. Forma objeto: {"versionIdEsperado": "<uuid>", "itens": [...]}.
+  const itens = Array.isArray(checklist) ? checklist : (checklist.itens || checklist.items || [])
+  const versionIdEsperado = Array.isArray(checklist) ? null : (checklist.versionIdEsperado ?? null)
+  meta.textContent += `\nversionIdEsperado: ${versionIdEsperado ?? '(sem conferência: checklist em forma array)'}`
+
+  function read(el, field) {
+    if (!el) return null
+    const cs = frameWin.getComputedStyle(el)
+    if (field === 'text') return norm(el.textContent)
+    if (field === 'size') return cs.fontSize
+    if (field === 'color') return toHex(cs.color)
+    if (field === 'logo') return el.getAttribute('src')
+    // x/y (mover): o runtime aplica position:relative + left/top em px; estático (sem deslocamento) lê '0'.
+    if (field === 'x') return cs.position === 'static' ? '0' : String(Math.round(parseFloat(cs.left) || 0))
+    if (field === 'y') return cs.position === 'static' ? '0' : String(Math.round(parseFloat(cs.top) || 0))
+    return null
+  }
+  function find(item) {
+    const sel = item.selector || `[data-editor="${item.id}"]`
+    return doc.querySelector(sel)
+  }
+  async function waitFor(fn, ms = 8000, step = 100) {
+    const t0 = performance.now()
+    while (performance.now() - t0 < ms) {
+      const v = fn()
+      if (v) return v
+      await sleep(step)
+    }
+    return fn()
+  }
+  // baseVersionId padrão é o da cópia; um item pode sondar com outro id (item.baseVersionId) para provar que o runtime descarta.
+  function post(changes, baseVersionId = versionId) {
+    frameWin.postMessage({
+      source: 'no-editor', type: 'NO_EDITOR_PREVIEW', version: 1,
+      projectId, baseVersionId, changes, editorMode: false,
+    }, location.origin)
+  }
+  function probeFor(item, atual) {
+    if (item.probe != null) return String(item.probe)
+    if (item.field === 'text') return 'SONDA HARNESS 123'
+    if (item.field === 'size') return atual === '41px' ? '42' : '41'
+    if (item.field === 'color') return atual === '#123456' ? '#654321' : '#123456'
+    if (item.field === 'logo') return 'https://example.invalid/sonda-harness.png'
+    if (item.field === 'x' || item.field === 'y') return atual === '7' ? '9' : '7'
+    return 'SONDA'
+  }
+  function expectedAfterProbe(field, probe) {
+    if (field === 'size') return `${Number(probe)}px`
+    if (field === 'color') return probe.toLowerCase()
+    if (field === 'x' || field === 'y') return probe
+    return probe
+  }
+
+  // Linhas da tabela
+  const rows = itens.map((item) => {
+    const tr = document.createElement('tr')
+    const marcas = `${item.negativo ? ' (negativo)' : ''}${item.baseVersionId ? ` [baseVersionId ${item.baseVersionId}]` : ''}`
+    tr.innerHTML = `<td>${item.n}</td><td>${item.id}${marcas}</td><td>${item.field}</td><td class="pendente">...</td><td class="pendente">...</td><td></td>`
+    tbody.appendChild(tr)
+    return tr
+  })
+  function mark(tr, col, ok, detalhe) {
+    const td = tr.children[col]
+    td.className = ok ? 'ok' : 'falha'
+    td.textContent = (ok ? 'OK' : 'FALHA') + (detalhe ? ' ' + detalhe : '')
+  }
+
+  // F-02: com versionIdEsperado presente e diferente do data-version-id da cópia, não roda nenhum item.
+  if (versionIdEsperado != null && versionIdEsperado !== versionId) {
+    setTitle(`HARNESS FALHA 0/${itens.length}: versionId ${versionId} ≠ ${versionIdEsperado}`)
+    return
+  }
+
+  // Espera a LP montar e o mapa carimbar
+  await waitFor(() => doc.querySelector('[data-editor]'), 15000)
+  await sleep(300)
+  meta.textContent += `\nroot filhos: ${doc.getElementById('root')?.children.length ?? 'sem root'} | marcados: ${doc.querySelectorAll('[data-editor]').length} | erros iframe: ${erros.join(' ; ') || 'nenhum'}`
+
+  const falhas = []
+  let okCount = 0
+  for (let i = 0; i < itens.length; i++) {
+    const item = itens[i]
+    const tr = rows[i]
+    let el = await waitFor(() => find(item), 3000)
+    const medidoAntes = read(el, item.field)
+    tr.children[5].textContent = JSON.stringify(medidoAntes)
+
+    // a) estático
+    let okEst = !!el
+    let detEst = el ? '' : 'elemento não encontrado'
+    if (el && item.expected != null) {
+      const esperado = item.field === 'text' ? norm(item.expected) : item.field === 'color' ? String(item.expected).toLowerCase() : String(item.expected)
+      const medido = item.field === 'color' ? String(medidoAntes).toLowerCase() : medidoAntes
+      okEst = medido === esperado
+      // Quebra de linha vira <br> ou span na LP e some do textContent: aceita se só o espaçamento difere, avisando.
+      if (!okEst && item.field === 'text' && String(medido).replace(/\s/g, '') === esperado.replace(/\s/g, '')) {
+        okEst = true
+        detEst = '(só o espaçamento difere)'
+      }
+      if (!okEst) detEst = `esperado ${JSON.stringify(esperado)} / medido ${JSON.stringify(medido)}`
+    }
+    mark(tr, 3, okEst, detEst)
+
+    // b) editor
+    let okEd = false
+    let detEd = ''
+    if (el) {
+      const probe = probeFor(item, medidoAntes)
+      const alvo = expectedAfterProbe(item.field, probe)
+      post({ [item.id]: { [item.field]: probe } }, item.baseVersionId || versionId)
+      if (item.negativo) {
+        await sleep(400)
+        const depois = read(find(item), item.field)
+        okEd = depois === medidoAntes
+        detEd = okEd ? '(não aplicou, correto)' : `aplicou indevidamente: ${JSON.stringify(depois)}`
+      } else {
+        const mudou = await waitFor(() => (read(find(item), item.field) === alvo ? true : null), 2000)
+        const depois = read(find(item), item.field)
+        if (mudou) {
+          post({})
+          const voltou = await waitFor(() => (read(find(item), item.field) === medidoAntes ? true : null), 2000)
+          okEd = !!voltou
+          detEd = voltou ? '' : `não voltou: ${JSON.stringify(read(find(item), item.field))}`
+        } else {
+          detEd = `sonda ${JSON.stringify(alvo)} não aplicou: ${JSON.stringify(depois)}`
+        }
+      }
+      post({})
+      await sleep(100)
+    } else {
+      detEd = 'sem elemento'
+    }
+    mark(tr, 4, okEd, detEd)
+
+    if (okEst && okEd) okCount++
+    else falhas.push(item.n)
+  }
+
+  const total = itens.length
+  setTitle(falhas.length ? `HARNESS FALHA ${okCount}/${total}: n=${falhas.join(',')}` : `HARNESS OK ${okCount}/${total}`)
+})()
+</script>
+</body>
+</html>
