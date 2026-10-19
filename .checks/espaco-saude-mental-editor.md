@@ -139,7 +139,8 @@ PR, merge e deploy.
    `versionIdEsperado` = id da V1).
 2. Oscar confere item por item no harness, ainda com o id da V1. Sem PR e sem
    publicação: a TASK volta ao Dwight só com a troca do id pendente.
-3. Lucca, no admin, num bloco só, publica a V2 e informa o id:
+3. Lucca, no admin, num bloco só, publica a V2 e devolve a TASK (desde a rodada 6 o
+   Dwight lê o id da V2 no banco, só leitura, sem Lucca precisar informar):
    `V1_PUBLICADA` → `EM_REVISAO_CLIENTE` (manual) → botão "Ingerir no Kanban" no card
    do Base V1 (`ingest_editor_export` exige `EM_REVISAO_CLIENTE`, cria os itens do
    Kanban e já leva a `ALTERACOES_RECEBIDAS`, migration 20261002141941) →
