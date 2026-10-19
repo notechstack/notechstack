@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { PLANOS as PLANOS_SCRIPT } from "../../scripts/pagarme-assinatura/planos.mjs";
-import { PLANOS as PLANOS_FUNCAO } from "../../supabase/functions/assinatura-auditor/core.ts";
+import { PLANOS as PLANOS_FUNCAO, TEXTO_ACEITE_ASSINATURA, validarPedido, corpoAssinatura } from "../../supabase/functions/assinatura-auditor/core.ts";
 
 const raiz = (p) => new URL(`../../${p}`, import.meta.url);        // repo
 const tarefa = (p) => new URL(`../../../${p}`, import.meta.url);   // raiz da pasta da TASK (fontes/, retrospectiva/)
@@ -72,6 +72,27 @@ test("tela final da retrospectiva: cada cartao mostra so o seu preco aprovado (F
     assert.deepEqual(precos, [APROVADO[codigo]], `cartao ${codigo} mostra so R$ ${APROVADO[codigo]}`);
   }
   assert.deepEqual(vistos.sort(), Object.keys(APROVADO).sort());
+});
+
+// Rodada 8: o corpo que o checkout de duas etapas monta (nome + sobrenome juntos, endereco de cobranca) passa na
+// validacao da funcao e chega ao Pagar.me com o endereco no cartao e no cliente.
+test("checkout de duas etapas: o corpo do navegador passa na funcao e leva o endereco ao Pagar.me", async () => {
+  const ctx = vm.createContext({ window: {} });
+  vm.runInContext(await readFile(raiz("agentes/auditor/assinatura.js"), "utf8"), ctx);
+  const d = {
+    plano: "agencia", nome: " Ana ", sobrenome: "Lima ", email: "ana@exemplo.com.br", telefone: "(11) 99999-0000",
+    termos_aceite: true, documento: "123.456.789-09",
+    endereco: { cep: "01001-000", rua: "Praça da Sé", numero: "100", complemento: "sala 2", bairro: "Sé", cidade: "São Paulo", uf: "sp" },
+  };
+  const corpo = JSON.parse(JSON.stringify(ctx.window.noAssinatura.montarPedido(d, "token_abc123", TEXTO_ACEITE_ASSINATURA)));
+  const r = validarPedido(corpo);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.pedido.nome, "Ana Lima");
+  const pg = corpoAssinatura(r.pedido, "plan_x");
+  assert.equal(pg.card.billing_address.zip_code, "01001000");
+  assert.equal(pg.card.billing_address.state, "SP");
+  assert.equal(pg.customer.address.line_2, "sala 2");
+  assert.ok(!("sobrenome" in corpo), "sobrenome vai junto do nome");
 });
 
 test("LP do auditor nao repete preco nenhum (planos so no fim da retrospectiva)", async () => {

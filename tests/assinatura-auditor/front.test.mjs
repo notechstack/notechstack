@@ -60,13 +60,46 @@ test('a última tela da retrospectiva é a de planos: 3 planos da T1, preço den
     const [nome, preco] = esperado[codigo];
     assert.ok(c.includes(nome), `nome ${nome}`);
     assert.ok(c.includes(preco), `preço ${preco} dentro do cartão ${codigo}`);
-    assert.match(c, /Frequência/, `frequência ${codigo}`);
-    assert.match(c, /Canal/, `canal ${codigo}`);
     assert.match(c, /WhatsApp/, `canal WhatsApp ${codigo}`);
     assert.match(c, new RegExp(`<button\\b[^>]*class="[^"]*au-plano-btn[^"]*"[^>]*data-plano="${codigo}"[^>]*\\bdisabled`), `botão ${codigo} começa desabilitado`);
   }
   assert.match(tela, /au-plano--recomendado[^>]*data-plano="semanal"/, 'Semanal é o recomendado');
   for (const outra of telas.slice(0, -1)) assert.doesNotMatch(outra[0], PRECO_RE, `preço só na tela final (${outra[1]})`);
+});
+
+// Rodada 5 (Lucca, 16/10): "tópicos diretos e descritivos"; os planos se diferenciam pelo ritmo do envio do relatório.
+test('cartões diretos: até 4 tópicos curtos, ritmo do envio (mês, segunda, personalizado), sem "Para quem" nem Frequência/Canal', () => {
+  assert.doesNotMatch(tela, /Para quem|Frequência|Canal/, 'sem os blocos longos da versão anterior');
+  const ritmo = { mensal: /1 relatório por mês/i, semanal: /toda segunda/i, agencia: /personalizado/i };
+  for (const c of cartoes) {
+    const codigo = codigoDe(c);
+    const itens = [...c.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textContent(m[1]));
+    assert.ok(itens.length >= 3 && itens.length <= 4, `${codigo}: 3 ou 4 tópicos (tem ${itens.length})`);
+    for (const i of itens) assert.ok(i.length <= 60, `${codigo}: tópico curto "${i}"`);
+    assert.match(textContent(c), ritmo[codigo], `${codigo}: ritmo do envio no cartão`);
+  }
+});
+
+// Rodada 5 (Lucca, 16/10): escolhe o plano → cadastro base (nome, sobrenome, e-mail, WhatsApp) e aceite dos Termos →
+// só então abrem CPF/CNPJ, cartão e o endereço de cobrança que o Pagar.me pede.
+test('checkout em duas etapas: cadastro base e aceite primeiro; documento, cartão e endereço só na etapa 2', () => {
+  const e1 = html.match(/<fieldset class="au-fieldset" id="au-etapa-1">[\s\S]*?<\/fieldset>/)[0];
+  const e2 =html.match(/<div class="au-etapa-2" id="au-etapa-2"[^>]*>[\s\S]*?<p class="au-checkout-msg"/)[0];
+  for (const id of ['au-as-nome', 'au-as-sobrenome', 'au-as-email', 'au-as-telefone', 'au-ck-termos', 'au-checkout-continuar']) {
+    assert.match(e1, new RegExp(`id="${id}"`), `etapa 1 tem #${id}`);
+    assert.doesNotMatch(e2, new RegExp(`id="${id}"`), `#${id} não está na etapa 2`);
+  }
+  for (const id of ['au-as-documento', 'au-cc-numero', 'au-cc-nome', 'au-cc-validade', 'au-cc-cvv',
+    'au-en-cep', 'au-en-rua', 'au-en-numero', 'au-en-complemento', 'au-en-bairro', 'au-en-cidade', 'au-en-uf']) {
+    assert.match(e2, new RegExp(`id="${id}"`), `etapa 2 tem #${id}`);
+    assert.doesNotMatch(e1, new RegExp(`id="${id}"`), `#${id} não está na etapa 1`);
+  }
+  assert.match(e2, /^<div class="au-etapa-2" id="au-etapa-2" hidden>/, 'etapa 2 começa fechada');
+  assert.match(html, /<button type="submit"[^>]*id="au-checkout-assinar"[^>]*\bhidden\b/, '"Pagar e assinar" só aparece na etapa 2');
+  assert.match(html, /<button type="button"[^>]*id="au-checkout-continuar"/, '"Continuar" não envia o formulário');
+  const css = readFileSync(resolve(repo, '..', 'retrospectiva', 'planos.css'), 'utf8');
+  assert.match(css, /\.au-checkout \[hidden\]\s*\{\s*display:\s*none !important/, 'etapa fechada some mesmo com display de .au-fieldset/.botao');
+  assert.match(js, /if \(etapa2\.hidden\) \{ continuar\(\); return; \}/, 'Enter na etapa 1 vale como Continuar, nunca como pagamento');
 });
 
 test('tela final carrega assinatura.js e assinatura-medicao.js do repo por caminho absoluto, sem CDN novo', () => {
@@ -105,12 +138,13 @@ test('inputs do cartão não têm atributo name', () => {
 // ── assinatura.js sem document: só expõe window.noAssinatura ──
 const ctx = { window: {} };
 vm.runInNewContext(js, ctx, { filename: 'assinatura.js' });
-const { validar, montarPedido, mensagem, PLANOS, normalizarTexto } = ctx.window.noAssinatura;
+const { validar, validarEtapa1, validarEtapa2, resumoEtapa1, montarPedido, mensagem, PLANOS, normalizarTexto } = ctx.window.noAssinatura;
 
+const etapa1Ok = { plano: 'semanal', nome: 'Ana', sobrenome: 'Lima', email: 'ana@exemplo.com.br', telefone: '(11) 99999-0000', termos_aceite: true };
 const dadosOk = {
-  plano: 'semanal', nome: 'Ana Lima', email: 'ana@exemplo.com.br', documento: '123.456.789-09', telefone: '(11) 99999-0000',
+  ...etapa1Ok, documento: '123.456.789-09',
   numero_cartao: '4000 0000 0000 0010', nome_cartao: 'ANA LIMA', validade: '12/30', cvv: '123',
-  termos_aceite: true
+  endereco: { cep: '01001-000', rua: ' Praça da Sé ', numero: '100', complemento: '', bairro: 'Sé', cidade: 'São Paulo', uf: 'sp' }
 };
 const labelHtml = html.match(/<label\b[^>]*for="au-ck-termos"[^>]*>([\s\S]*?)<\/label>/)[1];
 const textoDoLabel = labelHtml.replace(/<[^>]+>/g, ''); // o que o navegador devolve em textContent (sem normalizar)
@@ -124,9 +158,25 @@ test('PLANOS e validar ok', () => {
   assert.equal(erros.length, 0, `dados completos sem erro: ${erros.join(' | ')}`);
 });
 
-test('montarPedido: corpo exato (plano, nome, email, documento, telefone, card_token, termos_aceite, aceite_texto), sem cartão', () => {
+test('etapa 1 valida só o cadastro base e o aceite; etapa 2 só documento, cartão e endereço', () => {
+  assert.deepEqual([...validarEtapa1(etapa1Ok)], [], 'etapa 1 completa sem pedir cartão');
+  assert.ok(validarEtapa1({ ...etapa1Ok, sobrenome: ' ' }).some((e) => /sobrenome/.test(e)), 'sobrenome obrigatório');
+  assert.ok(validarEtapa1({ ...etapa1Ok, termos_aceite: false }).some((e) => /Termos de Uso/.test(e)), 'aceite na etapa 1');
+  assert.ok(validarEtapa2(etapa1Ok).length > 0, 'etapa 2 vazia não passa');
+  assert.deepEqual([...validarEtapa2(dadosOk)], []);
+  for (const ruim of [{ cep: '0100100' }, { uf: 'XX' }, { rua: '' }, { numero: ' ' }, { bairro: '' }, { cidade: '' }]) {
+    const erros = validarEtapa2({ ...dadosOk, endereco: { ...dadosOk.endereco, ...ruim } });
+    assert.ok(erros.some((e) => /endereço de cobrança/.test(e)), `endereço ${JSON.stringify(ruim)} → erro`);
+  }
+  assert.equal(resumoEtapa1(dadosOk), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 99999-0000');
+  assert.equal(resumoEtapa1({ ...dadosOk, telefone: '1133334444' }), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 3333-4444');
+});
+
+test('montarPedido: corpo exato (plano, nome, email, documento, telefone, card_token, termos_aceite, aceite_texto, endereco), sem cartão', () => {
   const pedido = montarPedido(dadosOk, 'token_abc', textoDoLabel);
-  assert.deepEqual(Object.keys(pedido).sort(), ['aceite_texto', 'card_token', 'documento', 'email', 'nome', 'plano', 'telefone', 'termos_aceite']);
+  assert.deepEqual(Object.keys(pedido).sort(), ['aceite_texto', 'card_token', 'documento', 'email', 'endereco', 'nome', 'plano', 'telefone', 'termos_aceite']);
+  assert.equal(pedido.nome, 'Ana Lima', 'nome e sobrenome juntos, como o Pagar.me recebe');
+  assert.deepEqual({ ...pedido.endereco }, { cep: '01001000', rua: 'Praça da Sé', numero: '100', complemento: '', bairro: 'Sé', cidade: 'São Paulo', uf: 'SP' });
   assert.equal(pedido.plano, 'semanal');
   assert.equal(pedido.card_token, 'token_abc');
   assert.equal(pedido.documento, '12345678909');

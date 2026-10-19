@@ -3,34 +3,77 @@
    Textos e preços: fontes/proposta-planos-T1.md (aprovada por Lucca em 16/10).
    Veio do auditor.css do HEAD anterior, adaptado ao molde mobile (390 px) e às classes .cartao/.botao do protótipo. */
 
-/* ── Cartões de plano: sobre osso, dentro da tela verde (texto pequeno fica sempre dentro de .cartao) ── */
+/* ── Cartões de plano: sobre osso, dentro da tela verde (texto pequeno fica sempre dentro de .cartao) ──
+   Efeitos da LP (auditor.css) adaptados ao molde de 390 px e ao fundo verde: vidro com backdrop-filter, barra de acento
+   no topo (::before), varredura de luz na entrada (::after), entrada escalonada e ritmo que acende em sequência e pulsa.
+   Disparo: #t13.ativa (o script da página põe .ativa na tela visível). Tipografia: JetBrains Mono no nome, preço,
+   ritmo e selos; Sora no corpo. Só tokens; color-mix só com tokens. */
 #t13 .planos { padding-bottom: 8px; }
-.au-plano { position: relative; gap: 10px; padding: 20px 18px 18px; }
-.au-plano--recomendado { outline: 2px solid var(--no-tinta); outline-offset: -2px; margin-top: 8px; }
-.au-plano-selo {
-  position: absolute; top: -11px; left: 16px;
-  font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
-  padding: 6px 8px; border-radius: var(--raio-tag); background: var(--no-tinta); color: var(--no-osso);
+.au-plano {
+  position: relative; overflow: hidden; gap: 12px; padding: 22px 18px 18px;
+  background: color-mix(in srgb, var(--no-osso) 94%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--no-verde) 24%, var(--no-osso));
+  box-shadow: var(--shadow-card);
+  transition: transform .2s ease, border-color .2s ease;
 }
-.au-plano-nome { margin: 0; font: var(--peso-titulo) 20px/1.15 var(--font-core); letter-spacing: var(--tracking-titulo); color: var(--no-tinta); }
-.au-plano-frase { font: var(--peso-texto) 14.5px/1.45 var(--font-core); color: var(--no-texto); text-wrap: pretty; }
-.au-plano-preco { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; }
-.au-plano-valor { font: var(--peso-label) 30px/1 var(--font-mono); letter-spacing: -0.03em; color: var(--no-tinta); }
-.au-plano-periodo { font: var(--peso-label) 13px/1.3 var(--font-mono); color: var(--no-cinza); }
-.au-plano-cota { flex-basis: 100%; font: var(--peso-label) 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--no-cinza); }
-.au-plano-quem { font: var(--peso-texto) 13.5px/1.45 var(--font-core); color: var(--no-texto); }
-.au-plano-quem b { font-weight: var(--peso-subtitulo); color: var(--no-tinta); }
-.au-plano-itens { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 5px; font: var(--peso-texto) 13.5px/1.45 var(--font-core); color: var(--no-texto); }
-.au-plano-itens li::marker { color: var(--no-verde-texto); }
-.au-plano-meta { margin: 0; display: flex; flex-direction: column; gap: 4px; font: var(--peso-texto) 12.5px/1.45 var(--font-core); color: var(--no-cinza); }
-.au-plano-meta div { display: flex; gap: 5px; flex-wrap: wrap; }
-.au-plano-meta dt { font-weight: var(--peso-subtitulo); color: var(--no-tinta); }
-.au-plano-meta dt::after { content: ':'; }
-.au-plano-meta dd { margin: 0; }
+/* barra de acento no topo (LP: .au-card::before) */
+.au-plano::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--no-verde), transparent); pointer-events: none; }
+/* varredura de luz (LP: .au-card::after): passa uma vez quando a tela fica ativa; parada, fica fora do cartão */
+.au-plano::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, color-mix(in srgb, var(--no-verde) 16%, transparent) 50%, transparent 65%); transform: translateX(-110%); pointer-events: none; }
+.au-plano:hover, .au-plano:focus-within { transform: translateY(-3px); border-color: var(--no-verde); }
+.au-plano--recomendado { margin-top: 10px; padding-top: 32px; border-color: var(--no-tinta); outline: 2px solid var(--no-tinta); outline-offset: -2px; }
+.au-plano--recomendado::before { background: linear-gradient(90deg, var(--no-tinta) 35%, var(--no-verde)); }
+.au-plano-selo {
+  position: absolute; top: 0; right: 14px; z-index: 1;
+  font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+  padding: 7px 8px 6px; border-radius: 0 0 var(--raio-tag) var(--raio-tag); background: var(--no-tinta); color: var(--no-osso);
+}
+/* cabeça: nome em mono caixa alta (rótulo tipo .ag-kicker) + preço grande em mono */
+.au-plano-cabeca { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+.au-plano-nome { margin: 0; display: inline-flex; align-items: center; gap: 8px; font: var(--peso-label) 13px/1.3 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--no-tinta); }
+.au-plano-nome::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--no-verde); }
+.au-plano-preco { margin: 0; display: flex; align-items: baseline; gap: 4px; }
+.au-plano-valor { font: var(--peso-label) 32px/1 var(--font-mono); letter-spacing: -0.04em; word-spacing: -.35em; color: var(--no-tinta); font-variant-numeric: tabular-nums; }
+.au-plano-periodo { font: var(--peso-label) 12px/1.3 var(--font-mono); letter-spacing: .04em; color: var(--no-cinza); }
+/* ritmo do envio: 4 semanas; bolinha acesa = relatório enviado (Agência: uma linha por cliente) */
+.au-ritmo { display: grid; gap: 7px; padding: 10px 12px 11px; border-radius: var(--raio-chip); background: var(--no-verde-claro); }
+.au-ritmo-sem, .au-ritmo-linha { display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; align-items: center; }
+.au-ritmo-sem b { font: var(--peso-label) 10px/1 var(--font-mono); letter-spacing: .1em; color: var(--no-verde-texto-escuro); }
+.au-ritmo-linha { position: relative; height: 14px; --l: 0; }
+.au-ritmo-linha:nth-child(3) { --l: 1; } .au-ritmo-linha:nth-child(4) { --l: 2; }
+.au-ritmo-linha::before { content: ''; position: absolute; left: 12.5%; right: 12.5%; top: 50%; border-top: 1px dashed color-mix(in srgb, var(--no-verde-texto) 45%, transparent); }
+.au-ritmo-linha i { position: relative; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%; background: var(--no-osso); border: 1.5px solid color-mix(in srgb, var(--no-verde-texto) 45%, transparent); --c: 0; }
+.au-ritmo-linha i:nth-child(2) { --c: 1; } .au-ritmo-linha i:nth-child(3) { --c: 2; } .au-ritmo-linha i:nth-child(4) { --c: 3; }
+.au-ritmo-linha i.on { width: 11px; height: 11px; background: var(--no-verde); border-color: var(--no-verde); box-shadow: 0 0 0 3px color-mix(in srgb, var(--no-verde) 22%, transparent); }
+.au-plano-ritmo { margin: 0; font: var(--peso-label) 12px/1.3 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--no-verde-texto); }
+/* tópicos: uma linha cada, marcador em anel verde */
+.au-plano-itens { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; font: var(--peso-texto) 13.5px/1.45 var(--font-core); color: var(--no-texto); }
+.au-plano-itens li { position: relative; padding-left: 18px; text-wrap: pretty; }
+.au-plano-itens li::before { content: ''; position: absolute; left: 1px; top: .5em; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--no-verde); }
 .au-plano .au-plano-btn { margin-top: 4px; }
 .au-plano .au-plano-btn[disabled] { cursor: not-allowed; background: var(--no-borda); color: var(--no-cinza); }
 .au-plano .au-plano-btn:focus-visible { outline: 2px solid var(--no-azul); outline-offset: 2px; }
 .au-planos-lead, .au-planos-nota { padding: 14px 16px; }
+.au-planos-lead .texto, .au-planos-nota .texto { text-wrap: pretty; }
+/* animações: entrada escalonada dos cartões (fill backwards, hover volta a valer depois), varredura, ritmo acendendo
+   em sequência (semana a semana; Agência adianta uma linha por vez) e a última bolinha acesa pulsando de leve */
+#t13.ativa .au-plano { animation: au-plano-in .55s cubic-bezier(.22,1,.36,1) backwards; }
+#t13.ativa .au-plano::after { animation: au-plano-varre .9s ease-in-out forwards; }
+#t13.ativa .au-plano[data-plano="mensal"] { animation-delay: .1s; } #t13.ativa .au-plano[data-plano="mensal"]::after { animation-delay: .5s; }
+#t13.ativa .au-plano[data-plano="semanal"] { animation-delay: .22s; } #t13.ativa .au-plano[data-plano="semanal"]::after { animation-delay: .62s; }
+#t13.ativa .au-plano[data-plano="agencia"] { animation-delay: .34s; } #t13.ativa .au-plano[data-plano="agencia"]::after { animation-delay: .74s; }
+#t13.ativa .au-ritmo-linha i.on { animation: au-ritmo-acende .5s cubic-bezier(.22,1,.36,1) both; animation-delay: calc(.7s + var(--c) * .16s + var(--l) * .24s); }
+#t13.ativa .au-ritmo-linha i.on:not(:has(~ i.on)) { animation: au-ritmo-acende .5s cubic-bezier(.22,1,.36,1) both, au-ritmo-pulso 2.4s ease-in-out infinite; animation-delay: calc(.7s + var(--c) * .16s + var(--l) * .24s), calc(1.3s + var(--c) * .16s + var(--l) * .24s); }
+@keyframes au-plano-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes au-plano-varre { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
+@keyframes au-ritmo-acende { from { opacity: .3; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes au-ritmo-pulso { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--no-verde) 22%, transparent); } 50% { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  #t13.ativa .au-plano, #t13.ativa .au-plano::after, #t13.ativa .au-ritmo-linha i.on, #t13.ativa .au-ritmo-linha i.on:not(:has(~ i.on)) { animation: none !important; }
+  .au-plano::after { display: none; }
+  .au-plano, .au-plano:hover, .au-plano:focus-within { transition: none; transform: none; }
+}
 
 /* ── Checkout (dialog): fora da moldura, no top layer; campos legíveis, foco visível ── */
 .au-checkout {
@@ -62,3 +105,31 @@
 .au-checkout-botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .au-checkout-botoes .botao--claro { box-shadow: inset 0 0 0 1.5px var(--no-tinta); }
 .au-checkout-botoes .botao[disabled] { opacity: .6; cursor: wait; }
+
+/* ── Checkout em duas etapas (Lucca, 16/10): 1) cadastro base + aceite; 2) pagamento e endereço de cobrança ──
+   [hidden] precisa vencer o display de .au-fieldset e .botao, senão a etapa fechada continuaria na tela. */
+.au-checkout [hidden] { display: none !important; }
+.au-passos { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.au-passos li {
+  padding: 8px 10px 7px; border-radius: var(--raio-chip); border-top: 3px solid var(--no-borda);
+  font: var(--peso-label) 11px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--no-cinza);
+  background: var(--no-branco);
+}
+.au-passos li.is-ativo { border-top-color: var(--no-azul); color: var(--no-tinta); background: var(--no-azul-claro); }
+.au-etapa-btn { width: 100%; margin-top: 10px; }
+.au-etapa-btn:focus-visible, .au-resumo-alterar:focus-visible { outline: 2px solid var(--no-azul); outline-offset: 2px; }
+.au-resumo {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--raio-chip);
+  border: 1.5px solid var(--no-borda); background: var(--no-branco);
+}
+.au-resumo-texto { flex: 1; min-width: 0; margin: 0; font: var(--peso-texto) 13px/1.45 var(--font-mono); color: var(--no-tinta); overflow-wrap: anywhere; }
+.au-resumo-alterar {
+  flex: none; padding: 6px 10px; border: 0; border-radius: var(--raio-chip); background: transparent; cursor: pointer;
+  font: var(--peso-subtitulo) 13px/1.2 var(--font-core); color: var(--no-azul); text-decoration: underline;
+}
+.au-etapa-2 { display: grid; gap: 16px; animation: au-etapa-in .35s cubic-bezier(.22,1,.36,1); }
+.au-opcional { color: var(--no-cinza); }
+select.au-input { appearance: auto; }
+.au-checkout-botoes:has(> [hidden]) { grid-template-columns: 1fr; }
+@keyframes au-etapa-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .au-etapa-2 { animation: none; } }

@@ -555,66 +555,69 @@
     <p class="rot rot-chip">Próximo passo</p>
     <h1 class="titulo titulo--g">Três jeitos de seguir com o agente.</h1>
     <div class="pilhas planos" id="planos">
-      <div class="cartao au-planos-lead"><p class="texto">Assinando, este relatório é refeito sozinho no ritmo do plano e chega no WhatsApp da nó, com link para o relatório completo no app.</p></div>
+      <div class="cartao au-planos-lead"><p class="texto">O agente refaz o relatório sozinho e manda no seu WhatsApp. Entre os planos, muda o ritmo do envio.</p></div>
 
       <div class="cartao au-plano" data-plano="mensal">
-        <h2 class="au-plano-nome">Mensal</h2>
-        <p class="au-plano-frase">Uma vez por mês, a nota da sua implementação e o que fazer com ela.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 47</span><span class="au-plano-periodo">/mês</span></p>
-        <p class="au-plano-quem"><b>Para quem:</b> quem anuncia com uma conta só e quer acompanhar sem olhar painel.</p>
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Mensal</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 47</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">1 relatório por mês</p>
         <ul class="au-plano-itens">
-          <li>1 site + as contas de anúncio conectadas, Facebook e Google.</li>
-          <li>As 10 checagens do site refeitas a cada envio.</li>
-          <li>Nota de 0 a 10 dos últimos 30 dias, com o placar ok · atenção · problema.</li>
-          <li>Retrospectiva completa no app: site, Meta, horário, Google e caminho do clique.</li>
-          <li>Leituras do agente em Meta e Google: público que mais respondeu, posicionamento, tempo de engajamento por canal.</li>
-          <li>Pontos de atenção, cada um com uma recomendação de uma linha.</li>
+          <li>Relatório todo mês no seu WhatsApp</li>
+          <li>1 site + contas Meta e Google</li>
+          <li>Nota de 0 a 10 com o placar ok · atenção · problema</li>
+          <li>O que corrigir, uma linha por ponto</li>
         </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Mensal (1 relatório por mês).</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó, com link para o relatório no app.</dd></div>
-        </dl>
         <button type="button" class="botao au-plano-btn" data-plano="mensal" disabled>Assinatura em breve</button>
       </div>
 
       <div class="cartao au-plano au-plano--recomendado" data-plano="semanal">
         <span class="au-plano-selo">Recomendado</span>
-        <h2 class="au-plano-nome">Semanal</h2>
-        <p class="au-plano-frase">Toda segunda, o que mudou nos seus anúncios antes de o problema virar gasto.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 97</span><span class="au-plano-periodo">/mês</span></p>
-        <p class="au-plano-quem"><b>Para quem:</b> quem mexe em campanha toda semana e quer pegar tag quebrada ou investimento fora de hora cedo.</p>
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Semanal</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 97</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">Toda segunda</p>
         <ul class="au-plano-itens">
-          <li>Tudo do Mensal.</li>
-          <li>Resumo "o que mudou desde o último relatório": checagem que caiu, atenção que continua, dado novo.</li>
-          <li>"Quando seu público responde": mapa de dia × hora, com a parte do investimento fora do horário que traz clique.</li>
-          <li>"Onde o clique se perde": funil do anúncio ao evento-chave, cruzado com o tempo de resposta do site.</li>
-          <li>Aviso de conexão vencida com o botão "Reconectar", para o relatório não parar sem você saber.</li>
+          <li>Relatório toda segunda no seu WhatsApp</li>
+          <li>Tudo do Mensal + o que mudou na semana</li>
+          <li>Horário em que seu público responde</li>
+          <li>Onde o clique se perde, do anúncio ao site</li>
         </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Semanal (cerca de 4 por mês) + o fechamento do mês.</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó, com link para o relatório no app.</dd></div>
-        </dl>
         <button type="button" class="botao au-plano-btn" data-plano="semanal" disabled>Assinatura em breve</button>
       </div>
 
       <div class="cartao au-plano" data-plano="agencia">
-        <h2 class="au-plano-nome">Agência</h2>
-        <p class="au-plano-frase">Os relatórios de todos os seus clientes no seu WhatsApp, prontos para repassar.</p>
-        <p class="au-plano-preco"><span class="au-plano-valor">R$ 197</span><span class="au-plano-periodo">/mês</span><span class="au-plano-cota">até 5 clientes</span></p>
-        <p class="au-plano-quem"><b>Para quem:</b> agência ou gestor de tráfego que cuida de vários anunciantes.</p>
+        <div class="au-plano-cabeca">
+          <h2 class="au-plano-nome">Agência</h2>
+          <p class="au-plano-preco"><span class="au-plano-valor">R$ 197</span><span class="au-plano-periodo">/mês</span></p>
+        </div>
+        <div class="au-ritmo au-ritmo--clientes" aria-hidden="true">
+          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
+          <span class="au-ritmo-linha"><i class="on"></i><i></i><i class="on"></i><i></i></span>
+          <span class="au-ritmo-linha"><i></i><i class="on"></i><i></i><i class="on"></i></span>
+          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
+        </div>
+        <p class="au-plano-ritmo">Personalizado</p>
         <ul class="au-plano-itens">
-          <li>Tudo do Semanal, para até 5 clientes (cada cliente = 1 site + as contas dele).</li>
-          <li>Um relatório semanal por cliente e um resumo mensal com a nota de cada um lado a lado.</li>
-          <li>O link do relatório de cada cliente pode ser repassado ao cliente final.</li>
+          <li>Envio personalizado por cliente, no seu WhatsApp</li>
+          <li>Até 5 clientes, 1 site + contas cada</li>
+          <li>Tudo do Semanal, por cliente</li>
+          <li>Link de cada relatório pronto para repassar</li>
         </ul>
-        <dl class="au-plano-meta">
-          <div><dt>Frequência</dt><dd>Semanal por cliente + resumo mensal.</dd></div>
-          <div><dt>Canal</dt><dd>WhatsApp da nó para a agência, com um link por cliente.</dd></div>
-        </dl>
         <button type="button" class="botao au-plano-btn" data-plano="agencia" disabled>Assinatura em breve</button>
       </div>
 
-      <div class="cartao au-planos-nota"><p class="texto">Os 3 primeiros diagnósticos continuam grátis, direto no app. Assinatura com cobrança mensal no cartão de crédito.</p></div>
+      <div class="cartao au-planos-nota"><p class="texto">3 diagnósticos grátis por pessoa. Do 4º em diante, só assinando. Cobrança mensal no cartão de crédito.</p></div>
     </div>
   </section>
 
@@ -630,48 +633,100 @@
   <form class="au-checkout-form" id="au-checkout-form" novalidate>
     <h2 class="au-checkout-titulo" id="au-checkout-titulo">Assinar o Auditor</h2>
     <p class="au-checkout-plano">Plano escolhido: <strong id="au-checkout-plano"></strong></p>
+    <ol class="au-passos" aria-hidden="true"><li class="is-ativo" id="au-passo-1">1 · Seus dados</li><li id="au-passo-2">2 · Pagamento</li></ol>
 
-    <fieldset class="au-fieldset">
+    <!-- Etapa 1: cadastro base + aceite dos Termos (pré-venda). Só com tudo válido abre a etapa 2. -->
+    <fieldset class="au-fieldset" id="au-etapa-1">
       <legend>Seus dados</legend>
-      <label class="au-label" for="au-as-nome">Nome</label>
-      <input class="au-input" id="au-as-nome" name="nome" type="text" autocomplete="name" required>
+      <div class="au-checkout-grid2">
+        <div>
+          <label class="au-label" for="au-as-nome">Nome</label>
+          <input class="au-input" id="au-as-nome" name="nome" type="text" autocomplete="given-name" required>
+        </div>
+        <div>
+          <label class="au-label" for="au-as-sobrenome">Sobrenome</label>
+          <input class="au-input" id="au-as-sobrenome" name="sobrenome" type="text" autocomplete="family-name" required>
+        </div>
+      </div>
       <label class="au-label" for="au-as-email">E-mail</label>
       <input class="au-input" id="au-as-email" name="email" type="email" inputmode="email" autocomplete="email" required>
-      <label class="au-label" for="au-as-documento">CPF ou CNPJ</label>
-      <input class="au-input" id="au-as-documento" name="documento" type="text" inputmode="numeric" required>
       <label class="au-label" for="au-as-telefone">WhatsApp (com DDD)</label>
       <input class="au-input" id="au-as-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel-national" aria-describedby="au-as-telefone-nota" required>
       <p class="au-ajuda" id="au-as-telefone-nota">É neste número que o relatório do Auditor chega.</p>
-    </fieldset>
-
-    <fieldset class="au-fieldset">
-      <legend>Cartão de crédito</legend>
-      <label class="au-label" for="au-cc-numero">Número do cartão</label>
-      <input class="au-input" id="au-cc-numero" type="text" inputmode="numeric" autocomplete="cc-number" required>
-      <label class="au-label" for="au-cc-nome">Nome impresso no cartão</label>
-      <input class="au-input" id="au-cc-nome" type="text" autocomplete="cc-name" required>
-      <div class="au-checkout-grid2">
-        <div>
-          <label class="au-label" for="au-cc-validade">Validade (MM/AA)</label>
-          <input class="au-input" id="au-cc-validade" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/AA" required>
-        </div>
-        <div>
-          <label class="au-label" for="au-cc-cvv">CVV</label>
-          <input class="au-input" id="au-cc-cvv" type="password" inputmode="numeric" autocomplete="cc-csc" required>
-        </div>
+      <div class="au-check">
+        <input type="checkbox" id="au-ck-termos" required>
+        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).</label>
       </div>
-      <p class="au-ajuda">Os dados do cartão vão direto para o Pagar.me; a nó recebe só um código de pagamento.</p>
+      <button type="button" class="botao au-etapa-btn" id="au-checkout-continuar">Continuar para o pagamento</button>
     </fieldset>
 
-    <div class="au-check">
-      <input type="checkbox" id="au-ck-termos" required>
-      <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).</label>
+    <!-- Resumo da etapa 1 (aparece no lugar dela quando a etapa 2 abre) -->
+    <div class="au-resumo" id="au-etapa-1-resumo" hidden>
+      <p class="au-resumo-texto" id="au-resumo-texto"></p>
+      <button type="button" class="au-resumo-alterar" id="au-checkout-alterar">Alterar</button>
+    </div>
+
+    <!-- Etapa 2: pagamento. Inputs do cartão SEM name; endereço de cobrança vai no POST (o token do cartão não leva endereço). -->
+    <div class="au-etapa-2" id="au-etapa-2" hidden>
+      <fieldset class="au-fieldset">
+        <legend>Pagamento</legend>
+        <label class="au-label" for="au-as-documento">CPF ou CNPJ</label>
+        <input class="au-input" id="au-as-documento" name="documento" type="text" inputmode="numeric" required>
+        <label class="au-label" for="au-cc-numero">Número do cartão</label>
+        <input class="au-input" id="au-cc-numero" type="text" inputmode="numeric" autocomplete="cc-number" required>
+        <label class="au-label" for="au-cc-nome">Nome impresso no cartão</label>
+        <input class="au-input" id="au-cc-nome" type="text" autocomplete="cc-name" required>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-cc-validade">Validade (MM/AA)</label>
+            <input class="au-input" id="au-cc-validade" type="text" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/AA" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-cc-cvv">CVV</label>
+            <input class="au-input" id="au-cc-cvv" type="password" inputmode="numeric" autocomplete="cc-csc" required>
+          </div>
+        </div>
+        <p class="au-ajuda">Os dados do cartão vão direto para o Pagar.me; a nó recebe só um código de pagamento.</p>
+      </fieldset>
+
+      <fieldset class="au-fieldset">
+        <legend>Endereço de cobrança do cartão</legend>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-en-cep">CEP</label>
+            <input class="au-input" id="au-en-cep" name="cep" type="text" inputmode="numeric" autocomplete="postal-code" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-en-uf">UF</label>
+            <select class="au-input" id="au-en-uf" name="uf" autocomplete="address-level1" required>
+              <option value="">UF</option>
+              <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
+            </select>
+          </div>
+        </div>
+        <label class="au-label" for="au-en-rua">Rua</label>
+        <input class="au-input" id="au-en-rua" name="rua" type="text" autocomplete="address-line1" required>
+        <div class="au-checkout-grid2">
+          <div>
+            <label class="au-label" for="au-en-numero">Número</label>
+            <input class="au-input" id="au-en-numero" name="numero" type="text" inputmode="numeric" required>
+          </div>
+          <div>
+            <label class="au-label" for="au-en-complemento">Complemento <span class="au-opcional">(opcional)</span></label>
+            <input class="au-input" id="au-en-complemento" name="complemento" type="text" autocomplete="address-line2">
+          </div>
+        </div>
+        <label class="au-label" for="au-en-bairro">Bairro</label>
+        <input class="au-input" id="au-en-bairro" name="bairro" type="text" required>
+        <label class="au-label" for="au-en-cidade">Cidade</label>
+        <input class="au-input" id="au-en-cidade" name="cidade" type="text" autocomplete="address-level2" required>
+      </fieldset>
     </div>
 
     <p class="au-checkout-msg" id="au-checkout-msg" role="alert" hidden></p>
     <div class="au-checkout-botoes">
       <button type="button" class="botao botao--claro" id="au-checkout-cancelar">Cancelar</button>
-      <button type="submit" class="botao" id="au-checkout-assinar">Pagar e assinar</button>
+      <button type="submit" class="botao" id="au-checkout-assinar" hidden>Pagar e assinar</button>
     </div>
   </form>
 </dialog>
