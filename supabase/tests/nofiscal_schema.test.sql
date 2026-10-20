@@ -185,10 +185,12 @@ select ok(not has_function_privilege('supabase_read_only_user', 'nofiscal.read_c
 -- C35 sobre o conjunto inteiro (verificação, rodada 1): todas as tabelas de
 -- nofiscal, as duas funções de leitura e a descriptografia do Vault, para anon
 -- e authenticated.
+-- Agente fiscal (lote A, Landing de .checks/agente-fiscal-whatsapp.md): 5 tabelas do motor
+-- mais 9 do agente. A contagem continua exata: tabela nova exige rever esta prova.
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  5, 'papéis de fora não leem nofiscal: o schema tem as 5 tabelas avaliadas abaixo');
+  14, 'papéis de fora não leem nofiscal: o schema tem as 14 tabelas avaliadas abaixo');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated')) r(role)
