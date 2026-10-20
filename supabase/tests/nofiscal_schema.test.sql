@@ -182,5 +182,11 @@ select ok(not exists (
 select ok(not has_function_privilege('supabase_read_only_user', 'nofiscal.read_certificate(uuid)', 'EXECUTE'),
   'papel de leitura não lê o A1: sem EXECUTE em read_certificate');
 
+-- Lote 2b: percentual aproximado dos tributos do Simples, por tenant.
+select has_column('nofiscal', 'fiscal_tenants', 'p_tot_trib_sn', 'p_tot_trib_sn existe em fiscal_tenants');
+select col_is_null('nofiscal', 'fiscal_tenants', 'p_tot_trib_sn', 'p_tot_trib_sn nasce nulo');
+select throws_ok($$update nofiscal.fiscal_tenants set p_tot_trib_sn = 100.01 where id = 'a0000000-0000-4000-8000-00000000000a'$$,
+  '23514', null, 'p_tot_trib_sn acima de 100 é recusado');
+
 select * from finish();
 rollback;
