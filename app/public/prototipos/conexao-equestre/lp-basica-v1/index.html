@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conexão Equestre · Centro hípico em Bragança Paulista</title>
+<meta name="description" content="Centro hípico em Bragança Paulista, a 50 minutos de São Paulo: passeio a cavalo, escola de equitação, equitação lúdica, Natural Horsemanship, arquearia, doma natural, hospedagem e treinamento de cavalos.">
+<meta name="robots" content="noindex,nofollow">
+<meta property="og:title" content="Conexão Equestre · Venha sentir essa Conexão!">
+<meta property="og:description" content="Centro hípico em Bragança Paulista com infraestrutura completa para aulas de equitação, passeios, cursos equestres, hospedagem e treinamento de cavalos.">
+<meta property="og:image" content="img/homership.jpeg">
+<link rel="icon" href="img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --verde:#01855F;--verde-escuro:#00432F;--verde-tint:#E6F3EE;
+  --ambar:#F2A20C;--ambar-tint:#FDF2DC;
+  --areia:#F7F3EC;--branco:#FFFFFF;--tinta:#1D2622;--cinza:#5F6B66;--borda:#E6E1D8;
+  --radius:18px;--max:1180px;
+  --serif:"Fraunces",Georgia,serif;--sans:"Manrope",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;font-family:var(--sans);color:var(--tinta);background:var(--branco);line-height:1.65;font-size:16px}
+img{max-width:100%;display:block}
+a{color:var(--verde)}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:600;line-height:1.12;margin:0 0 .5em;letter-spacing:-.01em}
+h1{font-size:clamp(2.3rem,5.4vw,4.2rem);font-weight:700}
+h2{font-size:clamp(1.8rem,3.4vw,2.7rem)}
+h3{font-size:1.3rem}
+p{margin:0 0 1em}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 clamp(18px,4vw,40px)}
+.eyebrow{font-size:.75rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--verde);display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.eyebrow:before{content:"";width:26px;height:3px;background:var(--ambar);border-radius:2px}
+.lead{font-size:1.1rem;color:var(--cinza);max-width:68ch}
+section{padding:clamp(56px,8vw,104px) 0}
+section.alt{background:var(--areia)}
+section.dark{background:var(--verde-escuro);color:#fff}
+section.dark .eyebrow{color:var(--ambar)}
+section.dark .lead,section.dark p{color:rgba(255,255,255,.82)}
+.btn{display:inline-flex;align-items:center;white-space:nowrap;gap:10px;padding:14px 22px;border-radius:999px;font-weight:700;text-decoration:none;font-size:.95rem;transition:.2s;border:2px solid transparent;cursor:pointer;font-family:var(--sans)}
+.btn-primary{background:var(--ambar);color:var(--tinta)}
+.btn-primary:hover{background:#d98f05}
+.btn-outline{border-color:rgba(255,255,255,.55);color:#fff}
+.btn-outline:hover{background:rgba(255,255,255,.12)}
+.btn-green{background:var(--verde);color:#fff}
+.btn-green:hover{background:var(--verde-escuro)}
+.btn-ghost{border-color:var(--verde);color:var(--verde)}
+.btn-ghost:hover{background:var(--verde-tint)}
+.btn svg{width:18px;height:18px}
+
+/* header */
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--borda)}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:20px;height:72px}
+.nav .logo{flex:0 0 auto}.nav .logo img{height:44px;width:auto}
+.menu{display:flex;gap:4px;list-style:none;margin:0;padding:0}
+.menu>li{position:relative}
+.menu a,.menu button{display:block;white-space:nowrap;padding:10px 12px;font-weight:600;font-size:.92rem;color:var(--tinta);text-decoration:none;border-radius:10px;background:none;border:0;font-family:inherit;cursor:pointer}
+.menu a:hover,.menu button:hover{background:var(--verde-tint);color:var(--verde)}
+.menu .sub{display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--borda);border-radius:14px;padding:8px;min-width:230px;box-shadow:0 14px 34px rgba(0,0,0,.08);list-style:none;margin:0}
+.menu li:hover .sub,.menu li:focus-within .sub{display:block}
+.menu .sub a{font-weight:500;font-size:.9rem;padding:8px 12px}
+.nav .cta{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+@media (max-width:1240px){.nav .cta .btn{padding:12px 16px;font-size:.88rem}.nav .cta .btn .long{display:none}.menu a,.menu button{padding:10px 9px;font-size:.88rem}}
+.burger{display:none;background:none;border:0;padding:8px;cursor:pointer}
+.burger span{display:block;width:24px;height:2px;background:var(--tinta);margin:5px 0}
+.mobile{display:none;background:#fff;border-top:1px solid var(--borda);padding:12px 0 20px}
+.mobile a{display:block;padding:10px 0;text-decoration:none;color:var(--tinta);font-weight:600;border-bottom:1px solid var(--borda)}
+.mobile small{display:block;margin:14px 0 4px;color:var(--verde);font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:.7rem}
+.mobile.open{display:block}
+
+/* hero */
+.hero{position:relative;min-height:min(92vh,860px);display:flex;align-items:center;color:#fff;overflow:hidden;background:var(--verde-escuro)}
+.hero img.bg{position:absolute;top:0;left:18%;width:82%;height:100%;object-fit:cover;object-position:34% 64%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 26%);mask-image:linear-gradient(90deg,transparent 0,#000 26%)}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,45,32,.92) 0%,rgba(0,45,32,.72) 34%,rgba(0,45,32,.18) 62%,rgba(0,45,32,0) 100%)}
+.hero .wrap{position:relative;z-index:2;padding-top:24px;padding-bottom:72px;width:100%}
+.hero .tag{display:inline-flex;gap:8px;align-items:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);padding:8px 14px;border-radius:999px;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:22px}
+.hero .tag i{width:8px;height:8px;background:var(--ambar);border-radius:50%}
+.hero h1{max-width:11ch;font-size:clamp(2.8rem,6.6vw,5.4rem);line-height:1.02;margin-bottom:18px}
+.hero h1 em{font-style:italic;color:var(--ambar)}
+.hero p{max-width:34ch;font-size:clamp(1.05rem,1.5vw,1.3rem);color:rgba(255,255,255,.9);line-height:1.5}
+.hero .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
+.hero .scroll{position:absolute;left:clamp(18px,4vw,40px);bottom:18px;z-index:2;font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.75);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:6px}
+.hero .scroll:after{content:"";width:1px;height:26px;background:rgba(255,255,255,.6)}
+.facts{background:var(--verde);color:#fff}
+.facts .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding-top:22px;padding-bottom:22px}
+.facts div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.facts strong{font-family:var(--serif);font-size:1.5rem;font-weight:600;white-space:nowrap}
+.facts span{font-size:.82rem;color:rgba(255,255,255,.85)}
+
+/* quote */
+.quote{text-align:center;padding:48px 0;background:var(--verde-tint)}
+.quote blockquote{margin:0 auto;max-width:60ch;font-family:var(--serif);font-size:clamp(1.2rem,2.2vw,1.6rem);font-style:italic;color:var(--verde-escuro);line-height:1.4}
+.quote cite{display:block;margin-top:14px;font-style:normal;font-family:var(--sans);font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;color:var(--verde);font-weight:800}
+
+/* cards */
+.grid{display:grid;gap:22px}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.card{background:#fff;border:1px solid var(--borda);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.04)}
+.card .media{aspect-ratio:4/3;overflow:hidden;background:var(--areia)}
+.card .media img{width:100%;height:100%;object-fit:cover;transition:.5s}
+.card:hover .media img{transform:scale(1.04)}
+.card .body{padding:22px 24px 24px;display:flex;flex-direction:column;gap:8px;flex:1}
+.card .body .k{font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--ambar)}
+.card .body h3{margin:0}
+.card .body p{color:var(--cinza);margin:0;font-size:.95rem}
+.card .body .foot{margin-top:auto;padding-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.card .body .foot a.more{font-weight:700;font-size:.9rem;text-decoration:none}
+
+/* details (ler mais) */
+details.more{border-top:1px solid var(--borda);margin-top:14px;padding-top:8px}
+details.more summary{cursor:pointer;font-weight:700;color:var(--verde);list-style:none;display:flex;align-items:center;gap:8px;font-size:.9rem;padding:6px 0}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary:before{content:"+";display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--verde-tint);font-weight:800}
+details.more[open] summary:before{content:"–"}
+details.more .inner{padding:8px 0 4px;color:var(--cinza);font-size:.95rem}
+details.more .inner p,details.more .inner li{color:var(--cinza)}
+details.more .inner ul{padding-left:18px;margin:0 0 1em}
+details.more .inner strong{color:var(--tinta)}
+details.more .inner h4{font-family:var(--sans);font-size:.95rem;font-weight:800;margin:14px 0 6px;color:var(--tinta)}
+
+/* split */
+.split{display:grid;grid-template-columns:1.05fr 1fr;gap:clamp(28px,5vw,64px);align-items:center}
+.split .pic{border-radius:var(--radius);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.12)}
+.split .pic img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
+.pill-list{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0;padding:0;list-style:none}
+.pill-list li{background:var(--areia);border:1px solid var(--borda);padding:7px 13px;border-radius:999px;font-size:.85rem;font-weight:600}
+section.dark .pill-list li{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2)}
+
+/* tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:26px 0 18px}
+.tabs button{border:1px solid var(--borda);background:#fff;padding:10px 16px;border-radius:999px;font-weight:700;font-family:inherit;cursor:pointer;font-size:.9rem;display:flex;align-items:center;gap:8px}
+.tabs button img{width:26px;height:26px;object-fit:contain}
+.tabs button[aria-selected=true]{background:var(--verde);color:#fff;border-color:var(--verde)}
+.panel{display:none;background:#fff;border:1px solid var(--borda);border-radius:var(--radius);padding:26px 28px}
+.panel.active{display:block}
+.panel .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:12px}
+.panel .phase{background:var(--areia);border-radius:14px;padding:16px 18px;font-size:.9rem}
+.panel .phase strong{display:block;margin-bottom:6px;color:var(--verde-escuro)}
+.panel .phase ul{padding-left:16px;margin:0;color:var(--cinza)}
+
+/* structure list */
+.struct{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.struct article{background:#fff;border:1px solid var(--borda);border-radius:14px;padding:18px 20px;border-left:4px solid var(--ambar)}
+.struct article h4{font-family:var(--sans);font-size:1rem;margin:0 0 4px;font-weight:800}
+.struct article p{margin:0;color:var(--cinza);font-size:.9rem}
+.gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:28px}
+.gallery img{aspect-ratio:1;object-fit:cover;border-radius:12px;width:100%}
+
+/* team */
+.team{display:grid;grid-template-columns:repeat(6,1fr);gap:18px}
+.team figure{margin:0;text-align:center}
+.team img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:50%;border:4px solid #fff;box-shadow:0 10px 24px rgba(0,0,0,.1)}
+.team figcaption{margin-top:12px;font-size:.88rem;line-height:1.35}
+.team figcaption strong{display:block;font-weight:800}
+.team figcaption span{color:var(--cinza);font-size:.8rem}
+
+/* contact */
+.contact{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4vw,48px)}
+.contact .info ul{list-style:none;padding:0;margin:18px 0 0}
+.contact .info li{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--borda)}
+.contact .info li b{min-width:92px;font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--verde);padding-top:4px}
+.contact iframe{width:100%;height:100%;min-height:360px;border:0;border-radius:var(--radius)}
+form{background:#fff;border:1px solid var(--borda);border-radius:var(--radius);padding:26px}
+form label{display:block;font-size:.8rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:12px 0 6px}
+form input,form textarea,form select{width:100%;padding:12px 14px;border:1px solid var(--borda);border-radius:12px;font:inherit;background:var(--areia)}
+form textarea{min-height:110px;resize:vertical}
+.social{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.social a{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--borda);padding:9px 14px;border-radius:999px;text-decoration:none;font-weight:700;font-size:.85rem;color:var(--tinta)}
+.social a:hover{border-color:var(--verde);color:var(--verde)}
+
+/* youtube */
+.yt{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}
+.yt .frame{aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25);background:#000}
+.yt iframe{width:100%;height:100%;border:0}
+
+footer{background:var(--tinta);color:rgba(255,255,255,.75);padding:48px 0 28px;font-size:.9rem}
+footer .cols{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:28px}
+footer h5{color:#fff;font-family:var(--sans);font-size:.75rem;letter-spacing:.16em;text-transform:uppercase;margin:0 0 12px}
+footer a{color:rgba(255,255,255,.75);text-decoration:none;display:block;padding:3px 0}
+footer a:hover{color:var(--ambar)}
+footer .base{margin-top:36px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:.8rem}
+
+/* whatsapp fab */
+.fab{position:fixed;right:22px;bottom:22px;z-index:60;background:#25D366;color:#fff;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;box-shadow:0 12px 30px rgba(0,0,0,.25);text-decoration:none}
+.fab svg{width:30px;height:30px}
+
+/* proto notice */
+.proto{background:var(--tinta);color:#fff;font-size:.75rem;text-align:center;padding:7px 12px;letter-spacing:.04em}
+.proto b{color:var(--ambar)}.proto small{display:inline}
+@media (max-width:1023px){.proto small{display:none}}
+
+@media (max-width:1024px){
+  .grid-3,.grid-4{grid-template-columns:repeat(2,1fr)}
+  .team{grid-template-columns:repeat(4,1fr)}
+  footer .cols{grid-template-columns:1fr 1fr}
+}
+@media (max-width:1023px){
+  .menu,.nav .cta .btn{display:none}
+  .burger{display:block}
+  .nav{height:64px}.nav .logo img{height:38px}
+  .split,.contact,.yt{grid-template-columns:1fr}
+  .hero{min-height:0;display:block}
+  .hero img.bg{position:static;width:100%;height:min(58vh,440px);left:0;object-position:46% 58%;-webkit-mask-image:none;mask-image:none}
+  .hero:after{display:none}
+  .hero .wrap{padding-top:26px;padding-bottom:30px}
+  .hero .tag{margin-bottom:14px}
+  .hero h1{max-width:10ch;font-size:2.6rem}
+  .hero p{font-size:1rem}
+  .hero .actions{margin-top:18px}
+  .hero .scroll{display:none}
+  .facts .wrap{grid-template-columns:1fr 1fr;gap:10px 16px;padding-top:16px;padding-bottom:16px}
+  .facts strong{font-size:1.2rem}.facts span{font-size:.74rem}
+  section{padding:44px 0}
+  .lead{font-size:1rem}
+  /* carrosséis: menos rolagem vertical */
+  .grid-3,.grid-2{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;padding:4px 4px 18px;margin:0 -4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .grid-3::-webkit-scrollbar,.grid-2::-webkit-scrollbar,.team::-webkit-scrollbar{display:none}
+  .grid-3>*,.grid-2>*{flex:0 0 84%;scroll-snap-align:start}
+  .card .media{aspect-ratio:16/10}
+  .card .body{padding:18px 18px 20px}
+  .team{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;padding-bottom:12px;scrollbar-width:none}
+  .team figure{flex:0 0 120px;scroll-snap-align:start}
+  .team figcaption{font-size:.8rem}
+  .struct{grid-template-columns:1fr;gap:10px}
+  .struct article{padding:14px 16px}
+  .gallery{grid-template-columns:repeat(2,1fr);gap:8px;margin-top:18px}
+  .panel{padding:18px}
+  .panel .phases{grid-template-columns:1fr}
+  .tabs{gap:6px;overflow-x:auto;flex-wrap:nowrap;padding-bottom:6px;scrollbar-width:none}
+  .tabs button{white-space:nowrap;flex:0 0 auto}
+  footer .cols{grid-template-columns:1fr 1fr;gap:20px}
+  .fab{width:52px;height:52px;right:16px;bottom:16px}
+  .hint{display:block;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--cinza);margin:10px 0 0}
+}
+@media (max-width:600px){
+  footer .cols{grid-template-columns:1fr}
+}
+.hint{display:none}
+</style>
+</head>
+<body>
+
+<div class="proto">Protótipo navegável · <b>Pacote Básico</b><small> · proposta de novo site para a Conexão Equestre · conteúdo integral do site atual reorganizado</small></div>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#inicio"><img src="img/logo.png" alt="Conexão Equestre"></a>
+    <ul class="menu">
+      <li><button type="button">A Hípica</button>
+        <ul class="sub">
+          <li><a href="#estrutura">Estrutura</a></li>
+          <li><a href="#filosofia">Filosofia</a></li>
+          <li><a href="#terra">Projeto Terra</a></li>
+          <li><a href="#equipe">Equipe</a></li>
+          <li><a href="#eventos">Eventos &amp; locações</a></li>
+          <li><a href="#parceiros">Parceiros</a></li>
+        </ul>
+      </li>
+      <li><button type="button">Para pessoas</button>
+        <ul class="sub">
+          <li><a href="#passeio">Passeio a cavalo</a></li>
+          <li><a href="#escola">Escola de Equitação</a></li>
+          <li><a href="#ludica">Equitação Lúdica</a></li>
+          <li><a href="#horsemanship">Natural Horsemanship</a></li>
+          <li><a href="#arquearia">Arquearia</a></li>
+          <li><a href="#cursos">Cursos &amp; formações</a></li>
+          <li><a href="#equoterapia">Equoterapia</a></li>
+        </ul>
+      </li>
+      <li><button type="button">Para cavalos</button>
+        <ul class="sub">
+          <li><a href="#hospedagem">Hospedagem</a></li>
+          <li><a href="#doma">Doma Natural</a></li>
+          <li><a href="#servicos">Treinamento &amp; serviços</a></li>
+        </ul>
+      </li>
+      <li><a href="#contato">Contato</a></li>
+    </ul>
+    <div class="cta">
+      <a class="btn btn-green" href="https://wa.me/5511971883113" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.2-.2-.2-.5-.4Z"/></svg>
+        <span class="long">Agende pelo&nbsp;</span>WhatsApp
+      </a>
+      <button class="burger" aria-label="Abrir menu" onclick="document.getElementById('mobile').classList.toggle('open')"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <nav id="mobile" class="mobile wrap">
+    <small>A Hípica</small>
+    <a href="#estrutura">Estrutura</a><a href="#filosofia">Filosofia</a><a href="#terra">Projeto Terra</a><a href="#equipe">Equipe</a><a href="#eventos">Eventos &amp; locações</a><a href="#parceiros">Parceiros</a>
+    <small>Para pessoas</small>
+    <a href="#passeio">Passeio a cavalo</a><a href="#escola">Escola de Equitação</a><a href="#ludica">Equitação Lúdica</a><a href="#horsemanship">Natural Horsemanship</a><a href="#arquearia">Arquearia</a><a href="#cursos">Cursos &amp; formações</a><a href="#equoterapia">Equoterapia</a>
+    <small>Para cavalos</small>
+    <a href="#hospedagem">Hospedagem</a><a href="#doma">Doma Natural</a><a href="#servicos">Treinamento &amp; serviços</a>
+    <small>Fale conosco</small>
+    <a href="#contato">Contato</a><a href="https://wa.me/5511971883113" target="_blank" rel="noopener">WhatsApp · 11 97188-3113</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero" id="inicio" style="padding:0">
+  <img class="bg" src="img/homership.jpeg" alt="Aluna e cavalo na Conexão Equestre" fetchpriority="high">
+  <div class="wrap">
+    <span class="tag"><i></i> Centro hípico · Bragança Paulista</span>
+    <h1>Venha sentir essa <em>Conexão</em></h1>
+    <p>Passeios, escola de equitação, cursos e hospedagem de cavalos, a 50 minutos de São Paulo.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://wa.me/5511971883113" target="_blank" rel="noopener">Agendar pelo WhatsApp</a>
+      <a class="btn btn-outline" href="#pessoas">Conhecer os cursos</a>
+    </div>
+  </div>
+  <a class="scroll" href="#pessoas">Role</a>
+</section>
+<div class="facts">
+  <div class="wrap">
+    <div><strong>50 min</strong><span>de São Paulo, pela Fernão Dias</span></div>
+    <div><strong>86 mil m²</strong><span>de área verde na Mantiqueira</span></div>
+    <div><strong>Desde 2012</strong><span>cuidando de cavalos e pessoas</span></div>
+    <div><strong>Padrão FEI</strong><span>pistas, picadeiro e baias</span></div>
+  </div>
+</div>
+
+<div class="quote">
+  <div class="wrap">
+    <blockquote>“Aqui homem e animal fundem-se num só ser de tal forma que não sei se saberia dizer qual dos dois está efetivamente adestrando o outro.”<cite>Goethe</cite></blockquote>
+  </div>
+</div>
+
+<!-- PARA PESSOAS -->
+<section id="pessoas">
+  <div class="wrap">
+    <p class="eyebrow">Para pessoas</p>
+    <h2>Nossos cursos e experiências</h2>
+    <p class="lead">Todos os cavalos da Conexão Equestre são treinados e tratados dentro dos princípios do Natural Horsemanship. Inteligentes e versáteis, servem tanto a quem nunca teve contato com cavalos quanto a quem já tem experiência.</p>
+
+    <span class="hint">Deslize para ver todos →</span>
+    <div class="grid grid-3" style="margin-top:34px">
+
+      <article class="card" id="passeio">
+        <div class="media"><img src="img/passeio2.jpg" alt="Passeio a cavalo"></div>
+        <div class="body">
+          <span class="k">Todas as idades</span>
+          <h3>Passeio a cavalo</h3>
+          <p>Respirar ar puro, contemplar a natureza, sentir o vento no rosto. Mais do que um lazer, cavalgar tem benefícios terapêuticos e físicos. Excelente programa para casais, famílias e grupos de amigos.</p>
+          <details class="more"><summary>Como funciona o passeio</summary><div class="inner">
+            <p>Se você está precisando sair da rotina e recarregar as energias, venha experimentar o passeio a cavalo na Conexão Equestre! Cavalgar é uma atividade para todas as idades: recebemos pessoas de todos os níveis de experiência e faixa etária. Quem já monta ou faz aulas de equitação também pode agendar uma cavalgada para conhecer nossos cavalos e estrutura, e usar as técnicas aprendidas em ambiente externo, com cavalos fortes e bem treinados.</p>
+            <p>Oferecemos todo o equipamento necessário para garantir conforto e segurança. Antes de sair, um guia especializado passa as instruções básicas de condução e trato com os cavalos, indica o animal mais adequado ao perfil de cada pessoa e acompanha todo o percurso, entre as montanhas da Serra da Mantiqueira. Temos cavalos de diversos portes e personalidades, bem como pôneis para crianças pequenas.</p>
+            <p><em>Existe uma liberdade que somente em cima do cavalo você pode sentir. Venha viver essa Conexão!</em></p>
+          </div></details>
+          <div class="foot"><a class="btn btn-green" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20agendar%20um%20passeio%20a%20cavalo." target="_blank" rel="noopener">Agendar passeio</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="escola-card">
+        <div class="media"><img src="img/equipe.jpg" alt="Aula na Escola de Equitação"></div>
+        <div class="body">
+          <span class="k">Salto · Enduro · Eq. de Trabalho · Adestramento</span>
+          <h3>Escola de Equitação</h3>
+          <p>Equipe capacitada para todas as idades, objetivos e níveis. Método fundamentado na Escola Acadêmica da Equitação Clássica, na Escola da Leveza de Philippe Karl e no Natural Horsemanship, com avaliação periódica personalizada.</p>
+          <div class="foot"><a class="more" href="#escola">Ver percurso e modalidades →</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="ludica">
+        <div class="media"><img src="img/homepick.jpg" alt="Equitação Lúdica"></div>
+        <div class="body">
+          <span class="k">Crianças de 2 a 7 anos</span>
+          <h3>Equitação Lúdica</h3>
+          <p>Conexão com os cavalos através de estímulos naturais, criativos e sensoriais. Ao ar livre e em contato com a natureza, as crianças se divertem enquanto alimentam, cuidam e montam, desenvolvendo respeito e confiança.</p>
+          <details class="more"><summary>Sobre as aulas</summary><div class="inner">
+            <p>A parceria entre o cavalo e o brincar é especialmente benéfica para crianças nestas idades, quando estão em formação todas as dimensões do desenvolvimento infantil. As aulas despertam novas percepções de mundo.</p>
+            <p><strong>Aula individual · 40 minutos.</strong> A criança está sempre acompanhada por dois cuidadores: uma pessoa de apoio e uma profissional multidisciplinar (capacitada em psicologia, pedagogia e equitação), além de pônei manso e treinado para garantir segurança completa. De forma lúdica, aprendem a alimentar, escovar, dar banho, encilhar e, por fim, montar. A instrutora avalia constantemente o desenvolvimento e indica os exercícios de hipismo mais adequados, personalizando as aulas.</p>
+            <p><strong>Instrutora:</strong> Sarah Arruda, amazona, professora de equitação e estudante de psicologia.</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20informa%C3%A7%C3%B5es%20sobre%20a%20Equita%C3%A7%C3%A3o%20L%C3%BAdica." target="_blank" rel="noopener">Pedir informações</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="horsemanship">
+        <div class="media"><img src="img/homership.jpeg" alt="Natural Horsemanship"></div>
+        <div class="body">
+          <span class="k">Formação em 3 módulos</span>
+          <h3>Natural Horsemanship</h3>
+          <p>Um programa para conectar pessoas e cavalos através do ensino da equitação e do manejo, organizado por Kether van Prehn Arruda a partir do horsemanship e da escola clássica Acadêmica. Certificação de Horseman ou Horsewoman ao concluir os três módulos.</p>
+          <details class="more"><summary>Módulos, público e investimento</summary><div class="inner">
+            <p>Independente do nível de equitação da pessoa e do seu cavalo, passar por esses três módulos vai melhorar a comunicação, a parceria e possivelmente a equitação do conjunto, seja na atividade recreativa ou competitiva, amadora ou profissional. Os módulos acontecem sempre aos finais de semana, distribuídos em 6 meses, um cavalo por pessoa.</p>
+            <h4>Quem pode se beneficiar</h4>
+            <ul><li>Tratadores, veterinários, gestores e proprietários de centros equestres, estudiosos da etologia equina (o Módulo 1 já basta para quem não vai montar).</li><li>Profissionais do cavalo que queiram aprimorar conhecimento e técnicas funcionais.</li><li>Pessoas que gostam de cavalos e querem entender a linguagem para se comunicar melhor.</li><li>Quem não está entendendo as reações do seu cavalo.</li><li>Quem quer se desenvolver enquanto pessoa. Menores só com autorização dos pais.</li></ul>
+            <h4>Módulo 1 · Convidando o selvagem a uma parceria · 16 h</h4>
+            <ul><li>Palestra e demonstração de sensibilização; conexão em liberdade no redondel, equilíbrio entre respeito e confiança.</li><li>Manejo, limpeza e amarração; conexão com corda e cabresto; habituação com bandeira e movimentação.</li><li>Desenvolver autoconfiança e respeito; superação de desafios juntos.</li></ul>
+            <h4>Módulo 2 · Permissão para conduzir toda essa força · 16 h</h4>
+            <ul><li>Aprimorando a conexão ao cabresto do solo; manejo e cuidados; uso da varinha como comunicação.</li><li>Construção da equitação: volteio ao passo, trote e galope; início da comunicação montado em pelo com cabresto e rédeas.</li><li>Encilhar e desencilhar respeitando as sensações do cavalo; montaria em sela e cavalgada em ambiente externo.</li></ul>
+            <h4>Módulo 3 · Refinando e potencializando o centauro · 24 h</h4>
+            <ul><li>A partir da escolarização construída nos módulos anteriores, busca de refinamento e início das flexões.</li><li>Do solo e montados: ceder à perna, espádua a dentro, garupa a dentro.</li></ul>
+            <h4>Observações</h4>
+            <ul><li>Todos os módulos têm certificação da Conexão Equestre; quem faz os 3 recebe a Certificação de Horseman/Horsewoman.</li><li>Os módulos devem ser concluídos em até 12 meses e ocorrem duas vezes ao ano.</li><li>Matrícula nos três módulos: 15% de desconto e 10 meses sem juros.</li><li>Cavalo próprio: exames AIE, mormo negativo e GTA de retorno; trazer ração e feno. Há cavalos da escola em número limitado.</li></ul>
+            <p><strong>Investimento (última referência publicada):</strong> Módulo 1 R$ 1.020 · Módulo 2 R$ 1.020 · Módulo 3 R$ 1.530 · pacote com 15% = R$ 3.034,50. Confirme datas e valores atuais pelo WhatsApp.</p>
+            <p><em>“Sempre que me ajusto para entender um cavalo, tenho que olhar pra dentro de mim mesmo; esse processo se chama autoconhecimento.”</em> — Kether P. Arruda</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20saber%20as%20pr%C3%B3ximas%20datas%20do%20Natural%20Horsemanship." target="_blank" rel="noopener">Próximas datas</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="arquearia">
+        <div class="media"><img src="img/eventos16.jpg" alt="Arquearia e arquearia montada"></div>
+        <div class="body">
+          <span class="k">Aulas regulares aos domingos</span>
+          <h3>Arquearia e Arquearia Montada</h3>
+          <p>Atirar flechas em um alvo enquanto cavalga: uma prática milenar que ressurge como esporte, lazer e autoconhecimento. Não é necessária experiência prévia em equitação ou arquearia.</p>
+          <details class="more"><summary>Objetivos, horários e instrutores</summary><div class="inner">
+            <p>Tradicionalmente utilizada por culturas intimamente ligadas ao cavalo, dos indígenas americanos aos impérios asiáticos, a arquearia montada deixou de ser ferramenta de guerra e hoje é prática esportiva, de lazer e sobretudo de autoconhecimento. As aulas são indicadas a todas as pessoas que buscam a prática esportiva aliada ao prazer do contato com os cavalos e a natureza.</p>
+            <p><strong>Objetivos:</strong> postura ereta, respiração consciente, força, coordenação motora, orientação espacial, liderança, concentração e objetividade.</p>
+            <p><strong>Horários:</strong> aos domingos, aulas de arquearia com Fernando Del Santo e Gabriel Abe, das 10h às 12h e das 15h às 17h. Outros horários sob consulta.</p>
+            <h4>Aulas de Arquearia (a pé)</h4>
+            <p>Além de divertida e relaxante, é uma meditação ativa, com exercícios que nos colocam no estado de presença através da respiração consciente. Trabalha foco, concentração e determinação, autopercepção e sensibilidade. Aulas individuais ou em grupo, 1h30. Benefícios: foco e concentração, força física e coordenação, disciplina, percepção emocional, orientação espacial e equilíbrio.</p>
+            <p><strong>Instrutor:</strong> Fernando Del Santo, mestre em Artes Marciais Filosóficas com 30 anos de experiência, referência nacional no manejo e confecção de arcos e flechas clássicos japoneses.</p>
+            <p>Também realizamos o Workshop de Arquearia Montada e o Curso Internacional de Formação de Instrutores de Arquearia Montada. Kether Arruda é Campeão Brasileiro de Arquearia Montada 2025 e medalhista no Mundial 2025 (EUA).</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="mailto:contato@conexaoequestre.com.br?subject=Arquearia%20-%20valores">Valores por e-mail</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="cursos">
+        <div class="media"><img src="img/modulo-1.jpeg" alt="Cursos e formações"></div>
+        <div class="body">
+          <span class="k">Formações e clínicas</span>
+          <h3>Cursos &amp; formações</h3>
+          <p>Curso de Doma Natural, Ensino do Equino de Equoterapia, Curso Básico de Equoterapia Pegasus, Clínica de Equitação Acadêmica e workshops. Datas divulgadas no WhatsApp e nas redes.</p>
+          <details class="more"><summary>Ver os cursos</summary><div class="inner">
+            <h4>Curso de Doma Natural</h4>
+            <p>Para proprietários, amantes e profissionais do cavalo. Os participantes aprendem conceitos teóricos sobre o bom relacionamento com os cavalos e domam um potro xucro (próprio ou cedido pela Conexão), passando por alimentação, encilhamento e cabresteamento até as técnicas mais modernas. Método desenvolvido e sistematizado por Kether Arruda, com a visão de psicólogo humanista e aprendizados com Oscar Scarpati, Monty Roberts, John Ensign e Eduardo Borba. Há cota de vagas para alunos ouvintes com valor reduzido.</p>
+            <h4>Ensino do Equino de Equoterapia</h4>
+            <p>Para profissionais que atuam ou pretendem atuar em equipe multidisciplinar de equoterapia. Aborda exercícios diários de manejo, alongamento, aquecimento, treino, trabalho e lazer com base no Horsemanship e na Escola da Leveza. Instrutor: Felipe Jorge da Silva, médico veterinário, equitador e equoterapeuta. Práticas: primeiro contato, cabresto e condução, trabalho em liberdade, habituação, guia longa, charreteamento, volteio, guia média e bridão.</p>
+            <h4>Curso Básico de Equoterapia Pegasus</h4>
+            <p>Realizado anualmente pelo Instituto de Equoterapia Pegasus e a ANDE-Brasil, em parceria com a Conexão Equestre. Integra fundamentos científicos sobre aprendizagem, reforço positivo, emoções e bem-estar com atividades práticas adaptadas ao nível de cada participante: tutores, profissionais, veterinários e treinadores. A 19ª edição está programada para 2026.</p>
+            <h4>Clínicas e workshops</h4>
+            <p>Clínica de Equitação Acadêmica com Ndzinji Pontes, Workshop de Arquearia Montada, Curso Internacional de Formação de Instrutores de Arquearia Montada, Workshop “Construindo confiança e cooperação” e “Conexão com Cavalos”.</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20saber%20os%20pr%C3%B3ximos%20cursos." target="_blank" rel="noopener">Próximos cursos</a></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ESCOLA -->
+<section class="alt" id="escola">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Escola de Equitação</p>
+        <h2>Um percurso de aprendizagem, do primeiro contato à alta escola</h2>
+        <p class="lead">Fundada em 2011, nossa escola atende público de todas as idades, objetivos e níveis. A premissa básica é o bem-estar animal: trabalhamos os cavalos com base nos seus instintos naturais e na sua forma de comunicação, pelas técnicas do Natural Horsemanship.</p>
+        <details class="more"><summary>Metodologia de ensino</summary><div class="inner">
+          <p>A relação construída entre pessoas deve ser feita com comprometimento e empatia, garantindo uma rede de confiança entre cavalo, cavaleiro/amazona e instrutor, para que todos tenham um aprendizado amplo sobre o mundo dos cavalos e se sintam seguros durante todo o processo. Para que isso ocorra de forma natural, gradativa e consistente, desenvolvemos uma forma de ensino que auxilia o desenvolvimento dos alunos desde a equitação lúdica até o nível de treinadores de cavalos e instrutores de equitação, com avaliação periódica personalizada que apoia os instrutores no planejamento das aulas e na preparação para competições internas e externas.</p>
+        </div></details>
+        <ul class="pill-list"><li>Filiados à Federação Paulista de Hipismo</li><li>Centro autorizado ABET</li><li>Representantes da Escola da Leveza no Brasil</li><li>Aulas de 50 minutos</li></ul>
+      </div>
+      <div class="pic"><img src="img/eventos18.jpg" alt="Aula de salto no picadeiro coberto"></div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Percurso de aprendizagem">
+      <button role="tab" aria-selected="true" data-tab="t1">1 · Lúdica · unicórnio</button>
+      <button role="tab" aria-selected="false" data-tab="t2"><img src="img/pegaus-original-600x600.png" alt="">2 · Elementar · pegasus</button>
+      <button role="tab" aria-selected="false" data-tab="t3"><img src="img/amazona-original.png" alt="">3 · Intermediária · hipólita</button>
+      <button role="tab" aria-selected="false" data-tab="t4"><img src="img/quiron-original.png" alt="">4 · Superior · quíron</button>
+      <button role="tab" aria-selected="false" data-tab="t5">Modalidades</button>
+    </div>
+
+    <div class="panel active" id="t1">
+      <h3>Equitação Lúdica = unicórnio</h3>
+      <p>Aproximação dos alunos ao mundo dos cavalos, auxiliando de forma divertida no desenvolvimento psicomotor, de equilíbrio e cognitivo, além de noções de relação com o outro e com a natureza.</p>
+      <div class="phases">
+        <div class="phase"><strong>Fase 1 · 2 a 3 anos</strong><ul><li>Identificar o cavalo no qual faz aula</li><li>Reconhecer os materiais de escovação</li><li>Equilibrar-se sozinha na manta em diferentes posições</li><li>Reconhecer a alimentação e saber alimentar</li><li>Nomear partes elementares do cavalo</li></ul></div>
+        <div class="phase"><strong>Fase 2 · 4 a 5 anos</strong><ul><li>Identificar comportamentos (orelhas, espantar moscas, bocejos, relinchos)</li><li>Escovar e conduzir no cabresto</li><li>Reconhecer materiais de encilhamento</li><li>Conduzir ao passo sem auxílio direto em circuitos</li><li>Trote sentado na guia; nomear partes mais complexas</li></ul></div>
+        <div class="phase"><strong>Fase 3 · 6 a 7 anos</strong><ul><li>Encilhar sem auxílio direto</li><li>Conduzir até o picadeiro e montaria independente</li><li>Trote com autonomia</li><li>Iniciar o galope na guia</li></ul></div>
+      </div>
+    </div>
+    <div class="panel" id="t2">
+      <h3>Equitação Elementar = pegasus</h3>
+      <p>Ensinamentos fundamentais para a condução segura e controlada do cavalo, condição indispensável para qualquer atividade futura.</p>
+      <div class="phases">
+        <div class="phase"><strong>Fase 1</strong><ul><li>Entender andamentos e equilíbrio do cavalo no solo e montado</li><li>Identificar comportamentos</li><li>Aproximação, cabresto, manejo básico, encilhamento e montaria na manta de forma autônoma</li><li>Equilíbrio ao passo, trote e galope na manta, sem apoio para as mãos</li></ul></div>
+        <div class="phase"><strong>Fase 2</strong><ul><li>Reconhecer as principais embocaduras</li><li>Iniciar a condução montado</li><li>Uso das rédeas e da perna de impulsão ao passo, trote e galope, ainda na manta</li></ul></div>
+        <div class="phase"><strong>Fase 3</strong><ul><li>Perna de impulsão e de posição</li><li>Partidas ao galope e círculos de 20 m</li><li>Início da montaria em sela</li></ul></div>
+        <div class="phase"><strong>Fase 4</strong><ul><li>Passo, trote elevado e galope na sela</li><li>Conduzir nas três andaduras no exterior</li><li>Flexionamentos básicos (cedência à perna), controle de espádua e garupa</li></ul></div>
+      </div>
+    </div>
+    <div class="panel" id="t3">
+      <h3>Equitação Intermediária = hipólita</h3>
+      <p>Início da especialização. A partir da escolha da atividade pretendida, iniciam-se os exercícios aplicados. O ensino do adestramento é semelhante ao da equitação de trabalho até o nível 2.</p>
+      <div class="phases">
+        <div class="phase"><strong>Fase 1</strong><ul><li><b>Salto:</b> cavaletes de trote e galope; percurso “vara no chão”</li><li><b>Trabalho/Adestramento:</b> regras da reprise, obstáculos de Nível 1, saltar “x”</li><li><b>Enduro:</b> 3 andaduras no exterior, transições, regras da prova</li></ul></div>
+        <div class="phase"><strong>Fase 2</strong><ul><li><b>Salto:</b> ginásticas, percurso até 0,60 m, tipos de obstáculos</li><li><b>Trabalho/Adestramento:</b> transições galope–passo, altos, mudanças de mão; prova Nível 2</li><li><b>Enduro:</b> suspensão nas 3 andaduras; prova de 20 km</li></ul></div>
+        <div class="phase"><strong>Fase 3</strong><ul><li><b>Salto:</b> contagem de lances, percurso até 0,80 m</li><li><b>Trabalho/Adestramento:</b> laterais, meia pirueta ao passo, maneabilidade com uma mão</li><li><b>Enduro:</b> galope esporte, diagonal no ar; prova de 40 km</li></ul></div>
+        <div class="phase"><strong>Fase 4</strong><ul><li><b>Salto:</b> ginásticas complexas, percursos de 1 m adiante</li><li><b>Trabalho/Adestramento:</b> excelência em transições, cortes, laterais e trocas; prova Nível 3</li><li><b>Enduro:</b> prova de 80 km ou mais com autonomia</li></ul></div>
+      </div>
+    </div>
+    <div class="panel" id="t4">
+      <h3>Equitação Superior = quíron</h3>
+      <p>O aluno cria e desenvolve subsídios para preparar os seus próprios cavalos e se formar como treinador e instrutor. Os exercícios são realizados com alto nível de reunião e força, até os “Ares da Alta Escola”. É também o nível no qual os próprios treinadores e professores aprimoram constantemente o aprendizado e a prática.</p>
+    </div>
+    <div class="panel" id="t5">
+      <h3>Conheça as modalidades</h3>
+      <div class="phases">
+        <div class="phase"><strong>Salto</strong><p style="margin:0;font-size:.9rem;color:var(--cinza)">Percurso de 8 a 12 obstáculos até 1,60 m; modalidade olímpica e pioneira no Brasil. Desenvolve coragem, confiança, técnica e sintonia. Aulas de 50 min no picadeiro coberto ou na pista aberta, com manejo, alimentação, comportamento e preparação do cavalo. A partir da Elementar 2, o aluno pode competir na categoria Varas no Chão. Filiados à FPH; realizamos provas oficiais chanceladas pela FPH e Abhir.</p></div>
+        <div class="phase"><strong>Enduro</strong><p style="margin:0;font-size:.9rem;color:var(--cinza)">Percursos de 20 a 160 km em Velocidade Controlada ou Livre. Estamos na região com maior número de provas do estado, com trilhas variadas, florestas, aclives e declives, profissionais capacitados e cavalos experientes. Aulas de 50 min na pista aberta ou nas trilhas; treinamento para alunos, cavalos e proprietários.</p></div>
+        <div class="phase"><strong>Equitação de Trabalho</strong><p style="margin:0;font-size:.9rem;color:var(--cinza)">Vencer obstáculos que simulam o dia a dia do campo com eficiência e segurança; exige agilidade, entrosamento e equilíbrio. Aulas de 50 min; centro autorizado e filiado à ABET. Sediamos etapas do Campeonato Paulista e Brasileiro.</p></div>
+        <div class="phase"><strong>Adestramento / Dressage</strong><p style="margin:0;font-size:.9rem;color:var(--cinza)">A modalidade olímpica mais clássica: movimentos definidos pelo regulamento nas três andaduras, avaliados pela leveza. Seguimos a Escola da Leveza de Philippe Karl, da qual somos representantes no Brasil, tornando as ajudas mais leves e o conjunto mais unido.</p></div>
+      </div>
+      <p style="margin-top:18px"><a class="btn btn-green" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20agendar%20uma%20aula%20experimental." target="_blank" rel="noopener">Agende uma aula ou uma visita</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- PARA CAVALOS -->
+<section id="cavalos">
+  <div class="wrap">
+    <p class="eyebrow">Para cavalos</p>
+    <h2>Hospedagem, doma e treinamento</h2>
+    <p class="lead">O bem-estar dos cavalos é nossa prioridade. Manejo, acomodação e alimentação conforme os padrões da FEI e do Manual de Bem-Estar Equino, respeitando a individualidade, a saúde física e emocional de cada um.</p>
+
+    <span class="hint">Deslize para ver todos →</span>
+    <div class="grid grid-3" style="margin-top:34px">
+      <article class="card" id="hospedagem">
+        <div class="media"><img src="img/baias.jpg" alt="Baias da Conexão Equestre"></div>
+        <div class="body">
+          <span class="k">Estabulagem e férias para atletas</span>
+          <h3>Hospedagem de cavalos</h3>
+          <p>A melhor infraestrutura da região, a 50 minutos de São Paulo. Os cavalos pernoitam nas baias e de dia vão para os piquetes, com no mínimo 4 horas diárias soltos.</p>
+          <details class="more"><summary>O que está incluso</summary><div class="inner">
+            <ul>
+              <li>Baias individuais de 12 m², dispostas em círculo para favorecer a sociabilização, com cama de serragem, piso impermeável e portas de dois segmentos.</li>
+              <li>Acesso diário aos piquetes com capim Coast Cross; água fresca de poço artesiano em bebedouros automáticos.</li>
+              <li>Alimentação diária balanceada com feno e ração; escovação e higiene diária.</li>
+              <li>Área de banho com duchas; farmácia de primeiros socorros; quarto de sela junto às baias.</li>
+              <li>Acesso à pista aberta, picadeiro coberto e trilhas para proprietários montarem.</li>
+              <li>Segurança; equipe de manejo capacitada em Natural Horsemanship; atendimento veterinário; ferrageamento mensal.</li>
+              <li>Desconto em qualquer um dos nossos cursos equestres.</li>
+            </ul>
+            <p><strong>Opcional:</strong> programa de treinamento ou manutenção de trabalho conforme os objetivos do proprietário. <strong>Extra:</strong> vacinas, medicamentos, vermífugos e suplementos.</p>
+            <p>Castrados ficam com outros cavalos previamente selecionados para convívio harmonioso; inteiros ficam em piquetes individuais, dentro do possível com vista a outros animais. A estadia no piquete é fundamental para cavalos de enduro, potros, éguas prenhas e, cada vez mais, cavalos de salto e equitação de trabalho. Também oferecemos hospedagem de férias para cavalos de esporte, com opção de treinamento de horsemanship durante a estadia.</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-green" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20um%20or%C3%A7amento%20de%20hospedagem%20para%20meu%20cavalo." target="_blank" rel="noopener">Pedir orçamento</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="doma">
+        <div class="media"><img src="img/piquetes-2.jpg" alt="Doma natural"></div>
+        <div class="body">
+          <span class="k">Iniciação de potros · recuperação</span>
+          <h3>Doma Natural</h3>
+          <p>Metodologia totalmente não violenta, a partir da etologia e da filosofia do Natural Horsemanship. Especializados na iniciação de potros e na recuperação de cavalos traumatizados ou com problemas comportamentais.</p>
+          <details class="more"><summary>Como funciona</summary><div class="inner">
+            <p>Embora tenham um instinto comum à espécie, os cavalos têm individualidade; por isso a doma é personalizada. O cavalo é quem aceita o homem como seu líder: respeitamos seus instintos para ganhar sua confiança, sem dor e sem força. O cavalo sai condicionado a obedecer aos comandos, pronto física e emocionalmente, mais confiante e confiável.</p>
+            <p><strong>Iniciação de potros:</strong> a partir de 3 anos, processo de no mínimo três meses, analisando o cavalo nos âmbitos físico (conformação, musculatura, capacidade aeróbica), cognitivo (linguagem, condicionamento mental, sinais da equitação) e emocional (experiências anteriores, instinto de preservação).</p>
+            <p><strong>O cavalo sai apto a:</strong> andar ao passo, trote e galope; transições; direcionamento, recuo e paradas ao comando de assento e voz; permitir-se ser montado e permanecer estático; obediência ao cabresto. E aos cuidados: ser escovado em todo o corpo, tomar banho com ducha, entregar as patas, ser ferrageado e encilhado sem resistência, dormir em baia, ser pego no piquete sem ser encurralado e embarcar em trailer.</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20informa%C3%A7%C3%B5es%20sobre%20Doma%20Natural." target="_blank" rel="noopener">Falar sobre meu cavalo</a></div>
+        </div>
+      </article>
+
+      <article class="card" id="servicos">
+        <div class="media"><img src="img/eventos14.jpg" alt="Treinamento de cavalos"></div>
+        <div class="body">
+          <span class="k">Salto · Enduro · Eq. de Trabalho · Adestramento</span>
+          <h3>Treinamento &amp; serviços</h3>
+          <p>Os melhores profissionais para desenvolver as capacidades físicas e psicológicas do seu cavalo de esporte, corrigir comportamentos e manter a performance.</p>
+          <details class="more"><summary>Todos os serviços</summary><div class="inner">
+            <h4>Correção de comportamento</h4>
+            <p>Refugar, empinar, disparar, morder, não se deixar ferrar, encilhar, montar ou encabrestar, rejeição à embocadura, vícios de treinamento. Diagnóstico da origem dos gatilhos, recuperação conforme o Natural Horsemanship e orientação ao proprietário para prevenir problemas futuros.</p>
+            <h4>Treinamento para esportes</h4>
+            <p>Para equitadores e proprietários que precisam desenvolver o cavalo em salto, enduro, equitação de trabalho e adestramento.</p>
+            <h4>Manutenção (trabalho)</h4>
+            <p>Programa específico para manter o cavalo nas condições ideais, avaliando aspectos físicos, cognitivos e emocionais. De 1 a 5 dias de treino por semana.</p>
+            <h4>Consultoria</h4>
+            <p>Mais de 20 anos em fazendas e centros equestres: administrativo, manejo etológico, sustentabilidade, treinamento, marketing e concepção de estrutura (pistas, picadeiro, iluminação, baias e piquetes).</p>
+            <h4>Capacitação e treinamentos</h4>
+            <p>Experiências individuais e para grupos corporativos usando a relação com os cavalos: liderança, congruência na comunicação e integração de times. Capacitação de colaboradores de centros equestres, no local ou na nossa sede.</p>
+          </div></details>
+          <div class="foot"><a class="btn btn-ghost" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20informa%C3%A7%C3%B5es%20sobre%20treinamento%20de%20cavalos." target="_blank" rel="noopener">Pedir informações</a></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ESTRUTURA -->
+<section class="alt" id="estrutura">
+  <div class="wrap">
+    <p class="eyebrow">A Hípica · Estrutura</p>
+    <h2>Padrão FEI, com vista para a Mantiqueira</h2>
+    <p class="lead">No Bairro do Guaripocaba, em Bragança Paulista, a 5 minutos da Rod. Fernão Dias. Área de 86 mil m² com projeto arquitetônico da Play Arquitetura: ambientes funcionais, integrados, acessíveis para pessoas com deficiência e pensados para a segurança, saúde e qualidade de vida dos cavalos.</p>
+    <div class="struct" style="margin-top:30px">
+      <article><h4>Baias</h4><p>12 m², dispostas em círculo, divisória de grade para os cavalos se verem e cheirarem, piso impermeável, cochos individuais e portas de dois segmentos.</p></article>
+      <article><h4>Piquetes</h4><p>20 mil m² de pastagem com 28 piquetes cercados, mínimo de 400 m² por cavalo e capim Coast Cross. Todos têm pelo menos 4 horas por dia soltos.</p></article>
+      <article><h4>Redondel</h4><p>20 m de diâmetro, cerca fechada de 2,10 m, piso de areia sílica e feltro, desembarcador para cavalos xucros.</p></article>
+      <article><h4>Pista aberta</h4><p>40 × 80 m com areia, irrigação, drenagem e base de pó de pedra compactada: aderência total mesmo na chuva.</p></article>
+      <article><h4>Picadeiro coberto</h4><p>20 × 40 m, areia sílica com feltro e irrigação, iluminação padrão FEI, parede inclinada e letras de adestramento. Púlpito, rampas e sanitários acessíveis.</p></article>
+      <article><h4>Mezanino / auditório</h4><p>300 m² dentro do picadeiro, com projetor, 40 cadeiras, banheiro e mini cozinha. Para cursos, palestras e eventos externos.</p></article>
+      <article><h4>Quarto de sela</h4><p>Materiais organizados verticalmente junto às baias, para simplificar o encilhamento.</p></article>
+      <article><h4>Farmácia veterinária e duchas</h4><p>Primeiros socorros ao lado da área de banho, com duas duchas fortes para até 3 cavalos simultâneos.</p></article>
+      <article><h4>Celeiro</h4><p>Armazenamento de feno, ração e serragem; eventualmente oficina de manutenção.</p></article>
+    </div>
+    <div class="gallery">
+      <img src="img/baias1.jpg" alt="Baias"><img src="img/piquetes5.jpg" alt="Piquetes"><img src="img/quartodecela.jpg" alt="Quarto de sela"><img src="img/horta.jpg" alt="Horta orgânica">
+    </div>
+    <details class="more" style="margin-top:28px"><summary>Sustentabilidade: reflorestamento, água, compostagem, horta e comunidade</summary><div class="inner">
+      <p><strong>Reflorestamento.</strong> 20% da área é reserva ambiental. Plantamos mais de 2 mil mudas de árvores nativas da Mata Atlântica, incluindo frutíferas, que em cerca de 10 anos serão uma floresta.</p>
+      <p><strong>Tratamento de água.</strong> Água de poço artesiano para os cavalos. Picadeiro e pista armazenam a chuva em uma cisterna de 200 mil litros, reutilizada na irrigação.</p>
+      <p><strong>Compostagem e horta orgânica.</strong> As camas de serragem viram composto orgânico, usado no campo de Coast Cross, nos piquetes e no plantio de hortaliças, sem herbicidas químicos.</p>
+      <p><strong>Comunidade.</strong> Preferência na contratação de pessoas da comunidade local e espaço de pesquisa para a escola municipal do bairro.</p>
+    </div></details>
+  </div>
+</section>
+
+<!-- FILOSOFIA + TERRA -->
+<section class="dark" id="filosofia">
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Filosofia</p>
+        <h2>Muito além de um centro hípico</h2>
+        <p class="lead">Nossa missão é difundir o desenvolvimento integral do ser, através da relação com os cavalos, com a natureza e consigo mesmo.</p>
+        <p>Todo o trabalho está fundamentado em metodologias consistentes e inovadoras, do Natural Horsemanship à Escola da Leveza, até altos padrões de qualidade nas instalações. Integramos mais de 20 anos de conhecimento técnico a uma abordagem holística para treinar, desenvolver e destraumatizar cavalos, comprovando que é possível aliar resultados no esporte, respeito aos cavalos e qualidade de vida.</p>
+        <p id="terra" style="margin-top:34px"><span class="eyebrow" style="margin-bottom:8px">Projeto Terra</span></p>
+        <h3>Reintegrar todas as atividades à natureza</h3>
+        <p>Com base na Permacultura, na Agricultura Sintrópica de Ernst Götsch e na agrofloresta, sob supervisão do agrônomo Chico Terra e com a ajuda de voluntários, alunos e investidores, vamos alinhar as atividades da Conexão às leis da natureza, em três etapas.</p>
+        <details class="more"><summary>As três etapas e como participar</summary><div class="inner">
+          <p><strong>1ª etapa · Sustentabilidade da alimentação dos animais.</strong> Plantio de três novos capins em 2 hectares, saindo das monoculturas e do feno dependente de pesticidas. Vivências: análise de solo, insumos orgânicos, preparo em nível, plantio de capins, milho e cana, irrigação.</p>
+          <p><strong>2ª etapa · Reserva Legal com Sistema Agroflorestal.</strong> 1,6 hectare (20% do terreno) com produção de alimento conciliada ao plantio de árvores. Vivências: mapeamento, arranjo espacial do SAF, limpeza, preparo orgânico, implantação e manutenção.</p>
+          <p><strong>3ª etapa · Pomar orgânico.</strong> Cerca de 50 frutíferas em 600 m², com fertilização orgânica, podas de formação e irrigação adequada.</p>
+          <p>Você pode colaborar participando (doação financeira), vivenciando (práticas de campo) ou acompanhando as atividades. Chegamos ao terreno em 2012 com apenas pasto e braquiária; hoje transformamos o estrume em adubo, produzimos alimento para cavalos e pessoas e buscamos revitalizar uma nascente. Trabalhamos com a diversidade: diferenças que se somam e se complementam, na produção e no convívio humano.</p>
+        </div></details>
+        <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap"><a class="btn btn-primary" href="https://pag.ae/7WBs5S_NH" target="_blank" rel="noopener">Apoiar o Projeto Terra</a><a class="btn btn-outline" href="https://bit.ly/conexaoecoequestre" target="_blank" rel="noopener">Inscrever-se nas vivências</a></div>
+      </div>
+      <div class="pic"><img src="img/comunidade.jpg" alt="Comunidade e natureza na Conexão Equestre"></div>
+    </div>
+  </div>
+</section>
+
+<!-- EQUIPE -->
+<section id="equipe">
+  <div class="wrap">
+    <p class="eyebrow">Equipe</p>
+    <h2>Quem faz a Conexão</h2>
+    <p class="lead">Idealizada por Kether Van Prehn Arruda, psicólogo, equoterapeuta, equitador, treinador e domador de cavalos, a Conexão surgiu em 2012 da parceria com Vera Masagão Ribeiro, empreendedora social, e Marina Ribeiro Arruda, fotógrafa e designer. Profissionais altamente qualificados e pessoas apaixonadas por cavalos. Venha nos conhecer e tomar um café com vista para as montanhas!</p>
+    <div class="team" style="margin-top:34px">
+      <figure><img src="img/kether-390x390.jpg" alt="Kether Arruda"><figcaption><strong>Kether Arruda</strong><span>Sócio, psicólogo e domador de cavalos</span></figcaption></figure>
+      <figure><img src="img/marina-390x390.jpg" alt="Marina Arruda"><figcaption><strong>Marina Arruda</strong><span>Sócia, fotógrafa e designer</span></figcaption></figure>
+      <figure><img src="img/sarah-arruda-390x390.jpg" alt="Sarah Arruda"><figcaption><strong>Sarah Arruda</strong><span>Amazona e professora de equitação</span></figcaption></figure>
+      <figure><img src="img/tawan-390x390.jpg" alt="Tawan Requena"><figcaption><strong>Tawan Requena</strong><span>Professor e treinador de cavalos</span></figcaption></figure>
+      <figure><img src="img/leonarce-390x390.jpeg" alt="Leo Narce"><figcaption><strong>Leo Narce</strong><span>Professor e treinador de cavalos</span></figcaption></figure>
+      <figure><img src="img/felipe.jpeg" alt="Felipe Jorge da Silva"><figcaption><strong>Felipe Jorge da Silva</strong><span>Médico veterinário, equitador e equoterapeuta</span></figcaption></figure>
+      <figure><img src="img/eduardo.jpeg" alt="Eduardo Luís Rosatti"><figcaption><strong>Eduardo Luís Rosatti</strong><span>Educador físico e equoterapeuta</span></figcaption></figure>
+      <figure><img src="img/elainesacrini.jpg" alt="Elaine Sacrini"><figcaption><strong>Elaine Sacrini</strong><span>Veterinária</span></figcaption></figure>
+      <figure><img src="img/leonardo.jpeg" alt="Leonardo Afonso"><figcaption><strong>Leonardo Afonso</strong><span>Administrador financeiro</span></figcaption></figure>
+      <figure><img src="img/silvia-390x390.jpeg" alt="Silvia Aparecida dos Santos"><figcaption><strong>Silvia Ap. dos Santos</strong><span>Tratadora</span></figcaption></figure>
+      <figure><img src="img/laercio-390x390.jpg" alt="Laercio da Silveira Franco"><figcaption><strong>Laercio da S. Franco</strong><span>Assistente de manutenção geral</span></figcaption></figure>
+      <figure><img src="img/antonio-390x390.jpg" alt="Antonio Roberto Souza"><figcaption><strong>Antonio Roberto Souza</strong><span>Jardinagem</span></figcaption></figure>
+    </div>
+    <details class="more" style="margin-top:34px"><summary>Venha fazer parte da equipe como estagiário ou voluntário</summary><div class="inner">
+      <p>Estamos abertos a jovens e adultos que querem viver novas experiências e aprender mais sobre o mundo dos cavalos: o dia a dia na hípica, os cuidados com os cavalos e o manejo em contato com a natureza. Em troca, você ajuda na manutenção do espaço e nos serviços. Prioridade para estudantes de zootecnia, veterinária e agronomia, ou pessoas já do meio equestre.</p>
+      <p><strong>Voluntariado à distância:</strong> ajudando nas mídias sociais ou na tradução de livros equestres.</p>
+    </div></details>
+  </div>
+</section>
+
+<!-- EQUOTERAPIA -->
+<section class="alt" id="equoterapia">
+  <div class="wrap">
+    <div class="split">
+      <div class="pic"><img src="img/img07_01-1.jpg" alt="Equoterapia na Conexão Equestre"></div>
+      <div>
+        <p class="eyebrow">Ação social</p>
+        <h2>Instituto de Equoterapia Pegasus</h2>
+        <p class="lead">A equoterapia é um método terapêutico que utiliza o cavalo, numa abordagem interdisciplinar de saúde, educação e equitação, para atender pessoas com deficiência e/ou necessidades especiais.</p>
+        <p>O Instituto Pegasus é uma associação civil sem fins lucrativos que atua desde 2005 em Bragança Paulista, reconhecida como Utilidade Pública Municipal desde 2011. Já beneficiou 300 famílias, com cerca de 130 atendimentos por mês. Todas as práticas acontecem nas instalações da Conexão Equestre, totalmente adaptadas e acessíveis, e oferecemos assistência aos cavalos utilizados nos tratamentos.</p>
+        <details class="more"><summary>Paraequestre, curso anual e evento beneficente</summary><div class="inner">
+          <p>Promovemos a iniciação de pessoas nos esportes paraequestres: medalha de bronze no Campeonato Brasileiro de Adestramento Paraequestre em 2015 e 2016; prata e bronze no Brasileiro de Paraenduro de 2015 e ouro e prata em 2016. Anualmente, o Instituto e a ANDE-Brasil, em parceria com a Conexão, realizam o Curso Básico de Equoterapia Pegasus. Como captação de recursos, realizamos o evento beneficente “Asas para Pegasus”, com colaboradores, praticantes, voluntários e apoiadores da região.</p>
+        </div></details>
+        <p style="margin-top:16px"><a class="btn btn-ghost" href="http://www.equoterapiapegasus.com.br/" target="_blank" rel="noopener">Conhecer e apoiar o Instituto ↗</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EVENTOS -->
+<section id="eventos">
+  <div class="wrap">
+    <p class="eyebrow">Eventos &amp; locações</p>
+    <h2>Confraternizações, provas, ensaios e workshops</h2>
+    <p class="lead">Localização privilegiada em meio à Serra da Mantiqueira, instalações modernas, funcionais e acessíveis: uma excelente opção de espaço para confraternizações e eventos corporativos.</p>
+    <div class="struct" style="margin-top:30px">
+      <article><h4>Festas</h4><p>Cama elástica e parque para as crianças; passeios e dinâmicas durante o evento. Picadeiro coberto 20×40 m, púlpito com sofás, mesas e cadeiras, mezanino de 300 m² e sede com fogão e geladeira.</p></article>
+      <article><h4>Locações e ensaios fotográficos</h4><p>Cenário perfeito para sessões de casais, editoriais, crianças e famílias, com vista das montanhas e cavalos.</p></article>
+      <article><h4>Campeonatos, eventos e provas</h4><p>Já sediamos provas do Campeonato Brasileiro e Paulista de Equitação de Trabalho, Etapa Regional de Hipismo, Curso Básico de Equoterapia e prova de Salto da Abhir. Estacionamento e área para trailers.</p></article>
+      <article><h4>Palestras e workshops</h4><p>Mezanino com projetor, 40 cadeiras, banheiro e mini cozinha para cursos, palestras e treinamentos.</p></article>
+      <article><h4>Escolas e projetos educacionais</h4><p>Práticas pedagógicas sobre manejo natural de equinos, reflorestamento, fauna e flora, compostagem, horta orgânica e tratamento de água.</p></article>
+    </div>
+    <p style="margin-top:26px"><a class="btn btn-green" href="https://wa.me/5511971883113?text=Ol%C3%A1!%20Quero%20informa%C3%A7%C3%B5es%20sobre%20eventos%20e%20loca%C3%A7%C3%B5es." target="_blank" rel="noopener">Consultar datas e locação</a></p>
+  </div>
+</section>
+
+<!-- YOUTUBE -->
+<section class="dark">
+  <div class="wrap yt">
+    <div>
+      <p class="eyebrow">YouTube</p>
+      <h2>Conexão Equestre, de bem com a vida!</h2>
+      <p class="lead">Estão disponíveis vídeos dos nossos cursos, aulas e eventos. Assista e desfrute!</p>
+      <a class="btn btn-primary" href="https://www.youtube.com/channel/UCHqiBuZ6-DypOSmTP8HOPBA" target="_blank" rel="noopener">Ver o canal ↗</a>
+    </div>
+    <div class="frame"><iframe src="https://www.youtube.com/embed/7J__mLsYBN4" title="Vídeo da Conexão Equestre" loading="lazy" allowfullscreen></iframe></div>
+  </div>
+</section>
+
+<!-- PARCEIROS -->
+<section class="alt" id="parceiros">
+  <div class="wrap">
+    <p class="eyebrow">Parceiros</p>
+    <h2>Onde se hospedar e o que visitar em Bragança</h2>
+    <p class="lead">Temos parceria com serviços de hospedagem e alimentação da região para quem vem de fora para cursos, provas e passeios.</p>
+    <div class="grid grid-3" style="margin-top:30px">
+      <div class="card"><div class="body"><span class="k">Pousadas</span>
+        <p><strong>Pousada Santo Antônio</strong> · Av. Atílio Menin · (11) 96443-4099 / (11) 98700-1441</p>
+        <p><strong>Pousada e Espaço HUB do SER</strong> · Estrada André Sanches Cuenca, 620, Curitibanos · (11) 98586-1776</p>
+        <p><strong>MB Pousada – Serrinha</strong> · (19) 97107-3054 · @mbpousada</p>
+        <p><strong>Pousada Recanto das Rosas</strong> · Rod. João Hermenegildo de Oliveira, km 9 · WhatsApp (11) 97101-1062</p>
+      </div></div>
+      <div class="card"><div class="body"><span class="k">Hotéis</span>
+        <p><strong>Hotel Villa Lobos</strong> · hotelvillalobos.com.br</p>
+        <p><strong>NC Hotel</strong> · nchotel.com.br</p>
+        <p><strong>Hotel 20 Park</strong> · 20parkhotel.com.br · WhatsApp (11) 97271-3004</p>
+        <p><strong>Ka Business Hotel</strong> · kahotel.com.br</p>
+      </div></div>
+      <div class="card"><div class="body"><span class="k">Hostel · onde ir · parceiros</span>
+        <p><strong>Aqui Hostel</strong> · R. Dr. Cândido Rodrigues, 167, Centro · WhatsApp (11) 96138-1202</p>
+        <p><strong>Quarto em Bragança Paulista</strong> · (11) 98391-3496</p>
+        <p><strong>Onde ir:</strong> Templo Taikanji (Pedra Bela) · Ateliê Lagarta Sucateira</p>
+        <p><strong>Parceiro:</strong> ABQM — Associação Brasileira de Criadores de Cavalo Quarto de Milha</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTATO -->
+<section id="contato">
+  <div class="wrap">
+    <p class="eyebrow">Contato</p>
+    <h2>Entre em contato ou agende uma visita para conhecer!</h2>
+    <div class="contact" style="margin-top:30px">
+      <div class="info">
+        <p class="lead">Enviamos orçamento sem compromisso para hospedagem, cursos, passeios e eventos.</p>
+        <ul>
+          <li><b>WhatsApp</b><a href="https://wa.me/5511971883113" target="_blank" rel="noopener">11 97188-3113</a></li>
+          <li><b>E-mail</b><a href="mailto:contato@conexaoequestre.com.br">contato@conexaoequestre.com.br</a></li>
+          <li><b>Endereço</b><span>Estrada Municipal F. de Oliveira Assis, s/n · Bairro Guaripocaba · Bragança Paulista · SP · CEP 12902-991</span></li>
+          <li><b>Acesso</b><span>5 minutos da Rod. Fernão Dias · 50 minutos de São Paulo</span></li>
+        </ul>
+        <div class="social">
+          <a href="https://www.instagram.com/conexao.equestre/" target="_blank" rel="noopener">Instagram</a>
+          <a href="https://www.facebook.com/conexao.equestre/" target="_blank" rel="noopener">Facebook</a>
+          <a href="https://www.youtube.com/channel/UCHqiBuZ6-DypOSmTP8HOPBA" target="_blank" rel="noopener">YouTube</a>
+          <a href="https://www.tripadvisor.com/Attraction_Review-g675019-d13173609-Reviews-Conexao_Equestre-Braganca_Paulista_State_of_Sao_Paulo.html" target="_blank" rel="noopener">TripAdvisor</a>
+        </div>
+        <form onsubmit="return sendWhats(event)" style="margin-top:26px">
+          <label for="f-nome">Nome</label><input id="f-nome" name="nome" required>
+          <label for="f-interesse">Interesse</label>
+          <select id="f-interesse" name="interesse"><option>Passeio a cavalo</option><option>Escola de Equitação</option><option>Equitação Lúdica</option><option>Natural Horsemanship</option><option>Arquearia</option><option>Cursos</option><option>Hospedagem de cavalos</option><option>Doma Natural / treinamento</option><option>Eventos e locações</option><option>Outro</option></select>
+          <label for="f-msg">Mensagem</label><textarea id="f-msg" name="msg" placeholder="Conte o que você procura"></textarea>
+          <p style="margin:14px 0 0"><button class="btn btn-green" type="submit">Enviar pelo WhatsApp</button></p>
+        </form>
+      </div>
+      <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d17483.16361098675!2d-46.47562761704949!3d-22.899262102212848!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x94ceb44ae8bea9b1%3A0x4fe6313cc10564!2sConex%C3%A3o+Equestre!5e0!3m2!1spt-BR!2sbr!4v1564687981553!5m2!1spt-BR!2sbr" loading="lazy" title="Mapa da Conexão Equestre" allowfullscreen></iframe>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <img src="img/logohorseamarelo.png" alt="Conexão Equestre" style="height:60px;margin-bottom:14px">
+        <p>Centro hípico em Bragança Paulista. Bem-estar e desenvolvimento integral de cavalos e pessoas.</p>
+      </div>
+      <div><h5>A Hípica</h5><a href="#estrutura">Estrutura</a><a href="#filosofia">Filosofia</a><a href="#terra">Projeto Terra</a><a href="#equipe">Equipe</a><a href="#eventos">Eventos</a><a href="#parceiros">Parceiros</a></div>
+      <div><h5>Para pessoas</h5><a href="#passeio">Passeio a cavalo</a><a href="#escola">Escola de Equitação</a><a href="#ludica">Equitação Lúdica</a><a href="#horsemanship">Natural Horsemanship</a><a href="#arquearia">Arquearia</a><a href="#cursos">Cursos</a><a href="#equoterapia">Equoterapia</a></div>
+      <div><h5>Para cavalos</h5><a href="#hospedagem">Hospedagem</a><a href="#doma">Doma Natural</a><a href="#servicos">Treinamento &amp; serviços</a><a href="#contato">Contato</a></div>
+    </div>
+    <div class="base"><span>© Conexão Equestre · Todos os direitos reservados</span><span>Bragança Paulista · SP</span></div>
+  </div>
+</footer>
+
+<a class="fab" href="https://wa.me/5511971883113" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.2-.2-.2-.5-.4Z"/></svg>
+</a>
+
+<script>
+  document.querySelectorAll('.tabs [data-tab]').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('.tabs [data-tab]').forEach(function(x){x.setAttribute('aria-selected','false')});
+      document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active')});
+      b.setAttribute('aria-selected','true');
+      document.getElementById(b.dataset.tab).classList.add('active');
+    });
+  });
+  document.querySelectorAll('#mobile a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('mobile').classList.remove('open')})});
+  function sendWhats(e){
+    e.preventDefault();
+    var f=e.target;
+    var txt='Olá! Sou '+f.nome.value+'. Interesse: '+f.interesse.value+'. '+(f.msg.value||'');
+    window.open('https://wa.me/5511971883113?text='+encodeURIComponent(txt),'_blank','noopener');
+    return false;
+  }
+</script>
+</body>
+</html>
