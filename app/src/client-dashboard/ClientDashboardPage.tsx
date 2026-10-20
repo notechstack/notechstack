@@ -232,10 +232,16 @@ function OverviewModule({
       {Array.isArray(presentation.scope_options) ? <>
         <div className="scope-comparison">{presentation.scope_options.map((value) => {
           const option = record(value)
-          return <article key={text(option.label)} className={`scope-option${option.selected === true ? ' scope-option-selected' : ''}`}>
-            <p className="eyebrow">{option.selected === true ? 'Proposta aprovada' : 'Alternativa apresentada'}</p>
+          const price = text(option.price)
+          const ctaLabel = text(option.cta_label)
+          const ctaHref = text(option.cta_href)
+          return <article key={text(option.label)} className={`scope-option${option.selected === true ? ' scope-option-selected' : ''}${price ? ' scope-option-priced' : ''}`}>
+            <p className="eyebrow">{option.selected === true ? 'Proposta aprovada' : text(option.badge, 'Alternativa apresentada')}</p>
             <h3>{text(option.label)}</h3>
+            {price ? <p className="scope-price"><strong>{price}</strong>{text(option.price_note) ? <small>{text(option.price_note)}</small> : null}</p> : null}
+            {text(option.tagline) ? <p className="scope-tagline">{text(option.tagline)}</p> : null}
             <ul>{toDisplayItems(option.features ?? []).map((feature) => <li key={feature}>{feature}</li>)}</ul>
+            {ctaLabel && /^(https:\/\/|mailto:)/.test(ctaHref) ? <a className="scope-cta" href={ctaHref} target="_blank" rel="noreferrer noopener">{ctaLabel} <span aria-hidden="true">→</span></a> : null}
           </article>
         })}</div>
         <p className="infra-caption">{text(presentation.scope_note)}</p>
@@ -313,6 +319,7 @@ function OverviewModule({
 function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
   const [expanded, setExpanded] = useState(false)
   const [contentHeight, setContentHeight] = useState<number | null>(null)
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const frame = useRef<HTMLIFrameElement>(null)
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
@@ -354,7 +361,7 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
       iframe.removeEventListener('load', attach)
       observer?.disconnect()
     }
-  }, [roadmap?.prototype_url])
+  }, [roadmap?.prototype_url, device])
   const presentation = projectPresentation(roadmap)
   if (!roadmap?.published_at || !roadmap.prototype_url)
     return (
@@ -372,7 +379,34 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
             Fechar tela cheia ×
           </button>
         ) : null}
-        <div className="prototype-phone infinite">
+        <div
+          className="prototype-device-toggle"
+          role="group"
+          aria-label="Formato do protótipo"
+        >
+          <button
+            type="button"
+            aria-pressed={device === 'desktop'}
+            onClick={() => setDevice('desktop')}
+          >
+            ▱ Desktop
+          </button>
+          <button
+            type="button"
+            aria-pressed={device === 'mobile'}
+            onClick={() => setDevice('mobile')}
+          >
+            ▯ Celular
+          </button>
+        </div>
+        <div className={`prototype-phone infinite ${device}`}>
+          {device === 'mobile' ? (
+            <div className="phone-status">
+              <span>9:41</span>
+              <i />
+              <span>▱</span>
+            </div>
+          ) : null}
           <iframe
             ref={frame}
             src={roadmap.prototype_url}

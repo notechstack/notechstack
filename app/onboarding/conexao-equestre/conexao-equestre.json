@@ -110,43 +110,55 @@
         "editor_lock_reason": "O Editor fica bloqueado até a aprovação do pacote. Navegue pela aba Protótipo e envie suas observações à Maisis.",
         "hero_title": "O novo site da Conexão Equestre, pronto para aprovação.",
         "hero_description": "Explore o protótipo do site de página única, conheça a tecnologia e compare os três pacotes propostos.",
-        "infrastructure_title": "Três pacotes para o novo site.",
+        "infrastructure_title": "Três pacotes. Escolha o tamanho do próximo passo.",
         "scope_options": [
           {
-            "label": "Básico · R$ 2 mil · Site de uma página",
+            "label": "Básico",
+            "badge": "Pacote 1",
+            "price": "R$ 2 mil",
+            "tagline": "O site que você está vendo no protótipo, pronto para ir ao ar.",
             "selected": false,
             "features": [
-              "Site de página única com todo o conteúdo atual reorganizado em seções: A Hípica, Para pessoas, Para cavalos, Estrutura, Equipe, Eventos, Equoterapia, Parceiros e Contato.",
-              "Identidade preservada: logo, verde e âmbar; fotos atuais tratadas.",
-              "WhatsApp fixo, Google Maps, YouTube, Instagram e Facebook; formulário via WhatsApp/e-mail.",
-              "SEO básico e redirecionamento das URLs antigas para as seções; hospedagem rápida em CDN com HTTPS.",
-              "Prazo estimado: 1–2 semanas. 1 rodada de ajustes. Suporte 15 dias."
-            ]
+              "Site novo em uma página, com todo o conteúdo atual organizado e leve.",
+              "Botão de WhatsApp, mapa e vídeos do YouTube.",
+              "Visual limpo, sem animações.",
+              "Pronto em 1 a 2 semanas · 15 dias de suporte."
+            ],
+            "cta_label": "Quero o Básico",
+            "cta_href": "mailto:contato@maisispublicidade.com.br?subject=Conex%C3%A3o%20Equestre%20-%20Pacote%20B%C3%A1sico"
           },
           {
-            "label": "Completo · R$ 5 mil · Site institucional com painel",
+            "label": "Completo",
+            "badge": "Pacote 2",
+            "price": "R$ 5 mil",
+            "tagline": "Site completo que a própria equipe da Conexão atualiza.",
             "selected": false,
             "features": [
-              "Tudo do Básico, com até 15 páginas internas espelhando o menu atual.",
-              "Painel de edição para a equipe da Conexão: textos, datas e valores de cursos, fotos, equipe e parceiros.",
-              "Agenda de cursos e eventos com página por evento e inscrição via WhatsApp ou link.",
-              "Formulário real com envio por e-mail, galeria de fotos e vídeos, SEO por página, sitemap, redirects 301, Analytics e Search Console.",
-              "Migração das imagens e desligamento assistido do WordPress. Prazo estimado: 3–5 semanas. 2 rodadas. Suporte 30 dias."
-            ]
+              "Uma página para cada curso, serviço e evento.",
+              "Painel simples para trocar textos, fotos, datas e valores sem programador.",
+              "Agenda de cursos e eventos, galeria de fotos e animações suaves.",
+              "Pronto em 3 a 5 semanas · 30 dias de suporte."
+            ],
+            "cta_label": "Quero o Completo",
+            "cta_href": "mailto:contato@maisispublicidade.com.br?subject=Conex%C3%A3o%20Equestre%20-%20Pacote%20Completo"
           },
           {
-            "label": "Plataforma · R$ 10 mil · Site + inscrições e relacionamento",
+            "label": "Plataforma",
+            "badge": "Pacote 3",
+            "price": "R$ 10 mil",
+            "tagline": "Inscrições e pagamentos direto pelo site.",
             "selected": false,
             "features": [
-              "Tudo do Completo, com inscrições online em cursos, workshops e passeios: vagas, Pix e cartão, confirmação automática.",
-              "Agendamento de passeios e aulas experimentais com horários disponíveis.",
-              "Área do cliente: inscrições, certificados do Horsemanship e ficha do cavalo hospedado.",
-              "Blog e newsletter, versão em inglês dos cursos internacionais, site instalável no celular e feed do Instagram.",
-              "Relatórios de inscrições, contatos e receita por curso. Prazo estimado: 6–9 semanas. 3 rodadas. Suporte 60 dias."
-            ]
+              "Inscrição em cursos e passeios com Pix e cartão, vagas e confirmação automática.",
+              "Área do aluno e ficha do cavalo hospedado para os proprietários.",
+              "Blog, newsletter, versão em inglês e experiência premium com transições e componentes interativos.",
+              "Pronto em 6 a 9 semanas · 60 dias de suporte."
+            ],
+            "cta_label": "Quero a Plataforma",
+            "cta_href": "mailto:contato@maisispublicidade.com.br?subject=Conex%C3%A3o%20Equestre%20-%20Pacote%20Plataforma"
           }
         ],
-        "scope_note": "Nenhum pacote foi aprovado ainda. Valores definidos pela proposta de 20/10/2026; custos recorrentes de domínio, e-mail e gateway de pagamento serão confirmados por pacote antes do fechamento. Os prazos são estimativas da proposta, não datas de entrega.",
+        "scope_note": "Nenhum pacote foi escolhido ainda. Os valores são da proposta de 20/10/2026; custos de domínio, e-mail e meio de pagamento são confirmados por pacote antes do fechamento. Prazos são estimativas.",
         "hide_project_navigation": true
       },
       "task_details": {}

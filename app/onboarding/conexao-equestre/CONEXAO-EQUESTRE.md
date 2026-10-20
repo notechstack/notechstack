@@ -28,6 +28,12 @@ e deve ser rotacionada.
 toggle Desktop/Celular e sem balão do mascote, com "mockup infinito" (a moldura cresce até a
 altura do protótipo de mesma origem; tela cheia mantém rolagem interna); fluxograma aceita
 `brand=no` no hub (logo da nó sem inversão); grade de fases das Etapas com `auto-fit`.
+Segunda rodada: seletor Desktop/Celular restaurado, ambos infinitos (celular com visor);
+cards de pacote aceitam `badge`, `price`, `price_note`, `tagline`, `cta_label` e `cta_href`
+(somente `https://` ou `mailto:`). Os botões "Quero o …" abrem e-mail para
+contato@maisispublicidade.com.br com o pacote no assunto; trocar pelo WhatsApp da Maisis
+quando o Lucca informar. LP: menu com `white-space:nowrap`, CTA curto abaixo de 1240 px e
+menu hambúrguer abaixo de 1024 px, para não quebrar dentro do quadro.
 
 ## Arquivos
 

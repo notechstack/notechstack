@@ -179,4 +179,16 @@
 .scope-option h3 { margin: 12px 0 20px; font-size: 20px; line-height: 1.4; }
 .scope-option ul { padding-left: 18px; list-style: disc; }
 .scope-option li { margin-bottom: 14px; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.scope-option-priced { display: flex; flex-direction: column; }
+.scope-option-priced h3 { margin: 10px 0 6px; font-size: 22px; }
+.scope-price { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+.scope-price strong { font-size: 34px; font-weight: 800; letter-spacing: -.04em; line-height: 1.1; }
+.scope-price small { font-size: 12px; color: var(--muted); }
+.scope-tagline { margin: 0 0 16px; font-size: 14px; line-height: 1.5; font-weight: 600; }
+.scope-option-priced ul { margin: 0 0 20px; }
+.scope-option-priced li { margin-bottom: 10px; font-size: 13.5px; line-height: 1.55; }
+.scope-cta { margin-top: auto; display: inline-flex; justify-content: center; align-items: center; gap: 8px; padding: 13px 18px; border-radius: 12px; background: #141414; color: #fff; font-weight: 700; font-size: 14px; text-decoration: none; }
+.scope-cta:hover { background: #2c2c2c; }
+.scope-option-selected .scope-cta { background: #30a46c; }
+.client-dashboard[data-theme='dark'] .scope-cta { background: #fafaf7; color: #141414; }
 @media (max-width: 1100px) { .scope-comparison { grid-template-columns: 1fr; } }

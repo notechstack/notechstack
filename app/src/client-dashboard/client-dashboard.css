@@ -593,15 +593,19 @@
   height: 720px;
   border-radius: 10px;
 }
-/* Mockup infinito: moldura de navegador que acompanha a altura do protótipo. */
-.prototype-phone.infinite {
+/* Mockups infinitos: a moldura (navegador ou celular) acompanha a altura do protótipo. */
+.prototype-phone.infinite iframe {
+  height: 720px;
+  transition: height 200ms ease;
+}
+.prototype-phone.infinite.desktop {
   width: min(100%, 1120px);
   padding: 0;
   border-radius: 16px;
   background: linear-gradient(145deg, #4a4842, #111);
   overflow: hidden;
 }
-.prototype-phone.infinite::before {
+.prototype-phone.infinite.desktop::before {
   content: '';
   display: block;
   height: 34px;
@@ -611,10 +615,14 @@
     radial-gradient(circle at 58px 17px, #28c840 0 5px, transparent 6px),
     #1b1b1d;
 }
-.prototype-phone.infinite iframe {
-  height: 720px;
+.prototype-phone.infinite.desktop iframe {
   border-radius: 0;
-  transition: height 200ms ease;
+}
+.prototype-phone.infinite.mobile {
+  width: 390px;
+}
+.prototype-phone.infinite.mobile iframe {
+  border-radius: 0 0 35px 35px;
 }
 .prototype-info.prototype-info {
   position: sticky;
@@ -738,13 +746,18 @@
   border-radius: 15px;
   padding: 0;
 }
-.prototype-expanded .prototype-phone.infinite {
+.prototype-expanded .prototype-phone.infinite.desktop {
   width: 100%;
   height: 100%;
   border-radius: 15px;
 }
-.prototype-expanded .prototype-phone.infinite::before {
+.prototype-expanded .prototype-phone.infinite.desktop::before {
   display: none;
+}
+.prototype-expanded .prototype-phone.infinite.mobile {
+  width: 390px;
+  height: 100%;
+  max-height: calc(100vh - 74px);
 }
 .prototype-expanded .prototype-phone.infinite iframe {
   height: 100%;
