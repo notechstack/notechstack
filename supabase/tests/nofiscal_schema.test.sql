@@ -182,6 +182,38 @@ select ok(not exists (
 select ok(not has_function_privilege('supabase_read_only_user', 'nofiscal.read_certificate(uuid)', 'EXECUTE'),
   'papel de leitura não lê o A1: sem EXECUTE em read_certificate');
 
+-- C35 sobre o conjunto inteiro (verificação, rodada 1): todas as tabelas de
+-- nofiscal, as duas funções de leitura e a descriptografia do Vault, para anon
+-- e authenticated.
+select is(
+  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
+  5, 'papéis de fora não leem nofiscal: o schema tem as 5 tabelas avaliadas abaixo');
+select ok(not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     cross join (values ('anon'), ('authenticated')) r(role)
+     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')
+       and has_table_privilege(r.role, c.oid, 'SELECT')),
+  'papéis de fora não leem nofiscal: anon e authenticated sem SELECT em nenhuma tabela');
+select ok(not exists (
+    select 1 from (values ('anon'), ('authenticated')) r(role)
+     cross join (values ('nofiscal.read_certificate(uuid)'), ('nofiscal.read_webhook_secret(uuid)')) f(fn)
+     where has_function_privilege(r.role, f.fn, 'EXECUTE')),
+  'papéis de fora não leem nofiscal: anon e authenticated sem EXECUTE em read_certificate e read_webhook_secret');
+select ok(not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     cross join (values ('anon'), ('authenticated')) r(role)
+     where n.nspname = 'vault' and p.proname like '%decrypt%'
+       and has_function_privilege(r.role, p.oid, 'EXECUTE')),
+  'papéis de fora não leem nofiscal: anon e authenticated sem EXECUTE na descriptografia do Supabase Vault');
+
+-- C38 sobre o conjunto inteiro: nenhuma relação de public é legível pelo motor.
+select ok(not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'f')
+       and has_table_privilege('nofiscal_service', c.oid, 'SELECT')),
+  'nofiscal_service não sai do schema: sem SELECT em nenhuma relação de public');
+
 -- Lote 2b: percentual aproximado dos tributos do Simples, por tenant.
 select has_column('nofiscal', 'fiscal_tenants', 'p_tot_trib_sn', 'p_tot_trib_sn existe em fiscal_tenants');
 select col_is_null('nofiscal', 'fiscal_tenants', 'p_tot_trib_sn', 'p_tot_trib_sn nasce nulo');
