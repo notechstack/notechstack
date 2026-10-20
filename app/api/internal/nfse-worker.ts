@@ -1,0 +1,23 @@
+// Worker do motor: chamado pelo agendador com `Authorization: Bearer ${CRON_SECRET}`.
+// Não é rota pública da API (fica fora da tabela Surface).
+import { dbFromEnv } from '../_lib/db.js'
+import { errorResponse } from '../_lib/http.js'
+import { logEvent } from '../_lib/log.js'
+import { sefinClientFromEnv } from '../_lib/sefin.js'
+import { handleWorkerRequest } from '../_lib/worker-route.js'
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    try {
+      return await handleWorkerRequest(request, {
+        db: dbFromEnv(),
+        sefin: sefinClientFromEnv(),
+        cronSecret: process.env.CRON_SECRET,
+        fetch: (url, init) => fetch(url, init),
+      })
+    } catch {
+      logEvent('nofiscal.worker_unavailable')
+      return errorResponse('INTERNAL', 'erro interno')
+    }
+  },
+}
