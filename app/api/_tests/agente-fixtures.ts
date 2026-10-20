@@ -85,7 +85,8 @@ export async function createSelfServiceTenant(db: Db, options: SelfServiceOption
   const plan = options.plan ?? 'pro'
   await db.query(
     `update nofiscal.fiscal_tenants
-        set client_id = $2, plan = $3, monthly_note_limit = $4, contador_email = $5
+        set client_id = $2, plan = $3, monthly_note_limit = $4, contador_email = $5,
+            codigo_servico_nacional = '010701'
       where id = $1`,
     [tenant.id, clientId, plan, plan === 'pro' ? 100 : 20, options.contadorEmail ?? null],
   )

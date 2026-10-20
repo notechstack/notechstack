@@ -12,6 +12,12 @@ export type ErrorCode =
   | 'UNKNOWN_FIELD'
   | 'INTERNAL'
   | 'SEFIN_NOT_CONFIGURED'
+  // Rota do certificado do cadastro (Landing de .checks/agente-fiscal-whatsapp.md, lote A).
+  | 'FORBIDDEN'
+  | 'RATE_LIMITED'
+  | 'CERT_SENHA_INVALIDA'
+  | 'CERT_VENCIDO'
+  | 'CERT_CNPJ_DIFERENTE'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -24,6 +30,11 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   UNKNOWN_FIELD: 422,
   INTERNAL: 500,
   SEFIN_NOT_CONFIGURED: 503,
+  FORBIDDEN: 403,
+  RATE_LIMITED: 429,
+  CERT_SENHA_INVALIDA: 422,
+  CERT_VENCIDO: 422,
+  CERT_CNPJ_DIFERENTE: 422,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }

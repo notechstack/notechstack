@@ -45,21 +45,27 @@ export function createDb(pool: pg.Pool): Db {
   }
 }
 
-let shared: { db: Db; pool: pg.Pool } | undefined
+// Uma conexão por papel: `NOFISCAL_DATABASE_URL` (motor, `nofiscal_service`) e
+// `NOFISCAL_ONBOARDING_DATABASE_URL` (rota do certificado, `nofiscal_onboarding`; Landing
+// de .checks/agente-fiscal-whatsapp.md, lote A).
+export type DbUrlVariable = 'NOFISCAL_DATABASE_URL' | 'NOFISCAL_ONBOARDING_DATABASE_URL'
 
-export function dbFromEnv(): Db {
-  if (!shared) {
-    const connectionString = process.env.NOFISCAL_DATABASE_URL
-    if (!connectionString) throw new Error('NOFISCAL_DATABASE_URL não configurada')
+const shared = new Map<DbUrlVariable, { db: Db; pool: pg.Pool }>()
+
+export function dbFromEnv(variable: DbUrlVariable = 'NOFISCAL_DATABASE_URL'): Db {
+  let entry = shared.get(variable)
+  if (!entry) {
+    const connectionString = process.env[variable]
+    if (!connectionString) throw new Error(`${variable} não configurada`)
     const pool = new pg.Pool({ connectionString, max: 1 })
-    shared = { db: createDb(pool), pool }
+    entry = { db: createDb(pool), pool }
+    shared.set(variable, entry)
   }
-  return shared.db
+  return entry.db
 }
 
 export async function closeSharedDb(): Promise<void> {
-  if (!shared) return
-  const { pool } = shared
-  shared = undefined
-  await pool.end()
+  const pools = [...shared.values()].map((entry) => entry.pool)
+  shared.clear()
+  await Promise.all(pools.map((pool) => pool.end()))
 }
