@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode, useRef } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import {
   loadClientDashboard,
@@ -312,7 +312,8 @@ function OverviewModule({
 
 function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
   const [expanded, setExpanded] = useState(false)
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
+  const frame = useRef<HTMLIFrameElement>(null)
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setExpanded(false)
@@ -320,6 +321,40 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [])
+  // Mockup infinito: o quadro cresce até a altura do protótipo (mesma origem), sem rolagem interna.
+  useEffect(() => {
+    const iframe = frame.current
+    if (!iframe) return
+    let observer: ResizeObserver | null = null
+    const measure = () => {
+      try {
+        const doc = iframe.contentDocument
+        const height = doc?.documentElement ? Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0) : 0
+        if (height > 0) setContentHeight(height)
+      } catch {
+        setContentHeight(null)
+      }
+    }
+    const attach = () => {
+      observer?.disconnect()
+      measure()
+      try {
+        const body = iframe.contentDocument?.body
+        if (body && typeof ResizeObserver !== 'undefined') {
+          observer = new ResizeObserver(measure)
+          observer.observe(body)
+        }
+      } catch {
+        // Origem diferente: mantém a altura padrão da moldura.
+      }
+    }
+    iframe.addEventListener('load', attach)
+    if (iframe.contentDocument?.readyState === 'complete') attach()
+    return () => {
+      iframe.removeEventListener('load', attach)
+      observer?.disconnect()
+    }
+  }, [roadmap?.prototype_url])
   const presentation = projectPresentation(roadmap)
   if (!roadmap?.published_at || !roadmap.prototype_url)
     return (
@@ -337,35 +372,12 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
             Fechar tela cheia ×
           </button>
         ) : null}
-        <div
-          className="prototype-device-toggle"
-          role="group"
-          aria-label="Formato do protótipo"
-        >
-          <button
-            type="button"
-            aria-pressed={device === 'desktop'}
-            onClick={() => setDevice('desktop')}
-          >
-            ▱ Desktop
-          </button>
-          <button
-            type="button"
-            aria-pressed={device === 'mobile'}
-            onClick={() => setDevice('mobile')}
-          >
-            ▯ Celular
-          </button>
-        </div>
-        <div className={`prototype-phone ${device}`}>
-          <div className="phone-status">
-            <span>9:41</span>
-            <i />
-            <span>▱</span>
-          </div>
+        <div className="prototype-phone infinite">
           <iframe
+            ref={frame}
             src={roadmap.prototype_url}
             title="Protótipo navegável do projeto"
+            style={!expanded && contentHeight ? { height: `${contentHeight}px` } : undefined}
           />
         </div>
       </div>
@@ -400,13 +412,6 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
         <p className="prototype-note">
           {text(presentation.editor_lock_reason, 'Somente visualização. Os ajustes que você quiser pedir entram pelo Editor, quando liberado para o projeto.')}
         </p>
-        <div className="mascot-note">
-          <img src="/mascote-cliente.png" alt="" />
-          <p>
-            Anote suas observações e converse com seu gerente sobre os próximos
-            passos.
-          </p>
-        </div>
       </aside>
     </section>
   )

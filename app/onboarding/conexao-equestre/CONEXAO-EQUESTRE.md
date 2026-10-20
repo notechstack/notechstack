@@ -1,6 +1,6 @@
 # Conexão Equestre no painel da nó
 
-Estado em 20/10/2026: **cadastro gravado em produção; conta do cliente e publicação do frontend pendentes.**
+Estado em 20/10/2026: **cadastro, conta do cliente e acesso ativos em produção; publicação do frontend pendente.**
 
 Cliente de agência da Maisis Publicidade (`f4b64fc8-112b-416f-8612-2e02bcf2ee65`).
 Supabase de produção (`sdeowbqmwkwseyktyemn`), transação `conexao-equestre-production.sql` aplicada em 20/10/2026:
@@ -11,20 +11,23 @@ Supabase de produção (`sdeowbqmwkwseyktyemn`), transação `conexao-equestre-p
 | Projeto "Novo site Conexão Equestre" | `6a84f861-ec07-4193-9bc8-3c07bf3326c3` |
 | Vínculo `agency_projects` | Maisis |
 
-8 tarefas (3 concluídas), roadmap com `prototype_url`, memberships = 0.
-Rota do cliente após o acesso: `/p/6a84f861-ec07-4193-9bc8-3c07bf3326c3/como-funciona`.
+14 tarefas em 4 fases (Proposta · Reforma de identidade · Produção do site · Publicação),
+3 concluídas; roadmap com `prototype_url` e fluxograma com logos oficiais (nó no centro, WhatsApp,
+Google Maps, YouTube, Hostinger, Meta, Supabase). Rota do cliente:
+`/p/6a84f861-ec07-4193-9bc8-3c07bf3326c3/como-funciona`.
 
-**Conta do cliente (pendente).** E-mail informado pelo Lucca: hipicaconexaoequestre@gmail.com.
-O cadastro público está desabilitado no projeto (`signup_disabled`) e o Auth Admin API exige a
-service_role, que não é lida pelo agente. Executar `app/scripts/create-client-user.mjs` com as
-variáveis no ambiente (cria o usuário confirmado com papel CLIENT e a membership) e depois:
+**Conta do cliente (ativa).** hipicaconexaoequestre@gmail.com · usuário `2b79833d-9ef3-4bc7-b5b4-3435c836bcb9`,
+e-mail confirmado, `app_metadata.role=CLIENT`, membership CLIENT com o cliente, projeto com
+`access_status=ATIVO_ATE_FIM_DO_PROJETO` desde 20/10/2026. Criado pelo Lucca com
+`app/scripts/create-client-user.mjs` (Auth Admin API; cadastro público está desabilitado, `signup_disabled`).
+Login real validado pela API de autenticação e no app local: a sessão vê só este projeto, com a
+marca Maisis no topo. Senha nunca gravada em arquivo, log ou vault; a service_role passou pelo chat
+e deve ser rotacionada.
 
-```sql
-update public.projects set access_status='ATIVO_ATE_FIM_DO_PROJETO', access_released_at=coalesce(access_released_at, now())
-where id='6a84f861-ec07-4193-9bc8-3c07bf3326c3';
-```
-
-Senha nunca gravada em arquivo, log ou vault.
+**Ajustes do painel em 20/10/2026 (compartilhados com os demais clientes):** aba Protótipo sem
+toggle Desktop/Celular e sem balão do mascote, com "mockup infinito" (a moldura cresce até a
+altura do protótipo de mesma origem; tela cheia mantém rolagem interna); fluxograma aceita
+`brand=no` no hub (logo da nó sem inversão); grade de fases das Etapas com `auto-fit`.
 
 ## Arquivos
 
@@ -53,8 +56,7 @@ Senha nunca gravada em arquivo, log ou vault.
 
 1. Publicar o frontend com a pasta do protótipo (branch `feat/conexao-equestre-onboarding`);
    até lá a aba Protótipo retorna 404 em produção.
-2. Criar a conta do cliente (acima) e liberar `access_status`.
-3. Conferir com sessão Maisis (carteira → detalhe → Protótipo) e com login do cliente.
+2. Conferir com sessão Maisis no navegador (carteira → detalhe → Protótipo); a RPC já lista o projeto.
 4. Revisar os diferenciais dos pacotes: Lucca quer acentuar o gap de UX/UI entre Básico e
    Plataforma (animações de tela, componentes interativos, scroll). Atualizar
    `PROPOSTA-PACOTES.md`, `conexao-equestre.json` e o `scope_options` no banco.

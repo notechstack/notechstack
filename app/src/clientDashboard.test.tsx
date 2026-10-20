@@ -225,17 +225,13 @@ describe('dashboard do cliente', () => {
     expect(mocks.savePreferredTier).toHaveBeenCalledTimes(1)
   })
 
-  it('C10 protótipo usa iframe em mockup e link externo', async () => {
+  it('C10 protótipo usa iframe em mockup infinito e link externo', async () => {
     const { container } = renderDashboard('prototipo')
     expect(await screen.findByTitle('Protótipo navegável do projeto')).toHaveAttribute('src', 'https://example.test/prototipo')
     expect(screen.getByRole('link', { name: /Abrir protótipo em nova aba/ })).toHaveAttribute('target', '_blank')
-    expect(screen.getByRole('button', { name: /Desktop/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(container.querySelector('.prototype-phone')).toHaveClass('desktop')
-
-    await userEvent.click(screen.getByRole('button', { name: /Celular/ }))
-
-    expect(screen.getByRole('button', { name: /Celular/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(container.querySelector('.prototype-phone')).toHaveClass('mobile')
+    expect(container.querySelector('.prototype-phone')).toHaveClass('infinite')
+    expect(screen.queryByRole('button', { name: /Desktop|Celular/ })).toBeNull()
+    expect(screen.queryByText(/Anote suas observações/)).toBeNull()
   })
 
   it('C11 etapas por fase mantêm progresso real, datas e versões', async () => {

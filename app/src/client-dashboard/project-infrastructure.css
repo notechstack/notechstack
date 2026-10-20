@@ -14,8 +14,13 @@
 .tool-logo img { width: 24px; height: 24px; object-fit: contain; }
 .brand-react { background: #eefaff; }
 .brand-supabase, .brand-whatsapp { background: #eaf9f0; }
+.brand-youtube { background: #fdecec; }
+.brand-googlemaps { background: #eef3fd; }
+.brand-hostinger { background: #efeafc; }
+.brand-meta { background: #e9f0fd; }
 .client-dashboard .infra-hub { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; min-height: 180px; padding: 22px 16px; border: 1px solid #353535; border-radius: 15px; color: white; background: #191c1b; text-align: center; text-decoration: none; box-shadow: 0 12px 28px #14141412; }
 .infra-hub > img { width: 29px; height: 29px; filter: invert(1); }
+.infra-hub > img.brand-no { width: 96px; height: auto; filter: none; }
 .infra-hub > strong { font-size: 19px; line-height: 1.4; font-weight: 650; }
 .infra-hub > span { font-size: 13px; color: #d6e4db; }
 .infra-hub > small { font-size: 11px; color: #b7c1ba; }

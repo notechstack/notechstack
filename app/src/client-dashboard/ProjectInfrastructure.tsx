@@ -67,7 +67,7 @@ export function ProjectArchitecture({ architecture }: { architecture?: Architect
       <div className="infra-flow" ref={container}>
         <svg className="infra-connectors" aria-hidden="true"><defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 L7 4 L1 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></marker></defs>{paths.map((path, index) => <path key={index} d={path} fill="none" stroke="currentColor" strokeWidth="1.7" markerEnd={`url(#${marker})`} />)}</svg>
         <div className="infra-column">{inputs.map(card)}</div>
-        <a className="infra-hub" data-flow-node="core" href={core.href} target="_blank" rel="noreferrer">{core.brand ? <img src={`/icons/brands/${core.brand}.svg`} alt="" /> : null}<strong>{core.title}</strong><span>{core.tool} ↗</span><small>{core.detail}</small></a>
+        <a className="infra-hub" data-flow-node="core" href={core.href} target="_blank" rel="noreferrer">{core.brand ? <img className={`hub-logo brand-${core.brand}`} src={`/icons/brands/${core.brand}.svg`} alt="" /> : null}<strong>{core.title}</strong><span>{core.tool} ↗</span><small>{core.detail}</small></a>
         <div className="infra-column">{services.map(card)}</div>
       </div>
     </div>
