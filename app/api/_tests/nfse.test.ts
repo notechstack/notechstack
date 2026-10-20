@@ -97,6 +97,35 @@ describe('POST /v1/nfse', () => {
     expect((await read(other)).id).not.toBe(firstBody.id)
   })
 
+  // Lote B2 do agente fiscal (Landing, "Tomador pessoa jurídica: contrato do motor").
+  it('tomador com CPF ou CNPJ, exatamente um', async () => {
+    const pj = { ...newSale('venda-pj'), tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda' } }
+    const res = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: pj })
+    expect(res.status).toBe(202)
+    const { rows } = await db.query<{ payload: unknown }>('select payload from nofiscal.fiscal_invoices where id = $1', [
+      (await read(res)).id,
+    ])
+    expect(rows[0].payload).toEqual({ ...validPayload(), tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda' } })
+
+    for (const [externalId, tomador] of [
+      ['pj-e-pf', { cpf: '12345678909', cnpj: '11444777000161', nome: 'X' }],
+      ['sem-documento', { nome: 'X' }],
+      ['cnpj-curto', { cnpj: '1144477700016', nome: 'X' }],
+      ['cnpj-com-mascara', { cnpj: '11.444.777/0001-61', nome: 'X' }],
+    ] as const) {
+      const bad = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: { ...newSale(externalId), tomador } })
+      expect(bad.status).toBe(422)
+      expect((await read(bad)).error.code).toBe('VALIDATION_FAILED')
+    }
+    const extra = await call('/v1/nfse', {
+      method: 'POST',
+      key: a.apiKey,
+      body: { ...newSale('campo-extra'), tomador: { cnpj: '11444777000161', nome: 'X', ie: '123' } },
+    })
+    expect(extra.status).toBe(422)
+    expect((await read(extra)).error.code).toBe('UNKNOWN_FIELD')
+  })
+
   it('recusa corpo inválido', async () => {
     const badJson = await call('/v1/nfse', { method: 'POST', key: a.apiKey, rawBody: '{nope' })
     expect(badJson.status).toBe(400)

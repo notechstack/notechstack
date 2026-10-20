@@ -1,6 +1,7 @@
 // Monta a DPS do leiaute nacional 1.01 (critério 4). Forma literal no Landing do checklist
-// (lote 2b - DPS montada): prestador do Simples emitindo a própria nota, tomador PF só com CPF
-// e nome, sem endereço do tomador e sem o grupo IBSCBS. O XML sai sem indentação: quem assina
+// (lote 2b - DPS montada): prestador do Simples emitindo a própria nota, tomador só com CPF
+// ou CNPJ e nome (o CNPJ entrou no lote B2 do agente fiscal; XSD 1.01 `TCInfoPessoa`), sem
+// endereço do tomador e sem o grupo IBSCBS. O XML sai sem indentação: quem assina
 // é o `xml-signer`, e o texto assinado não é reformatado.
 import type { SefinTenant } from './sefin.js'
 import { el, leaf } from './xml.js'
@@ -12,7 +13,8 @@ export const VER_APLIC = 'NoFiscal-1.0'
 export const DH_EMI_SKEW_MS = 60_000
 
 export type DpsPayload = {
-  tomador: { cpf: string; nome: string }
+  /** `tag` é o elemento do leiaute: `<CPF>` ou `<CNPJ>`. */
+  tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string }
   servico: { codigo_servico_nacional: string; descricao: string }
   valor: string
 }
@@ -40,8 +42,14 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
   if (!isObject(payload) || !isObject(payload.tomador) || !isObject(payload.servico)) {
     throw new DpsInvalidError('payload sem tomador ou serviço')
   }
-  const cpf = payload.tomador.cpf
-  if (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf)) throw new DpsInvalidError('CPF do tomador deve ter 11 dígitos')
+  const { cpf, cnpj } = payload.tomador
+  if ((cpf === undefined) === (cnpj === undefined)) throw new DpsInvalidError('tomador deve ter CPF ou CNPJ, exatamente um')
+  if (cpf !== undefined && (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf))) {
+    throw new DpsInvalidError('CPF do tomador deve ter 11 dígitos')
+  }
+  if (cnpj !== undefined && (typeof cnpj !== 'string' || !/^\d{14}$/.test(cnpj))) {
+    throw new DpsInvalidError('CNPJ do tomador deve ter 14 dígitos')
+  }
   const codigo = payload.servico.codigo_servico_nacional
   if (typeof codigo !== 'string' || !/^\d{6}$/.test(codigo)) {
     throw new DpsInvalidError('codigo_servico_nacional (cTribNac) deve ter 6 dígitos')
@@ -51,7 +59,11 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
     throw new DpsInvalidError('valor deve ser decimal positivo com 2 casas')
   }
   return {
-    tomador: { cpf, nome: textField(payload.tomador.nome, 'nome do tomador', 150) },
+    tomador: {
+      tag: cnpj === undefined ? 'CPF' : 'CNPJ',
+      documento: (cnpj ?? cpf) as string,
+      nome: textField(payload.tomador.nome, 'nome do tomador', 150),
+    },
     servico: { codigo_servico_nacional: codigo, descricao: textField(payload.servico.descricao, 'descrição do serviço', 2000) },
     valor,
   }
@@ -112,6 +124,10 @@ export type BuildDpsInput = {
 export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput): { id: string; xml: string } {
   const data = parseDpsPayload(payload)
   const id = buildIdDps(tenant, serie, numero)
+  // E0202: o tomador não pode ser o próprio prestador.
+  if (data.tomador.tag === 'CNPJ' && data.tomador.documento === tenant.cnpj) {
+    throw new DpsInvalidError('tomador é o próprio prestador')
+  }
   const im = tenant.inscricao_municipal?.trim() || null
   if (im !== null && im.length > 15) throw new DpsInvalidError('inscrição municipal passa de 15 caracteres')
   const dhEmi = formatDhSaoPaulo(new Date(now.getTime() - DH_EMI_SKEW_MS))
@@ -133,7 +149,7 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
         leaf('IM', im),
         el('regTrib', [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]),
       ]),
-      el('toma', [leaf('CPF', data.tomador.cpf), leaf('xNome', data.tomador.nome)]),
+      el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome)]),
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', ibge)),
         el('cServ', [leaf('cTribNac', data.servico.codigo_servico_nacional), leaf('xDescServ', data.servico.descricao)]),

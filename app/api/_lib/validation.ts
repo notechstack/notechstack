@@ -1,9 +1,13 @@
 // Corpo de `POST /v1/nfse`, forma literal no Landing do checklist (lote 2a - corpo).
 // Campo desconhecido em qualquer nível é recusado: é assim que nenhuma rota aceita PFX
 // ou senha por engano (critério 31) e que um erro de digitação da Prontia aparece logo.
+// Tomador: `cpf` (11 dígitos) ou `cnpj` (14 dígitos), exatamente um dos dois (Landing de
+// .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
+
+export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
 
 export type InvoicePayload = {
-  tomador: { cpf: string; nome: string }
+  tomador: TomadorPayload
   servico: { codigo_servico_nacional: string; descricao: string }
   valor: string
 }
@@ -52,7 +56,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
 
   const extra =
     unknownField(body, ['external_id', 'tomador', 'servico', 'valor'], '') ??
-    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'nome'], 'tomador.') : null) ??
+    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome'], 'tomador.') : null) ??
     (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao'], 'servico.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
@@ -61,8 +65,13 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   if (!isObject(body.tomador)) return fail('tomador é obrigatório')
   if (!isObject(body.servico)) return fail('servico é obrigatório')
 
+  const temCpf = body.tomador.cpf !== undefined
+  const temCnpj = body.tomador.cnpj !== undefined
+  if (temCpf === temCnpj) return fail('tomador deve ter cpf ou cnpj, exatamente um dos dois')
   const cpf = typeof body.tomador.cpf === 'string' && /^\d{11}$/.test(body.tomador.cpf) ? body.tomador.cpf : null
-  if (!cpf) return fail('tomador.cpf deve ter 11 dígitos')
+  if (temCpf && !cpf) return fail('tomador.cpf deve ter 11 dígitos')
+  const cnpj = typeof body.tomador.cnpj === 'string' && /^\d{14}$/.test(body.tomador.cnpj) ? body.tomador.cnpj : null
+  if (temCnpj && !cnpj) return fail('tomador.cnpj deve ter 14 dígitos, só números')
   const nome = text(body.tomador.nome, 1, 150)
   if (!nome) return fail('tomador.nome deve ter de 1 a 150 caracteres')
   const codigo = text(body.servico.codigo_servico_nacional, 1, 20)
@@ -77,7 +86,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     value: {
       external_id: externalId,
       payload: {
-        tomador: { cpf, nome },
+        tomador: cpf ? { cpf, nome } : { cnpj: cnpj as string, nome },
         servico: { codigo_servico_nacional: codigo, descricao },
         valor,
       },

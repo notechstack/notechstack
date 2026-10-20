@@ -605,6 +605,49 @@ describe('conversa no WhatsApp', () => {
     expect(c.respostasPara(s.ownerPhone)).not.toContain('Nota 8 cancelada')
   })
 
+  // C40 (lote B2): o tomador com CNPJ sai da conversa, passa pelo motor e vira <toma><CNPJ>.
+  it('tomador CNPJ chega ao motor', async () => {
+    const s = await cenario({ certificado: sharedTestCertificate().certificado })
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    await criarModelo(admin.db, s.tenant.id, { nome: 'Maria', documento: '52998224725', nomeTomador: 'Maria da Silva' })
+    const c = conversa(
+      {
+        'nota pra Hospital Alfa, 80 reais': { tomador: 'Hospital Alfa', valor: '80.00', intencao: 'emitir' },
+        [PEDIDO_PRONTIA]: { tomador: 'Prontia Saúde', valor: '10.00', intencao: 'emitir' },
+        'nota pra Maria, 30 reais': { tomador: 'Maria', valor: '30.00', intencao: 'emitir' },
+      },
+      { consultaCnpj: { async razaoSocial(cnpj) { return cnpj === '11444777000161' ? 'HOSPITAL ALFA LTDA' : null } } },
+    )
+    const sefin = fakeSefin()
+
+    // Tomador novo com CNPJ (nome dos dados públicos), tomador de modelo com CNPJ e, para comparar, um com CPF.
+    await c.enviar(s.ownerPhone, 'nota pra Hospital Alfa, 80 reais')
+    await c.enviar(s.ownerPhone, 'CNPJ 11.444.777/0001-61, compras@alfa.test')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    await c.enviar(s.ownerPhone, 'confirmar')
+    await c.enviar(s.ownerPhone, 'nota pra Maria, 30 reais')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    await rodarWorker(servico.db, { sefin: createSefinClient({ transport: sefin.transport }), tenantId: s.tenant.id, canais: c.canais, now: c.agora })
+
+    const dpsEnviadas = sefin.requests.filter((r) => r.method === 'POST' && r.path === '/nfse').map((r) => r.xml ?? '')
+    expect(dpsEnviadas).toHaveLength(3)
+    const toma = dpsEnviadas.map((xml) => /<toma>.*?<\/toma>/.exec(xml)?.[0]).sort()
+    expect(toma).toEqual(
+      [
+        '<toma><CNPJ>11444777000161</CNPJ><xNome>HOSPITAL ALFA LTDA</xNome></toma>',
+        '<toma><CNPJ>12345678000195</CNPJ><xNome>Prontia Saúde</xNome></toma>',
+        '<toma><CPF>52998224725</CPF><xNome>Maria da Silva</xNome></toma>',
+      ].sort(),
+    )
+
+    // As três saem autorizadas e chegam ao dono com o PDF.
+    expect((await notasDoAgente(admin.db, s.tenant.id)).map((n) => n.status)).toEqual(['issued', 'issued', 'issued'])
+    const entregues = c.canais.whatsapps.filter((m) => m.para === s.ownerPhone && m.anexo)
+    expect(entregues.map((m) => m.texto).sort()).toEqual(['NFS-e nº 1 autorizada', 'NFS-e nº 2 autorizada', 'NFS-e nº 3 autorizada'])
+    expect(c.respostasPara(s.ownerPhone).some((t) => t.includes('DPS_INVALID'))).toBe(false)
+  })
+
   it('contagem de mensagens e tokens', async () => {
     const s = await cenario({ certificado: sharedTestCertificate().certificado })
     await criarModelo(admin.db, s.tenant.id, PRONTIA_CPF)

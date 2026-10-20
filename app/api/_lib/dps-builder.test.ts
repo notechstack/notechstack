@@ -118,6 +118,34 @@ describe('dps-builder (C6)', () => {
     expect(parse(without.xml).all('IM')).toHaveLength(0)
   })
 
+  // C40 de .checks/agente-fiscal-whatsapp.md (lote B2): tomador com CNPJ, XSD 1.01 `TCInfoPessoa`.
+  it('tomador pessoa jurídica', () => {
+    const pj = { ...payload, tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda' } }
+    const { xml } = buildDps({ tenant: tenant(), serie: '1', numero: 5, payload: pj, now })
+    expect(xml).toContain('<toma><CNPJ>11444777000161</CNPJ><xNome>Hospital Alfa Ltda</xNome></toma>')
+    const { all, text } = parse(xml)
+    const toma = all('toma')[0]
+    expect(Array.from(toma.childNodes).map((n) => (n as Element).localName)).toEqual(['CNPJ', 'xNome'])
+    expect(all('CPF')).toHaveLength(0)
+    expect(all('end')).toHaveLength(0)
+    // O prestador continua identificado pelo CNPJ dele, antes do tomador.
+    expect(all('CNPJ').map((n) => n.textContent)).toEqual(['56210013000140', '11444777000161'])
+    expect(text('xNome')).toBe('Hospital Alfa Ltda')
+
+    // O tomador com CPF continua como antes.
+    const pf = buildDps({ tenant: tenant(), serie: '1', numero: 6, payload, now })
+    expect(pf.xml).toContain('<toma><CPF>12345678909</CPF><xNome>Maria da Silva</xNome></toma>')
+
+    // Exatamente um dos dois, no formato do leiaute; tomador igual ao prestador é recusado (E0202).
+    const bad = (tomador: Record<string, unknown>) => () =>
+      buildDps({ tenant: tenant(), serie: '1', numero: 7, payload: { ...payload, tomador }, now })
+    expect(bad({ cpf: '12345678909', cnpj: '11444777000161', nome: 'X' })).toThrow(DpsInvalidError)
+    expect(bad({ nome: 'Sem documento' })).toThrow(DpsInvalidError)
+    expect(bad({ cnpj: '1144477700016', nome: 'X' })).toThrow(DpsInvalidError)
+    expect(bad({ cnpj: '11.444.777/0001-61', nome: 'X' })).toThrow(DpsInvalidError)
+    expect(bad({ cnpj: '56210013000140', nome: 'A própria empresa' })).toThrow(DpsInvalidError)
+  })
+
   it('recusa dado fora do leiaute com DPS_INVALID', () => {
     const bad = (overrides: Record<string, unknown>, t = tenant(), serie = '1') => () =>
       buildDps({ tenant: t, serie, numero: 1, payload: { ...payload, ...overrides }, now })

@@ -142,11 +142,8 @@ async function pdfDaNota(nota: NotaDoAgente, numero: string): Promise<AnexoEmail
 }
 
 /** O que corrigir, por código de rejeição (critério 26). */
-function oQueCorrigir(codigo: string | null, tomadorComCnpj: boolean): string {
+function oQueCorrigir(codigo: string | null): string {
   if (codigo === 'SEFIN_UNAVAILABLE') return 'A Sefin ficou fora do ar e a nota não saiu. Me mande o pedido de novo mais tarde.'
-  if (codigo === 'DPS_INVALID' && tomadorComCnpj) {
-    return 'O que corrigir: por enquanto a emissão só aceita tomador com CPF. Emita esta pelo Emissor Nacional ou fale com a Nó.'
-  }
   return 'O que corrigir: confira o dado indicado (no cadastro da empresa ou no pedido) e me mande o pedido de novo. A nota não é reenviada sozinha.'
 }
 
@@ -199,7 +196,7 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     const texto = [
       `A Sefin recusou a nota para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
       `Código ${nota.last_error_code ?? '-'}: ${nota.last_error ?? 'sem motivo informado'}`,
-      oQueCorrigir(nota.last_error_code, Boolean((nota.payload as { tomador?: { cnpj?: string } } | null)?.tomador?.cnpj)),
+      oQueCorrigir(nota.last_error_code),
     ].join('\n')
     await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
     return
