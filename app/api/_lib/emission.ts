@@ -11,6 +11,8 @@
 //   com `last_error_code = 'SEFIN_UNAVAILABLE'`.
 // Pausas: tenant inativo (critério 27) e certificado vencido (critério 17) não são
 // selecionados; a nota fica `queued` e sai sozinha quando o tenant volta ou o A1 é trocado.
+// Configuração incompleta (série única, `p_tot_trib_sn`) deixa a nota `queued` com o código
+// `SERIE_NOT_CONFIGURED` ou `TRIBUTOS_NOT_CONFIGURED` e a revê em 5 min.
 // O limite do plano não entra na seleção (critério 29).
 import type { Db, Queryable } from './db.js'
 import { allocateDpsNumber } from './dps-number.js'
@@ -31,7 +33,8 @@ export const BACKOFF_MINUTES = [1, 5, 15, 60, 240] as const
 export const CLAIM_LEASE_MINUTES = 5
 export const DEFAULT_BATCH = 25
 
-export type FinalStatus = 'issued' | 'rejected'
+/** Estados que disparam o callback ao cliente (Landing, lotes 2a e 2b). */
+export type FinalStatus = 'issued' | 'rejected' | 'cancelled' | 'cancel_refused'
 
 export type EmissionDeps = {
   db: Db
@@ -50,11 +53,12 @@ export type EmissionSummary = {
   rejected: number
   retrying: number
   skipped_serie: number
+  skipped_tributos: number
   failed: number
   paused_cert_expired: number
 }
 
-type Plan = 'transmit' | 'retry' | 'final_consult' | 'skip'
+type Plan = 'transmit' | 'retry' | 'final_consult' | 'skip' | 'skip_tributos'
 
 type ClaimedRow = {
   id: string
@@ -72,6 +76,7 @@ type ClaimedRow = {
   codigo_municipio_ibge: string
   regime: string
   ambiente: Ambiente
+  p_tot_trib_sn: string | null
 }
 
 type Claimed = { plan: Plan; tenant: SefinTenant; invoice: SefinInvoice | null; attempts: number }
@@ -86,6 +91,7 @@ export async function runEmission(deps: EmissionDeps): Promise<EmissionSummary> 
     rejected: 0,
     retrying: 0,
     skipped_serie: 0,
+    skipped_tributos: 0,
     failed: 0,
     paused_cert_expired: await markCertExpired(deps.db, now, deps.tenantId ?? null),
   }
@@ -109,6 +115,10 @@ export async function runEmission(deps: EmissionDeps): Promise<EmissionSummary> 
     summary.claimed++
     if (claimed.plan === 'skip') {
       summary.skipped_serie++
+      continue
+    }
+    if (claimed.plan === 'skip_tributos') {
+      summary.skipped_tributos++
       continue
     }
     const outcome = await processClaimed(deps, now, claimed)
@@ -145,7 +155,7 @@ async function claimNext(
 ): Promise<(Claimed & { id: string }) | null> {
   const { rows } = await tx.query<ClaimedRow>(
     `select i.id, i.tenant_id, i.external_id, i.status, i.payload, i.dps_serie, i.dps_numero, i.id_dps, i.attempts,
-            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente
+            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
        join nofiscal.fiscal_certificates c on c.tenant_id = t.id
@@ -171,6 +181,7 @@ async function claimNext(
     codigo_municipio_ibge: row.codigo_municipio_ibge,
     regime: row.regime,
     ambiente: row.ambiente,
+    p_tot_trib_sn: row.p_tot_trib_sn,
   }
   const lease = minutesFrom(now, CLAIM_LEASE_MINUTES)
 
@@ -188,6 +199,15 @@ async function claimNext(
           [row.id, lease, now],
         )
         return { id: row.id, plan: 'skip', tenant, invoice: null, attempts: row.attempts }
+      }
+      if (row.p_tot_trib_sn === null) {
+        await tx.query(
+          `update nofiscal.fiscal_invoices
+              set last_error_code = 'TRIBUTOS_NOT_CONFIGURED', next_attempt_at = $2, updated_at = $3
+            where id = $1`,
+          [row.id, lease, now],
+        )
+        return { id: row.id, plan: 'skip_tributos', tenant, invoice: null, attempts: row.attempts }
       }
       const serie = series.rows[0].serie
       const numero = await allocateDpsNumber(tx, row.tenant_id, serie)

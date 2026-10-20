@@ -3,7 +3,7 @@
 import { dbFromEnv } from '../_lib/db.js'
 import { errorResponse } from '../_lib/http.js'
 import { logEvent } from '../_lib/log.js'
-import { sefinClientFromEnv } from '../_lib/sefin.js'
+import { sefinClientFromEnv } from '../_lib/sefin-client.js'
 import { handleWorkerRequest } from '../_lib/worker-route.js'
 
 export default {

@@ -7,6 +7,7 @@ import { hashApiKey } from '../_lib/auth.js'
 import { createDb, type Db } from '../_lib/db.js'
 import type {
   CancelarResultado,
+  ConsultaCancelamentoResultado,
   ConsultaResultado,
   EmitirResultado,
   SefinClient,
@@ -43,6 +44,11 @@ export type TestTenantOptions = {
   nextNumber?: number
   webhookUrl?: string | null
   withWebhookSecret?: boolean
+  /** `fiscal_tenants.p_tot_trib_sn`; `null` = não configurado. Padrão: '6.00'. */
+  pTotTribSn?: string | null
+  ambiente?: 'producao_restrita' | 'producao'
+  /** A1 a gravar no Supabase Vault (um PFX de verdade, de `certs.ts`); padrão: texto aleatório. */
+  certificado?: Certificado
 }
 
 const randomDigits = (n: number) =>
@@ -54,10 +60,20 @@ export async function createTestTenant(db: Db, options: TestTenantOptions = {}):
   const webhookUrl = options.webhookUrl === undefined ? null : options.webhookUrl
   const { rows } = await db.query<{ id: string }>(
     `insert into nofiscal.fiscal_tenants
-       (cnpj, razao_social, codigo_municipio_ibge, api_key_hash, plan, monthly_note_limit, active, webhook_url)
-     values ($1, $2, '3550308', $3, 'pro', $4, $5, $6)
+       (cnpj, razao_social, codigo_municipio_ibge, api_key_hash, plan, monthly_note_limit, active, webhook_url,
+        p_tot_trib_sn, ambiente)
+     values ($1, $2, '3550308', $3, 'pro', $4, $5, $6, $7, $8)
      returning id`,
-    [cnpj, `Tenant de teste ${cnpj}`, hashApiKey(apiKey), options.monthlyNoteLimit ?? 5000, options.active ?? true, webhookUrl],
+    [
+      cnpj,
+      `Tenant de teste ${cnpj}`,
+      hashApiKey(apiKey),
+      options.monthlyNoteLimit ?? 5000,
+      options.active ?? true,
+      webhookUrl,
+      options.pTotTribSn === undefined ? '6.00' : options.pTotTribSn,
+      options.ambiente ?? 'producao_restrita',
+    ],
   )
   const id = rows[0].id
 
@@ -73,7 +89,7 @@ export async function createTestTenant(db: Db, options: TestTenantOptions = {}):
   let certificado: Certificado | null = null
   const notAfter = options.notAfter === undefined ? new Date(Date.now() + 365 * 24 * 3600 * 1000) : options.notAfter
   if (notAfter !== null) {
-    certificado = {
+    certificado = options.certificado ?? {
       pfxBase64: `TESTPFX${randomBytes(96).toString('base64')}`,
       password: `senha-${randomBytes(9).toString('hex')}`,
     }
@@ -170,11 +186,13 @@ export type SefinCall =
   | { op: 'emitir'; invoiceId: string; idDps: string; certificado: Certificado }
   | { op: 'consultar'; idDps: string; certificado: Certificado }
   | { op: 'cancelar'; chaveAcesso: string }
+  | { op: 'consultarCancelamento'; chaveAcesso: string }
 
 export type SefinScript = {
   emitir?: (input: { tenant: SefinTenant; invoice: SefinInvoice; certificado: Certificado }) => EmitirResultado | Promise<EmitirResultado>
   consultar?: (input: { idDps: string }) => ConsultaResultado | Promise<ConsultaResultado>
   cancelar?: () => CancelarResultado | Promise<CancelarResultado>
+  consultarCancelamento?: () => ConsultaCancelamentoResultado | Promise<ConsultaCancelamentoResultado>
 }
 
 /** Dublê da Sefin: registra as chamadas, na ordem, e responde o que o teste mandar. */
@@ -200,7 +218,12 @@ export function sefinDouble(script: SefinScript = {}): { client: SefinClient; ca
     async cancelar(input) {
       calls.push({ op: 'cancelar', chaveAcesso: input.chaveAcesso })
       if (script.cancelar) return script.cancelar()
-      return { kind: 'unavailable', reason: 'não usado neste lote' }
+      return { kind: 'unavailable', reason: 'cancelamento não roteirizado no dublê' }
+    },
+    async consultarCancelamento(input) {
+      calls.push({ op: 'consultarCancelamento', chaveAcesso: input.chaveAcesso })
+      if (script.consultarCancelamento) return script.consultarCancelamento()
+      return { kind: 'not_found' }
     },
   }
   return { client, calls }

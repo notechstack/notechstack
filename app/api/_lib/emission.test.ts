@@ -1,5 +1,6 @@
 // Motor de emissão contra o banco local, com a Sefin em dublê.
-// Checks: C17, C18 (motor), C22, C25, C31, C41, C43 (.checks/nfse-automatica-prontia.md).
+// Checks: C3 (lote 2b, com o cliente Sefin real e o transporte em dublê), C17, C18 (motor),
+// C22, C25, C31, C41, C43 (.checks/nfse-automatica-prontia.md).
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   createTestTenant,
@@ -12,9 +13,13 @@ import {
   sefinDouble,
   type TestTenant,
 } from '../_tests/fixtures.js'
+import { sharedTestCertificate } from '../_tests/certs.js'
+import { fakeSefin } from '../_tests/sefin-fake.js'
+import { verifySignature } from '../_tests/verify-signature.js'
 import { closeSharedDb } from './db.js'
 import { runEmission } from './emission.js'
 import { handleNfseRequest } from './nfse-routes.js'
+import { createSefinClient } from './sefin-client.js'
 
 const { db, pool } = openTestDb()
 const tenants: TestTenant[] = []
@@ -40,6 +45,53 @@ afterAll(async () => {
 
 beforeAll(async () => {
   await db.query('select 1')
+})
+
+describe('emissão autorizada (C3)', () => {
+  it('chega a issued', async () => {
+    const t0 = new Date()
+    const cert = sharedTestCertificate()
+    const t = await tenant({ certificado: cert.certificado })
+    const invoice = await insertQueuedInvoice(db, t.id)
+    const sefin = fakeSefin()
+    const statuses: string[] = []
+    const client = createSefinClient({
+      transport: async (request, tls) => {
+        statuses.push((await readInvoice(db, invoice.id)).status)
+        return sefin.transport(request, tls)
+      },
+    })
+
+    await runEmission({ db, sefin: client, now: () => t0, tenantId: t.id })
+
+    const row = await readInvoice(db, invoice.id)
+    expect(row.status).toBe('issued')
+    // Durante a transmissão a nota estava em `sent` (queued → signing → sent → issued).
+    expect(statuses).toEqual(['sent'])
+    expect(sefin.requests).toHaveLength(1)
+    const transmitted = sefin.requests[0].xml!
+    expect(row.chave_acesso).toBe(sefin.issued.get(row.id_dps!)!.chave)
+    expect(row.chave_acesso).toMatch(/^[0-9]{50}$/)
+    expect(row.xml_dps).toBe(transmitted)
+    expect(verifySignature(row.xml_dps!, cert.certPem)).toBe(true)
+    expect(row.xml_nfse).toBe(sefin.issued.get(row.id_dps!)!.xml)
+    expect(row.issued_at).toEqual(t0)
+    expect(row.id_dps).toMatch(/^DPS[0-9]{42}$/)
+    expect(transmitted).toContain(`Id="${row.id_dps}"`)
+  })
+
+  it('sem p_tot_trib_sn a nota fica queued com TRIBUTOS_NOT_CONFIGURED', async () => {
+    const t0 = new Date()
+    const t = await tenant({ pTotTribSn: null })
+    const invoice = await insertQueuedInvoice(db, t.id)
+    const sefin = sefinDouble()
+    await run(t, sefin, t0)
+    const row = await readInvoice(db, invoice.id)
+    expect(row.status).toBe('queued')
+    expect(row.last_error_code).toBe('TRIBUTOS_NOT_CONFIGURED')
+    expect(row.dps_numero).toBeNull()
+    expect(sefin.calls).toHaveLength(0)
+  })
 })
 
 describe('retentativa com consulta prévia (C17)', () => {

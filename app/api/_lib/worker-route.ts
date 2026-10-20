@@ -24,7 +24,8 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
   if (!bearerMatches(request.headers.get('authorization'), deps.cronSecret)) {
     return errorResponse('UNAUTHORIZED', 'credencial do agendador ausente ou inválida')
   }
-  if (!deps.sefin) return errorResponse('SEFIN_NOT_CONFIGURED', 'cliente da Sefin ainda não configurado')
+  // Sem cliente (só em teste ou configuração quebrada) o worker não toca em nada.
+  if (!deps.sefin) return errorResponse('SEFIN_NOT_CONFIGURED', 'cliente da Sefin não configurado')
 
   const now = deps.now ?? (() => new Date())
   try {
