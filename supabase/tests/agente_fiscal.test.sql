@@ -537,11 +537,33 @@ select is(public.agente_fiscal_test_count('select count(*) from nofiscal.fiscal_
   'nofiscal_service lê os números');
 reset role;
 
+-- Lote B: marcas de "uma vez só" (mensagem repetida e avisos) e estado da conversa.
+set local role nofiscal_service;
+select lives_ok(
+  $$insert into nofiscal.fiscal_agent_once (chave, tenant_id) values ('wa:wamid.teste-1', null)$$,
+  'nofiscal_service marca uma mensagem');
+select throws_ok(
+  $$insert into nofiscal.fiscal_agent_once (chave) values ('wa:wamid.teste-1')$$,
+  '23505', null, 'a mesma marca não entra duas vezes');
+select lives_ok($$delete from nofiscal.fiscal_agent_once where chave = 'wa:wamid.teste-1'$$,
+  'nofiscal_service desfaz a marca de uma mensagem que falhou');
+select throws_ok(
+  $$update nofiscal.fiscal_requests set etapa = 'emitir' where id = 'f1a00000-0000-4000-8000-000000000001'$$,
+  '23514', null, 'pedido só tem as etapas da conversa');
+select lives_ok(
+  $$update nofiscal.fiscal_requests set etapa = 'confirmar', conversa = '{"valor": "10.00"}'
+     where id = 'f1a00000-0000-4000-8000-000000000001'$$,
+  'nofiscal_service grava a etapa e o estado da conversa');
+reset role;
+select throws_ok(
+  $$insert into nofiscal.fiscal_agent_once (chave) values ('')$$,
+  '23514', null, 'marca sem chave é recusada');
+
 -- Sentinela: anon e authenticated sem acesso a nenhuma tabela nova.
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  14, 'nofiscal tem as 5 tabelas do motor e as 9 do agente');
+  15, 'nofiscal tem as 5 tabelas do motor e as 10 do agente');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)
