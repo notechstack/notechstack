@@ -207,6 +207,10 @@ select ok(not exists (
        and has_function_privilege(r.role, p.oid, 'EXECUTE')),
   'papéis de fora não leem nofiscal: anon e authenticated sem EXECUTE na descriptografia do Supabase Vault');
 
+select ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'vault' and p.proname like '%decrypt%') > 0,
+  'papéis de fora não leem nofiscal: existe função de descriptografia no Vault para as asserções acima avaliarem');
+
 -- C38 sobre o conjunto inteiro: nenhuma relação de public é legível pelo motor.
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
