@@ -46,9 +46,14 @@ afterAll(async () => {
 
 describe('rotas do Nó Fiscal', () => {
   it('nenhuma rota de certificado', async () => {
-    // As únicas funções publicadas são a API de notas e o worker.
-    expect(functionFiles()).toEqual(['api/internal/nfse-worker.ts', 'api/v1/nfse.ts'])
-    for (const path of functionFiles()) expect(path).not.toMatch(CERTIFICATE_WORDS)
+    // O critério 31 foi substituído pelo agente fiscal (Impact da tarefa e Landing de
+    // .checks/agente-fiscal-whatsapp.md, lote A): a única rota que recebe A1 é a do cadastro,
+    // autenticada e gravando por nofiscal.onboarding_set_certificate.
+    const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
+    expect(functionFiles()).toEqual(['api/internal/nfse-worker.ts', 'api/v1/nfse.ts', ONBOARDING_CERTIFICATE])
+    for (const path of functionFiles().filter((p) => p !== ONBOARDING_CERTIFICATE)) {
+      expect(path).not.toMatch(CERTIFICATE_WORDS)
+    }
     for (const route of NFSE_ROUTES) expect(route.path).not.toMatch(CERTIFICATE_WORDS)
 
     const vercel = JSON.parse(readFileSync(join(APP_DIR, 'vercel.json'), 'utf8')) as {
