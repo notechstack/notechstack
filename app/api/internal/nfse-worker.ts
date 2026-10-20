@@ -1,5 +1,7 @@
 // Worker do motor: chamado pelo agendador com `Authorization: Bearer ${CRON_SECRET}`.
-// Não é rota pública da API (fica fora da tabela Surface).
+// Não é rota pública da API (fica fora da tabela Surface). Com os canais do agente fiscal
+// configurados, também entrega as notas dos tenants self-service e roda as tarefas do agente.
+import { agenteFromEnv } from '../_lib/agente/ambiente.js'
 import { dbFromEnv } from '../_lib/db.js'
 import { errorResponse } from '../_lib/http.js'
 import { logEvent } from '../_lib/log.js'
@@ -14,6 +16,7 @@ export default {
         sefin: sefinClientFromEnv(),
         cronSecret: process.env.CRON_SECRET,
         fetch: (url, init) => fetch(url, init),
+        agente: agenteFromEnv() ?? undefined,
       })
     } catch {
       logEvent('nofiscal.worker_unavailable')
