@@ -75,6 +75,13 @@ verify_jwt = false
 [functions.assinatura-auditor-webhook]
 verify_jwt = false
 
+# Agente fiscal: o checkout confere a sessão no código (auth.getUser); o webhook usa Basic Auth do Pagar.me.
+[functions.assinatura-fiscal]
+verify_jwt = false
+
+[functions.assinatura-fiscal-webhook]
+verify_jwt = false
+
 [functions.skill-01-ativar-dashboard]
 verify_jwt = true
 
