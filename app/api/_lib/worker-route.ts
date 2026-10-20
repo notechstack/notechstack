@@ -4,6 +4,7 @@
 // no Landing do checklist (lote 2a - trabalho assíncrono).
 import { bearerMatches } from './auth.js'
 import { sendInvoiceCallback, type FetchLike } from './callback.js'
+import { runCancellations } from './cancel.js'
 import { findExpiringCertificates } from './cert-expiry.js'
 import type { Db } from './db.js'
 import { runEmission } from './emission.js'
@@ -17,6 +18,8 @@ export type WorkerDeps = {
   cronSecret: string | undefined
   fetch: FetchLike
   now?: () => Date
+  /** Restringe a execução a um tenant (testes). */
+  tenantId?: string
 }
 
 export async function handleWorkerRequest(request: Request, deps: WorkerDeps): Promise<Response> {
@@ -29,14 +32,12 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
 
   const now = deps.now ?? (() => new Date())
   try {
-    const summary = await runEmission({
-      db: deps.db,
-      sefin: deps.sefin,
-      now,
-      onFinal: async (invoiceId) => {
-        await sendInvoiceCallback({ db: deps.db, fetch: deps.fetch }, invoiceId)
-      },
-    })
+    const onFinal = async (invoiceId: string) => {
+      await sendInvoiceCallback({ db: deps.db, fetch: deps.fetch }, invoiceId)
+    }
+    const summary = await runEmission({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
+    // Cancelamentos depois da emissão (Landing, lote 2b - cancelamento).
+    const cancellations = await runCancellations({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
     const expiring = await findExpiringCertificates(deps.db, now())
     for (const cert of expiring) {
       logEvent('nofiscal.certificate_expiring', {
@@ -46,7 +47,7 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
         expired: cert.expired,
       })
     }
-    return json(200, { ...summary, certificates_expiring: expiring.length })
+    return json(200, { ...summary, cancellations, certificates_expiring: expiring.length })
   } catch (error) {
     logEvent('nofiscal.worker_failed', { error_name: error instanceof Error ? error.name : 'unknown' })
     return errorResponse('INTERNAL', 'erro interno')

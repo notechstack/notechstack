@@ -3,6 +3,7 @@
 // `/api/v1/nfse?id=…&acao=…`; o roteador entende as duas formas (Landing, lote 2a).
 // O trabalho com a Sefin não roda aqui: o POST só enfileira e responde 202 (Unresolved 26).
 import { findTenantByApiKey } from './auth.js'
+import { requestCancel } from './cancel.js'
 import type { Db } from './db.js'
 import { errorResponse, json } from './http.js'
 import { createOrGetInvoice, findInvoiceForTenant } from './invoices.js'
@@ -50,7 +51,7 @@ export function parseNfseRoute(url: URL): NfseRoute | null {
   return null
 }
 
-export type NfseDeps = { db: Db }
+export type NfseDeps = { db: Db; now?: () => Date }
 
 export async function handleNfseRequest(request: Request, deps: NfseDeps): Promise<Response> {
   try {
@@ -61,7 +62,7 @@ export async function handleNfseRequest(request: Request, deps: NfseDeps): Promi
   }
 }
 
-async function route(request: Request, { db }: NfseDeps): Promise<Response> {
+async function route(request: Request, { db, now = () => new Date() }: NfseDeps): Promise<Response> {
   const target = parseNfseRoute(new URL(request.url))
   if (!target) return errorResponse('NOT_FOUND', 'rota não encontrada')
 
@@ -93,8 +94,10 @@ async function route(request: Request, { db }: NfseDeps): Promise<Response> {
   }
   if (target.action === 'cancel') {
     if (request.method !== 'POST') return errorResponse('METHOD_NOT_ALLOWED', 'use POST')
-    // Evento e101101 e as transições de cancelamento: lote 2b (C27, C28, C29).
-    return errorResponse('NOT_IMPLEMENTED', 'cancelamento ainda não disponível')
+    // Só registra o pedido; o evento e101101 sai pelo worker (Landing, lote 2b - cancelamento).
+    const result = await requestCancel(db, tenant.id, invoice.id, now())
+    if (!result) return errorResponse('NOT_FOUND', 'nota não encontrada')
+    return json(202, { id: result.id, status: result.status })
   }
   if (request.method !== 'GET') return errorResponse('METHOD_NOT_ALLOWED', 'use GET')
   // Nota ainda não emitida: 409 (Unresolved 23 da tarefa, valor de "Until answered").
