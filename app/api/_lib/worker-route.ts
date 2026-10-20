@@ -2,12 +2,13 @@
 // Sefin roda numa chamada separada, disparada pelo agendador). Autenticação:
 // `Authorization: Bearer ${CRON_SECRET}`, o header que o Vercel Cron envia; forma literal
 // no Landing do checklist (lote 2a - trabalho assíncrono).
+import { entregar, notaDoAgente, tarefasDoAgente, type AgenteDeps } from './agente/tarefas.js'
 import { bearerMatches } from './auth.js'
 import { sendInvoiceCallback, type FetchLike } from './callback.js'
 import { runCancellations } from './cancel.js'
 import { findExpiringCertificates } from './cert-expiry.js'
 import type { Db } from './db.js'
-import { runEmission } from './emission.js'
+import { runEmission, type FinalStatus } from './emission.js'
 import { errorResponse, json } from './http.js'
 import { logEvent } from './log.js'
 import type { SefinClient } from './sefin.js'
@@ -20,6 +21,8 @@ export type WorkerDeps = {
   now?: () => Date
   /** Restringe a execução a um tenant (testes). */
   tenantId?: string
+  /** Canais do agente fiscal; sem eles, tenant self-service cai no callback HTTP. */
+  agente?: AgenteDeps
 }
 
 export async function handleWorkerRequest(request: Request, deps: WorkerDeps): Promise<Response> {
@@ -31,8 +34,15 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
   if (!deps.sefin) return errorResponse('SEFIN_NOT_CONFIGURED', 'cliente da Sefin não configurado')
 
   const now = deps.now ?? (() => new Date())
+  const agente = deps.agente
   try {
-    const onFinal = async (invoiceId: string) => {
+    // Tenant self-service: a transição vai ao agente (WhatsApp e e-mail), no mesmo processo;
+    // os demais seguem no callback HTTP (Landing de .checks/agente-fiscal-whatsapp.md, lote B).
+    const onFinal = async (invoiceId: string, status: FinalStatus) => {
+      if (await notaDoAgente(deps.db, invoiceId)) {
+        if (agente) return entregar(deps.db, agente, invoiceId, status)
+        logEvent('agente.nao_configurado', { invoice_id: invoiceId })
+      }
       await sendInvoiceCallback({ db: deps.db, fetch: deps.fetch }, invoiceId)
     }
     const summary = await runEmission({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
@@ -47,7 +57,8 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
         expired: cert.expired,
       })
     }
-    return json(200, { ...summary, cancellations, certificates_expiring: expiring.length })
+    const tarefas = agente ? await tarefasDoAgente(deps.db, { now, ...agente }, { tenantId: deps.tenantId }) : null
+    return json(200, { ...summary, cancellations, certificates_expiring: expiring.length, ...(tarefas ? { agente: tarefas } : {}) })
   } catch (error) {
     logEvent('nofiscal.worker_failed', { error_name: error instanceof Error ? error.name : 'unknown' })
     return errorResponse('INTERNAL', 'erro interno')
