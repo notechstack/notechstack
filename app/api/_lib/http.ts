@@ -11,7 +11,6 @@ export type ErrorCode =
   | 'VALIDATION_FAILED'
   | 'UNKNOWN_FIELD'
   | 'INTERNAL'
-  | 'NOT_IMPLEMENTED'
   | 'SEFIN_NOT_CONFIGURED'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
@@ -24,7 +23,6 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 422,
   UNKNOWN_FIELD: 422,
   INTERNAL: 500,
-  NOT_IMPLEMENTED: 501,
   SEFIN_NOT_CONFIGURED: 503,
 }
 

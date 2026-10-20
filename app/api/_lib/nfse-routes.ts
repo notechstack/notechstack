@@ -4,6 +4,7 @@
 // O trabalho com a Sefin não roda aqui: o POST só enfileira e responde 202 (Unresolved 26).
 import { findTenantByApiKey } from './auth.js'
 import { requestCancel } from './cancel.js'
+import { renderDanfse } from './danfse-renderer.js'
 import type { Db } from './db.js'
 import { errorResponse, json } from './http.js'
 import { createOrGetInvoice, findInvoiceForTenant } from './invoices.js'
@@ -50,6 +51,9 @@ export function parseNfseRoute(url: URL): NfseRoute | null {
   if (parts.length === 2 && ACTIONS.includes(parts[1])) return { kind: 'item', id, action: parts[1] as NfseAction }
   return null
 }
+
+/** Status com NFS-e gerada: `cancel_requested` ainda vale; `cancelled` sai com a marca d'água. */
+const PDF_STATUSES: readonly string[] = ['issued', 'cancel_requested', 'cancelled']
 
 export type NfseDeps = { db: Db; now?: () => Date }
 
@@ -101,7 +105,21 @@ async function route(request: Request, { db, now = () => new Date() }: NfseDeps)
   }
   if (request.method !== 'GET') return errorResponse('METHOD_NOT_ALLOWED', 'use GET')
   // Nota ainda não emitida: 409 (Unresolved 23 da tarefa, valor de "Until answered").
-  if (invoice.status !== 'issued') return errorResponse('NOT_ISSUED', 'a nota ainda não foi emitida')
-  // DANFSe no layout da NT 008/2026: lote 2b (C9).
-  return errorResponse('NOT_IMPLEMENTED', 'DANFSe ainda não disponível')
+  if (!PDF_STATUSES.includes(invoice.status)) return errorResponse('NOT_ISSUED', 'a nota ainda não foi emitida')
+  // DANFSe gerado a cada pedido a partir de xml_nfse (Landing, lote 2b - DANFSe).
+  const { rows } = await db.query<{ xml_nfse: string | null }>(
+    'select xml_nfse from nofiscal.fiscal_invoices where id = $1 and tenant_id = $2',
+    [invoice.id, tenant.id],
+  )
+  const xml = rows[0]?.xml_nfse
+  if (!xml) return errorResponse('NOT_ISSUED', 'a nota ainda não foi emitida')
+  const pdf = await renderDanfse(xml, { cancelada: invoice.status === 'cancelled' })
+  return new Response(Buffer.from(pdf), {
+    status: 200,
+    headers: {
+      'content-type': 'application/pdf',
+      'content-disposition': `inline; filename="danfse-${invoice.chave_acesso ?? invoice.id}.pdf"`,
+      'cache-control': 'no-store',
+    },
+  })
 }
