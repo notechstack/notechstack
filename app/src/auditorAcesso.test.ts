@@ -117,4 +117,11 @@ describe('auditor-acesso (C6 + revisão)', () => {
     expect(pre.status).toBe(204)
     expect(pre.headers.get('access-control-allow-origin')).toBe('http://localhost:5173')
   })
+
+  it('CORS: o preflight libera todos os cabeçalhos que o supabase-js manda no functions.invoke', async () => {
+    const prod = deps({ permitido: true, user_id: null, papel: null })
+    const pre = await handle(new Request('https://x', { method: 'OPTIONS', headers: { origin: 'https://app.notechstack.com.br' } }), prod)
+    const liberados = (pre.headers.get('access-control-allow-headers') ?? '').split(',').map((h) => h.trim().toLowerCase())
+    for (const h of ['authorization', 'x-client-info', 'apikey', 'content-type']) expect(liberados).toContain(h)
+  })
 })
