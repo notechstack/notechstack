@@ -56,7 +56,7 @@ function origensPermitidas(env: AcessoDeps["env"]): Set<string> {
 function cors(origem: string | null, permitidas: Set<string>, local: boolean): Record<string, string> {
   const ok = origem && (permitidas.has(origem) || (local && /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(origem)));
   return ok
-    ? { "Access-Control-Allow-Origin": origem!, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "content-type, apikey, authorization", Vary: "Origin" }
+    ? { "Access-Control-Allow-Origin": origem!, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", Vary: "Origin" }
     : { Vary: "Origin" };
 }
 
