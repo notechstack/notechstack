@@ -38,7 +38,8 @@ const email = `concorrencia-${user.slice(0, 8)}@example.test`
 
 try {
   psql(`insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
-        values ('${user}', 'authenticated', 'authenticated', '${email}', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());`)
+        values ('${user}', 'authenticated', 'authenticated', '${email}', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+        insert into public.auditor_aceites (user_id, versao) values ('${user}', 'termos-teste');`)
 
   // C7: dois primeiros acessos simultâneos criam exatamente uma conta, um negócio e um vínculo.
   const acesso = `begin; select criada from public.auditor_primeiro_acesso('${user}', '${email}', 'https://concorrencia.example'); select pg_sleep(1); commit;`

@@ -7,6 +7,11 @@ import { supabase } from '../lib/supabase'
 
 export const ACEITE_VERSAO = 'termos-2026-10-21'
 
+// Destino depois da entrada: só caminhos do auditor no próprio app (revisão B1).
+export function destinoSeguro(volta: string | null): string {
+  return volta && /^\/auditor(\/|\?|$)/.test(volta) && !volta.includes('//') ? volta : '/auditor'
+}
+
 export type Plano = 'gratis' | 'mensal' | 'semanal' | 'agencia'
 export type Negocio = {
   client_id: string
@@ -71,6 +76,7 @@ const MENSAGENS: Record<string, string> = {
   email_invalido: 'Confira o e-mail digitado.',
   aceite_obrigatorio: 'Para continuar, aceite os Termos e a Política de Privacidade.',
   conta_sistema: 'Esta conta não pode ser usada no auditor.',
+  aceite_pendente: 'Para continuar, aceite os Termos e a Política de Privacidade.',
   numero_invalido: 'Informe o celular com DDD (10 ou 11 dígitos).',
 }
 
@@ -94,9 +100,9 @@ async function hub<T>(metodo: 'GET' | 'POST' | 'DELETE', caminho: string, corpo?
 }
 
 export const auditor = {
-  async pedirLink(email: string, site: string | null): Promise<void> {
+  async pedirLink(email: string, site: string | null, volta: string | null = null): Promise<void> {
     const { error } = await supabase.functions.invoke('auditor-acesso', {
-      body: { email, aceite: true, aceite_versao: ACEITE_VERSAO, ...(site ? { site } : {}) },
+      body: { email, ...(site ? { site } : {}), ...(volta ? { volta: destinoSeguro(volta) } : {}) },
     })
     if (!error) return
     const contexto = (error as { context?: Response }).context
@@ -104,7 +110,8 @@ export const auditor = {
     throw erroDe(json.motivo, 'Não foi possível enviar o link agora. Tente de novo em instantes.')
   },
   eu: () => rpc<Conta | null>('auditor_eu'),
-  iniciar: (site: string | null) => rpc<Conta>('auditor_eu_iniciar', { p_site_url: site }),
+  // Sem aceite registrado, o banco devolve 'aceite_pendente' (revisão B3); com aceiteVersao, registra e cria.
+  iniciar: (site: string | null, aceiteVersao: string | null = null) => rpc<Conta>('auditor_eu_iniciar', { p_site_url: site, p_aceite_versao: aceiteVersao }),
   suporte: (clientId: string, conceder: boolean) => rpc<void>('auditor_eu_suporte', { p_client_id: clientId, p_conceder: conceder }),
   retrospectiva: (clientId: string) => rpc<string | null>('auditor_eu_retrospectiva', { p_client_id: clientId }),
   novoNegocio: (site: string, nome: string | null) => rpc<string>('auditor_eu_negocio_criar', { p_site_url: site, p_nome: nome }),

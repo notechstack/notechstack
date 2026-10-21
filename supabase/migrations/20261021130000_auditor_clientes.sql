@@ -380,7 +380,7 @@ begin
   end if;
   if exists (select 1 from auth.users u where u.id = p_user_id
              and u.raw_app_meta_data ->> 'role' in ('NO_ADMIN', 'MARKETING_AGENT')) then
-    raise exception 'conta do sistema não vira cliente do auditor';
+    raise exception 'conta_sistema'; -- conta do sistema (NO_ADMIN/MARKETING_AGENT) não vira cliente do auditor
   end if;
 
   insert into public.auditor_contas (dono_user_id) values (p_user_id) returning * into v_conta;

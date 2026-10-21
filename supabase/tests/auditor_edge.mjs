@@ -63,7 +63,9 @@ ok(psql('select public.auditor_planejar_relatorios()') === '0', 'planejar sem as
 
 // 2 · cliente: primeiro acesso pela RPC com o JWT dele; RLS e rota /cliente/* da Frente 1.
 const cliente = await usuario('AUDITOR_CLIENT')
-const eu = await chamar(`${API}/rest/v1/rpc/auditor_eu_iniciar`, { metodo: 'POST', jwt: cliente.jwt, corpo: { p_site_url: null } })
+const semAceite = await chamar(`${API}/rest/v1/rpc/auditor_eu_iniciar`, { metodo: 'POST', jwt: cliente.jwt, corpo: { p_site_url: null } })
+ok(semAceite.status === 400 && /aceite_pendente/.test(JSON.stringify(semAceite.json)), 'B3 sem aceite: aceite_pendente', semAceite)
+const eu = await chamar(`${API}/rest/v1/rpc/auditor_eu_iniciar`, { metodo: 'POST', jwt: cliente.jwt, corpo: { p_site_url: null, p_aceite_versao: 'termos-2026-10-21' } })
 ok(eu.status === 200 && eu.json?.plano === 'gratis' && eu.json.negocios.length === 1, 'auditor_eu_iniciar cria conta grátis e negócio', eu)
 const clientId = eu.json.negocios[0].client_id
 const conexoes = await chamar(`${HUB}/cliente/${clientId}/conexoes`, { jwt: cliente.jwt })
@@ -89,9 +91,9 @@ ok(linha.fontes.meta_ads === 'sem_conexao' && linha.fontes.site === 'nao_disponi
 // 4 · auditor-acesso: validação no runtime real.
 const ac = `${API}/functions/v1/auditor-acesso`
 ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'x' } })).status === 400, 'auditor-acesso: e-mail inválido → 400')
-ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'a@b.com', aceite: false } })).status === 400, 'auditor-acesso: sem aceite → 400')
+ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'a@b.com', site: 'http://localhost:1' } })).status === 400, 'auditor-acesso: site inválido → 400')
 const emailNovo = `novo-${randomUUID().slice(0, 6)}@example.test`
-const semResend = await chamar(ac, { metodo: 'POST', corpo: { email: emailNovo, aceite: true, aceite_versao: 'termos-2026-10-21' } })
+const semResend = await chamar(ac, { metodo: 'POST', corpo: { email: emailNovo } })
 ok(semResend.status === 502 && semResend.json?.motivo === 'indisponivel', 'auditor-acesso sem RESEND_API_KEY → 502 controlado', semResend)
 // o usuário nasce antes do envio falhar; o teste não deixa sobra no banco
 psql(`delete from auth.users where email = '${emailNovo}'`)

@@ -65,18 +65,51 @@ beforeEach(() => {
 })
 
 describe('entrada do auditor', () => {
-  it('sem sessão: exige o aceite, pede o link com o site e mostra a confirmação', async () => {
+  it('sem sessão: pede o link só com o e-mail (o aceite é depois do login) e mostra a confirmação', async () => {
     mocks.auditor.pedirLink.mockResolvedValue(undefined)
-    abrir('/auditor/entrar?site=https%3A%2F%2Floja.com.br%2F', null)
+    abrir('/auditor/entrar?site=https%3A%2F%2Floja.com.br%2F&volta=%2Fauditor%2Fplanos', null)
     const user = userEvent.setup()
     await user.type(await screen.findByLabelText('E-mail'), 'pessoa@loja.com.br')
-    await user.click(screen.getByRole('button', { name: 'Receber link de acesso' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('aceite os Termos')
-    expect(mocks.auditor.pedirLink).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('checkbox'))
+    expect(screen.queryByRole('checkbox')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Receber link de acesso' }))
     expect(await screen.findByText(/Confira seu e-mail/)).toBeInTheDocument()
-    expect(mocks.auditor.pedirLink).toHaveBeenCalledWith('pessoa@loja.com.br', 'https://loja.com.br/')
+    expect(mocks.auditor.pedirLink).toHaveBeenCalledWith('pessoa@loja.com.br', 'https://loja.com.br/', '/auditor/planos')
+  })
+
+  it('B3: com sessão e sem aceite registrado, pede o aceite e só então cria a conta', async () => {
+    const { ErroAuditor } = await import('./auditor/auditor-service')
+    mocks.auditor.iniciar
+      .mockRejectedValueOnce(new ErroAuditor('aceite_pendente', 'Para continuar, aceite os Termos e a Política de Privacidade.'))
+      .mockResolvedValue(CONTA)
+    abrir('/auditor/entrar?site=https%3A%2F%2Floja.com.br%2F', sessao())
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Abrir minha conta' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('aceite os Termos')
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: 'Abrir minha conta' }))
+    expect(await screen.findByRole('heading', { name: /Meus negócios/ })).toBeInTheDocument()
+    expect(mocks.auditor.iniciar).toHaveBeenLastCalledWith('https://loja.com.br/', 'termos-2026-10-21')
+  })
+
+  it('B1: /auditor/* sem sessão vai para a entrada guardando o destino (não para o /login com senha)', async () => {
+    abrir(`/auditor/${CLIENTE}/relatorios/r1?x=1`, null)
+    expect(await screen.findByRole('button', { name: 'Receber link de acesso' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/auditor/entrar')
+    expect(new URLSearchParams(window.location.search).get('volta')).toBe(`/auditor/${CLIENTE}/relatorios/r1?x=1`)
+  })
+
+  it('B1: com sessão, a entrada volta ao destino guardado; destino de fora vira /auditor', async () => {
+    abrir('/auditor/entrar?volta=%2Fauditor%2Fconta', sessao())
+    expect(await screen.findByRole('button', { name: 'Excluir minha conta' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/auditor/conta')
+  })
+
+  it('B7: conta encerrada mostra "Reativar minha conta"', async () => {
+    mocks.auditor.eu.mockResolvedValue({ ...CONTA, encerrada_em: '2026-10-20T00:00:00Z', excluir_apos: '2027-01-18T00:00:00Z' })
+    abrir('/auditor', sessao())
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Reativar minha conta' }))
+    expect(mocks.auditor.iniciar).toHaveBeenCalledWith(null)
   })
 
   it('volta do link (com sessão): cria a conta no primeiro acesso e abre os negócios', async () => {
@@ -143,5 +176,7 @@ describe('conta', () => {
     await user.type(screen.getByLabelText(/Digite/), 'EXCLUIR')
     await user.click(confirmar)
     await waitFor(() => expect(screen.getByText(/abc123/)).toBeInTheDocument())
+    // B2: o código fica na tela; sair é uma ação da pessoa
+    expect(within(screen.getByRole('heading', { name: 'Conta excluída' }).closest('section')!).getByRole('button', { name: 'Sair' })).toBeInTheDocument()
   })
 })

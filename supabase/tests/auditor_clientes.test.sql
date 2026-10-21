@@ -47,9 +47,9 @@ select is((select conta_id is not null from public.auditor_assinaturas where id 
 
 select lives_ok($$select * from public.auditor_primeiro_acesso('a3000000-0000-4000-8000-00000000000b', 'cliente-b@example.test', 'https://loja-b.com.br')$$, 'cliente B entra');
 select throws_ok($$select * from public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000ad', 'admin@example.test', null)$$,
-  'P0001', 'conta do sistema não vira cliente do auditor', 'NO_ADMIN não vira cliente');
+  'P0001', 'conta_sistema', 'NO_ADMIN não vira cliente');
 select throws_ok($$select * from public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000d0', 'dot@example.test', null)$$,
-  'P0001', 'conta do sistema não vira cliente do auditor', 'MARKETING_AGENT não vira cliente');
+  'P0001', 'conta_sistema', 'MARKETING_AGENT não vira cliente');
 
 create temp table ids on commit drop as
 select (select m.client_id from public.memberships m where m.user_id = 'a3000000-0000-4000-8000-00000000000a') as x,

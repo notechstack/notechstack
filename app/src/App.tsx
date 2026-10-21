@@ -31,6 +31,7 @@ const AuditorConexoesPage = lazy(() => import('./auditor/AuditorPages').then(m =
 const AuditorRelatoriosPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatoriosPage })))
 const AuditorRelatorioPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatorioPage })))
 const AuditorContaPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.ContaPage })))
+const AuditorRota = lazy(() => import('./auditor/AuditorRota').then(m => ({ default: m.AuditorRota })))
 const AuditorPlanosPage = lazy(() => import('./auditor/PlanosPage').then(m => ({ default: m.PlanosPage })))
 const AuditorOperacaoPage = lazy(() => import('./auditor/OperacaoPage').then(m => ({ default: m.OperacaoPage })))
 const MarketingAccessPage = lazy(() => import('./marketing/MarketingAccessPage').then(m => ({ default: m.MarketingAccessPage })))
@@ -51,8 +52,9 @@ export function AppRoutes() {
       <Route path="/acesso" element={<AccessPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auditor/entrar" element={<EntrarAuditorPage />} />
-      <Route element={<ProtectedRoute />}>
-        {/* Auditor por cliente: o acesso é decidido no servidor (RLS + auditor_eu_*), não pelo papel. */}
+      {/* Auditor por cliente: o acesso é decidido no servidor (RLS + auditor_eu_*), não pelo papel.
+          Sem sessão, vai para /auditor/entrar com o destino guardado (revisão B1). */}
+      <Route element={<AuditorRota />}>
         <Route path="/auditor" element={<AuditorLayout />}>
           <Route index element={<AuditorHomePage />} />
           <Route path="conta" element={<AuditorContaPage />} />
@@ -61,6 +63,8 @@ export function AppRoutes() {
           <Route path=":clientId/relatorios" element={<AuditorRelatoriosPage />} />
           <Route path=":clientId/relatorios/:relatorioId" element={<AuditorRelatorioPage />} />
         </Route>
+      </Route>
+      <Route element={<ProtectedRoute />}>
         <Route path="/agencia" element={<AgencyConsolePage />} />
         <Route path="/agencia/:agencyId" element={<AgencyConsolePage />} />
         <Route path="/agencia/:agencyId/projetos/:projectId" element={<AgencyConsolePage />} />

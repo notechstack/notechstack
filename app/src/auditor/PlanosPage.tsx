@@ -42,7 +42,14 @@ export function PlanosPage() {
   const [estado, setEstado] = useState<{ enviando: boolean; concluida: boolean; texto: string; erro: boolean }>({ enviando: false, concluida: false, texto: '', erro: false })
 
   if (r.carregando && !r.dados) return <Carregando />
-  if (r.erro || !r.dados) return <p role="alert" className="text-sm">Não foi possível carregar os planos agora.</p>
+  if (r.erro || !r.dados) {
+    return (
+      <div role="alert" className="text-sm">
+        <p>Não foi possível carregar os planos agora.</p>
+        <button type="button" className={`${botaoSecundario} mt-3`} onClick={r.recarregar}>Tentar novamente</button>
+      </div>
+    )
+  }
   const { config, conta } = r.dados
   const jaAssinante = conta && conta.plano !== 'gratis' && !conta.encerrada_em
   const disponivel = (c: CodigoPlano) => config.venda_aberta && Boolean(config.public_key) && config.planos.some((p) => p.codigo === c && p.disponivel)

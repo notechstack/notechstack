@@ -5,6 +5,7 @@ import { sessionAal } from '../auth/aal'
 import { BrandShell } from '../components/BrandShell'
 import { supabase } from '../lib/supabase'
 import { listAccessibleProjects } from '../projects/project-service'
+import { destinoSeguro } from '../auditor/auditor-service'
 
 const GENERIC_LOGIN_ERROR = 'Não foi possível entrar. Confira seus dados e tente novamente.'
 const MFA_ERROR = 'Código não confere. Confira o horário do celular e tente o código novo.'
@@ -107,7 +108,7 @@ export function LoginPage() {
 
     // Cliente do auditor (inclui a conta de revisor da Meta/Google, que entra com senha).
     if (user.app_metadata.role === 'AUDITOR_CLIENT') {
-      navigate('/auditor', { replace: true })
+      navigate(destinoSeguro(typeof from === 'string' ? from : null), { replace: true })
       return
     }
 

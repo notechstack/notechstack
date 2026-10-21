@@ -67,6 +67,16 @@ export function CopiaWhatsappEquipe({ relatorioId }: { relatorioId: string }) {
     }
   }
 
+  async function copiar() {
+    try {
+      if (!navigator.clipboard) throw new Error('sem_clipboard')
+      await navigator.clipboard.writeText(copia!.texto)
+      setCopiado(true)
+    } catch {
+      setErro('Não deu para copiar automaticamente. Selecione o texto e copie à mão.')
+    }
+  }
+
   if (!copia) {
     return (
       <>
@@ -78,9 +88,10 @@ export function CopiaWhatsappEquipe({ relatorioId }: { relatorioId: string }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-cinza">Leitura registrada. Enviar para {copia.numero}.</p>
+      {erro ? <p role="alert" className="text-xs text-vermelho">{erro}</p> : null}
       <textarea readOnly className="h-40 w-72 rounded-lg border border-borda p-2 text-xs" value={copia.texto} aria-label="Texto da cópia" />
       <div className="flex gap-2">
-        <button type="button" className={botaoSecundario} onClick={() => { void navigator.clipboard?.writeText(copia.texto); setCopiado(true) }}>{copiado ? 'Copiado' : 'Copiar texto'}</button>
+        <button type="button" className={botaoSecundario} onClick={() => { void copiar() }}>{copiado ? 'Copiado' : 'Copiar texto'}</button>
         <a className={botaoSecundario} href={`https://wa.me/55${copia.numero}?text=${encodeURIComponent(copia.texto)}`} target="_blank" rel="noreferrer">Abrir no WhatsApp</a>
       </div>
     </div>

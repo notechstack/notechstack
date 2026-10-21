@@ -128,7 +128,7 @@ describe('rotas do auditor na marketing-hub', () => {
   const json = (_req: Request, status: number, corpo: unknown) => new Response(JSON.stringify(corpo), { status })
   const erro = (_req: Request, status: number, code: string, mensagem: string) => new Response(JSON.stringify({ error_code: code, mensagem }), { status })
 
-  function rotas(extra: Partial<AuditorStore> = {}, cancelar = vi.fn(async () => true)) {
+  function rotas(extra: Partial<AuditorStore> = {}, cancelar = vi.fn<(id: string) => Promise<boolean>>(async () => true)) {
     const { s } = store({ claim: vi.fn(async () => []) })
     const auditorStore: AuditorStore = {
       ...s,

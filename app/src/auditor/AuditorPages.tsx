@@ -79,7 +79,7 @@ export function AuditorHomePage() {
         </div>
         {c.plano === 'gratis' ? <Link className={botaoPrimario} to="/auditor/planos">Ver planos</Link> : null}
       </div>
-      {c.encerrada_em ? <Falha texto={`Esta conta foi encerrada. Os dados serão apagados em ${dataBr(c.excluir_apos)}.`} /> : null}
+      {c.encerrada_em ? <Reativar excluirApos={c.excluir_apos} onReativada={conta.recarregar} /> : null}
       {c.negocios.map((n) => (
         <Cartao key={n.client_id} titulo={n.nome} acoes={<span className="text-xs text-cinza">{n.site_url ?? 'sem site'}</span>}>
           <p className="text-sm text-cinza">
@@ -94,6 +94,22 @@ export function AuditorHomePage() {
       ))}
       {c.plano === 'agencia' && c.negocios.length < c.limite_negocios ? <NovoNegocio onCriado={conta.recarregar} /> : null}
     </>
+  )
+}
+
+// B7: conta encerrada (inatividade ou cancelamento) volta a valer como grátis quando a pessoa pede.
+function Reativar({ excluirApos, onReativada }: { excluirApos: string | null; onReativada: () => void }) {
+  const [estado, setEstado] = useState<{ ocupado: boolean; erro: string }>({ ocupado: false, erro: '' })
+  async function reativar() {
+    setEstado({ ocupado: true, erro: '' })
+    try { await auditor.iniciar(null); onReativada() } catch (e) { setEstado({ ocupado: false, erro: e instanceof ErroAuditor ? e.message : 'Não foi possível reativar agora.' }) }
+  }
+  return (
+    <div role="alert" className="rounded-xl border border-vermelho/40 bg-vermelho-tint p-4 text-sm">
+      <p>Esta conta foi encerrada. Os dados serão apagados em {dataBr(excluirApos)}.</p>
+      <button type="button" className={`${botaoSecundario} mt-3`} disabled={estado.ocupado} onClick={() => void reativar()}>Reativar minha conta</button>
+      {estado.erro ? <p className="mt-2 text-vermelho">{estado.erro}</p> : null}
+    </div>
   )
 }
 
@@ -214,12 +230,15 @@ export function RelatoriosPage() {
   const { clientId = '' } = useParams()
   const lista = useCarregar(useCallback(() => auditor.relatorios(clientId), [clientId]))
   const [aviso, setAviso] = useState('')
+  const [gerando, setGerando] = useState(false)
   async function gerarRetrospectiva() {
+    if (gerando) return
+    setGerando(true)
     try {
       const id = await auditor.retrospectiva(clientId)
       setAviso(id ? 'Sua retrospectiva está sendo preparada. Ela aparece aqui em alguns minutos.' : 'A retrospectiva grátis deste negócio já foi gerada.')
       lista.recarregar()
-    } catch (e) { setAviso(e instanceof ErroAuditor ? e.message : 'Não foi possível.') }
+    } catch (e) { setAviso(e instanceof ErroAuditor ? e.message : 'Não foi possível.') } finally { setGerando(false) }
   }
   if (lista.carregando && !lista.dados) return <Carregando />
   if (lista.erro) return <Falha texto={lista.erro} onTentar={lista.recarregar} />
@@ -231,7 +250,7 @@ export function RelatoriosPage() {
       {itens.length === 0 ? (
         <>
           <Vazio texto="Nenhum relatório ainda." />
-          <button type="button" className={botaoPrimario} onClick={() => void gerarRetrospectiva()}>Gerar minha retrospectiva</button>
+          <button type="button" className={botaoPrimario} disabled={gerando} onClick={() => void gerarRetrospectiva()}>{gerando ? 'Pedindo…' : 'Gerar minha retrospectiva'}</button>
         </>
       ) : (
         <ul className="space-y-2">
@@ -271,7 +290,8 @@ export function RelatorioPage() {
   }, [relatorioId]))
   if (r.carregando && !r.dados) return <Carregando />
   if (r.erro) return <Falha texto={r.erro} onTentar={r.recarregar} />
-  if (!r.dados) return <Vazio texto="Relatório não encontrado." />
+  // C: o relatório precisa ser do negócio da URL (a RLS já impede outro dono; isto evita misturar negócios da mesma conta).
+  if (!r.dados || r.dados.relatorio.client_id !== clientId) return <Vazio texto="Relatório não encontrado." />
   return <RelatorioConteudo relatorio={r.dados.relatorio} clientId={clientId} snapshots={r.dados.snapshots} plano={r.dados.plano} />
 }
 
@@ -339,14 +359,19 @@ export function ContaPage() {
     setEstado({ ocupado: true, erro: '', feito: '' })
     try {
       const r = await auditor.excluirConta()
+      // B2: o código fica na tela; a pessoa sai quando quiser (antes o signOut imediato o escondia).
       setEstado({ ocupado: false, erro: '', feito: r.codigo })
-      await supabase.auth.signOut()
     } catch (e) {
       setEstado({ ocupado: false, erro: e instanceof ErroAuditor ? e.message : 'Não foi possível excluir agora.', feito: '' })
     }
   }
   if (estado.feito) {
-    return <Cartao titulo="Conta excluída"><p className="text-sm">Seus dados foram apagados. Código do pedido: <strong>{estado.feito}</strong>.</p></Cartao>
+    return (
+      <Cartao titulo="Conta excluída">
+        <p className="text-sm">Seus dados foram apagados. Guarde o código do pedido: <strong>{estado.feito}</strong>.</p>
+        <button type="button" className={`${botaoSecundario} mt-4`} onClick={() => void supabase.auth.signOut()}>Sair</button>
+      </Cartao>
+    )
   }
   return (
     <>
