@@ -14,8 +14,8 @@ begin
   end loop;
   -- 06:00 BRT: agenda os relatórios do dia (semanal na segunda, mensal no dia 1).
   perform cron.schedule('auditor-relatorios-planejar', '0 9 * * *', 'select public.auditor_planejar_relatorios()');
-  -- A cada 10 min: até 3 relatórios + avisos (só chama a marketing-hub se houver trabalho).
-  perform cron.schedule('auditor-relatorios-processar', '*/10 * * * *', 'select public.auditor_invoke_processar()');
+  -- A cada 2 min: 1 relatório + avisos por chamada (revisão B5); sem trabalho, não chama a marketing-hub.
+  perform cron.schedule('auditor-relatorios-processar', '*/2 * * * *', 'select public.auditor_invoke_processar()');
   -- 03:30 BRT: retenção (D3).
   perform cron.schedule('auditor_limpar_diario', '30 6 * * *', 'select public.auditor_limpar()');
 end;

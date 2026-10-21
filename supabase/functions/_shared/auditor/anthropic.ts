@@ -9,7 +9,8 @@ export const MODELO_REDACAO = "claude-opus-5-5";
 
 export function criarGeradorAnthropic(apiKey: string | undefined): GeradorIa | null {
   if (!apiKey) return null;
-  const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 2 });
+  // B5: uma tentativa e 45 s no máximo; se falhar, o relatório sai com o texto de modelo (a IA nunca prende a fila).
+  const client = new Anthropic({ apiKey, timeout: 45_000, maxRetries: 0 });
   return async ({ system, prompt, schema }) => {
     // `fallbacks: "default"` e o beta ainda podem não estar nos tipos do SDK; o corpo vai como está.
     const resposta = await client.beta.messages.create({

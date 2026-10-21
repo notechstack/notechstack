@@ -29,15 +29,6 @@ Deno.serve((req: Request) =>
       if (error || !data.user) falha("auth_criar");
       return data.user.id;
     },
-    atualizarUsuario: async (id, mudancas) => {
-      const { data: atual, error: erroLer } = await admin.auth.admin.getUserById(id);
-      if (erroLer || !atual.user) falha("auth_ler");
-      const { error } = await admin.auth.admin.updateUserById(id, {
-        ...(mudancas.app_metadata ? { app_metadata: { ...atual.user.app_metadata, ...mudancas.app_metadata } } : {}),
-        ...(mudancas.user_metadata ? { user_metadata: { ...atual.user.user_metadata, ...mudancas.user_metadata } } : {}),
-      });
-      if (error) falha("auth_atualizar");
-    },
     gerarLink: async (email, redirectTo) => {
       const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } });
       if (error || !data.properties?.action_link) falha("auth_link");

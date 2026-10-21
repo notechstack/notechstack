@@ -390,3 +390,10 @@ test("reconciliacao trouxe pagamento -> 200 ok paga", async () => {
   const r = await processarCheckout(pedido(), deps);
   assert.deepEqual(r, { http: 200, body: { ok: true, status: "paga", assinatura_id: UUID } });
 });
+
+test("A2: o POST /subscriptions leva Idempotency-Key derivada do cartão tokenizado", async () => {
+  const { deps, chamadas } = falsos();
+  await processarCheckout(pedido(), deps);
+  const h = chamadas.fetch[0].init?.headers ?? chamadas.fetch[0].headers ?? {};
+  assert.match(String(h["Idempotency-Key"] ?? ""), /^auditor-token_/);
+});

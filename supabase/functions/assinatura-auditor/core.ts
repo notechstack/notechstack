@@ -313,7 +313,8 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   try {
     const res = await deps.fetch(`${config.apiUrl}/subscriptions`, {
       method: "POST",
-      headers,
+      // A2: o mesmo cartão tokenizado não cria duas assinaturas (clique duplo, reenvio da rede).
+      headers: { ...headers, "Idempotency-Key": `auditor-${pedido.card_token}` },
       body: JSON.stringify(corpoAssinatura(pedido, planId)),
     });
     if (!res.ok) {

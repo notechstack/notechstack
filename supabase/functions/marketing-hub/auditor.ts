@@ -18,13 +18,14 @@ import { ErroFonte, processarFila, type Coletores, type PeriodoColeta, type Proc
 import type { GeradorIa } from "../_shared/auditor/redacao.ts";
 import type { Email } from "../_shared/auditor/email.ts";
 import type { Site } from "../_shared/auditor/regras.ts";
-import type { ClienteStore } from "./clientes.ts";
+import type { ClienteStore, LeitorCliente } from "./clientes.ts";
 import type { Chamador } from "./handler.ts";
 
 export type ContaDoDono = {
   conta_id: string;
   negocios: string[];
-  assinatura: { subscription_id: string; status: string } | null;
+  // A2: todas as assinaturas da conta ainda não canceladas (a vigente e as que ficaram órfãs).
+  assinaturas: { subscription_id: string; status: string }[];
 };
 
 export interface AuditorStore extends ProcessarStore {
@@ -35,6 +36,10 @@ export interface AuditorStore extends ProcessarStore {
   // null = sem opt-in da conta, relatório inexistente ou ainda sem texto. Registra a leitura.
   copiaWhatsapp(relatorioId: string, ator: string): Promise<CopiaWhatsapp | null>;
   suporteVigente(userId: string, clientId: string): Promise<boolean>;
+  // A1: posse do negócio (auditor_clientes → auditor_contas), não o vínculo em memberships.
+  donoDoNegocio(userId: string, clientId: string): Promise<boolean>;
+  // B6: leituras do modo suporte pela service role, depois que a rota conferiu a concessão e registrou a leitura.
+  leitorServico(): LeitorCliente;
 }
 
 export type CopiaWhatsapp = {
@@ -60,7 +65,7 @@ export type AuditorDeps = {
   google: { clientId: string | null; clientSecret: string | null; developerToken: string | null };
   site: (url: string) => Promise<Site | null>;
   gerar: GeradorIa | null;
-  enviar: (para: string, email: Email) => Promise<string>;
+  enviar: (para: string, email: Email, chave?: string) => Promise<string>;
   // Cancela a assinatura no Pagar.me; false = não conseguiu (a exclusão para, para não seguir cobrando).
   cancelarAssinatura: (subscriptionId: string) => Promise<boolean>;
   appUrl: string;
@@ -170,9 +175,11 @@ export function criarRotasAuditor(d: AuditorDeps) {
     if (corpo.confirmar !== true) return erro(req, 422, "INVALID_REQUEST", "Confirme a exclusão.", { campos: ["confirmar"] });
     const conta = await d.store.contaDoDono(ch.userId);
     if (!conta) return erro(req, 404, "NOT_FOUND", "Não há conta do auditor neste login.");
-    if (conta.assinatura && conta.assinatura.status !== "cancelada") {
-      if (!(await d.cancelarAssinatura(conta.assinatura.subscription_id))) {
-        d.log("error", "auditor_exclusao_pagarme_falhou", {});
+    // A2: cancela TODAS as assinaturas não canceladas da conta; só apaga se todas foram canceladas.
+    for (const a of conta.assinaturas) {
+      if (a.status === "cancelada") continue;
+      if (!(await d.cancelarAssinatura(a.subscription_id))) {
+        d.log("error", "auditor_exclusao_pagarme_falhou", { assinaturas: conta.assinaturas.length });
         return erro(req, 502, "PAGARME_FALHOU", "Não conseguimos cancelar a assinatura agora. Nada foi apagado; tente de novo em alguns minutos.");
       }
     }
@@ -210,6 +217,16 @@ export function criarRotasAuditor(d: AuditorDeps) {
 
   // null = não é rota do auditor (o handler segue o roteamento de sempre).
   return async function rotasAuditor(req: Request, partes: string[], json: Resp, erro: Erro): Promise<Response | null> {
+    try {
+      return await rotear(req, partes, json, erro);
+    } catch (e) {
+      // M5: erro de banco ou rede não vaza nome de tabela nem código para o navegador.
+      d.log("error", "auditor_rota_falhou", { rota: partes.slice(0, 2).join("/"), erro: e instanceof Error ? e.name : "erro" });
+      return erro(req, 500, "INTERNAL", "Algo deu errado do nosso lado. Tente de novo em alguns minutos.");
+    }
+  };
+
+  async function rotear(req: Request, partes: string[], json: Resp, erro: Erro): Promise<Response | null> {
     const m = req.method;
     const [r0, r1, r2] = partes;
     if (r0 === "internal" && r1 === "auditor" && r2 === "processar" && partes.length === 3) {
@@ -225,5 +242,5 @@ export function criarRotasAuditor(d: AuditorDeps) {
       return m === "GET" ? await operacao(req, json, erro) : erro(req, 405, "METHOD_NOT_ALLOWED", "Use GET.");
     }
     return null;
-  };
+  }
 }

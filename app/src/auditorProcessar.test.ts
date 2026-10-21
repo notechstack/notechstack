@@ -71,7 +71,7 @@ describe('processamento do relatório', () => {
     expect(atualizacoes.at(-1)).toMatchObject({ estado: 'enviado', email_id: 'em_1' })
     // meta e ga4 (atual + anterior) + site
     expect(snapshots).toHaveLength(5)
-    expect(d.enviar).toHaveBeenCalledWith('dono@loja.com.br', expect.objectContaining({ assunto: expect.stringContaining('Relatório semanal') }))
+    expect(d.enviar).toHaveBeenCalledWith('dono@loja.com.br', expect.objectContaining({ assunto: expect.stringContaining('Relatório semanal') }), 'relatorio-r1')
     expect(s.evento).toHaveBeenCalledWith(CLIENTE, 'relatorio_enviado', expect.any(Object))
   })
 
@@ -117,6 +117,7 @@ describe('processamento do relatório', () => {
     const d = deps(s, coletores())
     const r = await processarFila(d)
     expect(r.relatorios).toEqual({ agendado: 1, enviado: 1 })
+    expect(s.claim).toHaveBeenCalledWith(1) // B5: um relatório por chamada
     expect(r.avisos).toBe(1)
     expect(s.avisoEnviado).toHaveBeenCalledWith('a1')
     expect(vi.mocked(d.enviar).mock.calls.at(-1)?.[1].assunto).toBe('A conexão com o Facebook expira em 7 dias')
@@ -132,7 +133,9 @@ describe('rotas do auditor na marketing-hub', () => {
     const auditorStore: AuditorStore = {
       ...s,
       cronSecretOk: vi.fn(async (x: string) => x === 'segredo'),
-      contaDoDono: vi.fn(async () => ({ conta_id: 'k1', negocios: [CLIENTE], assinatura: { subscription_id: 'sub_1', status: 'paga' } })),
+      contaDoDono: vi.fn(async () => ({ conta_id: 'k1', negocios: [CLIENTE], assinaturas: [{ subscription_id: 'sub_1', status: 'paga' }, { subscription_id: 'sub_orfa', status: 'pendente' }] })),
+      donoDoNegocio: vi.fn(async () => true),
+      leitorServico: vi.fn(() => ({ conexoesListar: vi.fn(async () => []), ativosListar: vi.fn(async () => []) })),
       apagarConta: vi.fn(async () => ({ codigo: 'abc', usuario_apagado: true })),
       operacao: vi.fn(async () => [{ client_id: CLIENTE, plano: 'semanal', conexoes: {}, ultimo_relatorio: null }]),
       suporteVigente: vi.fn(async () => false),
@@ -189,9 +192,10 @@ describe('rotas do auditor na marketing-hub', () => {
     expect(res!.status).toBe(200)
     expect(await res!.json()).toEqual({ ok: true, codigo: 'abc' })
     expect(a.cancelar).toHaveBeenCalledWith('sub_1')
+    expect(a.cancelar).toHaveBeenCalledWith('sub_orfa') // A2: a assinatura órfã também é cancelada
     expect(a.auditorStore.apagarConta).toHaveBeenCalledWith('k1')
 
-    const b = rotas({}, vi.fn(async () => false))
+    const b = rotas({}, vi.fn(async (id: string) => id !== 'sub_orfa')) // A2: se a órfã não cancela, nada é apagado
     expect((await b.r(pedido('POST', 'dono', { confirmar: true }), ['cliente', 'excluir-conta'], json, erro))!.status).toBe(502)
     expect(b.auditorStore.apagarConta).not.toHaveBeenCalled()
 
@@ -222,5 +226,12 @@ describe('rotas do auditor na marketing-hub', () => {
     expect((await r(pedido('GET', 'admin1'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
     expect((await r(pedido('GET', 'dot'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
     expect((await r(pedido('GET', 'dono'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
+  })
+
+  it('M5: erro de banco numa rota do auditor vira 500 genérico, sem nome de tabela', async () => {
+    const { r } = rotas({ operacao: vi.fn(async () => { throw new Error('auditor_operacao: 42P01 relation does not exist') }) })
+    const res = await r(pedido('GET', 'admin'), ['auditor', 'operacao'], json, erro)
+    expect(res!.status).toBe(500)
+    expect(JSON.stringify(await res!.json())).not.toMatch(/auditor_operacao|42P01/)
   })
 })

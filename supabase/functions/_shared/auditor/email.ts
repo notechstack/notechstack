@@ -69,11 +69,11 @@ export function emailAviso(o: { tipo: TipoAviso; negocio: string; provedor: "met
 }
 
 // Envio pelo Resend. Devolve o id do e-mail; erro sem detalhe do destinatário.
-export async function enviarResend(o: { apiKey: string; para: string; email: Email; fetch?: typeof fetch; remetente?: string }): Promise<string> {
+export async function enviarResend(o: { apiKey: string; para: string; email: Email; fetch?: typeof fetch; remetente?: string; chave?: string }): Promise<string> {
   const f = o.fetch ?? fetch;
   const resp = await f("https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${o.apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${o.apiKey}`, "Content-Type": "application/json", ...(o.chave ? { "Idempotency-Key": o.chave } : {}) },
     body: JSON.stringify({ from: o.remetente ?? REMETENTE_RELATORIOS, to: [o.para], subject: o.email.assunto, text: o.email.texto, html: o.email.html }),
   });
   const corpo = await resp.json().catch(() => ({})) as { id?: string };

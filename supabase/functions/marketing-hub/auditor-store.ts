@@ -3,6 +3,7 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import type { AuditorStore, CopiaWhatsapp } from "./auditor.ts";
+import type { AtivoCliente, ConexaoCliente } from "./clientes.ts";
 import type { Aviso, AtivoColeta, ConexaoEstado, RelatorioFila } from "../_shared/auditor/processar.ts";
 
 function falhar(contexto: string, error: { message?: string; code?: string } | null): never {
@@ -26,6 +27,7 @@ export function criarAuditorStore(admin: SupabaseClient): AuditorStore {
     },
 
     async claim(limite) {
+      emails.clear(); // M6: o cache de e-mail vale só para esta chamada do cron
       const { data, error } = await admin.rpc("auditor_claim_relatorios", { p_limit: limite });
       if (error) falhar("auditor_claim_relatorios", error);
       return ((data ?? []) as RelatorioFila[]).map((r) => ({
@@ -88,20 +90,44 @@ export function criarAuditorStore(admin: SupabaseClient): AuditorStore {
 
     async contaDoDono(userId) {
       const { data, error } = await admin.from("auditor_contas")
-        .select("id, auditor_clientes(client_id), auditor_assinaturas!auditor_contas_assinatura_id_fkey(pagarme_subscription_id, status)")
-        .eq("dono_user_id", userId).maybeSingle();
+        .select("id, auditor_clientes(client_id)").eq("dono_user_id", userId).maybeSingle();
       if (error) falhar("auditor_contas", error);
       if (!data) return null;
-      const d = data as unknown as {
-        id: string; auditor_clientes: { client_id: string }[];
-        auditor_assinaturas: { pagarme_subscription_id: string | null; status: string } | null;
-      };
-      const a = d.auditor_assinaturas;
+      const d = data as unknown as { id: string; auditor_clientes: { client_id: string }[] };
+      // A2: todas as assinaturas ligadas à conta (inclusive as substituídas), não só a vigente.
+      const { data: ass, error: erroAss } = await admin.from("auditor_assinaturas")
+        .select("pagarme_subscription_id, status").eq("conta_id", d.id).neq("status", "cancelada");
+      if (erroAss) falhar("auditor_assinaturas", erroAss);
       return {
         conta_id: d.id,
         negocios: d.auditor_clientes.map((x) => x.client_id),
-        assinatura: a?.pagarme_subscription_id ? { subscription_id: a.pagarme_subscription_id, status: a.status } : null,
+        assinaturas: ((ass ?? []) as { pagarme_subscription_id: string | null; status: string }[])
+          .filter((a) => a.pagarme_subscription_id)
+          .map((a) => ({ subscription_id: a.pagarme_subscription_id as string, status: a.status })),
       };
+    },
+
+    leitorServico() {
+      return {
+        async conexoesListar(clientId: string) {
+          const { data, error } = await admin.from("marketing_cliente_conexoes")
+            .select("provedor, estado, escopos, expira_em, conectado_em, verificado_em, ultimo_erro, encerrado_em").eq("client_id", clientId);
+          if (error) falhar("marketing_cliente_conexoes", error);
+          return (data ?? []) as ConexaoCliente[];
+        },
+        async ativosListar(clientId: string) {
+          const { data, error } = await admin.from("marketing_cliente_ativos")
+            .select("tipo, external_id, nome, login_customer_id, moeda, detalhe").eq("client_id", clientId);
+          if (error) falhar("marketing_cliente_ativos", error);
+          return (data ?? []) as AtivoCliente[];
+        },
+      };
+    },
+
+    async donoDoNegocio(userId, clientId) {
+      const { data, error } = await admin.rpc("auditor_dono_do_negocio", { p_user_id: userId, p_client_id: clientId });
+      if (error) falhar("auditor_dono_do_negocio", error);
+      return data === true;
     },
 
     async apagarConta(contaId) {

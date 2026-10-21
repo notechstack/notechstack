@@ -50,12 +50,14 @@ export type ProcessarDeps = {
   coletar: Coletores;
   site: (url: string) => Promise<Site | null>;
   gerar: GeradorIa | null;
-  enviar: (para: string, email: Email) => Promise<string>;
+  // chave = Idempotency-Key do Resend: repetir o envio do mesmo relatório não manda dois e-mails (M2).
+  enviar: (para: string, email: Email, chave?: string) => Promise<string>;
   appUrl: string;
   log: (nivel: "info" | "warn" | "error", evento: string, dados?: Record<string, unknown>) => void;
 };
 
-export const LIMITE_RELATORIOS = 3;
+// B5: um relatório por chamada (cabe com folga no tempo da Edge Function); o cron roda a cada 2 min.
+export const LIMITE_RELATORIOS = 1;
 export const LIMITE_AVISOS = 20;
 const MAX_TENTATIVAS = 3;
 
@@ -163,7 +165,7 @@ export async function processarRelatorio(r: RelatorioFila, deps: ProcessarDeps):
     urlConexoes: `${deps.appUrl}/auditor/${r.client_id}/conexoes`,
   });
   try {
-    const emailId = await deps.enviar(negocio.dono_email, email);
+    const emailId = await deps.enviar(negocio.dono_email, email, `relatorio-${r.id}`);
     await store.atualizar(r.id, { estado: final === "pronto" ? "enviado" : "parcial", enviado_em: new Date().toISOString(), email_id: emailId });
     await store.evento(r.client_id, "relatorio_enviado", { relatorio_id: r.id, tipo: r.tipo, estado: final });
     return final === "pronto" ? "enviado" : "parcial";
@@ -182,7 +184,7 @@ export async function enviarAvisos(deps: ProcessarDeps): Promise<number> {
     if (!negocio?.dono_email) { await deps.store.avisoEnviado(a.id); continue; }
     const provedor = a.referencia.startsWith("google:") ? "google" : a.referencia.startsWith("meta:") ? "meta" : null;
     try {
-      await deps.enviar(negocio.dono_email, emailAviso({ tipo: a.tipo, negocio: negocio.nome, provedor, urlConexoes: `${deps.appUrl}/auditor/${a.client_id}/conexoes` }));
+      await deps.enviar(negocio.dono_email, emailAviso({ tipo: a.tipo, negocio: negocio.nome, provedor, urlConexoes: `${deps.appUrl}/auditor/${a.client_id}/conexoes` }), `aviso-${a.id}`);
       await deps.store.avisoEnviado(a.id);
       n++;
     } catch {

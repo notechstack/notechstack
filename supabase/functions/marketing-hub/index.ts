@@ -20,9 +20,27 @@ const admin = clienteAdmin();
 const APP_URL = (env("APP_URL") ?? "https://app.notechstack.com.br").replace(/\/$/, "");
 const HUB_URL = (env("MARKETING_HUB_PUBLIC_URL") ?? "https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/marketing-hub").replace(/\/$/, "");
 
-// Auditor (Frente 3): o acesso de suporte (migration B) completa o ClienteStore da Frente 1 sem mexer nele.
+// Auditor (Frente 3): completa o ClienteStore da Frente 1 sem mexer nele.
+//   suporteVigente — concessão do cliente (migration B);
+//   membroAuditor  — posse do negócio, não o vínculo em memberships (revisão A1);
+//   leitor         — no modo suporte do NO_ADMIN, a leitura vai pela service role: a RLS só libera o dono, e a
+//                    rota já conferiu a concessão e gravou suporte_leu (revisão B6).
 const auditorStore = criarAuditorStore(admin);
-const clienteStore = { ...criarClienteStore(admin), suporteVigente: auditorStore.suporteVigente };
+const clienteBase = criarClienteStore(admin);
+function papelDoJwt(jwt: string): string | null {
+  try {
+    const corpo = jwt.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/") ?? "";
+    return (JSON.parse(atob(corpo.padEnd(Math.ceil(corpo.length / 4) * 4, "="))) as { app_metadata?: { role?: string } }).app_metadata?.role ?? null;
+  } catch {
+    return null;
+  }
+}
+const clienteStore = {
+  ...clienteBase,
+  suporteVigente: auditorStore.suporteVigente,
+  membroAuditor: auditorStore.donoDoNegocio,
+  leitor: (jwt: string) => (papelDoJwt(jwt) === "NO_ADMIN" ? auditorStore.leitorServico() : clienteBase.leitor(jwt)),
+};
 const autenticar = autenticador(admin);
 const configAssinatura = lerConfigAssinatura({
   PAGARME_ASSINATURA_SECRET_KEY: Deno.env.get("PAGARME_ASSINATURA_SECRET_KEY"),
@@ -41,10 +59,10 @@ const rotasAuditor = criarRotasAuditor({
     return r ? { url: r.url_final ?? url, checagens: r.checagens } : null;
   },
   gerar: criarGeradorAnthropic(env("ANTHROPIC_API_KEY") ?? undefined),
-  enviar: async (para, email) => {
+  enviar: async (para, email, chave) => {
     const apiKey = env("RESEND_API_KEY");
     if (!apiKey) throw new Error("resend_transitorio");
-    return await enviarResend({ apiKey, para, email });
+    return await enviarResend({ apiKey, para, email, chave });
   },
   cancelarAssinatura: async (subscriptionId) => {
     if (!configAssinatura.secretKey) return false;
@@ -55,8 +73,14 @@ const rotasAuditor = criarRotasAuditor({
         body: JSON.stringify({ cancel_pending_invoices: true }),
       });
       await res.body?.cancel();
-      // 404/422 = já não existe ou já cancelada no Pagar.me: a exclusão segue.
-      return res.ok || res.status === 404 || res.status === 422;
+      if (res.ok) return true;
+      if (res.status !== 404 && res.status !== 422) return false;
+      // M3: 404/422 só vale como "já cancelada" se o GET confirmar o status canceled.
+      const conf = await fetch(`${configAssinatura.apiUrl}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+        headers: { Authorization: `Basic ${btoa(`${configAssinatura.secretKey}:`)}` },
+      });
+      const sub = await conf.json().catch(() => ({})) as { status?: string };
+      return conf.ok && sub.status === "canceled";
     } catch {
       return false;
     }
