@@ -1,0 +1,84 @@
+/* Páginas de cadastro e conta do nó.fiscal (/agentes/fiscal/comecar/ e /agentes/fiscal/conta/).
+   Mesma linguagem da LP (fiscal.css carrega antes): osso de fundo, cartões brancos com raio grande e sombra leve,
+   Sora no texto, JetBrains Mono nos rótulos de etapa, botões fi-btn. Só tokens de brand/tokens/tokens.css e
+   shared/brand-derived.css. */
+.nf-main{max-width:820px}
+.nf-main,.nf-main *{box-sizing:border-box}
+[hidden]{display:none!important}
+
+.nf-topo{text-align:center;margin:0 0 28px}
+.nf-topo .fi-lockup{margin-bottom:10px}
+.nf-h1{margin:0 0 10px;font-weight:800;font-size:clamp(28px,4.4vw,46px);line-height:1.05;letter-spacing:-.03em;text-wrap:balance}
+.nf-plano{display:inline-block;margin:0;padding:7px 14px;border-radius:999px;background:var(--fi-branco);box-shadow:var(--no-shadow-sm);font:600 13.5px/1.3 var(--font-core,'Sora',sans-serif)}
+
+.nf-cartao{position:relative;padding:clamp(24px,4vw,40px);border-radius:var(--fi-raio-lg);background:var(--fi-branco);box-shadow:var(--no-shadow-card)}
+.nf-cartao + .nf-cartao{margin-top:20px}
+.nf-passo{display:flex;align-items:center;gap:10px;margin:0 0 12px;font:600 12px/1.3 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:var(--no-tracking-label,.16em);text-transform:uppercase;color:var(--fi-acento-texto)}
+.nf-passo::before{content:'';width:22px;height:2px;border-radius:2px;background:var(--fi-acento)}
+.nf-h2{margin:0 0 12px;font-weight:800;font-size:clamp(24px,3.2vw,34px);line-height:1.1;letter-spacing:-.02em;outline:none}
+.nf-h3{margin:0 0 8px;font-weight:700;font-size:18px;line-height:1.25}
+.nf-texto{margin:0 0 20px;max-width:62ch;font-size:15.5px;line-height:1.6;color:var(--fi-texto-sec)}
+.nf-texto b{color:var(--fi-texto);font-weight:600}
+
+.nf-form{display:grid;grid-template-columns:1fr;gap:16px 18px}
+@media(min-width:700px){.nf-form{grid-template-columns:1fr 1fr}}
+.nf-form > .nf-aviso,.nf-form > .nf-acoes,.nf-form > .nf-aceite,.nf-form > .nf-erro,.nf-form > .nf-grupo,.nf-form > .nf-pro{grid-column:1/-1}
+.nf-campo{display:flex;flex-direction:column;gap:6px;min-width:0}
+.nf-campo--largo{grid-column:1/-1}
+.nf-campo label,.nf-rotulo-lista,.nf-grupo legend{font:600 14px/1.3 var(--font-core,'Sora',sans-serif);color:var(--fi-texto)}
+.nf-campo input,.nf-campo select,.nf-campo textarea,.nf-busca,.nf-opcao select{width:100%;min-height:50px;padding:12px 14px;border:1.5px solid var(--fi-borda);border-radius:14px;background:var(--fi-fundo);color:var(--fi-texto);font:400 16px/1.3 var(--font-core,'Sora',sans-serif);transition:border-color .2s ease,box-shadow .2s ease}
+.nf-campo textarea{min-height:76px;resize:vertical}
+.nf-campo input[type=file]{padding:12px;background:var(--fi-fundo-alt)}
+.nf-campo input:focus,.nf-campo select:focus,.nf-campo textarea:focus,.nf-busca:focus,.nf-opcao select:focus{outline:none;border-color:var(--fi-texto);box-shadow:0 0 0 4px color-mix(in srgb, var(--fi-acento) 28%, transparent)}
+.nf-campo [aria-invalid=true]{border-color:var(--fi-erro)}
+.nf-codigo{max-width:220px;font:600 24px/1 var(--font-mono,'JetBrains Mono',monospace)!important;letter-spacing:.3em;text-align:center}
+.nf-dica{font-size:12.5px;line-height:1.45;color:var(--fi-texto-sec)}
+.nf-erro{font-size:13px;line-height:1.4;font-weight:600;color:var(--fi-erro-texto)}
+
+.nf-grupo{display:grid;grid-template-columns:1fr;gap:14px 18px;margin:0;padding:0;border:0;min-width:0}
+@media(min-width:700px){.nf-grupo{grid-template-columns:1fr 1fr}}
+.nf-grupo legend{float:left;width:100%;margin:6px 0 2px;padding:0}
+.nf-grupo legend + *{clear:both}
+.nf-grupo--coluna{grid-template-columns:1fr!important}
+.nf-opcao{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--fi-borda);border-radius:14px;background:var(--fi-fundo);font-size:15px;line-height:1.45;cursor:pointer}
+.nf-opcao:has(input:checked){border-color:var(--fi-texto);background:var(--fi-acento-tint)}
+.nf-opcao input{flex:none;margin:3px 0 0;accent-color:var(--fi-texto)}
+.nf-opcao b{font:600 14px/1.45 var(--font-mono,'JetBrains Mono',monospace)}
+.nf-opcao select{display:inline-block;width:auto;min-height:36px;padding:4px 10px;margin:0 4px;font-size:15px}
+.nf-sugestoes,.nf-resultados{display:grid;gap:8px}
+.nf-sugestoes:empty,.nf-resultados:empty{display:none}
+.nf-vazio{margin:0;font-size:14px;color:var(--fi-texto-sec)}
+.nf-pro{display:grid;gap:16px}
+
+.nf-aceite{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5;color:var(--fi-texto)}
+.nf-aceite input{flex:none;width:18px;height:18px;margin:2px 0 0;accent-color:var(--fi-texto)}
+
+.nf-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-top:6px}
+.nf-acoes .fi-link-btn{font-size:14px}
+.nf-aviso{margin:0;padding:12px 16px;border-radius:14px;background:var(--fi-fundo-alt);font-size:14.5px;line-height:1.5;color:var(--fi-texto)}
+.nf-aviso a{color:inherit;font-weight:600;text-underline-offset:2px}
+.nf-aviso--erro{background:var(--no-vermelho-tint);color:var(--fi-erro-texto)}
+.nf-aviso--ok{background:var(--no-verde-tint);color:var(--fi-ok)}
+.nf-aviso--info{background:var(--fi-acento-tint);color:var(--fi-texto)}
+#fc-carregando,.nf-carregando{text-align:center;background:transparent}
+
+/* Minha conta */
+.nf-secoes{display:grid;gap:18px}
+.nf-dados{display:grid;grid-template-columns:minmax(120px,max-content) 1fr;gap:8px 18px;margin:0 0 14px;font-size:15px;line-height:1.45}
+.nf-dados dt{color:var(--fi-texto-sec)}
+.nf-dados dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.nf-status{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--fi-fundo-alt);font:600 13.5px/1.2 var(--font-core,'Sora',sans-serif)}
+.nf-status::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--fi-acento)}
+.nf-status--ok::before{background:var(--no-verde)}
+.nf-status--erro::before{background:var(--no-vermelho)}
+.nf-perigo{border:2px solid var(--no-vermelho-tint)}
+.nf-btn-perigo{background:var(--no-vermelho-escuro);border-color:var(--no-vermelho-escuro);color:var(--fi-branco)}
+.nf-btn-perigo[disabled]{background:var(--fi-fundo-alt);border-color:var(--fi-fundo-alt);color:var(--fi-texto-sec);cursor:not-allowed;transform:none}
+.nf-confirmar{display:grid;gap:12px;margin-top:14px;padding:16px;border-radius:18px;background:var(--fi-fundo-alt)}
+.nf-confirmar p{margin:0;font-weight:600}
+
+@media(max-width:520px){
+  .nf-acoes .fi-btn{width:100%}
+  .nf-dados{grid-template-columns:1fr;gap:2px}
+  .nf-dados dd{margin-bottom:8px}
+}

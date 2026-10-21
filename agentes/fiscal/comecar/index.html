@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="only light">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Comece o teste grátis do nó.fiscal | Nó Agentes</title>
+<meta name="description" content="Cadastro, pagamento e configuração do agente fiscal da Nó: 7 passos nesta página, com 7 dias grátis.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://www.notechstack.com.br/agentes/fiscal/comecar/">
+<meta name="theme-color" content="#FAFAF7">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon/favicon.svg">
+<link rel="icon" href="/brand/favicon/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="/brand/favicon/favicon-180.png">
+<link rel="preload" href="/brand/fonts/sora/sora-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/brand/fonts/sora/sora-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/brand/fonts/fonts.css">
+<link rel="stylesheet" href="/brand/tokens/tokens.css">
+<link rel="stylesheet" href="/shared/brand-derived.css">
+<link rel="stylesheet" href="/shared/site.css?v=1">
+<link rel="stylesheet" href="/shared/card-nav.css">
+<link rel="stylesheet" href="/shared/site-layout.css">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=2">
+<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=1">
+<link rel="stylesheet" href="/agentes/fiscal/comecar/comecar.css?v=1">
+<script src="/shared/card-nav.js" defer></script>
+</head>
+<body class="fi-body nf-body">
+<!-- site-nav:start -->
+<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agencia/">Agência</a><a href="/contato/">Contato</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a Nó</a><a href="/#como-funciona">Como funciona</a><a href="/#clientes">Nossos clientes</a><a href="/colaboradores-digitais/">Colaboradores digitais</a><a href="/agentes/">Nó Agentes</a><a href="/agentes/auditor/">Auditor de marketing</a><a href="/health/">nó.health</a></div></div><div class="no-card"><b>Agência</b><div><a href="/agencia/#solucoes">Soluções</a><a href="/agencia/#como-funciona">Como funciona</a><a href="/agencia/#organizacao">Organização</a><a href="/agencia/#acompanhamento">Acompanhamento</a><a href="/agencia/#empresas">Empresas</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a><a href="/agencia/#contato">Parceria com agências</a></div></div></div></div></div></nav>
+<!-- site-nav:end -->
+
+<main class="fi-main nf-main" id="conteudo">
+  <header class="nf-topo">
+    <p class="fi-lockup"><span class="fi-lockup-no">nó</span><span class="fi-lockup-sub">.fiscal</span></p>
+    <h1 class="nf-h1">Seu agente fiscal em 7 passos</h1>
+    <p class="nf-plano" id="fc-plano">Plano Inicial · R$ 49/mês · 7 dias grátis</p>
+    <ol class="nf-trilha" id="fc-trilha" aria-label="Etapas">
+      <li data-etapa="1">Sua empresa</li><li data-etapa="2">Código</li><li data-etapa="3">Pagamento</li><li data-etapa="4">Certificado</li><li data-etapa="5">Dados fiscais</li><li data-etapa="6">Seus clientes</li><li data-etapa="7">Concluir no WhatsApp</li>
+    </ol>
+  </header>
+
+  <p class="nf-aviso" id="fc-carregando" role="status">Carregando…</p>
+
+  <!-- 1 · Sua empresa -->
+  <section class="nf-cartao" id="fc-etapa-1" data-etapa="1" hidden aria-labelledby="fc-titulo-1">
+    <p class="nf-passo">1 de 7 · Sua empresa</p>
+    <h2 class="nf-h2" id="fc-titulo-1">Os dados da sua empresa</h2>
+    <form id="fc-form-1" class="nf-form" novalidate>
+      <div class="nf-campo nf-campo--largo">
+        <label for="fc-cnpj">CNPJ</label>
+        <input id="fc-cnpj" name="cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00" required>
+        <small class="nf-dica" id="fc-cnpj-dica">Buscamos razão social, município e atividade nos dados públicos do CNPJ.</small>
+        <small class="nf-erro" id="fc-cnpj-erro" hidden></small>
+      </div>
+      <div class="nf-campo nf-campo--largo">
+        <label for="fc-empresa">Nome da empresa</label>
+        <input id="fc-empresa" name="empresa" autocomplete="organization" maxlength="150" required>
+        <small class="nf-erro" id="fc-empresa-erro" hidden></small>
+      </div>
+      <div class="nf-campo">
+        <label for="fc-responsavel">Responsável</label>
+        <input id="fc-responsavel" name="responsavel" autocomplete="name" maxlength="120" required>
+        <small class="nf-erro" id="fc-responsavel-erro" hidden></small>
+      </div>
+      <div class="nf-campo">
+        <label for="fc-cpf">CPF do responsável</label>
+        <input id="fc-cpf" name="cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" required>
+        <small class="nf-erro" id="fc-cpf-erro" hidden></small>
+      </div>
+      <div class="nf-campo">
+        <label for="fc-email">E-mail</label>
+        <input id="fc-email" name="email" type="email" autocomplete="email" maxlength="160" required>
+        <small class="nf-erro" id="fc-email-erro" hidden></small>
+      </div>
+      <div class="nf-campo">
+        <label for="fc-telefone">WhatsApp</label>
+        <input id="fc-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(11) 90000-0000" required>
+        <small class="nf-dica">É por este número que você vai pedir as notas.</small>
+        <small class="nf-erro" id="fc-telefone-erro" hidden></small>
+      </div>
+      <p class="nf-aviso" id="fc-aviso-1" role="alert" hidden></p>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fc-continuar-1">Continuar</button>
+        <small class="nf-dica">Enviamos um código de 6 dígitos para o seu e-mail.</small>
+      </div>
+    </form>
+  </section>
+
+  <!-- 2 · Código -->
+  <section class="nf-cartao" id="fc-etapa-2" data-etapa="2" hidden aria-labelledby="fc-titulo-2">
+    <p class="nf-passo">2 de 7 · Código</p>
+    <h2 class="nf-h2" id="fc-titulo-2">Confira o seu e-mail</h2>
+    <p class="nf-texto">Mandamos um código de 6 dígitos para <b id="fc-email-mascarado"></b>. Ele chega com o assunto “Seu código nó.fiscal”.</p>
+    <form id="fc-form-2" class="nf-form" novalidate>
+      <div class="nf-campo">
+        <label for="fc-codigo">Código</label>
+        <input id="fc-codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" class="nf-codigo" required>
+        <small class="nf-erro" id="fc-codigo-erro" hidden></small>
+      </div>
+      <p class="nf-aviso" id="fc-aviso-2" role="alert" hidden></p>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fc-confirmar-codigo">Confirmar código</button>
+        <button type="button" class="fi-link-btn" id="fc-reenviar">Pedir um código novo</button>
+        <button type="button" class="fi-link-btn" id="fc-trocar-email">Trocar e-mail</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 3 · Pagamento -->
+  <section class="nf-cartao" id="fc-etapa-3" data-etapa="3" hidden aria-labelledby="fc-titulo-3">
+    <p class="nf-passo">3 de 7 · Pagamento</p>
+    <h2 class="nf-h2" id="fc-titulo-3">Pagamento</h2>
+    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>. A primeira cobrança só acontece depois dos 7 dias; cancelando antes disso, nada é cobrado. O cartão vai direto ao Pagar.me, e a Nó não vê o número.</p>
+    <form id="fc-form-3" class="nf-form" novalidate>
+      <div class="nf-campo" id="fc-cpf-pagamento-bloco" hidden>
+        <label for="fc-cpf-pagamento">CPF do responsável</label>
+        <input id="fc-cpf-pagamento" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00">
+        <small class="nf-erro" id="fc-cpf-pagamento-erro" hidden></small>
+      </div>
+      <fieldset class="nf-grupo">
+        <legend>Cartão de crédito</legend>
+        <div class="nf-campo nf-campo--largo">
+          <label for="fc-cc-numero">Número do cartão</label>
+          <input id="fc-cc-numero" inputmode="numeric" autocomplete="cc-number" maxlength="23">
+          <small class="nf-erro" id="fc-cc-numero-erro" hidden></small>
+        </div>
+        <div class="nf-campo nf-campo--largo">
+          <label for="fc-cc-nome">Nome impresso no cartão</label>
+          <input id="fc-cc-nome" autocomplete="cc-name" maxlength="80">
+          <small class="nf-erro" id="fc-cc-nome-erro" hidden></small>
+        </div>
+        <div class="nf-campo">
+          <label for="fc-cc-validade">Validade (MM/AA)</label>
+          <input id="fc-cc-validade" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/AA">
+          <small class="nf-erro" id="fc-cc-validade-erro" hidden></small>
+        </div>
+        <div class="nf-campo">
+          <label for="fc-cc-cvv">CVV</label>
+          <input id="fc-cc-cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4">
+          <small class="nf-erro" id="fc-cc-cvv-erro" hidden></small>
+        </div>
+      </fieldset>
+      <fieldset class="nf-grupo">
+        <legend>Endereço de cobrança do cartão</legend>
+        <div class="nf-campo"><label for="fc-en-cep">CEP</label><input id="fc-en-cep" inputmode="numeric" autocomplete="postal-code" maxlength="9"><small class="nf-erro" id="fc-en-cep-erro" hidden></small></div>
+        <div class="nf-campo nf-campo--largo"><label for="fc-en-rua">Rua</label><input id="fc-en-rua" autocomplete="address-line1" maxlength="120"><small class="nf-erro" id="fc-en-rua-erro" hidden></small></div>
+        <div class="nf-campo"><label for="fc-en-numero">Número</label><input id="fc-en-numero" maxlength="20"><small class="nf-erro" id="fc-en-numero-erro" hidden></small></div>
+        <div class="nf-campo"><label for="fc-en-complemento">Complemento (opcional)</label><input id="fc-en-complemento" autocomplete="address-line2" maxlength="60"></div>
+        <div class="nf-campo"><label for="fc-en-bairro">Bairro</label><input id="fc-en-bairro" maxlength="80"><small class="nf-erro" id="fc-en-bairro-erro" hidden></small></div>
+        <div class="nf-campo"><label for="fc-en-cidade">Cidade</label><input id="fc-en-cidade" autocomplete="address-level2" maxlength="80"><small class="nf-erro" id="fc-en-cidade-erro" hidden></small></div>
+        <div class="nf-campo"><label for="fc-en-uf">UF</label><select id="fc-en-uf" autocomplete="address-level1"><option value="">UF</option></select><small class="nf-erro" id="fc-en-uf-erro" hidden></small></div>
+      </fieldset>
+      <label class="nf-aceite"><input type="checkbox" id="fc-aceite"> <span id="fc-aceite-texto"></span></label>
+      <small class="nf-erro" id="fc-aceite-erro" hidden></small>
+      <p class="nf-aviso" id="fc-aviso-3" role="alert" hidden></p>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fc-pagar" disabled>Começar 7 dias grátis</button>
+        <button type="button" class="fi-btn fi-btn--tinta" id="fc-seguir-sem-teste" hidden>Continuar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 4 · Certificado -->
+  <section class="nf-cartao" id="fc-etapa-4" data-etapa="4" hidden aria-labelledby="fc-titulo-4">
+    <p class="nf-passo">4 de 7 · Certificado</p>
+    <h2 class="nf-h2" id="fc-titulo-4">Certificado digital A1</h2>
+    <p class="nf-texto">Envie aqui o arquivo do A1 (.pfx ou .p12) e a senha, uma única vez. Os dois ficam cifrados no cofre do banco, e só o motor de emissão os lê, na hora de assinar. O A1 nunca é pedido pelo WhatsApp.</p>
+    <form id="fc-form-4" class="nf-form" novalidate>
+      <div class="nf-campo nf-campo--largo">
+        <label for="fc-pfx">Arquivo do certificado</label>
+        <input id="fc-pfx" type="file" accept=".pfx,.p12,application/x-pkcs12">
+        <small class="nf-erro" id="fc-pfx-erro" hidden></small>
+      </div>
+      <div class="nf-campo">
+        <label for="fc-pfx-senha">Senha do certificado</label>
+        <input id="fc-pfx-senha" type="password" autocomplete="off" maxlength="200">
+        <small class="nf-erro" id="fc-pfx-senha-erro" hidden></small>
+      </div>
+      <p class="nf-aviso" id="fc-aviso-4" role="alert" hidden></p>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fc-enviar-a1">Enviar certificado</button>
+        <button type="button" class="fi-btn fi-btn--tinta" id="fc-continuar-4" hidden>Continuar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 5 · Dados fiscais -->
+  <section class="nf-cartao" id="fc-etapa-5" data-etapa="5" hidden aria-labelledby="fc-titulo-5">
+    <p class="nf-passo">5 de 7 · Dados fiscais</p>
+    <h2 class="nf-h2" id="fc-titulo-5">Dados fiscais</h2>
+    <form id="fc-form-5" class="nf-form" novalidate>
+      <fieldset class="nf-grupo nf-grupo--coluna nf-seletor" id="fc-seletor">
+        <legend>Código de serviço nacional</legend>
+        <div class="nf-sugestoes"></div>
+        <label class="nf-rotulo-lista" for="fc-busca-codigo">Buscar na lista nacional</label>
+        <input id="fc-busca-codigo" class="nf-busca" autocomplete="off">
+        <div class="nf-resultados" aria-live="polite"></div>
+        <small class="nf-erro" id="fc-codigo-servico-erro" hidden></small>
+      </fieldset>
+      <div class="nf-campo">
+        <label for="fc-percentual">Percentual de tributos do Simples (%)</label>
+        <input id="fc-percentual" inputmode="decimal" maxlength="6" placeholder="6,00">
+        <small class="nf-dica">Está no extrato do Simples ou com a sua contabilidade.</small>
+        <small class="nf-erro" id="fc-percentual-erro" hidden></small>
+      </div>
+      <div class="nf-pro" id="fc-pro" hidden>
+        <div class="nf-campo nf-campo--largo">
+          <label for="fc-contador">E-mail do contador (opcional)</label>
+          <input id="fc-contador" type="email" autocomplete="off" maxlength="160">
+          <small class="nf-erro" id="fc-contador-erro" hidden></small>
+        </div>
+        <fieldset class="nf-grupo nf-grupo--coluna" id="fc-resumo">
+          <legend>Resumo das notas</legend>
+          <label class="nf-opcao"><input type="radio" name="fc-resumo" value="mensal" checked><span>Mensal, no dia <select id="fc-resumo-dia-mes" aria-label="Dia do mês"></select></span></label>
+          <label class="nf-opcao"><input type="radio" name="fc-resumo" value="semanal"><span>Semanal, toda <select id="fc-resumo-dia-semana" aria-label="Dia da semana"><option value="1">segunda</option><option value="2">terça</option><option value="3">quarta</option><option value="4">quinta</option><option value="5">sexta</option><option value="6">sábado</option><option value="7">domingo</option></select></span></label>
+          <label class="nf-opcao"><input type="radio" name="fc-resumo" value=""><span>Não quero o resumo</span></label>
+          <small class="nf-dica">O resumo chega no WhatsApp com as notas emitidas, as canceladas e o total autorizado no período anterior.</small>
+        </fieldset>
+      </div>
+      <p class="nf-aviso" id="fc-aviso-5" role="alert" hidden></p>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fc-salvar-fiscal">Salvar e continuar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 6 · Seus clientes -->
+  <section class="nf-cartao" id="fc-etapa-6" data-etapa="6" hidden aria-labelledby="fc-titulo-6">
+    <p class="nf-passo">6 de 7 · Seus clientes</p>
+    <h2 class="nf-h2" id="fc-titulo-6">Seus clientes</h2>
+    <p class="nf-texto">Com o seu A1, buscamos as notas que você já emitiu no Ambiente de Dados Nacional e montamos um modelo por cliente. Confira, corrija o que precisar e salve.</p>
+    <p class="nf-aviso" id="fc-buscando" role="status" hidden>Buscando as suas notas…</p>
+    <div class="nf-clientes" id="fc-clientes"></div>
+    <div class="nf-pdfs" id="fc-pdfs" hidden>
+      <p class="nf-texto" id="fc-pdfs-texto">Não encontramos notas suas no Ambiente de Dados Nacional. Envie os PDFs das notas (DANFSe) que você já emitiu, até 30, e a gente lê os dados de cada cliente.</p>
+      <label class="fi-btn fi-btn--borda nf-arquivo" for="fc-pdf">Enviar PDFs das notas</label>
+      <input id="fc-pdf" type="file" accept="application/pdf,.pdf" multiple class="fi-sr">
+      <p class="nf-aviso" id="fc-aviso-pdf" role="status" hidden></p>
+    </div>
+    <button type="button" class="fi-link-btn" id="fc-mais-pdfs" hidden>Enviar PDFs de outras notas</button>
+    <p class="nf-aviso" id="fc-aviso-6" role="alert" hidden></p>
+    <div class="nf-acoes">
+      <button type="button" class="fi-btn fi-btn--tinta" id="fc-salvar-clientes" hidden>Salvar clientes</button>
+      <button type="button" class="fi-btn fi-btn--borda" id="fc-pular">Pular por enquanto</button>
+      <button type="button" class="fi-btn fi-btn--tinta" id="fc-continuar-6" hidden>Continuar</button>
+    </div>
+  </section>
+
+  <!-- 7 · Concluir no WhatsApp -->
+  <section class="nf-cartao" id="fc-etapa-7" data-etapa="7" hidden aria-labelledby="fc-titulo-7">
+    <p class="nf-passo">7 de 7 · Concluir no WhatsApp</p>
+    <h2 class="nf-h2" id="fc-titulo-7">Agora é no WhatsApp</h2>
+    <p class="nf-texto" id="fc-ativar-texto">Toque no botão: o WhatsApp abre com a mensagem de ativação pronta. Mande do número que você cadastrou. O agente confere o cadastro com você, pergunta para quem você mais emite e faz uma nota de exemplo, sem emitir nada.</p>
+    <p class="nf-aviso" id="fc-aviso-7" role="alert" hidden></p>
+    <div class="nf-acoes">
+      <a class="fi-btn fi-btn--tinta nf-whatsapp" id="fc-whatsapp" href="#" target="_blank" rel="noopener" hidden>Concluir no WhatsApp</a>
+      <a class="fi-btn fi-btn--borda" href="/agentes/fiscal/conta/">Minha conta</a>
+    </div>
+    <p class="nf-dica" id="fc-ativar-validade" hidden></p>
+  </section>
+</main>
+
+<!-- site-footer:start -->
+<footer class="no-site-footer">
+  <div class="ft-brand">
+    <a class="ft-logo" href="/" aria-label="Nó — página inicial"><img src="/brand/lockup/svg/no-tech-stack-branca-ponto-ambar.svg" alt="nó tech stack" width="198" height="27"></a>
+    <div class="ft-txt">IA que arquiteta, integra e opera.</div>
+    <a class="ft-whatsapp" href="https://wa.me/5511939289413?text=Ol%C3%A1%2C%20vim%20pelo%20site%21" target="_blank" rel="noopener noreferrer" aria-label="Falar com a nó pelo WhatsApp no número +55 11 93928-9413">WhatsApp <span aria-hidden="true">↗</span></a>
+  </div>
+  <nav class="ft-nav" aria-label="Mapa do site"><a href="/">Home</a><a href="/agencia/">Agência</a><a href="/health/">nó.health</a><a href="/colaboradores-digitais/">Colaboradores digitais</a><a href="/agentes/">Nó Agentes</a><a href="/sobre/">Sobre a Nó</a><a href="/contato/">Conte sua ideia</a></nav>
+  <div class="ft-legal ft-txt"><div class="ft-legal-links"><a href="/termos/" class="ft-link">Termos de uso</a><span aria-hidden="true"> · </span><a href="/privacidade/" class="ft-link">Privacidade e cookies</a></div><div>© 2026 nó. Todos os direitos reservados.</div></div>
+</footer>
+<!-- site-footer:end -->
+<script src="/agentes/fiscal/config.js"></script>
+<script src="/agentes/fiscal/nofiscal.js?v=1"></script>
+<script src="/agentes/fiscal/comecar/comecar.js?v=1"></script>
+</body>
+</html>
