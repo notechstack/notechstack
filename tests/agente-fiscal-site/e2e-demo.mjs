@@ -19,6 +19,9 @@ const forge = createRequire(import.meta.url)('node-forge');
 const SITE = 'http://localhost:3000';
 const RESEND = 'http://localhost:3003';
 const META = 'http://localhost:3004';
+// --celular: as mesmas telas em 390 px (capturas com sufixo -390).
+const celular = process.argv.includes('--celular');
+const sufixo = celular ? '-390' : '';
 const modo = process.argv.includes('--whatsapp') ? 'whatsapp' : process.argv.includes('--etapas') ? 'etapas' : null;
 const capturas = process.env.E2E_CAPTURAS || resolve(repo, '..', '..', '..', '..', '.checks', 'fiscal-v2-capturas', 'e2e');
 
@@ -86,7 +89,7 @@ async function codigoDoEmail(email, depoisDe) {
 async function etapaVisivel(page, n, timeout = 30000) {
   await page.locator(`#fc-etapa-${n}`).waitFor({ state: 'visible', timeout });
   log(`etapa ${n}: ${await page.locator(`#fc-etapa-${n} .nf-passo`).innerText()}`);
-  await page.screenshot({ path: join(capturas, `etapa-${n}.png`), fullPage: true });
+  await page.screenshot({ path: join(capturas, `etapa-${n}${sufixo}.png`), fullPage: true });
 }
 
 async function etapas(page, dados) {
@@ -140,6 +143,8 @@ async function etapas(page, dados) {
     await page.locator('#fc-clientes .nf-cliente').first().waitFor({ timeout: 30000 }).catch(() => {});
   }
   if (await page.locator('#fc-salvar-clientes').isVisible()) {
+    // Como uma pessoa faria: o nome do modelo fica o nome curto pelo qual ela chama o cliente.
+    await page.locator('#fc-clientes .nf-cliente [data-campo="nome"]').first().fill('Prontia Saúde');
     await page.click('#fc-salvar-clientes');
     if (await page.locator('#fc-continuar-6').isVisible().catch(() => false)) await page.click('#fc-continuar-6');
   } else {
@@ -151,6 +156,7 @@ async function etapas(page, dados) {
   const href = await botao.getAttribute('href');
   if (!/^http:\/\/localhost:3004\/conversa\?numero=\d+&text=ATIVAR%20\d{6}$/.test(href)) throw new Error(`botão do WhatsApp aponta para ${href}`);
   log(`"Concluir no WhatsApp" → ${href}`);
+  await page.screenshot({ path: join(capturas, `etapa-7${sufixo}.png`), fullPage: true });
   return botao;
 }
 
@@ -177,7 +183,7 @@ async function whatsapp(context, botao, dados) {
   await conversa.click('#enviar');
   log(`dono: ${texto}`);
   await esperar(/Sua empresa: [\s\S]*Está tudo certo\?/);
-  await conversa.screenshot({ path: join(capturas, 'whatsapp-1-conferir.png'), fullPage: true });
+  await conversa.screenshot({ path: join(capturas, `whatsapp-1-conferir${sufixo}.png`), fullPage: true });
   await dizer('sim');
   await esperar(/Para quem você mais emite\?/);
   await dizer('Prontia Saúde');
@@ -187,9 +193,12 @@ async function whatsapp(context, botao, dados) {
   await esperar(/Me diga uma nota que você emitiria/);
   await dizer('nota pra Prontia Saúde, 150 reais');
   await esperar(/EXEMPLO — não será emitida/);
-  await conversa.screenshot({ path: join(capturas, 'whatsapp-2-ensaio.png'), fullPage: true });
-  const pronto = await esperar(/Pronto! Agora, para emitir uma nova nota/, 20000).catch(async () => { await dizer('ok'); return esperar(/Pronto! Agora, para emitir uma nova nota/); });
-  await conversa.screenshot({ path: join(capturas, 'whatsapp-3-pronto.png'), fullPage: true });
+  await conversa.screenshot({ path: join(capturas, `whatsapp-2-ensaio${sufixo}.png`), fullPage: true });
+  // "confirmar" no ensaio não emite (critério 32) e fecha as boas-vindas (critério 33).
+  await dizer('confirmar');
+  const pronto = await esperar(/Pronto! Agora, para emitir uma nova nota/);
+  if (!/Isso foi só um exemplo/.test((await agente.allInnerTexts()).join(' '))) throw new Error('sem "Isso foi só um exemplo"');
+  await conversa.screenshot({ path: join(capturas, `whatsapp-3-pronto${sufixo}.png`), fullPage: true });
   if (!/Pronto!/.test(pronto)) throw new Error('sem "Pronto!"');
 }
 
@@ -198,7 +207,7 @@ async function principal() {
   await garantirDemo();
   const navegador = await chromium.launch();
   try {
-    const context = await navegador.newContext({ viewport: { width: 1280, height: 900 } });
+    const context = await navegador.newContext({ viewport: celular ? { width: 390, height: 844 } : { width: 1280, height: 900 } });
     const page = await context.newPage();
     page.on('pageerror', (e) => log(`erro na página: ${e.message}`));
     const raiz = '1' + String(randomInt(10 ** 9)).padStart(9, '0');
@@ -206,6 +215,13 @@ async function principal() {
     log(`CNPJ ${dados.cnpj} · e-mail ${dados.email} · WhatsApp ${dados.telefone}`);
     const botao = await etapas(page, dados);
     if (modo === 'whatsapp') await whatsapp(context, botao, dados);
+    // Minha conta com a sessão que o cadastro deixou no navegador.
+    await page.goto(`${SITE}/agentes/fiscal/conta/`);
+    await page.locator('#fa-painel').waitFor({ state: 'visible', timeout: 30000 });
+    const status = await page.locator('#fa-status').innerText();
+    if (!/^Teste até \d{2}\/\d{2}$/.test(status)) throw new Error(`status na conta: ${status}`);
+    log(`Minha conta: ${(await page.locator('#fa-plano-titulo').innerText()).replace(/\s+/g, ' ')} · ${status}`);
+    await page.screenshot({ path: join(capturas, `conta${sufixo}.png`), fullPage: true });
     log(`ok (${modo})`);
   } finally {
     await navegador.close();

@@ -93,40 +93,41 @@ test('código incorreto', async () => {
   await p.enviar('fc-form-2');
   assert.equal(p.texto('fc-codigo-erro'), 'Peça um código novo', '5ª tentativa errada');
   assert.equal(p.rede.de('fiscal-cadastro:criar').length, 0, 'nada criado');
-  assert.equal(p.rede.de('auth:verify').length, 5);
-  // Depois da 5ª, nem o código certo vai ao servidor.
+  const verificacoes = p.rede.de('fiscal-acesso:verificar');
+  assert.equal(verificacoes.length, 5);
+  assert.deepEqual(verificacoes[0].corpo, { acao: 'verificar', email: 'lucca@exemplo.com', codigo: '000000' });
+  assert.equal(verificacoes[0].headers.authorization, undefined, 'sem sessão');
+  // Esgotado: a página não manda mais nada até a pessoa pedir outro código.
   await p.preencher('fc-codigo', CODIGO_CERTO);
   await p.enviar('fc-form-2');
-  assert.equal(p.rede.de('auth:verify').length, 5);
+  assert.equal(p.rede.de('fiscal-acesso:verificar').length, 5);
   assert.equal(p.texto('fc-codigo-erro'), 'Peça um código novo');
+  // "Pedir um código novo": outro envio, e o código certo passa.
+  await p.clicar('fc-reenviar');
+  assert.equal(p.rede.de('fiscal-acesso').length, 2);
+  await p.preencher('fc-codigo', CODIGO_CERTO);
+  await p.enviar('fc-form-2');
+  assert.equal(p.etapa(), 3, 'código novo certo cria a empresa e abre o pagamento');
 
-  // Limite do GoTrue (429) → "Peça um código novo".
-  const rede = superficie({ 'auth:verify': r(429, { code: 429, error_code: 'over_request_rate_limit' }) });
+  // Código vencido no servidor → "Peça um código novo".
+  const rede = superficie({ 'fiscal-acesso:verificar': r(422, { ok: false, motivo: 'codigo_vencido', error_code: 'CODIGO_VENCIDO', mensagem: 'Peça um código novo' }) });
   const q = await abrir('/agentes/fiscal/comecar/', { rede });
   await preencherEtapa1(q);
   await q.enviar('fc-form-1');
   await q.preencher('fc-codigo', CODIGO_CERTO);
   await q.enviar('fc-form-2');
   assert.equal(q.texto('fc-codigo-erro'), 'Peça um código novo');
+  assert.equal(rede.de('fiscal-cadastro:criar').length, 0);
 
-  // Código vencido (pedido há mais de 1 hora) → "Peça um código novo", sem ir ao GoTrue.
-  const v = await abrir('/agentes/fiscal/comecar/');
-  await preencherEtapa1(v);
-  await v.enviar('fc-form-1');
-  const agora = v.window.Date.now();
-  v.window.Date.now = () => agora + 61 * 60 * 1000;
-  await v.preencher('fc-codigo', CODIGO_CERTO);
-  await v.enviar('fc-form-2');
-  assert.equal(v.texto('fc-codigo-erro'), 'Peça um código novo');
-  assert.equal(v.rede.de('auth:verify').length, 0);
-
-  // "Pedir um código novo" zera as tentativas.
-  await v.clicar('fc-reenviar');
-  v.window.Date.now = () => agora + 62 * 60 * 1000;
-  await v.preencher('fc-codigo', CODIGO_CERTO);
-  await v.enviar('fc-form-2');
-  assert.equal(v.rede.de('auth:verify').length, 1);
-  assert.equal(v.etapa(), 3, 'código novo certo cria a empresa e abre o pagamento');
+  // Conferência fora do ar (503): não é "código incorreto".
+  const fora = superficie({ 'fiscal-acesso:verificar': r(503, { ok: false, motivo: 'indisponivel', error_code: 'INDISPONIVEL', mensagem: 'x' }) });
+  const f = await abrir('/agentes/fiscal/comecar/', { rede: fora });
+  await preencherEtapa1(f);
+  await f.enviar('fc-form-1');
+  await f.preencher('fc-codigo', CODIGO_CERTO);
+  await f.enviar('fc-form-2');
+  assert.match(f.texto('fc-codigo-erro'), /fora do ar/);
+  assert.equal(f.etapa(), 2);
 });
 
 test('conflitos aparecem', async () => {
@@ -151,9 +152,10 @@ test('conflitos aparecem', async () => {
 test('criar manda os dados da etapa 1 com a sessão', async () => {
   const p = await abrir('/agentes/fiscal/comecar/?plano=pro');
   await ateEtapa3(p);
-  const verify = p.rede.de('auth:verify')[0];
-  assert.deepEqual(verify.corpo, { type: 'email', email: 'lucca@exemplo.com', token: CODIGO_CERTO });
-  assert.equal(verify.headers.apikey, 'anon-de-teste');
+  const verificar = p.rede.de('fiscal-acesso:verificar')[0];
+  assert.deepEqual(verificar.corpo, { acao: 'verificar', email: 'lucca@exemplo.com', codigo: CODIGO_CERTO });
+  assert.equal(verificar.url, 'https://projeto.supabase.test/functions/v1/fiscal-acesso');
+  assert.equal(p.rede.chamadas.filter((c) => c.url.includes('/auth/v1/verify')).length, 0, 'a página não fala com o /auth/v1/verify');
   const criar = p.rede.de('fiscal-cadastro:criar')[0];
   assert.deepEqual(criar.corpo, { acao: 'criar', cnpj: CNPJ, razao_social: 'CLINICA AURORA LTDA', responsavel: 'Lucca Teste', telefone: '+5511987654321', plano: 'pro' });
   assert.equal(criar.headers.authorization, 'Bearer at-1');

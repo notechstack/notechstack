@@ -83,7 +83,7 @@ export function variaveisDasFuncoes(s) {
     CNPJ_API_URL: `${host}:${PORTAS.brasilapi}`,
     FISCAL_AMBIENTE_PADRAO: 'producao_restrita',
     FISCAL_ALERTA_EMAIL: 'lucca@demo.local',
-    FISCAL_CICLO_CRON_SECRET: s.cron
+    FISCAL_CODIGO_VALIDADE_S: '3600'
   };
 }
 
@@ -100,6 +100,8 @@ export function variaveisDoApp(s, anon) {
     WHATSAPP_VERIFY_TOKEN: s.metaVerificacao,
     WHATSAPP_GRAPH_URL: local(PORTAS.meta),
     WHATSAPP_NUMERO_AGENTE: NUMERO_AGENTE,
+    WHATSAPP_MODELO_BOAS_VINDAS: 'nofiscal_boas_vindas_demo',
+    WHATSAPP_MODELO_RESUMO: 'nofiscal_resumo_demo',
     RESEND_API_KEY: 're_demo_local',
     RESEND_API_URL: local(PORTAS.resend),
     AGENTE_FISCAL_EMAIL_FROM: 'nó.fiscal <notas@demo.local>',

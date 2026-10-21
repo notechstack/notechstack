@@ -260,17 +260,20 @@
 
   function pedirCodigo(email) { return funcao('fiscal-acesso', { email: texto(email) }, { auth: false }); }
 
-  /* Confere o código no GoTrue e guarda a sessão. */
+  /* Confere o código em fiscal-acesso {acao:'verificar'} (que conta as tentativas e só então abre a sessão no
+     GoTrue) e guarda a sessão. Resposta de chamar(): codigo = CODIGO_INCORRETO | CODIGO_ESGOTADO | CODIGO_VENCIDO… */
   function verificarCodigo(email, codigo) {
-    return fetch(SUPABASE + '/auth/v1/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.anonKey || '' },
-      body: JSON.stringify({ type: 'email', email: texto(email), token: digitos(codigo) })
-    }).then(function (r) {
-      return r.json().catch(function () { return null; }).then(function (j) {
-        if (r.ok && sessao.gravar(j)) return { ok: true, status: r.status };
-        return { ok: false, status: r.status, codigo: (j && (j.error_code || j.code)) || 'CODIGO' };
-      });
-    }, function () { return { ok: false, status: 0, codigo: 'REDE' }; });
+    return funcao('fiscal-acesso', { acao: 'verificar', email: texto(email), codigo: digitos(codigo) }, { auth: false }).then(function (r) {
+      if (r.ok && !sessao.gravar(r.dados)) return { status: r.status, ok: false, dados: r.dados, codigo: 'INDISPONIVEL', mensagem: '' };
+      return r;
+    });
+  }
+  /* Falha de verificarCodigo() → texto do campo; `novo`: este código acabou, só um código novo resolve. */
+  function erroDoCodigo(r) {
+    if (r.codigo === 'CODIGO_INCORRETO') return { mensagem: 'Código incorreto', novo: false };
+    if (r.codigo === 'CODIGO_ESGOTADO' || r.codigo === 'CODIGO_VENCIDO') return { mensagem: 'Peça um código novo', novo: true };
+    if (r.status === 400) return { mensagem: 'O código tem 6 dígitos.', novo: false };
+    return { mensagem: 'A conferência do código está fora do ar agora. Tente de novo em alguns minutos.', novo: false };
   }
 
   /* Cartão direto no Pagar.me (/tokens?appId=<public_key>); devolve só o id do token. */
@@ -403,7 +406,7 @@
     titular: titular, percentual: percentual, validarCartao: validarCartao, enderecoDoCartao: enderecoDoCartao,
     formatarCodigo: formatarCodigo, buscarCodigos: buscarCodigos,
     sessao: sessao, cadastro: cadastro,
-    funcao: funcao, app: app, pedirCodigo: pedirCodigo, verificarCodigo: verificarCodigo, tokenizarCartao: tokenizarCartao,
+    funcao: funcao, app: app, pedirCodigo: pedirCodigo, verificarCodigo: verificarCodigo, erroDoCodigo: erroDoCodigo, tokenizarCartao: tokenizarCartao,
     seletorCodigo: seletorCodigo,
     $: $, ocupado: ocupado, aviso: aviso, erroCampo: erroCampo,
     navegar: function (url) { location.assign(url); }

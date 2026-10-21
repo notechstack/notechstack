@@ -83,3 +83,4 @@
   .nf-dados{grid-template-columns:1fr;gap:2px}
   .nf-dados dd{margin-bottom:8px}
 }
+#assinatura,#certificado{scroll-margin-top:calc(110px + env(safe-area-inset-top))}

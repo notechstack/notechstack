@@ -32,8 +32,6 @@
     RATE_LIMITED: 'Muitas tentativas. Tente de novo daqui a uma hora.',
     FORBIDDEN: 'Esta conta não é a dona desta empresa.'
   };
-  var CODIGO_VALE_MS = 60 * 60 * 1000;
-  var MAX_TENTATIVAS = 5;
 
   var st = {
     plano: nf.planoDaUrl(location.search),
@@ -44,8 +42,7 @@
     consultando: null,       // promessa da consulta em andamento
     cnpjConsultado: '',
     checkout: null,
-    tentativas: 0,
-    codigoPedidoEm: 0,
+    codigoNovo: false,       // o servidor esgotou ou venceu o código: só um código novo resolve
     seletor: null,
     clientesCarregados: false,
     ativacaoPedida: false
@@ -187,8 +184,7 @@
   function pedirCodigo(email, avisoEl) {
     return nf.pedirCodigo(email).then(function (r) {
       if (r.ok) {
-        st.tentativas = 0;
-        st.codigoPedidoEm = Date.now();
+        st.codigoNovo = false;
         $('fc-email-mascarado').textContent = nf.mascararEmail(email);
         $('fc-codigo').value = '';
         nf.erroCampo('fc-codigo', '');
@@ -204,22 +200,22 @@
   }
 
   /* ---------- 2 · Código ---------- */
-  function codigoVencido() { return st.tentativas >= MAX_TENTATIVAS || (st.codigoPedidoEm && Date.now() - st.codigoPedidoEm > CODIGO_VALE_MS); }
+  // Tentativas e validade são contadas em fiscal-acesso {acao:'verificar'} (Landing do lote A).
   function enviarCodigo(ev) {
     ev.preventDefault();
     var d = nf.cadastro.ler();
     var codigo = nf.digitos($('fc-codigo').value);
     nf.aviso($('fc-aviso-2'), '');
-    if (codigoVencido()) { nf.erroCampo('fc-codigo', MSG.codigoNovo); return; }
+    if (st.codigoNovo) { nf.erroCampo('fc-codigo', MSG.codigoNovo); return; }
     if (codigo.length !== 6) { nf.erroCampo('fc-codigo', 'O código tem 6 dígitos.'); return; }
     nf.erroCampo('fc-codigo', '');
     var botao = $('fc-confirmar-codigo');
     nf.ocupado(botao, true, 'Conferindo…');
     nf.verificarCodigo(d.email, codigo).then(function (r) {
       if (r.ok) return st.tenantId ? retomar() : criar();
-      if (r.status === 429) { st.tentativas = MAX_TENTATIVAS; nf.erroCampo('fc-codigo', MSG.codigoNovo); return; }
-      st.tentativas++;
-      nf.erroCampo('fc-codigo', codigoVencido() ? MSG.codigoNovo : MSG.codigoIncorreto);
+      var e = nf.erroDoCodigo(r);
+      st.codigoNovo = e.novo;
+      nf.erroCampo('fc-codigo', e.mensagem);
     }).then(function () { nf.ocupado(botao, false); });
   }
 

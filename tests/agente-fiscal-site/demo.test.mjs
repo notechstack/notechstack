@@ -41,18 +41,23 @@ const producao = () => [
   ...arquivos(resolve(repo, 'supabase', 'functions'), (p) => codigo(p) && !/\.test\.ts$/.test(p))
 ];
 
-// Arquivo + os módulos locais que ele importa (um nível): o padrão pode estar numa constante ao lado.
-function comImports(p) {
-  const texto = readFileSync(p, 'utf8');
+// Arquivo + os módulos locais que ele importa, em cadeia (até 3 níveis): o padrão pode estar numa constante de
+// outro módulo (ex.: assinatura-fiscal-ciclo → ./core.ts → ../assinatura-fiscal/core.ts).
+function comImports(p, nivel = 0, vistos = new Set()) {
+  if (vistos.has(p)) return '';
+  vistos.add(p);
+  let texto;
+  try { texto = readFileSync(p, 'utf8'); } catch { return ''; }
+  if (nivel >= 3) return texto;
   const vizinhos = [...texto.matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)].map((m) => {
-    let alvo = resolve(dirname(p), m[1]);
-    if (/\.js$/.test(alvo)) alvo = alvo.replace(/\.js$/, '.ts');
-    try { return readFileSync(alvo, 'utf8'); } catch { try { return readFileSync(resolve(dirname(p), m[1]), 'utf8'); } catch { return ''; } }
+    const alvo = resolve(dirname(p), m[1]);
+    const ts = alvo.replace(/\.js$/, '.ts');
+    return comImports(ts !== alvo && !vistos.has(ts) ? ts : alvo, nivel + 1, vistos) || comImports(alvo, nivel + 1, vistos);
   });
   return [texto, ...vizinhos].join('\n');
 }
 
-test('dublês só na demo', async (t) => {
+test('dublês só na demo', async () => {
   // 1. Ninguém fora de tools/fiscal-demo/ importa os dublês nem a demo. A exceção são os testes desta pasta, que
   //    testam a própria demo (este arquivo) ou só lançam o comando (e2e-demo.mjs).
   const todos = arquivos(repo, (p) => /\.(m?js|cjs|ts|tsx|html)$/.test(p) && !rel(p).startsWith('tools/fiscal-demo/') && !rel(p).startsWith('tests/agente-fiscal-site/'));
@@ -78,15 +83,13 @@ test('dublês só na demo', async (t) => {
   assert.doesNotMatch(ler('agentes/fiscal/config.js'), /localhost|127\.0\.0\.1|pagarmeApiUrl/);
   assert.match(ler('agentes/fiscal/nofiscal.js'), /CFG\.pagarmeApiUrl \|\| 'https:\/\/api\.pagar\.me\/core\/v5'/);
 
-  // 4. Onde o código de produção lê uma das 5 variáveis, o padrão é a URL oficial.
-  const leitura = (v) => new RegExp(`(Deno\\.env\\.get\\(\\s*['"]${v}['"]|process\\.env\\.${v}\\b|process\\.env\\[['"]${v}['"]\\]|\\benv\\.${v}\\b|\\benv\\[['"]${v}['"]\\]|\\benv\\(\\s*['"]${v}['"])`);
-  const pendentes = [];
+  // 4. As 5 variáveis são lidas pelo código de produção e, onde são lidas, o padrão é a URL oficial.
+  const leitura = (v) => new RegExp(`(Deno\\.env\\.get\\(\\s*['"]${v}['"]|process\\.env\\.${v}\\b|process\\.env\\[['"]${v}['"]\\]|\\benv\\.${v}\\b|\\benv\\[['"]${v}['"]\\]|\\w\\(\\s*['"]${v}['"]\\s*\\))`); // o último: qualquer leitura por nome, como env('X') ou variavel('X')
   for (const [v, oficial] of Object.entries(OFICIAIS)) {
     const leem = producao().filter((p) => leitura(v).test(readFileSync(p, 'utf8')));
-    if (!leem.length) pendentes.push(v);
+    assert.ok(leem.length > 0, `${v} é lida em algum lugar do código de produção`);
     for (const p of leem) assert.ok(comImports(p).includes(oficial), `${rel(p)} lê ${v} e o padrão tem de ser ${oficial}`);
   }
-  if (pendentes.length) t.diagnostic(`ainda não lidas nesta branch (vêm dos lotes A, C e D): ${pendentes.join(', ')}`);
 
   // 5. Só a demonstração aponta essas variáveis para os dublês.
   const demo = await import(pathToFileURL(resolve(repo, 'tools/fiscal-demo/demo.mjs')).href);

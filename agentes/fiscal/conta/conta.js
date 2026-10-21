@@ -6,8 +6,6 @@
   var nf = window.noFiscal;
   if (!nf || !document.getElementById('fa-painel')) return;
   var $ = nf.$;
-  var MAX_TENTATIVAS = 5;
-  var CODIGO_VALE_MS = 60 * 60 * 1000;
   var GENERICO = 'Não deu para concluir agora. Tente de novo em alguns minutos.';
   var CERT = {
     CERT_SENHA_INVALIDA: 'Senha incorreta',
@@ -16,7 +14,7 @@
     VALIDATION_FAILED: 'Este arquivo não é um certificado A1 (.pfx ou .p12) que dê para usar.',
     RATE_LIMITED: 'Muitas tentativas. Tente de novo daqui a uma hora.'
   };
-  var st = { estado: null, email: '', tentativas: 0, codigoPedidoEm: 0, seletor: null };
+  var st = { estado: null, email: '', codigoNovo: false, seletor: null };
 
   function telaLogin(mensagem, tipo) {
     $('fa-carregando').hidden = true;
@@ -38,7 +36,7 @@
     nf.ocupado(botao, true);
     nf.pedirCodigo(email).then(function (r) {
       if (r.ok) {
-        st.email = email; st.tentativas = 0; st.codigoPedidoEm = Date.now();
+        st.email = email; st.codigoNovo = false;
         $('fa-email-mascarado').textContent = nf.mascararEmail(email);
         $('fa-form-email').hidden = true;
         $('fa-form-codigo').hidden = false;
@@ -54,26 +52,35 @@
   function entrar(ev) {
     ev.preventDefault();
     var codigo = nf.digitos($('fa-codigo').value);
-    var vencido = st.tentativas >= MAX_TENTATIVAS || Date.now() - st.codigoPedidoEm > CODIGO_VALE_MS;
-    if (vencido) { nf.erroCampo('fa-codigo', 'Peça um código novo'); return; }
+    if (st.codigoNovo) { nf.erroCampo('fa-codigo', 'Peça um código novo'); return; }
     if (codigo.length !== 6) { nf.erroCampo('fa-codigo', 'O código tem 6 dígitos.'); return; }
     var botao = $('fa-entrar');
     nf.ocupado(botao, true, 'Conferindo…');
     nf.verificarCodigo(st.email, codigo).then(function (r) {
       if (r.ok) { nf.erroCampo('fa-codigo', ''); return carregar(); }
-      if (r.status === 429) st.tentativas = MAX_TENTATIVAS; else st.tentativas++;
-      nf.erroCampo('fa-codigo', st.tentativas >= MAX_TENTATIVAS ? 'Peça um código novo' : 'Código incorreto');
+      var e = nf.erroDoCodigo(r);
+      st.codigoNovo = e.novo;
+      nf.erroCampo('fa-codigo', e.mensagem);
     }).then(function () { nf.ocupado(botao, false); });
   }
 
   /* ---------- estado ---------- */
   function carregar() {
     return nf.funcao('fiscal-conta', { acao: 'estado' }).then(function (r) {
-      if (r.ok) { st.estado = r.dados; desenhar(); return; }
+      if (r.ok) { st.estado = r.dados; desenhar(); irParaAncora(); return; }
       if (r.codigo === 'CONTA_SEM_EMPRESA') { nf.navegar('/agentes/fiscal/comecar/'); return; }
       if (r.status === 401) { nf.sessao.limpar(); telaLogin(); return; }
       telaLogin(nf.esc(r.mensagem || GENERICO), 'erro');
     });
+  }
+  /* Links do agente (…/conta/#certificado, …/conta/#assinatura): o painel abre depois do estado, então a rolagem
+     até a seção é feita aqui, uma vez. */
+  var ancoraFeita = false;
+  function irParaAncora() {
+    if (ancoraFeita) return;
+    ancoraFeita = true;
+    var alvo = /^#(certificado|assinatura)$/.test(location.hash) && document.getElementById(location.hash.slice(1));
+    if (alvo && typeof alvo.scrollIntoView === 'function') alvo.scrollIntoView({ block: 'start' });
   }
   function emTeste(a) { return !!(a && a.trial_ends_at && new Date(a.trial_ends_at).getTime() > Date.now() && a.status !== 'cancelada'); }
   function statusAssinatura(a) {
