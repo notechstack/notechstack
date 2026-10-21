@@ -67,8 +67,8 @@ Os ids da Meta (conta de anúncios `act_…`, Página, Instagram) ficam em `ad_a
 | Nome (secret da função) | O que é |
 | --- | --- |
 | `MARKETING_OAUTH_STATE_SECRET` | chave HMAC do state e do PKCE (32+ caracteres aleatórios) |
-| `META_APP_ID` / `META_APP_SECRET` | app da Meta usado no login dos clientes |
-| `META_LOGIN_CONFIG_ID` | configuração do Facebook Login for Business (`ads_read`); sem ela, pede `scope=ads_read` |
+| `AUDITOR_META_APP_ID` / `AUDITOR_META_APP_SECRET` | app da Meta usado no login dos clientes (nomes próprios: `META_APP_SECRET` é do legado de abril) |
+| `AUDITOR_META_LOGIN_CONFIG_ID` | configuração do Facebook Login for Business (`ads_read`); sem ela, pede `scope=ads_read` |
 | `MARKETING_HUB_PUBLIC_URL` | opcional; base pública da função para o `redirect_uri` (domínio verificado, para a verificação Google) |
 | `AUDITOR_VOLTA_URL` | opcional; destino da volta, com `{client_id}` (padrão `APP_URL/auditor/{client_id}/conexoes`) |
 

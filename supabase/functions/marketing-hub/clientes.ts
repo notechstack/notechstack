@@ -7,7 +7,7 @@
 //   GET  /cliente/{meta|google}/callback?code&state   → Vault + 303 ao app
 //   POST /cliente/meta/desautorizar  signed_request   → deauthorize da Meta
 // Do negócio (o clientId vem da URL, nunca do corpo):
-//   POST   /cliente/:clientId/:provedor/conectar      → { url } (para /ir)        membro
+//   POST   /cliente/:clientId/:provedor/conectar[?hl=en] → { url } (para /ir)     membro
 //   GET    /cliente/:clientId/conexoes                → estado + contas escolhidas membro ou suporte
 //   GET    /cliente/:clientId/:provedor/contas        → contas que o token enxerga membro
 //   POST   /cliente/:clientId/ativos                  → grava a escolha            membro
@@ -31,6 +31,7 @@ import {
   STATE_TTL_S,
   assinarState,
   googleTrocarCodigoCliente,
+  idiomaValido,
   lerState,
   metaSignedRequest,
   metaTrocarCodigo,
@@ -218,15 +219,19 @@ export function criarRotasCliente(f: Ferramentas) {
 
   // ------------------------------------------------------------ OAuth: ida
 
-  async function conectar(req: Request, a: Acesso, p: Provedor): Promise<Response> {
+  // `?hl=en|pt-BR` (opcional, só Google) fixa o idioma da tela de consentimento; vai assinado no state.
+  async function conectar(req: Request, url: URL, a: Acesso, p: Provedor): Promise<Response> {
     if (!configurado(p)) return erro(req, 503, "NAO_CONFIGURADO", `Conexão ${p === "meta" ? "Meta" : "Google"} ainda não configurada.`);
+    const hlBruto = url.searchParams.get("hl");
+    const hl = idiomaValido(hlBruto);
+    if (hlBruto !== null && (!hl || p !== "google")) return erro(req, 422, "INVALID_REQUEST", "hl aceita en ou pt-BR, só no Google.", { campos: ["hl"] });
     const nonce = novoNonce();
     const exp = Math.floor(deps.agora().getTime() / 1000) + STATE_TTL_S;
     await store!.nonceRegistrar(nonce, new Date(exp * 1000).toISOString());
-    const state = await assinarState(cfg!.stateSecret!, { n: nonce, c: a.clientId, u: a.ch.userId, p, e: exp });
-    const url = new URL(`${cfg!.hubUrl}/cliente/${p}/ir`);
-    url.searchParams.set("state", state);
-    const r = json(req, 200, { url: url.toString(), expira_em: new Date(exp * 1000).toISOString() });
+    const state = await assinarState(cfg!.stateSecret!, { n: nonce, c: a.clientId, u: a.ch.userId, p, e: exp, ...(hl ? { l: hl } : {}) });
+    const ida = new URL(`${cfg!.hubUrl}/cliente/${p}/ir`);
+    ida.searchParams.set("state", state);
+    const r = json(req, 200, { url: ida.toString(), expira_em: new Date(exp * 1000).toISOString() });
     r.headers.set("Cache-Control", "no-store");
     return r;
   }
@@ -242,7 +247,7 @@ export function criarRotasCliente(f: Ferramentas) {
     const challenge = await pkceChallenge(await pkceVerifier(cfg!.stateSecret!, s.n));
     const destino = p === "meta"
       ? urlConsentimentoMeta({ appId: cfg!.meta.appId!, configId: cfg!.meta.configId, redirectUri: callbackUrl(p), state, challenge })
-      : urlConsentimentoGoogle({ clientId: google.clientId!, redirectUri: callbackUrl(p), state, challenge });
+      : urlConsentimentoGoogle({ clientId: google.clientId!, redirectUri: callbackUrl(p), state, challenge, hl: s.l ?? null });
     const restante = Math.max(1, s.e - Math.floor(deps.agora().getTime() / 1000));
     return new Response(null, {
       status: 303,
@@ -458,7 +463,7 @@ export function criarRotasCliente(f: Ferramentas) {
       }
       // POST (não PUT): o CORS do hub é compartilhado com o admin e não muda.
       if (m === "POST" && r2 === "ativos" && partes.length === 3) return await salvarAtivos(req, await autorizar(req, r1, true));
-      if (p2 && m === "POST" && r3 === "conectar" && partes.length === 4) return await conectar(req, await autorizar(req, r1, true), p2);
+      if (p2 && m === "POST" && r3 === "conectar" && partes.length === 4) return await conectar(req, url, await autorizar(req, r1, true), p2);
       if (p2 && m === "GET" && r3 === "contas" && partes.length === 4) {
         const a = await autorizar(req, r1, true);
         return json(req, 200, await listarContas(a.clientId, p2));

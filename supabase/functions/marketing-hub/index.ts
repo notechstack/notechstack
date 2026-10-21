@@ -36,7 +36,8 @@ const handler = criarHandler({
       hubUrl: HUB_URL,
       // A volta do OAuth cai na tela de conexões do negócio no app (spec, seção 6).
       voltaUrl: env("AUDITOR_VOLTA_URL") ?? `${APP_URL}/auditor/{client_id}/conexoes`,
-      meta: { appId: env("META_APP_ID"), appSecret: env("META_APP_SECRET"), configId: env("META_LOGIN_CONFIG_ID") },
+      // Nomes próprios: META_APP_SECRET é do app legado de abril (oauth-callback, refresh-tokens).
+      meta: { appId: env("AUDITOR_META_APP_ID"), appSecret: env("AUDITOR_META_APP_SECRET"), configId: env("AUDITOR_META_LOGIN_CONFIG_ID") },
     },
   },
   agora: () => new Date(),

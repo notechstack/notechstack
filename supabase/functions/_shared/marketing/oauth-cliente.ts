@@ -60,7 +60,13 @@ export type StatePayload = {
   u: string; // user_id de quem iniciou
   p: Provedor;
   e: number; // expiração, epoch em segundos
+  l?: Idioma; // idioma da tela de consentimento (Google), só quando pedido
 };
+
+// Idiomas aceitos no consentimento Google (`hl`), por exemplo para gravar o screencast em inglês.
+export const IDIOMAS = ["en", "pt-BR"] as const;
+export type Idioma = typeof IDIOMAS[number];
+export const idiomaValido = (v: unknown): Idioma | null => (IDIOMAS as readonly unknown[]).includes(v) ? v as Idioma : null;
 
 export function novoNonce(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -82,7 +88,7 @@ export async function lerState(segredo: string, state: string, agoraMs: number):
   let p: StatePayload;
   try { p = JSON.parse(new TextDecoder().decode(deB64url(partes[1]))); } catch { throw new OauthErro("state_invalido"); }
   const forma = p && /^[a-f0-9]{64}$/.test(p.n) && typeof p.c === "string" && typeof p.u === "string"
-    && PROVEDORES.includes(p.p) && Number.isInteger(p.e);
+    && PROVEDORES.includes(p.p) && Number.isInteger(p.e) && (p.l === undefined || idiomaValido(p.l) !== null);
   if (!forma) throw new OauthErro("state_invalido");
   if (p.e * 1000 <= agoraMs) throw new OauthErro("state_expirado");
   return p;
@@ -115,12 +121,13 @@ export function urlConsentimentoMeta(o: {
   return url.toString();
 }
 
-export function urlConsentimentoGoogle(o: { clientId: string; redirectUri: string; state: string; challenge: string }): string {
+export function urlConsentimentoGoogle(o: { clientId: string; redirectUri: string; state: string; challenge: string; hl?: Idioma | null }): string {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
     client_id: o.clientId, redirect_uri: o.redirectUri, response_type: "code",
     scope: GOOGLE_ESCOPOS_CLIENTE.join(" "), access_type: "offline", prompt: "consent",
     include_granted_scopes: "false", state: o.state, code_challenge: o.challenge, code_challenge_method: "S256",
+    ...(o.hl ? { hl: o.hl } : {}),
   }).toString();
   return url.toString();
 }

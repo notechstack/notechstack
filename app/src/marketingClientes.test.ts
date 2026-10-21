@@ -473,6 +473,24 @@ function googleOk(c: Chamada): Resposta | undefined {
 }
 
 describe('/cliente/google — ida e volta', () => {
+  it('?hl=en vai assinado no state e chega à tela de consentimento; sem hl, nada muda', async () => {
+    const m = montar()
+    const r = await m.chamar('POST', `/cliente/${CLI_A}/google/conectar?hl=en`, 'cliente-a')
+    const ir = new URL(r.body.url)
+    expect((await lerState(SEGREDO, ir.searchParams.get('state')!, AGORA.getTime())).l).toBe('en')
+    const via = await m.chamar('GET', `/cliente/google/ir${ir.search}`)
+    expect(new URL(via.headers.get('location')!).searchParams.get('hl')).toBe('en')
+    const { destino } = await iniciar(m, 'google')
+    expect(destino.searchParams.has('hl')).toBe(false)
+  })
+
+  it.each([['google', 'fr'], ['meta', 'en']])('hl inválido (%s, %s) é 422 e não cria nonce', async (prov, hl) => {
+    const m = montar()
+    const r = await m.chamar('POST', `/cliente/${CLI_A}/${prov}/conectar?hl=${hl}`, 'cliente-a')
+    expect(r.status).toBe(422)
+    expect(m.nonces.size).toBe(0)
+  })
+
   it('volta ok: troca com code_verifier e guarda o refresh token com os escopos concedidos', async () => {
     const m = montar()
     const { state, cookie, destino } = await iniciar(m, 'google')
