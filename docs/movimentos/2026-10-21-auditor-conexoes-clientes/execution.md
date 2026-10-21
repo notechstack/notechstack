@@ -56,3 +56,97 @@ Branch `claude/auditor-clientes-frente3`. Nada aplicado em produção até agora
 - Passo 8: Política e Termos. Os textos são do PR #64, da Frente 2; os prazos são os da spec, seção 5.
 - Passo 9: produção. A migration B só entra depois da migration A aplicada e verificada, com contagens de `leads`, `lead_sessoes` e `lead_eventos` antes e depois, e os advisors.
 - Passo 0, só leitura em produção: contagem de `auditor_assinaturas` e leitores de `clients`/`memberships`. A busca no repo já foi feita: as policies de `clients` dependem de um claim `client_id` que os usuários do auditor não têm, e por isso o app usa `auditor_eu()`.
+
+## Rodada 2 (21/10/2026, 10:30–11:00)
+
+### Feito
+- **Rebase:** base = `origin/main` (#63, #64, #65) + merge de `origin/claude/auditor-oauth-clientes` (`51ef393a`, `cbe8468a`), com os SHAs preservados.
+- **`marketing-hub`:**
+  - `auditor.ts` + `auditor-store.ts`, com três rotas:
+    - `POST /internal/auditor/processar` (`x-cron-secret`);
+    - `POST /cliente/excluir-conta` (cancela no Pagar.me **antes** de apagar; revoga nas plataformas);
+    - `GET /auditor/operacao` (NO_ADMIN aal2, sem métricas).
+  - `handler.ts`: campo opcional `auditor` em `Deps` e 2 linhas de despacho antes de `/cliente/*`.
+  - `index.ts`: liga as rotas e completa o `ClienteStore` com `suporteVigente`.
+- **`_shared/auditor/processar.ts`:** coleta atual + anterior com o token do negócio, snapshots, regras, redação, e-mail, retentativas e avisos.
+- **Checkout logado:**
+  - no banco: `auditor_checkout_preparar`, `auditor_assinatura_vincular` e o gatilho `auditor_assinatura_sincronizar` (paga → plano; cancelada → conta encerrada);
+  - `assinatura-auditor/index.ts`: exige sessão (401 antes do Pagar.me), recusa sem conta ou já assinante (409) e vincula dentro do `registrar` (se falhar, o core compensa cancelando);
+  - app: `/auditor/planos`, com o cartão tokenizado no navegador.
+- **App:**
+  - escolher contas (t02);
+  - mensagens da volta do OAuth;
+  - retrospectiva com snapshots (nota, site, Meta, Google, "onde o clique se perde");
+  - `/no/auditor`.
+- **Agendamento:** separado em `20261021140000_auditor_agendamento.sql`, que **não** se aplica agora.
+
+### Provas
+- **pgTAP:** 622 no total, incluindo o `hub_marketing_clientes` da Frente 1, já com a B aplicada por cima. Só `agency_console.sql` falha, e já falhava antes.
+- **`auditor_edge.mjs`:** 26 verificações no runtime Deno real.
+  - `processar` vazio responde 200;
+  - RLS: a rota `/cliente/*` da Frente 1 nega 403 a outro cliente;
+  - relatório gerado com texto de modelo;
+  - `auditor-acesso` e `assinatura-auditor` C19;
+  - exclusão de conta.
+- **Vitest do auditor:** 54 testes. Os arquivos de teste do hub não mudaram, e os 232 testes deles passam.
+- **Suíte do app, em sequência (`--no-file-parallelism`):** só o `pipelineExamples` falha (arquivos fora do repo).
+  - Em paralelo, testes antigos (planner, `App`) às vezes estouram o tempo por carga da máquina. Isolados, passam.
+- **`tsc -p tsconfig.app.json` e `eslint`:** limpos. **`vite build`:** fecha.
+
+### Achado: venda aberta em produção
+`GET assinatura-auditor` responde `ambiente: producao`, `venda_aberta: true`. Ver a seção Frente 3 da coordenação (10:58). O deploy da nova `assinatura-auditor` fica segurado até o Lucca decidir.
+
+## Produção — passo a passo (para quem tem acesso ao projeto `sdeowbqmwkwseyktyemn`)
+
+Ordem obrigatória. A migration A já está aplicada (Frente 1, 10:27, versão `20261021132726`).
+
+**1 · Pré-checagem, só leitura.** Parar se algo divergir.
+```sql
+-- objetos que a B usa precisam existir
+select proname from pg_proc where pronamespace = 'public'::regnamespace and proname in
+  ('auditor_assinatura_com_acesso','auditor_pode_ler','marketing_cliente_evento','marketing_cliente_conexao_encerrar',
+   'marketing_cron_secret_ok','is_no_admin') order by 1;                       -- 6 linhas
+select column_name from information_schema.columns where table_schema='public' and table_name='auditor_assinaturas'
+  and column_name in ('id','plano','nome','email','whatsapp','pagarme_subscription_id','status','created_at','updated_at'); -- 9
+select column_name from information_schema.columns where table_schema='public' and table_name='auditor_assinatura_eventos'
+  and column_name in ('pagarme_subscription_id','status_aplicado','evento_em','recebido_em');   -- 4
+select to_regclass('public.auditor_contas') is null as b_ainda_nao_aplicada;                    -- true
+select status, count(*) from public.auditor_assinaturas group by 1;                             -- registrar no log
+select (select count(*) from public.leads) leads, (select count(*) from public.lead_sessoes) lead_sessoes,
+       (select count(*) from public.lead_eventos) lead_eventos;
+```
+Rodar também os advisors de segurança e de performance e anotar.
+
+**2 · Aplicar a migration B.** Use o conteúdo de `supabase/migrations/20261021130000_auditor_clientes.sql` da branch `claude/auditor-clientes-frente3`, com o nome `auditor_clientes`. **Não** aplicar a `20261021140000_auditor_agendamento.sql`.
+
+**3 · Pós-checagem.**
+```sql
+select (select count(*) from public.leads), (select count(*) from public.lead_sessoes), (select count(*) from public.lead_eventos); -- iguais ao passo 1
+select count(*) from cron.job where jobname like 'auditor%';                       -- 0 (sem agendamento)
+select count(*) from public.auditor_contas;                                        -- 0
+select public.auditor_planejar_relatorios();                                       -- 0, sem erro
+select public.auditor_invoke_processar();                                          -- null (sem trabalho, sem HTTP)
+select public.auditor_assinatura_com_acesso('paga', null, true);                   -- true (D8 intacta)
+```
+Diferenças esperadas nos advisors:
+- RLS sem policy em `auditor_eventos`? Não existe: a trilha é a `marketing_cliente_eventos`.
+- Novas tabelas com RLS e policy só de leitura.
+- `auditor_acesso_tentativas`, `auditor_exclusoes` e `auditor_avisos` ficam sem policy (só service_role).
+- Funções `security definer` para authenticated: `auditor_eu`, `auditor_eu_iniciar`, `auditor_eu_suporte`, `auditor_eu_retrospectiva`, `auditor_eu_negocio_criar` e `auditor_eu_frequencia` (6 a mais).
+- Índices sem uso nas tabelas novas.
+
+**4 · Deploy das funções**, a partir da branch `claude/auditor-clientes-frente3`:
+- `auditor-acesso`, com `verify_jwt=false`. Precisa de `RESEND_API_KEY` e `DIAG_IP_SALT`, que já existem; e de `APP_URL`.
+- `marketing-hub`, com `verify_jwt=false`. Inclui tudo da v12 da Frente 1 mais as rotas do auditor. Antes, rodar `marketingHub.test.ts`, `marketingClientes.test.ts`, `marketingAdapters.test.ts` e o pgTAP `hub_marketing`.
+- **`assinatura-auditor`: segurar** enquanto `venda_aberta=true`, porque quebra o botão do site. Publicar só depois que o Lucca decidir.
+
+**5 · Provas pós-deploy** (sem login, todas sem efeito colateral):
+- `POST marketing-hub/internal/auditor/processar` sem segredo → 401;
+- o mesmo com o segredo do Vault → 200 `{"relatorios":{},"avisos":0}`;
+- `GET marketing-hub/auditor/operacao` sem login → 401;
+- `/overview`, `/connections`, `/config` e `/internal/publish-due` com as mesmas respostas da prova das 10:25/10:41;
+- `POST auditor-acesso` com `{"email":"x"}` → 400.
+
+**Rollback:**
+- `supabase/rollback/20261021130000_auditor_clientes.down.sql`, que devolve `auditor_pode_ler` à versão da A;
+- redeploy da `marketing-hub` v12.
