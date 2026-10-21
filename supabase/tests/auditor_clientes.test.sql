@@ -228,5 +228,39 @@ select is((select permitido from public.auditor_acesso_preparar('outro@example.t
 update public.auditor_acesso_tentativas set em = now() - interval '2 hours' where chave_email = repeat('e', 64);
 select is((select permitido from public.auditor_acesso_preparar('cliente-b@example.test', repeat('e', 64), repeat('5', 64))), true, 'U5 depois de uma hora, libera');
 
+-- ------------------------------------------------------------ RPCs do próprio cliente (auditor_eu_*)
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, last_sign_in_at) values
+  ('a3000000-0000-4000-8000-0000000000e1', 'authenticated', 'authenticated', 'eu@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now());
+set local role anon;
+select throws_ok($$select public.auditor_eu()$$, '42501', null, 'anon não chama auditor_eu');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a3000000-0000-4000-8000-0000000000e1","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
+select is(public.auditor_eu(), null, 'sem conta: auditor_eu é nulo');
+select is((public.auditor_eu_iniciar('https://eu.example.com.br/') -> 'negocios' -> 0 ->> 'nome'), 'eu.example.com.br', 'auditor_eu_iniciar cria e devolve o negócio');
+select is(jsonb_array_length(public.auditor_eu_iniciar(null) -> 'negocios'), 1, 'iniciar de novo é idempotente');
+select is((public.auditor_eu() ->> 'plano'), 'gratis', 'plano grátis');
+select throws_ok($$select public.auditor_eu_negocio_criar('https://outro.example', null)$$, 'P0001', 'plano_sem_multiplos_negocios', 'grátis não cria segundo negócio');
+select throws_ok($$select public.auditor_eu_frequencia((public.auditor_eu() -> 'negocios' -> 0 ->> 'client_id')::uuid, 'mensal')$$, 'P0001', 'so_no_plano_agencia', 'frequência só no Agência');
+select lives_ok($$select public.auditor_eu_suporte((public.auditor_eu() -> 'negocios' -> 0 ->> 'client_id')::uuid, true, 'ajuda')$$, 'dono concede suporte pelo app');
+select isnt((public.auditor_eu() -> 'negocios' -> 0 ->> 'suporte_ate'), null, 'auditor_eu mostra até quando vale o suporte');
+select lives_ok($$select public.auditor_eu_suporte((public.auditor_eu() -> 'negocios' -> 0 ->> 'client_id')::uuid, false)$$, 'dono revoga');
+select is((public.auditor_eu() -> 'negocios' -> 0 ->> 'suporte_ate'), null, 'revogado some');
+select isnt(public.auditor_eu_retrospectiva((public.auditor_eu() -> 'negocios' -> 0 ->> 'client_id')::uuid), null, 'retrospectiva grátis pelo app');
+select throws_ok($$select public.auditor_eu_suporte((select y from ids), true, null)$$, 'P0001', 'so_o_dono_concede', 'não concede suporte de negócio alheio');
+reset role;
+update public.auditor_contas set plano = 'agencia' where dono_user_id = 'a3000000-0000-4000-8000-0000000000e1';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a3000000-0000-4000-8000-0000000000e1","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
+select lives_ok($$select public.auditor_eu_negocio_criar('https://n2.example', 'Cliente 2')$$, 'Agência cria segundo negócio');
+select lives_ok($$select public.auditor_eu_negocio_criar('https://n3.example', null)$$, 'Agência: 3');
+select lives_ok($$select public.auditor_eu_negocio_criar('https://n4.example', null)$$, 'Agência: 4');
+select lives_ok($$select public.auditor_eu_negocio_criar('https://n5.example', null)$$, 'Agência: 5');
+select throws_ok($$select public.auditor_eu_negocio_criar('https://n6.example', null)$$, 'P0001', 'limite_de_negocios', 'Agência: até 5 negócios');
+select lives_ok($$select public.auditor_eu_frequencia((public.auditor_eu() -> 'negocios' -> 1 ->> 'client_id')::uuid, 'mensal')$$, 'Agência escolhe a frequência por negócio');
+select is((public.auditor_eu() -> 'negocios' -> 1 ->> 'frequencia'), 'mensal', 'frequência gravada');
+select is((public.auditor_eu() -> 'negocios' -> 2 ->> 'frequencia'), 'semanal', 'padrão do Agência é semanal');
+reset role;
+
 select * from finish();
 rollback;

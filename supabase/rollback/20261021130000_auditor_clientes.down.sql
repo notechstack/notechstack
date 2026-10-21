@@ -14,6 +14,12 @@ end;
 $$;
 
 drop function if exists public.auditor_invoke_processar();
+drop function if exists public.auditor_eu_frequencia(uuid, text);
+drop function if exists public.auditor_eu_negocio_criar(text, text);
+drop function if exists public.auditor_eu_retrospectiva(uuid);
+drop function if exists public.auditor_eu_suporte(uuid, boolean, text);
+drop function if exists public.auditor_eu_iniciar(text);
+drop function if exists public.auditor_eu();
 drop view if exists public.auditor_operacao;
 drop function if exists public.auditor_limpar(timestamptz);
 drop function if exists public.auditor_apagar_conta(uuid, text);

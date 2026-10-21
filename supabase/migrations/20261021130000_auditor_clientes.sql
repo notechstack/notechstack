@@ -581,6 +581,97 @@ begin
 end;
 $$;
 
+
+-- ------------------------------------------------------------ 9b · RPCs do próprio cliente (app, com o JWT dele)
+-- Agem só sobre auth.uid(); executáveis por authenticated. Erros com código curto para o app.
+
+create or replace function public.auditor_eu()
+returns jsonb language sql stable security definer set search_path = ''
+as $$
+  select case when c.id is null then null else jsonb_build_object(
+    'conta_id', c.id, 'plano', c.plano, 'encerrada_em', c.encerrada_em, 'excluir_apos', c.excluir_apos,
+    'limite_negocios', case c.plano when 'agencia' then 5 else 1 end,
+    'negocios', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'client_id', ac.client_id, 'nome', cl.name, 'site_url', ac.site_url,
+        'frequencia', case c.plano when 'semanal' then 'semanal' when 'mensal' then 'mensal'
+                                   when 'agencia' then coalesce(ac.frequencia, 'semanal') else null end,
+        'retrospectiva_gerada_em', ac.retrospectiva_gerada_em,
+        'suporte_ate', (select max(s.expira_em) from public.auditor_acessos_suporte s
+                         where s.client_id = ac.client_id and s.revogado_em is null and s.expira_em > now()))
+        order by ac.criado_em)
+      from public.auditor_clientes ac join public.clients cl on cl.id = ac.client_id
+      where ac.conta_id = c.id), '[]'::jsonb)) end
+  from (select 1) x
+  left join public.auditor_contas c on c.dono_user_id = (select auth.uid());
+$$;
+
+create or replace function public.auditor_eu_iniciar(p_site_url text default null)
+returns jsonb language plpgsql security definer set search_path = ''
+as $$
+declare v_email text;
+begin
+  if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  select email into v_email from auth.users where id = (select auth.uid());
+  perform public.auditor_primeiro_acesso((select auth.uid()), v_email, p_site_url);
+  return public.auditor_eu();
+end;
+$$;
+
+create or replace function public.auditor_eu_suporte(p_client_id uuid, p_conceder boolean, p_motivo text default null)
+returns void language plpgsql security definer set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  if p_conceder then perform public.auditor_suporte_conceder((select auth.uid()), p_client_id, p_motivo, 72);
+  else perform public.auditor_suporte_revogar((select auth.uid()), p_client_id); end if;
+end;
+$$;
+
+create or replace function public.auditor_eu_retrospectiva(p_client_id uuid)
+returns uuid language plpgsql security definer set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  return public.auditor_retrospectiva_agendar((select auth.uid()), p_client_id);
+end;
+$$;
+
+create or replace function public.auditor_eu_negocio_criar(p_site_url text, p_nome text default null)
+returns uuid language plpgsql security definer set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  return public.auditor_negocio_criar((select auth.uid()), p_site_url, p_nome);
+end;
+$$;
+
+create or replace function public.auditor_eu_frequencia(p_client_id uuid, p_frequencia text)
+returns void language plpgsql security definer set search_path = ''
+as $$
+begin
+  if p_frequencia not in ('semanal', 'mensal') then raise exception 'frequencia_invalida'; end if;
+  update public.auditor_clientes ac set frequencia = p_frequencia
+    from public.auditor_contas c
+   where ac.client_id = p_client_id and c.id = ac.conta_id
+     and c.dono_user_id = (select auth.uid()) and c.plano = 'agencia';
+  if not found then raise exception 'so_no_plano_agencia'; end if;
+end;
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'public.auditor_eu()', 'public.auditor_eu_iniciar(text)', 'public.auditor_eu_suporte(uuid, boolean, text)',
+    'public.auditor_eu_retrospectiva(uuid)', 'public.auditor_eu_negocio_criar(text, text)', 'public.auditor_eu_frequencia(uuid, text)'
+  ] loop
+    execute format('revoke all on function %s from public, anon', f);
+    execute format('grant execute on function %s to authenticated', f);
+  end loop;
+end;
+$$;
+
 -- ------------------------------------------------------------ 10 · Operação (NO_ADMIN, sem métricas)
 
 create or replace view public.auditor_operacao
