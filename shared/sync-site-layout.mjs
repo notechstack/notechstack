@@ -8,6 +8,7 @@ const pages = {
   '/colaboradores-digitais/': 'colaboradores-digitais/index.html',
   '/agentes/': 'agentes/index.html',
   '/agentes/auditor/': 'agentes/auditor/index.html',
+  '/agentes/fiscal/': 'agentes/fiscal/index.html',
   '/health/': 'health/index.html',
   '/sobre/': 'sobre/index.html',
   '/contato/': 'contato/index.html',

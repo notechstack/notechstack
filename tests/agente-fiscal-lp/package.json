@@ -1,0 +1,8 @@
+{
+  "name": "tests-agente-fiscal-lp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
