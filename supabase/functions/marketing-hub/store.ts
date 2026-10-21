@@ -300,68 +300,94 @@ export function criarStore(admin: SupabaseClient): MarketingStore {
 }
 
 // Conexões dos clientes do auditor. Token só entra e sai do Vault pelas RPCs
-// (service role); erros nunca carregam o valor do token.
-export function criarClienteStore(admin: SupabaseClient): ClienteStore {
+// (service role); erros nunca carregam o valor do token. As leituras do negócio
+// usam o JWT do usuário (`leitor`), com a RLS como segunda trava.
+export function clienteDoUsuario(jwt: string): SupabaseClient {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!url || !anon) throw new Error("SUPABASE_URL ou SUPABASE_ANON_KEY ausentes");
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+}
+
+export function criarClienteStore(admin: SupabaseClient, doUsuario: (jwt: string) => SupabaseClient = clienteDoUsuario): ClienteStore {
+  const rpc = async (nome: string, args: Record<string, unknown>, mensagem: string) => {
+    const { data, error } = await admin.rpc(nome, args);
+    if (error) throw new Error(mensagem);
+    return data as unknown;
+  };
+
   return {
-    async clienteAutorizado(userId, clientId) {
-      const { data, error } = await admin.from("memberships").select("id").eq("user_id", userId).eq("client_id", clientId).maybeSingle();
+    async membroAuditor(userId, clientId) {
+      const { data, error } = await admin.from("memberships").select("id, clients!inner(origem)")
+        .eq("user_id", userId).eq("client_id", clientId).eq("role", "AUDITOR").eq("clients.origem", "auditor").maybeSingle();
       if (error) falhar("memberships", error);
       return Boolean(data);
     },
 
+    leitor(jwt) {
+      const db = doUsuario(jwt);
+      return {
+        async conexoesListar(clientId) {
+          const { data, error } = await db.from("marketing_cliente_conexoes")
+            .select("provedor, estado, escopos, expira_em, conectado_em, verificado_em, ultimo_erro, encerrado_em").eq("client_id", clientId);
+          if (error) falhar("marketing_cliente_conexoes", error);
+          return (data ?? []) as ConexaoCliente[];
+        },
+        async ativosListar(clientId) {
+          const { data, error } = await db.from("marketing_cliente_ativos")
+            .select("tipo, external_id, nome, login_customer_id, moeda, detalhe").eq("client_id", clientId);
+          if (error) falhar("marketing_cliente_ativos", error);
+          return (data ?? []) as AtivoCliente[];
+        },
+      };
+    },
+
+    async evento(e) {
+      await rpc("marketing_cliente_evento", {
+        p_client_id: e.clientId, p_ator: e.ator, p_papel: e.papel, p_acao: e.acao, p_detalhe: e.detalhe ?? {},
+      }, "Trilha indisponível.");
+    },
+
     async nonceRegistrar(nonce, expiraEm) {
-      const { error } = await admin.rpc("marketing_oauth_nonce_registrar", { p_nonce: nonce, p_expira_em: expiraEm });
-      if (error) throw new Error("OAuth state indisponível.");
+      await rpc("marketing_oauth_nonce_registrar", { p_nonce: nonce, p_expira_em: expiraEm }, "OAuth state indisponível.");
     },
 
     async nonceConsumir(nonce) {
-      const { data, error } = await admin.rpc("marketing_oauth_nonce_consumir", { p_nonce: nonce });
-      if (error) throw new Error("OAuth state indisponível.");
-      return data === true;
+      return (await rpc("marketing_oauth_nonce_consumir", { p_nonce: nonce }, "OAuth state indisponível.")) === true;
     },
 
     async conexaoSalvar(l) {
-      const { error } = await admin.rpc("marketing_cliente_conexao_salvar", {
+      await rpc("marketing_cliente_conexao_salvar", {
         p_client_id: l.clientId, p_provedor: l.provedor, p_token: l.token, p_escopos: l.escopos,
         p_expira_em: l.expiraEm, p_usuario_externo: l.usuarioExterno, p_user_id: l.userId,
-      });
-      if (error) throw new Error("Conexão do cliente não foi salva.");
+      }, "Conexão do cliente não foi salva.");
     },
 
     async tokenLer(clientId, provedor) {
-      const { data, error } = await admin.rpc("marketing_cliente_token_ler", { p_client_id: clientId, p_provedor: provedor });
-      if (error) throw new Error("Vault indisponível.");
+      const data = await rpc("marketing_cliente_token_ler", { p_client_id: clientId, p_provedor: provedor }, "Vault indisponível.");
       const linha = (data as { token: string | null; escopos: string[] | null }[] | null)?.[0];
       return linha?.token ? { token: linha.token, escopos: linha.escopos ?? [] } : null;
     },
 
-    async conexoesListar(clientId) {
-      const { data, error } = await admin.from("marketing_cliente_conexoes")
-        .select("provedor, estado, escopos, expira_em, conectado_em, atualizado_em, ultimo_erro").eq("client_id", clientId);
-      if (error) falhar("marketing_cliente_conexoes", error);
-      return (data ?? []) as ConexaoCliente[];
+    async conexaoMarcar(clientId, provedor, estado, codigo) {
+      await rpc("marketing_cliente_conexao_marcar", { p_client_id: clientId, p_provedor: provedor, p_estado: estado, p_codigo: codigo }, "Conexão não foi marcada.");
     },
 
-    async conexaoMarcar(clientId, provedor, estado, erro) {
-      const { error } = await admin.rpc("marketing_cliente_conexao_marcar", { p_client_id: clientId, p_provedor: provedor, p_estado: estado, p_erro: erro });
-      if (error) falhar("marketing_cliente_conexao_marcar", error);
+    async conexaoEncerrar(clientId, provedor, estado, userId, papel) {
+      return (await rpc("marketing_cliente_conexao_encerrar", {
+        p_client_id: clientId, p_provedor: provedor, p_estado: estado, p_user_id: userId, p_papel: papel,
+      }, "Conexão não foi encerrada.")) === true;
     },
 
-    async conexaoRevogar(clientId, provedor, userId) {
-      const { error } = await admin.rpc("marketing_cliente_conexao_revogar", { p_client_id: clientId, p_provedor: provedor, p_user_id: userId });
-      if (error) falhar("marketing_cliente_conexao_revogar", error);
-    },
-
-    async ativosListar(clientId) {
-      const { data, error } = await admin.from("marketing_cliente_ativos")
-        .select("tipo, external_id, nome, login_customer_id").eq("client_id", clientId);
-      if (error) falhar("marketing_cliente_ativos", error);
-      return (data ?? []) as AtivoCliente[];
+    async metaDesautorizar(usuarioExterno) {
+      return Number(await rpc("marketing_meta_desautorizar", { p_usuario_externo: usuarioExterno }, "Deauthorize não foi aplicado.")) || 0;
     },
 
     async ativosSalvar(clientId, provedor, ativos, userId) {
-      const { error } = await admin.rpc("marketing_cliente_ativos_salvar", { p_client_id: clientId, p_provedor: provedor, p_ativos: ativos, p_user_id: userId });
-      if (error) falhar("marketing_cliente_ativos_salvar", error);
+      await rpc("marketing_cliente_ativos_salvar", { p_client_id: clientId, p_provedor: provedor, p_ativos: ativos, p_user_id: userId }, "Seleção não foi salva.");
     },
   };
 }

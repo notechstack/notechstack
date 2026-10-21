@@ -10,6 +10,7 @@ const env = (nome: string): string | null => Deno.env.get(nome)?.trim() || null;
 
 const admin = clienteAdmin();
 
+const APP_URL = (env("APP_URL") ?? "https://app.notechstack.com.br").replace(/\/$/, "");
 const HUB_URL = (env("MARKETING_HUB_PUBLIC_URL") ?? "https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/marketing-hub").replace(/\/$/, "");
 
 const handler = criarHandler({
@@ -29,11 +30,12 @@ const handler = criarHandler({
       gscSiteUrl: env("GSC_SITE_URL"),
     },
     googleCriacaoLiberada: env("GOOGLE_ADS_CREATE_ENABLED") === "true",
-    appUrl: (env("APP_URL") ?? "https://app.notechstack.com.br").replace(/\/$/, ""),
+    appUrl: APP_URL,
     clientes: {
       stateSecret: env("MARKETING_OAUTH_STATE_SECRET"),
       hubUrl: HUB_URL,
-      retroUrl: env("AUDITOR_RETRO_URL") ?? "https://www.notechstack.com.br/agentes/auditor/retrospectiva/",
+      // A volta do OAuth cai na tela de conexões do negócio no app (spec, seção 6).
+      voltaUrl: env("AUDITOR_VOLTA_URL") ?? `${APP_URL}/auditor/{client_id}/conexoes`,
       meta: { appId: env("META_APP_ID"), appSecret: env("META_APP_SECRET"), configId: env("META_LOGIN_CONFIG_ID") },
     },
   },

@@ -15,6 +15,7 @@ export type ContaSelecionavel = {
   nome: string | null;
   // Google Ads acessado via MCC do cliente: o id da MCC vai no cabeçalho login-customer-id.
   login_customer_id: string | null;
+  moeda: string | null;
   detalhe: string | null;
 };
 
@@ -42,8 +43,9 @@ export async function metaContasAnuncio(token: string): Promise<ContaSelecionave
       external_id: c.id,
       nome: c.name ?? null,
       login_customer_id: null,
+      moeda: c.currency ?? null,
       // account_status 1 = ativa; os demais (desativada, em análise…) aparecem marcados.
-      detalhe: [c.currency, c.account_status === 1 ? null : "inativa"].filter(Boolean).join(" · ") || null,
+      detalhe: c.account_status === 1 ? null : "inativa",
     }));
 }
 
@@ -68,7 +70,7 @@ export async function googleAdsContas(token: string, developerToken: string | nu
     }
     if (!c) continue;
     if (!c.manager) {
-      saida.set(id, { tipo: "google_ads", external_id: id, nome: c.descriptiveName ?? null, login_customer_id: null, detalhe: c.currencyCode ?? null });
+      saida.set(id, { tipo: "google_ads", external_id: id, nome: c.descriptiveName ?? null, login_customer_id: null, moeda: c.currencyCode ?? null, detalhe: null });
       continue;
     }
     // MCC do cliente: as contas filhas diretas viram opções, lidas através da MCC.
@@ -80,7 +82,7 @@ export async function googleAdsContas(token: string, developerToken: string | nu
         if (!fid || f.customerClient?.manager || saida.has(fid)) continue;
         saida.set(fid, {
           tipo: "google_ads", external_id: fid, nome: f.customerClient?.descriptiveName ?? null, login_customer_id: id,
-          detalhe: [f.customerClient?.currencyCode, `via MCC ${c.descriptiveName ?? id}`].filter(Boolean).join(" · "),
+          moeda: f.customerClient?.currencyCode ?? null, detalhe: `via MCC ${c.descriptiveName ?? id}`,
         });
       }
     } catch {
@@ -106,7 +108,7 @@ export async function ga4Propriedades(token: string): Promise<ContaSelecionavel[
     for (const conta of r.accountSummaries ?? []) {
       for (const p of conta.propertySummaries ?? []) {
         const id = (p.property ?? "").replace(/^properties\//, "");
-        if (/^\d{1,20}$/.test(id)) saida.push({ tipo: "ga4", external_id: id, nome: p.displayName ?? null, login_customer_id: null, detalhe: conta.displayName ?? null });
+        if (/^\d{1,20}$/.test(id)) saida.push({ tipo: "ga4", external_id: id, nome: p.displayName ?? null, login_customer_id: null, moeda: null, detalhe: conta.displayName ?? null });
       }
     }
     pageToken = r.nextPageToken ?? "";
@@ -121,7 +123,7 @@ export async function gscSites(token: string): Promise<ContaSelecionavel[]> {
   );
   return (r.siteEntry ?? [])
     .filter((s) => s.siteUrl && s.permissionLevel && s.permissionLevel !== "siteUnverifiedUser")
-    .map((s) => ({ tipo: "gsc" as const, external_id: s.siteUrl as string, nome: s.siteUrl as string, login_customer_id: null, detalhe: s.permissionLevel ?? null }));
+    .map((s) => ({ tipo: "gsc" as const, external_id: s.siteUrl as string, nome: s.siteUrl as string, login_customer_id: null, moeda: null, detalhe: s.permissionLevel ?? null }));
 }
 
 export type ListagemGoogle = {

@@ -1,13 +1,15 @@
 // @vitest-environment node
+import { createHmac } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type Chamador, type HubConfig, type MarketingStore, criarHandler } from '../../supabase/functions/marketing-hub/handler.ts'
 import type { AtivoCliente, ClienteStore, ConexaoCliente } from '../../supabase/functions/marketing-hub/clientes.ts'
-import { limparCacheGoogle } from '../../supabase/functions/_shared/marketing/google-auth.ts'
+import { googleAccessToken, limparCacheGoogle } from '../../supabase/functions/_shared/marketing/google-auth.ts'
 import {
   type StatePayload,
   OauthErro,
   assinarState,
   lerState,
+  metaSignedRequest,
   pkceChallenge,
   pkceVerifier,
   urlConsentimentoGoogle,
@@ -17,6 +19,7 @@ import {
 // Fixtures: nenhum valor aqui é credencial real.
 const AGORA = new Date('2026-10-21T15:00:00Z')
 const SEGREDO = 'fixture-state-secret-com-mais-de-32-caracteres'
+const META_SECRET = 'fixture-meta-secret'
 const CLI_A = '11111111-1111-4111-8111-111111111111'
 const CLI_B = '22222222-2222-4222-8222-222222222222'
 const USER_A = 'aaaaaaaa-0000-4000-8000-00000000000a'
@@ -30,23 +33,41 @@ const REFRESH_GOOGLE = 'fixture-google-refresh-cliente'
 const ACCESS_GOOGLE = 'fixture-google-access-cliente'
 
 const SESSOES: Record<string, Chamador> = {
-  'cliente-a': { userId: USER_A, role: 'CLIENT', aal: 'aal1', banido: false },
-  'cliente-b': { userId: USER_B, role: 'CLIENT', aal: 'aal1', banido: false },
-  'cliente-a-banido': { userId: USER_A, role: 'CLIENT', aal: 'aal1', banido: true },
+  'cliente-a': { userId: USER_A, role: 'AUDITOR_CLIENT', aal: 'aal1', banido: false },
+  'cliente-b': { userId: USER_B, role: 'AUDITOR_CLIENT', aal: 'aal1', banido: false },
+  'cliente-a-banido': { userId: USER_A, role: 'AUDITOR_CLIENT', aal: 'aal1', banido: true },
   'admin-aal2': { userId: ADMIN, role: 'NO_ADMIN', aal: 'aal2', banido: false },
   'admin-aal1': { userId: ADMIN, role: 'NO_ADMIN', aal: 'aal1', banido: false },
   dot: { userId: DOT, role: 'MARKETING_AGENT', aal: 'aal1', banido: false },
 }
+// memberships AUDITOR em negócios com origem 'auditor'.
 const MEMBROS: Record<string, string> = { [USER_A]: CLI_A, [USER_B]: CLI_B }
 
-function clienteStoreEmMemoria() {
+function clienteStoreEmMemoria(suporte: Set<string> = new Set()) {
   const nonces = new Map<string, string>()
   const conexoes = new Map<string, ConexaoCliente & { token: string | null; usuario: string | null }>()
   const ativos = new Map<string, AtivoCliente[]>()
-  const eventos: { clientId: string; provedor: string; evento: string }[] = []
+  const eventos: { clientId: string | null; papel: string | null; acao: string; detalhe?: Record<string, unknown> }[] = []
+  const desautorizados: string[] = []
   const k = (c: string, p: string) => `${c}:${p}`
+  // Simula a RLS: o leitor só enxerga o negócio do dono do JWT (ou do suporte concedido).
+  const podeLer = (jwt: string, c: string) => MEMBROS[SESSOES[jwt]?.userId] === c || suporte.has(`${SESSOES[jwt]?.userId}:${c}`)
   const store: ClienteStore = {
-    async clienteAutorizado(userId, clientId) { return MEMBROS[userId] === clientId },
+    async membroAuditor(userId, clientId) { return MEMBROS[userId] === clientId },
+    async suporteVigente(userId, clientId) { return suporte.has(`${userId}:${clientId}`) },
+    leitor(jwt) {
+      return {
+        async conexoesListar(c) {
+          if (!podeLer(jwt, c)) return []
+          return [...conexoes.entries()].filter(([key]) => key.startsWith(`${c}:`)).map(([, v]) => ({
+            provedor: v.provedor, estado: v.estado, escopos: v.escopos, expira_em: v.expira_em, conectado_em: v.conectado_em,
+            verificado_em: v.verificado_em, ultimo_erro: v.ultimo_erro, encerrado_em: v.encerrado_em,
+          }))
+        },
+        async ativosListar(c) { return podeLer(jwt, c) ? ativos.get(c) ?? [] : [] },
+      }
+    },
+    async evento(e) { eventos.push({ clientId: e.clientId, papel: e.papel, acao: e.acao, detalhe: e.detalhe }) },
     async nonceRegistrar(n, exp) { nonces.set(n, exp) },
     async nonceConsumir(n) {
       const exp = nonces.get(n)
@@ -56,36 +77,33 @@ function clienteStoreEmMemoria() {
     async conexaoSalvar(l) {
       conexoes.set(k(l.clientId, l.provedor), {
         provedor: l.provedor, estado: 'conectado', escopos: l.escopos, expira_em: l.expiraEm, conectado_em: AGORA.toISOString(),
-        atualizado_em: AGORA.toISOString(), ultimo_erro: null, token: l.token, usuario: l.usuarioExterno,
+        verificado_em: null, ultimo_erro: null, encerrado_em: null, token: l.token, usuario: l.usuarioExterno,
       })
-      eventos.push({ clientId: l.clientId, provedor: l.provedor, evento: 'conectou' })
     },
     async tokenLer(c, p) {
       const x = conexoes.get(k(c, p))
       return x?.estado === 'conectado' && x.token ? { token: x.token, escopos: x.escopos } : null
     },
-    async conexoesListar(c) {
-      return [...conexoes.entries()].filter(([key]) => key.startsWith(`${c}:`)).map(([, v]) => ({
-        provedor: v.provedor, estado: v.estado, escopos: v.escopos, expira_em: v.expira_em,
-        conectado_em: v.conectado_em, atualizado_em: v.atualizado_em, ultimo_erro: v.ultimo_erro,
-      }))
-    },
-    async conexaoMarcar(c, p, estado, erro) {
+    async conexaoMarcar(c, p, estado, codigo) {
       const x = conexoes.get(k(c, p))
-      if (x?.estado === 'conectado') Object.assign(x, { estado, ultimo_erro: erro })
+      if (x?.estado !== 'conectado') return
+      if (estado === 'verificado') x.verificado_em = AGORA.toISOString()
+      else Object.assign(x, { estado, ultimo_erro: codigo })
     },
-    async conexaoRevogar(c, p) {
+    async conexaoEncerrar(c, p, estado) {
       const x = conexoes.get(k(c, p))
-      if (x) Object.assign(x, { estado: 'revogado', token: null, escopos: [] })
+      if (!x || x.estado === 'desconectado') return false
+      Object.assign(x, { estado, token: null, escopos: [], encerrado_em: AGORA.toISOString() })
       ativos.set(c, (ativos.get(c) ?? []).filter((a) => (p === 'meta' ? a.tipo !== 'meta_ads' : a.tipo === 'meta_ads')))
+      return true
     },
-    async ativosListar(c) { return ativos.get(c) ?? [] },
+    async metaDesautorizar(u) { desautorizados.push(u); return 1 },
     async ativosSalvar(c, _p, novos) {
       const atuais = (ativos.get(c) ?? []).filter((a) => !novos.some((n) => n.tipo === a.tipo))
       ativos.set(c, [...atuais, ...novos])
     },
   }
-  return { store, nonces, conexoes, ativos, eventos }
+  return { store, nonces, conexoes, ativos, eventos, desautorizados, suporte }
 }
 
 function storeHub(): MarketingStore & { cache: Map<string, unknown> } {
@@ -96,7 +114,7 @@ function storeHub(): MarketingStore & { cache: Map<string, unknown> } {
     async cacheLer(c) { return cache.get(c) ?? null },
     async cacheGravar(c, v) { cache.set(c, v) },
     async cacheLimpar(p) { for (const c of [...cache.keys()]) if (c.startsWith(p)) cache.delete(c) },
-    async agentePapel(id) { return id === ADMIN ? 'NO_ADMIN' : id === DOT ? 'MARKETING_AGENT' : 'CLIENT' },
+    async agentePapel() { return null },
     async ativos() { return { clientId: 'cli-no', metaAds: { id: 'x', externalId: 'act_999' }, metaPage: null, metaInstagram: null } },
     acaoIniciar: nao, acaoFinalizar: nao, acoesListar: nao, escritasOk: async () => [], postsListar: nao, postInserir: nao,
     postBuscar: nao, postAtualizar: nao, postsReservarVencidos: nao, leadsOrigem: async () => [], leadsListar: nao, leadExiste: nao,
@@ -106,14 +124,14 @@ function storeHub(): MarketingStore & { cache: Map<string, unknown> } {
 }
 
 const HUB = 'https://x.supabase.co/functions/v1/marketing-hub'
-const RETRO = 'https://www.notechstack.com.br/agentes/auditor/retrospectiva/'
+const VOLTA = 'https://app.notechstack.com.br/auditor/{client_id}/conexoes'
 
 const CONFIG: HubConfig = {
   metaToken: TOKEN_ADMIN_META,
   google: { clientId: 'fixture-google-client', clientSecret: 'fixture-google-secret', refreshToken: 'fixture-refresh-admin', developerToken: null, customerId: null, loginCustomerId: null, ga4PropertyId: null, gscSiteUrl: null },
   googleCriacaoLiberada: false,
   appUrl: 'https://app.notechstack.com.br',
-  clientes: { stateSecret: SEGREDO, hubUrl: HUB, retroUrl: RETRO, meta: { appId: '424242', appSecret: 'fixture-meta-secret', configId: 'cfg-77' } },
+  clientes: { stateSecret: SEGREDO, hubUrl: HUB, voltaUrl: VOLTA, meta: { appId: '424242', appSecret: META_SECRET, configId: 'cfg-77' } },
 }
 
 function montar(config: Partial<HubConfig> = {}) {
@@ -133,12 +151,12 @@ function montar(config: Partial<HubConfig> = {}) {
   const chamar = async (metodo: string, caminho: string, sessao?: string, corpo?: unknown, extra: Record<string, string> = {}) => {
     const resp = await handler(new Request(`${HUB}${caminho}`, {
       method: metodo,
-      headers: { origin: 'https://www.notechstack.com.br', ...(sessao ? { authorization: `Bearer ${sessao}` } : {}), ...(corpo ? { 'content-type': 'application/json' } : {}), ...extra },
+      headers: { origin: 'https://app.notechstack.com.br', ...(sessao ? { authorization: `Bearer ${sessao}` } : {}), ...(corpo ? { 'content-type': 'application/json' } : {}), ...extra },
       body: corpo ? JSON.stringify(corpo) : undefined,
     }))
     return { status: resp.status, body: await resp.json().catch(() => null), headers: resp.headers }
   }
-  return { ...cli, hub, chamar, logs }
+  return { ...cli, hub, chamar, handler, logs }
 }
 
 type Chamada = { url: URL; method: string; body: unknown; headers: Record<string, string> }
@@ -166,7 +184,7 @@ afterEach(() => {
 
 // Ida completa até o provedor: devolve state, cookie e o destino do 303.
 async function iniciar(m: ReturnType<typeof montar>, provedor: 'meta' | 'google', sessao = 'cliente-a', clientId = CLI_A) {
-  const r = await m.chamar('POST', `/cliente/${provedor}/conectar`, sessao, { client_id: clientId })
+  const r = await m.chamar('POST', `/cliente/${clientId}/${provedor}/conectar`, sessao)
   expect(r.status).toBe(200)
   const ir = new URL(r.body.url)
   const viaIr = await m.chamar('GET', `${ir.pathname.replace('/functions/v1/marketing-hub', '')}${ir.search}`)
@@ -179,7 +197,7 @@ const voltaDe = (r: { headers: Headers }) => new URL(r.headers.get('location')!)
 
 // ---------------------------------------------------------------------------
 
-describe('oauth-cliente — state assinado e PKCE', () => {
+describe('oauth-cliente — state assinado, PKCE e signed_request', () => {
   it('PKCE S256 confere com o vetor do RFC 7636 (apêndice B)', async () => {
     expect(await pkceChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
   })
@@ -201,8 +219,7 @@ describe('oauth-cliente — state assinado e PKCE', () => {
   it.each([
     ['payload trocado (outro cliente)', async (s: string) => {
       const [v, , sig] = s.split('.')
-      const outro = Buffer.from(JSON.stringify({ ...payload, c: CLI_B })).toString('base64url')
-      return `${v}.${outro}.${sig}`
+      return `${v}.${Buffer.from(JSON.stringify({ ...payload, c: CLI_B })).toString('base64url')}.${sig}`
     }, 'state_invalido'],
     ['assinatura de outro segredo', async () => assinarState('outro-segredo-qualquer-com-32-caracteres!!', payload), 'state_invalido'],
     ['lixo', async () => 'abc', 'state_invalido'],
@@ -219,8 +236,7 @@ describe('oauth-cliente — state assinado e PKCE', () => {
     expect(comConfig.searchParams.get('config_id')).toBe('cfg-77')
     expect(comConfig.searchParams.has('scope')).toBe(false)
     expect(comConfig.searchParams.get('code_challenge_method')).toBe('S256')
-    const semConfig = new URL(urlConsentimentoMeta({ ...base, configId: null }))
-    expect(semConfig.searchParams.get('scope')).toBe('ads_read')
+    expect(new URL(urlConsentimentoMeta({ ...base, configId: null })).searchParams.get('scope')).toBe('ads_read')
   })
 
   it('consentimento Google: 3 escopos de leitura, offline, consent e S256', () => {
@@ -234,40 +250,70 @@ describe('oauth-cliente — state assinado e PKCE', () => {
     expect(u.searchParams.get('prompt')).toBe('consent')
     expect(u.searchParams.get('code_challenge_method')).toBe('S256')
   })
+
+  it('signed_request da Meta: aceita só com o app secret certo e HMAC-SHA256', async () => {
+    const assinar = (corpo: object, segredo = META_SECRET) => {
+      const p = Buffer.from(JSON.stringify(corpo)).toString('base64url')
+      return `${createHmac('sha256', segredo).update(p).digest('base64url')}.${p}`
+    }
+    expect(await metaSignedRequest(META_SECRET, assinar({ algorithm: 'HMAC-SHA256', user_id: '9001' }))).toEqual({ userId: '9001' })
+    expect(await metaSignedRequest(META_SECRET, assinar({ algorithm: 'HMAC-SHA256', user_id: '9001' }, 'outro'))).toBeNull()
+    expect(await metaSignedRequest(META_SECRET, assinar({ algorithm: 'none', user_id: '9001' }))).toBeNull()
+    expect(await metaSignedRequest(META_SECRET, 'lixo')).toBeNull()
+  })
 })
 
-describe('/cliente — quem pode conectar', () => {
+describe('/cliente — quem pode o quê (spec, seção 2)', () => {
   it.each([
     [undefined, CLI_A, 401, 'UNAUTHENTICATED'],
     ['cliente-a-banido', CLI_A, 401, 'UNAUTHENTICATED'],
     ['cliente-a', CLI_B, 403, 'FORBIDDEN'],
     ['cliente-b', CLI_A, 403, 'FORBIDDEN'],
     ['cliente-a', '33333333-3333-4333-8333-333333333333', 403, 'FORBIDDEN'],
+    ['cliente-a', 'nao-e-uuid', 403, 'FORBIDDEN'],
     ['dot', CLI_A, 403, 'FORBIDDEN'],
     ['admin-aal1', CLI_A, 403, 'MFA_REQUIRED'],
-    ['cliente-a', 'nao-e-uuid', 422, 'INVALID_REQUEST'],
-  ])('sessão %s no cliente %s recebe %i', async (sessao, clientId, status, codigo) => {
+    ['admin-aal2', CLI_A, 403, 'FORBIDDEN'],
+  ])('conectar: sessão %s no negócio %s recebe %i', async (sessao, clientId, status, codigo) => {
     const m = montar()
-    const r = await m.chamar('POST', '/cliente/meta/conectar', sessao, { client_id: clientId })
+    const r = await m.chamar('POST', `/cliente/${clientId}/meta/conectar`, sessao)
     expect(r.status).toBe(status)
     expect(r.body.error_code).toBe(codigo)
     expect(m.nonces.size).toBe(0)
   })
 
-  it('membro do cliente e NO_ADMIN aal2 recebem a URL de /ir', async () => {
+  it('o client_id do corpo é ignorado: vale só o da URL', async () => {
     const m = montar()
-    for (const sessao of ['cliente-a', 'admin-aal2']) {
-      const r = await m.chamar('POST', '/cliente/google/conectar', sessao, { client_id: CLI_A })
-      expect(r.status).toBe(200)
-      expect(r.body.url).toMatch(new RegExp(`^${HUB}/cliente/google/ir\\?state=v1\\.`))
-      expect(r.headers.get('cache-control')).toBe('no-store')
-    }
+    const r = await m.chamar('POST', `/cliente/${CLI_B}/meta/conectar`, 'cliente-a', { client_id: CLI_A })
+    expect(r.status).toBe(403)
+  })
+
+  it('membro recebe a URL de /ir, sem cache', async () => {
+    const m = montar()
+    const r = await m.chamar('POST', `/cliente/${CLI_A}/google/conectar`, 'cliente-a')
+    expect(r.status).toBe(200)
+    expect(r.body.url).toMatch(new RegExp(`^${HUB}/cliente/google/ir\\?state=v1\\.`))
+    expect(r.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('NO_ADMIN sem concessão não lê; com concessão lê (registrado) e continua sem escrever', async () => {
+    const m = montar()
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/conexoes`, 'admin-aal2')).status).toBe(403)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d`, 'admin-aal2')).status).toBe(403)
+    m.suporte.add(`${ADMIN}:${CLI_A}`)
+    const leu = await m.chamar('GET', `/cliente/${CLI_A}/conexoes`, 'admin-aal2')
+    expect(leu.status).toBe(200)
+    expect(m.eventos).toContainEqual(expect.objectContaining({ clientId: CLI_A, papel: 'NO_ADMIN', acao: 'suporte_leu' }))
+    expect((await m.chamar('POST', `/cliente/${CLI_A}/meta/conectar`, 'admin-aal2')).status).toBe(403)
+    expect((await m.chamar('DELETE', `/cliente/${CLI_A}/meta`, 'admin-aal2')).status).toBe(403)
+    expect((await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'admin-aal2', { ga4: '1' })).status).toBe(403)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/meta/contas`, 'admin-aal2')).status).toBe(403)
   })
 
   it('sem segredo de state (ou curto demais) responde 503 e não cria nonce', async () => {
     for (const stateSecret of [null, 'curto']) {
       const m = montar({ clientes: { ...CONFIG.clientes!, stateSecret } })
-      const r = await m.chamar('POST', '/cliente/meta/conectar', 'cliente-a', { client_id: CLI_A })
+      const r = await m.chamar('POST', `/cliente/${CLI_A}/meta/conectar`, 'cliente-a')
       expect(r.status).toBe(503)
       expect(m.nonces.size).toBe(0)
     }
@@ -275,8 +321,7 @@ describe('/cliente — quem pode conectar', () => {
 
   it('o cliente continua sem acesso às rotas do admin (/overview segue 403)', async () => {
     const m = montar()
-    const r = await m.chamar('GET', '/overview?periodo=7d', 'cliente-a')
-    expect(r.status).toBe(403)
+    expect((await m.chamar('GET', '/overview?periodo=7d', 'cliente-a')).status).toBe(403)
   })
 })
 
@@ -302,14 +347,14 @@ describe('/cliente/meta — ida e volta', () => {
     expect(destino.searchParams.get('config_id')).toBe('cfg-77')
   })
 
-  it('volta ok: troca com code_verifier, guarda o token longo e volta à retrospectiva', async () => {
+  it('volta ok: troca com code_verifier, guarda o token longo e volta às conexões do negócio no app', async () => {
     const m = montar()
     const { state, cookie } = await iniciar(m, 'meta')
     const chamadas = mockFetch((c) => metaOk(c))
     const r = await m.chamar('GET', `/cliente/meta/callback?code=CODE1&state=${state}`, undefined, undefined, { cookie })
     expect(r.status).toBe(303)
     const volta = voltaDe(r)
-    expect(`${volta.origin}${volta.pathname}`).toBe(RETRO)
+    expect(`${volta.origin}${volta.pathname}`).toBe(`https://app.notechstack.com.br/auditor/${CLI_A}/conexoes`)
     expect(volta.searchParams.get('resultado')).toBe('ok')
     expect(volta.searchParams.get('conexao')).toBe('meta')
     expect(r.headers.get('set-cookie')).toContain('Max-Age=0')
@@ -321,7 +366,7 @@ describe('/cliente/meta — ida e volta', () => {
 
     const salvo = m.conexoes.get(`${CLI_A}:meta`)!
     expect(salvo.token).toBe(TOKEN_META_LONGO)
-    expect(salvo.escopos).toContain('ads_read')
+    expect(salvo.usuario).toBe('9001')
     expect(salvo.expira_em).toBe(new Date(1_766_000_000 * 1000).toISOString())
     expect(m.logs.join()).not.toContain(TOKEN_META_LONGO)
     expect(m.logs.join()).not.toContain(TOKEN_META_CURTO)
@@ -384,7 +429,7 @@ describe('/cliente/meta — ida e volta', () => {
     expect(m.conexoes.size).toBe(0)
   })
 
-  it('quem perdeu o acesso ao cliente durante o consentimento não conecta', async () => {
+  it('quem perdeu o acesso ao negócio durante o consentimento não conecta', async () => {
     const m = montar()
     const { state, cookie } = await iniciar(m, 'meta')
     const antes = MEMBROS[USER_A]
@@ -393,10 +438,24 @@ describe('/cliente/meta — ida e volta', () => {
       mockFetch((c) => metaOk(c))
       const r = await m.chamar('GET', `/cliente/meta/callback?code=C&state=${state}`, undefined, undefined, { cookie })
       expect(voltaDe(r).searchParams.get('motivo')).toBe('state_invalido')
+      expect(voltaDe(r).pathname).toBe('/auditor/')
       expect(m.conexoes.size).toBe(0)
     } finally {
       MEMBROS[USER_A] = antes
     }
+  })
+
+  it('deauthorize: signed_request válido encerra as conexões do usuário Meta; inválido é 400', async () => {
+    const m = montar()
+    const p = Buffer.from(JSON.stringify({ algorithm: 'HMAC-SHA256', user_id: '9001', issued_at: 1 })).toString('base64url')
+    const sr = `${createHmac('sha256', META_SECRET).update(p).digest('base64url')}.${p}`
+    const form = (v: string) => m.handler(new Request(`${HUB}/cliente/meta/desautorizar`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ signed_request: v }).toString(),
+    }))
+    expect((await form(sr)).status).toBe(200)
+    expect(m.desautorizados).toEqual(['9001'])
+    expect((await form(sr.replace(/^./, (c) => (c === 'A' ? 'B' : 'A')))).status).toBe(400)
+    expect(m.desautorizados).toHaveLength(1)
   })
 })
 
@@ -407,6 +466,7 @@ function googleOk(c: Chamada): Resposta | undefined {
     const b = c.body as Record<string, string>
     if (b.grant_type === 'authorization_code') return { body: { refresh_token: REFRESH_GOOGLE, access_token: 'x', scope: ESCOPOS_GOOGLE } }
     if (b.grant_type === 'refresh_token' && b.refresh_token === REFRESH_GOOGLE) return { body: { access_token: ACCESS_GOOGLE, expires_in: 3600 } }
+    if (b.grant_type === 'refresh_token' && b.refresh_token.startsWith('refresh-')) return { body: { access_token: `access-de-${b.refresh_token}`, expires_in: 3600 } }
     return { status: 400, body: { error: 'invalid_grant' } }
   }
   return undefined
@@ -443,8 +503,24 @@ describe('/cliente/google — ida e volta', () => {
   })
 })
 
-async function conectado(m: ReturnType<typeof montar>, provedor: 'meta' | 'google', escopos = provedor === 'meta' ? ['ads_read'] : ESCOPOS_GOOGLE.split(' ')) {
-  await m.store.conexaoSalvar({ clientId: CLI_A, provedor, token: provedor === 'meta' ? TOKEN_META_LONGO : REFRESH_GOOGLE, escopos, expiraEm: null, usuarioExterno: null, userId: USER_A })
+describe('google-auth — cache de access token por credencial (bloqueio da Frente 3)', () => {
+  it('dois clientes alternados no mesmo worker nunca trocam de token e não renovam à toa', async () => {
+    const chamadas = mockFetch(googleOk)
+    const cred = (r: string) => ({ clientId: 'cid', clientSecret: 'sec', refreshToken: r })
+    const agora = AGORA.getTime()
+    for (let i = 0; i < 3; i++) {
+      expect(await googleAccessToken(cred('refresh-A'), agora)).toBe('access-de-refresh-A')
+      expect(await googleAccessToken(cred('refresh-B'), agora)).toBe('access-de-refresh-B')
+    }
+    expect(chamadas).toHaveLength(2)
+    // Vencido, renova só aquele.
+    expect(await googleAccessToken(cred('refresh-A'), agora + 3_600_000)).toBe('access-de-refresh-A')
+    expect(chamadas).toHaveLength(3)
+  })
+})
+
+async function conectado(m: ReturnType<typeof montar>, provedor: 'meta' | 'google', escopos = provedor === 'meta' ? ['ads_read'] : ESCOPOS_GOOGLE.split(' '), clientId = CLI_A, token?: string) {
+  await m.store.conexaoSalvar({ clientId, provedor, token: token ?? (provedor === 'meta' ? TOKEN_META_LONGO : REFRESH_GOOGLE), escopos, expiraEm: null, usuarioExterno: null, userId: USER_A })
 }
 
 function contasMeta(c: Chamada): Resposta | undefined {
@@ -480,21 +556,23 @@ describe('/cliente — contas e seleção', () => {
     const m = montar()
     await conectado(m, 'meta')
     const chamadas = mockFetch(contasMeta)
-    const r = await m.chamar('GET', `/cliente/meta/contas?client_id=${CLI_A}`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/meta/contas`, 'cliente-a')
     expect(r.status).toBe(200)
     expect(r.body.meta_ads.map((c: { external_id: string }) => c.external_id)).toEqual(['act_123', 'act_456'])
-    expect(r.body.meta_ads[1].detalhe).toContain('inativa')
+    expect(r.body.meta_ads[0]).toMatchObject({ moeda: 'BRL', detalhe: null })
+    expect(r.body.meta_ads[1].detalhe).toBe('inativa')
     expect(chamadas.every((c) => c.url.searchParams.get('access_token') === TOKEN_META_LONGO)).toBe(true)
+    expect(m.conexoes.get(`${CLI_A}:meta`)!.verificado_em).toBe(AGORA.toISOString())
   })
 
   it('Google: customers diretos e filhos de MCC, propriedades GA4 e sites verificados', async () => {
     const m = montar()
     await conectado(m, 'google')
     const chamadas = mockFetch(contasGoogle)
-    const r = await m.chamar('GET', `/cliente/google/contas?client_id=${CLI_A}`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/google/contas`, 'cliente-a')
     expect(r.status).toBe(200)
     expect(r.body.google_ads).toEqual([
-      expect.objectContaining({ external_id: '1112223333', login_customer_id: null }),
+      expect.objectContaining({ external_id: '1112223333', login_customer_id: null, moeda: 'BRL' }),
       expect.objectContaining({ external_id: '5556667777', login_customer_id: '9998887777' }),
     ])
     expect(r.body.ga4).toEqual([expect.objectContaining({ external_id: '321', nome: 'Site A' })])
@@ -508,42 +586,45 @@ describe('/cliente — contas e seleção', () => {
     const m = montar()
     await conectado(m, 'google', ['https://www.googleapis.com/auth/analytics.readonly'])
     const chamadas = mockFetch(contasGoogle)
-    const r = await m.chamar('GET', `/cliente/google/contas?client_id=${CLI_A}`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/google/contas`, 'cliente-a')
     expect(r.body).toMatchObject({ google_ads: null, gsc: null })
     expect(chamadas.some((c) => c.url.host === 'googleads.googleapis.com')).toBe(false)
   })
 
   it('sem conexão responde 409 NAO_CONECTADO', async () => {
     const m = montar()
-    const r = await m.chamar('GET', `/cliente/meta/contas?client_id=${CLI_A}`, 'cliente-a')
-    expect(r.status).toBe(409)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/meta/contas`, 'cliente-a')).status).toBe(409)
   })
 
-  it('grava só o que o token lista agora; id fora da lista é 422', async () => {
+  it('grava só o que o token lista agora (Meta e Google juntos); id fora da lista é 422', async () => {
     const m = montar()
     await conectado(m, 'google')
-    mockFetch(contasGoogle)
-    const ok = await m.chamar('POST', '/cliente/google/contas', 'cliente-a', {
-      client_id: CLI_A, google_ads: { customer_id: '5556667777', login_customer_id: '9998887777' }, ga4: '321', gsc: 'sc-domain:lojaa.com.br',
+    await conectado(m, 'meta')
+    mockFetch((c) => contasGoogle(c) ?? contasMeta(c))
+    const ok = await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'cliente-a', {
+      meta_ads: 'act_123', google_ads: { customer_id: '5556667777', login_customer_id: '9998887777' }, ga4: '321', gsc: 'sc-domain:lojaa.com.br',
     })
     expect(ok.status).toBe(200)
-    expect(m.ativos.get(CLI_A)).toHaveLength(3)
-    const fora = await m.chamar('POST', '/cliente/google/contas', 'cliente-a', { client_id: CLI_A, ga4: '999' })
+    expect(m.ativos.get(CLI_A)).toHaveLength(4)
+    expect(m.ativos.get(CLI_A)!.find((a) => a.tipo === 'meta_ads')).toMatchObject({ moeda: 'BRL' })
+    const fora = await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'cliente-a', { ga4: '999' })
     expect(fora.status).toBe(422)
     expect(fora.body).toMatchObject({ error_code: 'CONTA_NAO_DISPONIVEL', campos: ['ga4'] })
-    const mccErrada = await m.chamar('POST', '/cliente/google/contas', 'cliente-a', { client_id: CLI_A, google_ads: { customer_id: '5556667777' } })
-    expect(mccErrada.status).toBe(422)
+    expect((await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'cliente-a', { google_ads: { customer_id: '5556667777' } })).status).toBe(422)
+    expect((await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'cliente-a', { meta_ads: 7 })).status).toBe(422)
   })
 
-  it('cliente B não lista nem grava contas do cliente A', async () => {
+  it('cliente B não lista, não grava, não lê e não desconecta nada do cliente A', async () => {
     const m = montar()
     await conectado(m, 'meta')
     const chamadas = mockFetch(contasMeta)
-    expect((await m.chamar('GET', `/cliente/meta/contas?client_id=${CLI_A}`, 'cliente-b')).status).toBe(403)
-    expect((await m.chamar('POST', '/cliente/meta/contas', 'cliente-b', { client_id: CLI_A, meta_ads: 'act_123' })).status).toBe(403)
-    expect((await m.chamar('GET', `/cliente/conexoes?client_id=${CLI_A}`, 'cliente-b')).status).toBe(403)
-    expect((await m.chamar('GET', `/cliente/overview?client_id=${CLI_A}&periodo=7d`, 'cliente-b')).status).toBe(403)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/meta/contas`, 'cliente-b')).status).toBe(403)
+    expect((await m.chamar('POST', `/cliente/${CLI_A}/ativos`, 'cliente-b', { meta_ads: 'act_123' })).status).toBe(403)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/conexoes`, 'cliente-b')).status).toBe(403)
+    expect((await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d`, 'cliente-b')).status).toBe(403)
+    expect((await m.chamar('DELETE', `/cliente/${CLI_A}/meta`, 'cliente-b')).status).toBe(403)
     expect(chamadas).toHaveLength(0)
+    expect(await m.store.tokenLer(CLI_A, 'meta')).not.toBeNull()
   })
 })
 
@@ -556,17 +637,15 @@ describe('/cliente — métricas com a credencial do cliente', () => {
     if (c.url.href.endsWith('/properties/321:batchRunReports')) return { body: { reports: [] } }
     return undefined
   }
+  const ativo = (tipo: AtivoCliente['tipo'], external_id: string): AtivoCliente => ({ tipo, external_id, nome: null, login_customer_id: null, moeda: null, detalhe: null })
 
   it('overview lê Meta e GA4 do cliente reaproveitando os adaptadores; o token da Nó nunca sai', async () => {
     const m = montar()
     await conectado(m, 'meta')
     await conectado(m, 'google')
-    m.ativos.set(CLI_A, [
-      { tipo: 'meta_ads', external_id: 'act_123', nome: null, login_customer_id: null },
-      { tipo: 'ga4', external_id: '321', nome: null, login_customer_id: null },
-    ])
+    m.ativos.set(CLI_A, [ativo('meta_ads', 'act_123'), ativo('ga4', '321')])
     const chamadas = mockFetch(plataformas)
-    const r = await m.chamar('GET', `/cliente/overview?client_id=${CLI_A}&periodo=7d`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d`, 'cliente-a')
     expect(r.status).toBe(200)
     expect(r.body.blocos.meta_ads).toMatchObject({ ok: true, dados: { total: { gasto_centavos: 1234 } } })
     expect(r.body.blocos.ga4.ok).toBe(true)
@@ -577,69 +656,82 @@ describe('/cliente — métricas com a credencial do cliente', () => {
     expect(graph.every((c) => c.url.searchParams.get('access_token') === TOKEN_META_LONGO)).toBe(true)
     expect(JSON.stringify(chamadas)).not.toContain(TOKEN_ADMIN_META)
     expect(JSON.stringify(chamadas)).not.toContain('fixture-refresh-admin')
-    // Cache separado por cliente: nada do admin é reaproveitado e vice-versa.
-    expect([...m.hub.cache.keys()].every((k) => k.startsWith(`cliente:${CLI_A}:`))).toBe(true)
+    // Cache separado por negócio (cli:<client_id>:), nunca as chaves do admin.
+    expect([...m.hub.cache.keys()].every((k) => k.startsWith(`cli:${CLI_A}:`))).toBe(true)
   })
 
-  it('Meta 190 marca a conexão como expirada', async () => {
+  it('dois negócios Google no mesmo worker leem cada um com o próprio token', async () => {
+    const m = montar()
+    MEMBROS[USER_B] = CLI_B
+    await conectado(m, 'google', undefined, CLI_A, 'refresh-A')
+    await conectado(m, 'google', undefined, CLI_B, 'refresh-B')
+    m.ativos.set(CLI_A, [ativo('ga4', '321')])
+    m.ativos.set(CLI_B, [ativo('ga4', '654')])
+    const chamadas = mockFetch((c) => googleOk(c) ?? (c.url.href.includes(':batchRunReports') ? { body: { reports: [] } } : undefined))
+    await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d&fresco=1`, 'cliente-a')
+    await m.chamar('GET', `/cliente/${CLI_B}/overview?periodo=7d&fresco=1`, 'cliente-b')
+    await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d&fresco=1`, 'cliente-a')
+    const ga4 = chamadas.filter((c) => c.url.host === 'analyticsdata.googleapis.com')
+    expect(ga4.map((c) => c.headers.authorization)).toEqual([
+      'Bearer access-de-refresh-A', 'Bearer access-de-refresh-B', 'Bearer access-de-refresh-A',
+    ])
+    expect(ga4.map((c) => c.url.pathname)).toEqual([
+      '/v1beta/properties/321:batchRunReports', '/v1beta/properties/654:batchRunReports', '/v1beta/properties/321:batchRunReports',
+    ])
+  })
+
+  it('Meta 190 marca a conexão como expirada só com o código', async () => {
     const m = montar()
     await conectado(m, 'meta')
-    m.ativos.set(CLI_A, [{ tipo: 'meta_ads', external_id: 'act_123', nome: null, login_customer_id: null }])
+    m.ativos.set(CLI_A, [ativo('meta_ads', 'act_123')])
     mockFetch(() => ({ status: 400, body: { error: { message: 'Error validating access token', type: 'OAuthException', code: 190 } } }))
-    const r = await m.chamar('GET', `/cliente/overview?client_id=${CLI_A}&periodo=7d`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d`, 'cliente-a')
     expect(r.body.blocos.meta_ads.ok).toBe(false)
-    expect(m.conexoes.get(`${CLI_A}:meta`)!.estado).toBe('expirado')
-    const c = await m.chamar('GET', `/cliente/conexoes?client_id=${CLI_A}`, 'cliente-a')
+    expect(m.conexoes.get(`${CLI_A}:meta`)).toMatchObject({ estado: 'expirado', ultimo_erro: 'meta_190' })
+    const c = await m.chamar('GET', `/cliente/${CLI_A}/conexoes`, 'cliente-a')
     expect(c.body.conexoes.meta.estado).toBe('expirado')
   })
 
   it('Google invalid_grant marca a conexão como expirada', async () => {
     const m = montar()
-    await m.store.conexaoSalvar({ clientId: CLI_A, provedor: 'google', token: 'refresh-morto', escopos: ESCOPOS_GOOGLE.split(' '), expiraEm: null, usuarioExterno: null, userId: USER_A })
-    m.ativos.set(CLI_A, [{ tipo: 'ga4', external_id: '321', nome: null, login_customer_id: null }])
+    await conectado(m, 'google', undefined, CLI_A, 'token-revogado')
+    m.ativos.set(CLI_A, [ativo('ga4', '321')])
     mockFetch(googleOk)
-    await m.chamar('GET', `/cliente/overview?client_id=${CLI_A}&periodo=7d`, 'cliente-a')
-    expect(m.conexoes.get(`${CLI_A}:google`)!.estado).toBe('expirado')
+    await m.chamar('GET', `/cliente/${CLI_A}/overview?periodo=7d`, 'cliente-a')
+    expect(m.conexoes.get(`${CLI_A}:google`)).toMatchObject({ estado: 'expirado', ultimo_erro: 'google_invalid_grant' })
   })
 
-  it('/conexoes mostra expirado quando o token longo da Meta passou da validade', async () => {
+  it('/conexoes mostra expirado quando o token longo da Meta passou da validade, sem token na resposta', async () => {
     const m = montar()
     await m.store.conexaoSalvar({ clientId: CLI_A, provedor: 'meta', token: TOKEN_META_LONGO, escopos: ['ads_read'], expiraEm: '2026-10-20T00:00:00Z', usuarioExterno: null, userId: USER_A })
-    const r = await m.chamar('GET', `/cliente/conexoes?client_id=${CLI_A}`, 'cliente-a')
+    const r = await m.chamar('GET', `/cliente/${CLI_A}/conexoes`, 'cliente-a')
     expect(r.body.conexoes.meta.estado).toBe('expirado')
     expect(r.body.conexoes.google.estado).toBe('desconectado')
     expect(JSON.stringify(r.body)).not.toContain(TOKEN_META_LONGO)
   })
 })
 
-describe('/cliente — revogação', () => {
-  it('revoga no provedor com o token do cliente e apaga do Vault', async () => {
+describe('/cliente — desconectar', () => {
+  it('Meta: revoga no provedor com o token do cliente, apaga do Vault e marca desconectado', async () => {
     const m = montar()
     await conectado(m, 'meta')
     const chamadas = mockFetch((c) => (c.method === 'DELETE' && c.url.pathname.endsWith('/me/permissions') ? { body: { success: true } } : undefined))
-    const r = await m.chamar('POST', '/cliente/meta/revogar', 'cliente-a', { client_id: CLI_A })
+    const r = await m.chamar('DELETE', `/cliente/${CLI_A}/meta`, 'cliente-a')
     expect(r.status).toBe(200)
-    expect(r.body).toMatchObject({ estado: 'revogado', revogado_no_provedor: true })
+    expect(r.body).toMatchObject({ estado: 'desconectado', havia_conexao: true, revogado_no_provedor: true })
     expect(chamadas[0].url.searchParams.get('access_token')).toBe(TOKEN_META_LONGO)
     expect(await m.store.tokenLer(CLI_A, 'meta')).toBeNull()
+    expect(m.conexoes.get(`${CLI_A}:meta`)!.estado).toBe('desconectado')
   })
 
-  it('Google: revoga o refresh token; falha no provedor não impede apagar do Vault', async () => {
+  it('Google: falha no provedor não impede apagar do Vault', async () => {
     const m = montar()
     await conectado(m, 'google')
     const chamadas = mockFetch(() => ({ status: 400, body: { error: 'invalid_token' } }))
-    const r = await m.chamar('POST', '/cliente/google/revogar', 'cliente-a', { client_id: CLI_A })
-    expect(r.body).toMatchObject({ estado: 'revogado', revogado_no_provedor: false })
+    const r = await m.chamar('DELETE', `/cliente/${CLI_A}/google`, 'cliente-a')
+    expect(r.body).toMatchObject({ estado: 'desconectado', revogado_no_provedor: false })
     expect(chamadas[0].url.href).toBe('https://oauth2.googleapis.com/revoke')
     expect(chamadas[0].body).toEqual({ token: REFRESH_GOOGLE })
     expect(await m.store.tokenLer(CLI_A, 'google')).toBeNull()
-  })
-
-  it('cliente B não revoga a conexão do cliente A', async () => {
-    const m = montar()
-    await conectado(m, 'meta')
-    const r = await m.chamar('POST', '/cliente/meta/revogar', 'cliente-b', { client_id: CLI_A })
-    expect(r.status).toBe(403)
-    expect(await m.store.tokenLer(CLI_A, 'meta')).not.toBeNull()
   })
 })

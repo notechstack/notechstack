@@ -20,16 +20,20 @@ export class GoogleApiError extends Error {
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MARGEM_MS = 60_000;
 
-let cache: { token: string; expiraEm: number; chave: string } | null = null;
+// Um access token por credencial (hash): a Nó e cada cliente do auditor no mesmo
+// worker nunca trocam de token entre si.
+const MAX_CACHE = 200;
+const cache = new Map<string, { token: string; expiraEm: number }>();
 
 export function limparCacheGoogle(): void {
-  cache = null;
+  cache.clear();
 }
 
 export async function googleAccessToken(cred: GoogleCredenciais, now = Date.now()): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${cred.clientId}:${cred.clientSecret}:${cred.refreshToken}`));
   const chave = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
-  if (cache && cache.chave === chave && cache.expiraEm - MARGEM_MS > now) return cache.token;
+  const emCache = cache.get(chave);
+  if (emCache && emCache.expiraEm - MARGEM_MS > now) return emCache.token;
 
   const resp = await fetch(TOKEN_URL, {
     method: "POST",
@@ -48,7 +52,9 @@ export async function googleAccessToken(cred: GoogleCredenciais, now = Date.now(
       ? body.error : "sem access_token";
     throw new GoogleApiError(resp.status, { error: codigo }, `Google OAuth ${resp.status}: ${codigo}`);
   }
-  cache = { token: body.access_token, expiraEm: now + (body.expires_in ?? 3600) * 1000, chave };
+  cache.delete(chave);
+  if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value as string); // sai o mais antigo
+  cache.set(chave, { token: body.access_token, expiraEm: now + (body.expires_in ?? 3600) * 1000 });
   return body.access_token;
 }
 

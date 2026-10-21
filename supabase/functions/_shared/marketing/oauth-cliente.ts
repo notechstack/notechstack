@@ -203,6 +203,25 @@ export async function googleTrocarCodigoCliente(o: {
   return { refreshToken: body.refresh_token, escopos: escopos.filter((e) => (GOOGLE_ESCOPOS_CLIENTE as readonly string[]).includes(e)) };
 }
 
+// ------------------------------------------------------- signed_request da Meta
+
+// Deauthorize e exclusão de dados: `<assinatura>.<payload>` em base64url, HMAC-SHA256
+// do payload com o app secret. Devolve o user_id (app-scoped) ou null se não confere.
+export async function metaSignedRequest(appSecret: string, signed: string): Promise<{ userId: string } | null> {
+  const [sig, corpo, ...resto] = signed.split(".");
+  if (!sig || !corpo || resto.length || signed.length > 4096) return null;
+  try {
+    const ok = await crypto.subtle.verify("HMAC", await chaveHmac(appSecret), deB64url(sig), enc.encode(corpo));
+    if (!ok) return null;
+    const p = JSON.parse(new TextDecoder().decode(deB64url(corpo))) as { algorithm?: string; user_id?: unknown };
+    if (String(p.algorithm ?? "").toUpperCase() !== "HMAC-SHA256") return null;
+    const userId = String(p.user_id ?? "");
+    return /^\d{1,30}$/.test(userId) ? { userId } : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- Revogação
 
 // Melhor esforço: o token pode já estar inválido. Quem chama apaga do Vault de qualquer jeito.
