@@ -262,5 +262,26 @@ select is((public.auditor_eu() -> 'negocios' -> 1 ->> 'frequencia'), 'mensal', '
 select is((public.auditor_eu() -> 'negocios' -> 2 ->> 'frequencia'), 'semanal', 'padrão do Agência é semanal');
 reset role;
 
+-- ------------------------------------------------------------ C19: checkout logado e sincronia do plano
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, last_sign_in_at) values
+  ('a3000000-0000-4000-8000-0000000000f1', 'authenticated', 'authenticated', 'paga@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now());
+select public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000f1', 'paga@example.test', 'https://paga.example');
+select is((public.auditor_checkout_preparar('a3000000-0000-4000-8000-0000000000f1') ->> 'ja_assinante')::boolean, false, 'C19 antes de pagar: não é assinante');
+insert into public.auditor_assinaturas (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+values ('semanal', 'Paga', 'outro-email@example.test', '11988887777', 'sub_f1', 'pendente', now(), 'Aceito');
+select lives_ok($$select public.auditor_assinatura_vincular('sub_f1', 'a3000000-0000-4000-8000-0000000000f1')$$, 'C19 vincula pela conta, não pelo e-mail');
+select is((select plano from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1'), 'gratis', 'C19 pendente: plano ainda grátis');
+update public.auditor_assinaturas set status = 'paga' where pagarme_subscription_id = 'sub_f1';
+insert into public.auditor_assinatura_eventos (gateway_event_id, tipo, pagarme_subscription_id, status_aplicado, evento_em) values ('hook_f1', 'invoice.paid', 'sub_f1', 'paga', now());
+select is((select plano from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1'), 'semanal', 'C19 webhook paga: plano semanal');
+select is((public.auditor_checkout_preparar('a3000000-0000-4000-8000-0000000000f1') ->> 'ja_assinante')::boolean, true, 'C19 agora é assinante (não assina duas vezes)');
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
+  ('a3000000-0000-4000-8000-0000000000f2', 'authenticated', 'authenticated', 'intruso@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+select public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000f2', 'intruso@example.test', null);
+select throws_ok($$select public.auditor_assinatura_vincular('sub_f1', 'a3000000-0000-4000-8000-0000000000f2')$$, 'P0001', 'assinatura_de_outra_conta', 'C19 assinatura de outra conta não é sequestrada');
+update public.auditor_assinaturas set status = 'cancelada' where pagarme_subscription_id = 'sub_f1';
+select isnt((select excluir_apos from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1'), null, 'C19 cancelada: conta encerrada com data de exclusão');
+select is(public.auditor_conta_com_acesso((select id from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1')), false, 'C19 cancelada: sem acesso');
+
 select * from finish();
 rollback;

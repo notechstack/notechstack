@@ -672,6 +672,82 @@ begin
 end;
 $$;
 
+
+-- ------------------------------------------------------------ 9c · Checkout logado (plan, passo 6)
+
+-- Antes de cobrar: quem é o dono e se já tem assinatura com acesso (evita assinar duas vezes).
+create or replace function public.auditor_checkout_preparar(p_user_id uuid)
+returns jsonb language sql stable security definer set search_path = ''
+as $$
+  select jsonb_build_object(
+    'conta_id', c.id,
+    'email', (select u.email from auth.users u where u.id = p_user_id),
+    'ja_assinante', coalesce(public.auditor_conta_com_acesso(c.id), false))
+  from public.auditor_contas c where c.dono_user_id = p_user_id;
+$$;
+
+-- Depois do registro no Pagar.me: liga a assinatura à conta. Se o webhook 'paga' já chegou, o plano vale na hora.
+create or replace function public.auditor_assinatura_vincular(p_subscription_id text, p_user_id uuid)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_conta public.auditor_contas;
+  v_ass public.auditor_assinaturas;
+begin
+  select * into v_conta from public.auditor_contas where dono_user_id = p_user_id for update;
+  if v_conta.id is null then raise exception 'conta_inexistente'; end if;
+  select * into v_ass from public.auditor_assinaturas where pagarme_subscription_id = p_subscription_id for update;
+  if v_ass.id is null then raise exception 'assinatura_inexistente'; end if;
+  if v_ass.conta_id is not null and v_ass.conta_id <> v_conta.id then raise exception 'assinatura_de_outra_conta'; end if;
+  update public.auditor_contas set assinatura_id = null where assinatura_id = v_ass.id and id <> v_conta.id;
+  update public.auditor_assinaturas set conta_id = v_conta.id where id = v_ass.id;
+  update public.auditor_contas
+     set assinatura_id = v_ass.id,
+         plano = case when v_ass.status in ('paga', 'recusada') then v_ass.plano else plano end,
+         encerrada_em = case when v_ass.status = 'paga' then null else encerrada_em end,
+         excluir_apos = case when v_ass.status = 'paga' then null else excluir_apos end
+   where id = v_conta.id;
+  perform public.marketing_cliente_evento(
+    (select ac.client_id from public.auditor_clientes ac where ac.conta_id = v_conta.id order by ac.criado_em limit 1),
+    p_user_id, 'AUDITOR', 'assinatura_vinculada', jsonb_build_object('plano', v_ass.plano));
+end;
+$$;
+
+-- Webhook mudou o status da assinatura: o plano da conta acompanha.
+--   paga      -> plano da assinatura, conta reaberta
+--   cancelada -> conta encerrada; tokens em 30 dias, dados em 90 (D3)
+create or replace function public.auditor_assinatura_sincronizar()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
+begin
+  if new.conta_id is null or new.status is not distinct from old.status then return new; end if;
+  if new.status = 'paga' then
+    update public.auditor_contas set plano = new.plano, encerrada_em = null, excluir_apos = null
+     where id = new.conta_id and assinatura_id = new.id;
+  elsif new.status = 'cancelada' then
+    update public.auditor_contas set encerrada_em = coalesce(encerrada_em, now()), excluir_apos = coalesce(excluir_apos, now() + interval '90 days')
+     where id = new.conta_id and assinatura_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists auditor_assinatura_sincronizar on public.auditor_assinaturas;
+create trigger auditor_assinatura_sincronizar
+  after update of status on public.auditor_assinaturas
+  for each row execute function public.auditor_assinatura_sincronizar();
+
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'public.auditor_checkout_preparar(uuid)', 'public.auditor_assinatura_vincular(text, uuid)', 'public.auditor_assinatura_sincronizar()'
+  ] loop
+    execute format('revoke all on function %s from public, anon, authenticated', f);
+    if f not like '%sincronizar%' then execute format('grant execute on function %s to service_role', f); end if;
+  end loop;
+end;
+$$;
+
 -- ------------------------------------------------------------ 10 · Operação (NO_ADMIN, sem métricas)
 
 create or replace view public.auditor_operacao
