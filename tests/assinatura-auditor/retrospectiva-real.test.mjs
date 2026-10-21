@@ -98,8 +98,9 @@ function montarDoc() {
       el('button', { type: 'button', class: 'filtro', 'data-filtro': 'problema' }, 'Problema · 1'),
       el('button', { type: 'button', class: 'filtro', 'data-filtro': 'nv' }, 'Não verif. · 1')),
     el('div', { class: 'cartoes-chk' }, card('ok', 'https', 'Site em HTTPS', 'certificado válido', 'ok'), card('problema', 'tempo_resposta', 'Tempo de resposta', '7,2 s', 'problema')));
-  const t13 = el('section', { id: 't13', 'data-estado': 'planos', class: 'tela' }, selo(),
-    el('p', { class: 'rot rot-chip' }, 'Próximo passo'), el('h1', { class: 'titulo titulo--g' }, 'Três jeitos de seguir com o agente.'));
+  const t13 = el('section', { id: 't13', 'data-estado': 'receber-no-celular', class: 'tela' }, selo(),
+    el('h1', { class: 'titulo titulo--g zap-titulo' }, 'Quer se manter atualizado sem fazer nada?'),
+    el('a', { class: 'botao botao--claro zap-cta2', id: 'zap-refazer', href: '/agentes/auditor/#au-form', 'data-zap': 'refazer' }, 'Refazer com outra conta'));
   const main = el('main', { id: 'celular' }, el('nav', { class: 'lateral' }), t01, ...DEMO.map(([id, est]) => el('section', { id, 'data-estado': est, class: 'tela' }, selo())), t06, t13);
   const root = el('html', {}, el('body', {}, main));
   root.documentElement = root;
@@ -264,10 +265,16 @@ test('funções puras expostas: ler/contar/destinoApp', () => {
   assert.equal(api.destinoApp('?utm_term=a+b'), 'https://app.notechstack.com.br/?origem=auditor&utm_term=a%20b');
 });
 
-// ── modo limite (rodada 5): 3 diagnósticos grátis usados; a LP manda para ?motivo=limite#t13 ──
+// ── modo limite (Lucca, 21/10: "invisível", 3 por dispositivo por dia): a LP manda para ?motivo=limite#t13.
+//    A tela final não muda de texto; só o "Refazer com outra conta" trava (classe, sem href, aria-disabled).
 const ordemDemo = ['t01', ...telasDemo, 't06', 't13'];
+const TITULO_T13 = 'Quer se manter atualizado sem fazer nada?';
+function refazerTravado(doc) {
+  const b = doc.getElementById('zap-refazer');
+  return b.classList.contains('zap-cta2--travado') && b.getAttribute('href') === null && b.getAttribute('aria-disabled') === 'true' && b.getAttribute('tabindex') === '-1';
+}
 
-test('modo limite (?motivo=limite, sem diagnóstico): só t13 na sequência, selo escondido, textos trocados, abre na t13', () => {
+test('modo limite (?motivo=limite, sem diagnóstico): só t13, selo escondido, texto igual, refazer travado, abre na t13', () => {
   const doc = montarDoc();
   const { trocas } = carregar(doc, null, '?utm_source=meta&motivo=limite&fbclid=abc');
   assert.ok(doc.documentElement.classList.contains('modo-limite'));
@@ -279,13 +286,13 @@ test('modo limite (?motivo=limite, sem diagnóstico): só t13 na sequência, sel
   }
   assert.equal(doc.getElementById('t13').hasAttribute('hidden'), false);
   assert.ok(doc.querySelector('#t13 .selo').hasAttribute('hidden'), 'sem o selo DEMONSTRAÇÃO');
-  assert.equal(doc.querySelector('#t13 .rot').textContent, '3 diagnósticos grátis usados');
-  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Para seguir auditando, escolha um plano.');
+  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, TITULO_T13, 'nenhum texto de cota');
+  assert.ok(refazerTravado(doc), 'refazer travado');
   assert.deepEqual(trocas, ['#t13'], 'abre direto na t13');
   assert.equal(doc.querySelector('#t01 .num').textContent, '10', 't01 de demonstração não é preenchida');
 });
 
-test('sem motivo=limite e sem diagnóstico: demonstração igual (outro motivo também não liga o modo limite)', () => {
+test('sem motivo=limite e sem diagnóstico: demonstração igual e refazer livre (outro motivo também não trava)', () => {
   for (const search of ['', '?utm_source=meta&fbclid=abc', '?motivo=outro', '?motivo_x=limite']) {
     const doc = montarDoc();
     const { trocas } = carregar(doc, null, search);
@@ -294,13 +301,14 @@ test('sem motivo=limite e sem diagnóstico: demonstração igual (outro motivo t
     assert.deepEqual(doc.querySelectorAll('section[data-estado]').map((s) => s.getAttribute('id')), ordemDemo, search);
     assert.equal(doc.querySelector('#t13 .selo').hasAttribute('hidden'), false, search);
     assert.equal(doc.querySelector('#t13 .selo').textContent, 'DEMONSTRAÇÃO');
-    assert.equal(doc.querySelector('#t13 .rot').textContent, 'Próximo passo');
-    assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Três jeitos de seguir com o agente.');
+    assert.equal(doc.querySelector('#t13 h1.titulo').textContent, TITULO_T13);
+    assert.equal(refazerTravado(doc), false, search);
+    assert.equal(doc.getElementById('zap-refazer').getAttribute('href'), '/agentes/auditor/#au-form');
     assert.deepEqual(trocas, [], search);
   }
 });
 
-test('com diagnóstico + motivo=limite: o modo real vence (t01 → t06 → t13, textos da t13 intactos)', () => {
+test('com diagnóstico + motivo=limite: sequência real (t01 → t06 → t13) e refazer travado na t13', () => {
   const doc = montarDoc();
   const { trocas } = carregar(doc, JSON.stringify(DIAG), '?motivo=limite');
   assert.ok(doc.documentElement.classList.contains('modo-real'));
@@ -308,9 +316,15 @@ test('com diagnóstico + motivo=limite: o modo real vence (t01 → t06 → t13, 
   assert.deepEqual(doc.querySelectorAll('section[data-estado]').map((s) => s.getAttribute('id')), ['t01', 't06', 't13']);
   assert.equal(doc.querySelector('#t01 .num').textContent, '4');
   assert.ok(doc.querySelector('#t13 .selo').hasAttribute('hidden'));
-  assert.equal(doc.querySelector('#t13 .rot').textContent, 'Próximo passo');
-  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, 'Três jeitos de seguir com o agente.');
-  assert.deepEqual(trocas, []);
+  assert.equal(doc.querySelector('#t13 h1.titulo').textContent, TITULO_T13);
+  assert.ok(refazerTravado(doc), 'refazer travado');
+  assert.deepEqual(trocas, ['#t13'], 'abre na t13');
+});
+
+test('com diagnóstico e sem limite: refazer livre', () => {
+  const doc = montarDoc();
+  carregar(doc, JSON.stringify(DIAG), '');
+  assert.equal(refazerTravado(doc), false);
 });
 
 test('querLimite: só motivo=limite exato liga o modo', () => {
