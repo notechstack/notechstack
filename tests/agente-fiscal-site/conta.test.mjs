@@ -27,6 +27,13 @@ test('minha conta', async () => {
   await p.preencher('fa-codigo', CODIGO_CERTO);
   await p.enviar('fa-form-codigo');
   assert.equal(p.rede.de('fiscal-conta:estado')[0].headers.authorization, 'Bearer at-1');
+  assert.deepEqual(p.rede.de('fiscal-acesso:verificar').map((c) => c.corpo.codigo), ['999999', CODIGO_CERTO], 'o código é conferido por fiscal-acesso');
+
+  // Âncoras dos links do agente (…/conta/#assinatura, …/conta/#certificado).
+  assert.equal(p.$('assinatura').tagName, 'SECTION');
+  assert.ok(p.$('assinatura').contains(p.$('fa-status')), '#assinatura tem o status da assinatura');
+  assert.equal(p.$('certificado').tagName, 'SECTION');
+  assert.ok(p.$('certificado').contains(p.$('fa-form-cert')), '#certificado tem o envio do A1');
 
   // Com sessão: as seções e "Retomar configuração" quando a etapa não é concluido.
   assert.ok(p.visivel('fa-painel'));

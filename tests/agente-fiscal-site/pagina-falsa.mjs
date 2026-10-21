@@ -58,12 +58,24 @@ export const CANDIDATOS = [
 
 const r = (status, corpo) => ({ status, corpo });
 export const PADRAO = {
-  'fiscal-acesso': () => r(202, { ok: true }),
+  // Pedido do código: zera as tentativas do e-mail (como o registro novo em fiscal_acesso_codigos).
+  'fiscal-acesso': (c, _ch, mem) => { mem.tentativas[c.email] = 0; return r(202, { ok: true }); },
   'fiscal-cadastro:consultar_cnpj': (c) => r(200, { ok: true, cnpj: c.cnpj, razao_social: 'CLINICA AURORA LTDA', municipio: 'São Paulo', uf: 'SP', codigo_municipio_ibge: '3550308', cnae: '8630503', padrao_nacional: true }),
   'fiscal-cadastro:criar': () => r(201, { ok: true, tenant_id: TENANT, etapa: 'pagamento' }),
-  'auth:verify': (c) => (c.token === CODIGO_CERTO
-    ? r(200, { access_token: 'at-1', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'rt-1', user: { id: 'u-1' } })
-    : r(403, { code: 403, error_code: 'otp_expired', msg: 'Token has expired or is invalid' })),
+  // fiscal-acesso {acao:'verificar'} (Landing do lote A): conta as tentativas; a 5ª errada esgota o código.
+  'fiscal-acesso:verificar': (c, _ch, mem) => {
+    const erro = (status, codigo, extra = {}) => r(status, { ok: false, motivo: codigo.toLowerCase(), error_code: codigo, mensagem: 'x', ...extra });
+    if (!/^\d{6}$/.test(String(c.codigo || ''))) return erro(400, 'CODIGO_INVALIDO');
+    const n = mem.tentativas[c.email];
+    if (n === undefined) return erro(422, 'CODIGO_VENCIDO');
+    if (n >= 5) return erro(422, 'CODIGO_ESGOTADO');
+    if (c.codigo === CODIGO_CERTO) {
+      delete mem.tentativas[c.email];
+      return r(200, { ok: true, access_token: 'at-1', refresh_token: 'rt-1', expires_at: Math.floor(Date.now() / 1000) + 3600 });
+    }
+    mem.tentativas[c.email] = n + 1;
+    return n + 1 >= 5 ? erro(422, 'CODIGO_ESGOTADO') : erro(422, 'CODIGO_INCORRETO', { tentativas_restantes: 5 - (n + 1) });
+  },
   'auth:refresh': () => r(200, { access_token: 'at-2', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'rt-2' }),
   'GET assinatura-fiscal': () => r(200, { ok: true, venda_aberta: true, public_key: 'pk_test_abc', aceite_texto: ACEITE, planos: { inicial: { valor_centavos: 4900 }, pro: { valor_centavos: 12900 } } }),
   'pagarme:tokens': () => r(200, { id: 'token_abc123', type: 'card' }),
@@ -99,12 +111,11 @@ function rota(url, metodo, corpo) {
   const u = new URL(url, ORIGEM);
   const caminho = u.pathname;
   if (u.origin === new URL(CONFIG.supabaseUrl).origin) {
-    if (caminho === '/auth/v1/verify') return 'auth:verify';
     if (caminho === '/auth/v1/token' && u.searchParams.get('grant_type') === 'refresh_token') return 'auth:refresh';
     const f = /^\/functions\/v1\/([\w-]+)$/.exec(caminho);
     if (f) {
       if (f[1] === 'assinatura-fiscal') return metodo + ' assinatura-fiscal';
-      if (f[1] === 'fiscal-acesso') return 'fiscal-acesso';
+      if (f[1] === 'fiscal-acesso') return corpo && corpo.acao === 'verificar' ? 'fiscal-acesso:verificar' : 'fiscal-acesso';
       return f[1] + ':' + (corpo && corpo.acao);
     }
   }
@@ -119,11 +130,12 @@ function rota(url, metodo, corpo) {
   return null;
 }
 
-// Dublê da rede: `respostas` sobrescreve rotas de PADRAO (função (corpo, chamada) → {status, corpo}).
+// Dublê da rede: `respostas` sobrescreve rotas de PADRAO (função (corpo, chamada, memória) → {status, corpo}).
 export function superficie(respostas = {}) {
   const tabela = { ...PADRAO, ...respostas };
   const chamadas = [];
   const desconhecidas = [];
+  const memoria = { tentativas: {} };
   async function fetch(url, init = {}) {
     const metodo = (init.method || 'GET').toUpperCase();
     const corpo = await lerCorpo(init);
@@ -136,7 +148,7 @@ export function superficie(respostas = {}) {
       desconhecidas.push(`${metodo} ${url}`);
       throw new Error(`fora da Surface: ${metodo} ${url}`);
     }
-    const resp = await tabela[chave](corpo || {}, chamada);
+    const resp = await tabela[chave](corpo || {}, chamada, memoria);
     return new Response(resp.corpo === undefined ? null : JSON.stringify(resp.corpo), { status: resp.status, headers: { 'content-type': 'application/json' } });
   }
   return {
