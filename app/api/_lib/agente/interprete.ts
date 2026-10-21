@@ -1,7 +1,7 @@
 // Intérprete por IA (Decided "IA sem poder de emitir"; Landing, lote B - intérprete). A IA só
 // devolve a saída estruturada abaixo, que vai para `fiscal_requests.parsed`; emitir e cancelar
-// acontecem só no código da conversa, depois do "confirmar". O modelo ainda não foi escolhido
-// (Unresolved 7): em produção vale `interpreteNaoConfigurado()`.
+// acontecem só no código da conversa, depois do "confirmar". Com `ANTHROPIC_API_KEY`, a v2 usa
+// `interpreteClaude` (interprete-claude.ts); sem ela, vale `interpreteNaoConfigurado()`.
 import { cnpjValido, cpfValido } from './documentos.js'
 
 export type Intencao = 'emitir' | 'cancelar' | 'outro'

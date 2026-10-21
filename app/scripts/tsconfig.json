@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["nofiscal-spike-core.ts", "nofiscal-spike.test.ts"]
+  "include": ["nofiscal-spike-core.ts", "nofiscal-spike.test.ts", "spike-interprete/spike-core.ts", "spike-interprete/spike.test.ts"]
 }

@@ -559,11 +559,21 @@ select throws_ok(
   $$insert into nofiscal.fiscal_agent_once (chave) values ('')$$,
   '23514', null, 'marca sem chave é recusada');
 
+-- v2, lote D: cota de PDFs lidos pela IA (no máximo 30 por tenant).
+set local role nofiscal_service;
+select lives_ok(
+  $$insert into nofiscal.fiscal_importacao_pdfs (tenant_id, enviados) values ('f1700000-0000-4000-8000-000000000001', 30)$$,
+  'nofiscal_service registra os PDFs enviados');
+select throws_ok(
+  $$update nofiscal.fiscal_importacao_pdfs set enviados = 31 where tenant_id = 'f1700000-0000-4000-8000-000000000001'$$,
+  '23514', null, 'a cota de PDFs não passa de 30');
+reset role;
+
 -- Sentinela: anon e authenticated sem acesso a nenhuma tabela nova.
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  15, 'nofiscal tem as 5 tabelas do motor e as 10 do agente');
+  16, 'nofiscal tem as 5 tabelas do motor e as 11 do agente (a 11ª é a cota de PDFs da v2, lote D)');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)
