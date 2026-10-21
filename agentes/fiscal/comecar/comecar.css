@@ -8,8 +8,8 @@
 .nf-trilha li.is-atual::before{color:var(--fi-texto)}
 @media(min-width:900px){
   .nf-trilha{gap:4px}
-  .nf-trilha li{width:auto;height:auto;padding:7px 12px;border-radius:999px;font:600 12px/1.2 var(--font-core,'Sora',sans-serif);color:var(--fi-texto-sec)}
-  .nf-trilha li::before{content:counter(etapa) ' · ';font-size:12px}
+  .nf-trilha li{display:inline-flex;align-items:center;gap:6px;width:auto;height:auto;padding:7px 12px;border-radius:999px;font:600 12px/1.2 var(--font-core,'Sora',sans-serif);color:var(--fi-texto-sec);white-space:nowrap}
+  .nf-trilha li::before{content:counter(etapa);font-size:12px}
   .nf-trilha li.is-feita{color:var(--fi-fundo)}
   .nf-trilha li.is-feita::before{content:'✓ '}
   .nf-trilha li.is-atual{color:var(--fi-texto)}

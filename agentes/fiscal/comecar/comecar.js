@@ -631,9 +631,10 @@
     if (d.length === 14 && d !== st.cnpjConsultado) consultarCnpj();
     if (d.length < 14) { st.cnpjConsultado = ''; st.consulta = null; nf.aviso($('fc-aviso-1'), ''); }
   });
-  $('fc-cpf').addEventListener('blur', function () {
-    var d = nf.digitos($('fc-cpf').value);
-    nf.erroCampo('fc-cpf', d.length && !nf.cpfValido(d) ? MSG.cpf : '');
+  // O erro do CPF sai enquanto a pessoa digita, nunca no blur: no celular, a mensagem sumindo no toque em
+  // "Continuar" sobe o botão e o toque cai fora dele.
+  $('fc-cpf').addEventListener('input', function () {
+    if (nf.cpfValido($('fc-cpf').value)) nf.erroCampo('fc-cpf', '');
   });
   $('fc-form-2').addEventListener('submit', enviarCodigo);
   $('fc-reenviar').addEventListener('click', function () {

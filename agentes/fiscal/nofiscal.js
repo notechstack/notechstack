@@ -360,7 +360,7 @@
         ? '<p class="nf-rotulo-lista">Sugeridos para a sua atividade</p>' +
           sugeridos.map(function (c) { return opcao({ codigo: c, descricao: descricao(c) }, c === escolhido); }).join('')
         : '';
-      busca.placeholder = lista.length ? 'Busque por palavra ou código (ex.: consulta, 04.01)' : 'Digite o código de 6 dígitos';
+      busca.placeholder = lista.length ? 'Palavra ou código' : 'Código de 6 dígitos';
     });
     return { pronto: pronto, valor: function () { return escolhido; } };
   }

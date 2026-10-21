@@ -56,7 +56,8 @@
 .nf-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-top:6px}
 .nf-acoes .fi-link-btn{font-size:14px}
 .nf-aviso{margin:0;padding:12px 16px;border-radius:14px;background:var(--fi-fundo-alt);font-size:14.5px;line-height:1.5;color:var(--fi-texto)}
-.nf-aviso a{color:inherit;font-weight:600;text-underline-offset:2px}
+.nf-aviso a:not(.fi-btn){color:inherit;font-weight:600;text-underline-offset:2px}
+#fa-retomar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .nf-aviso--erro{background:var(--no-vermelho-tint);color:var(--fi-erro-texto)}
 .nf-aviso--ok{background:var(--no-verde-tint);color:var(--fi-ok)}
 .nf-aviso--info{background:var(--fi-acento-tint);color:var(--fi-texto)}
