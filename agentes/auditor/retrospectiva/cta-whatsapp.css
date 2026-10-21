@@ -1,0 +1,73 @@
+/* Tela final "Receber no celular" da retrospectiva (#t13). Substitui os planos (Lucca, 21/10).
+   Só tokens do no-design-system; nenhum hex solto. Fundo verde: texto em osso só a partir de 24 px.
+   Movimento só com CSS, disparado por #t13.ativa. O estado final é o padrão; com prefers-reduced-motion nada anima. */
+
+/* ── Bloco central: logo sem fundo + headline ── */
+.zap-centro {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  text-align: center;
+}
+.zap-logo { margin: 0; display: inline-flex; align-items: baseline; font: var(--peso-display) 40px/1 var(--font-core); letter-spacing: -0.04em; }
+.zap-logo__no { color: var(--no-tinta); }
+.zap-logo__resto { font-weight: var(--peso-corpo); color: var(--no-osso); }
+.zap-titulo { max-width: 320px; text-align: center; }
+/* "fazer nada?" fica junto na mesma linha, com o sublinhado embaixo */
+.zap-sub { position: relative; display: inline-block; white-space: nowrap; }
+.zap-sub::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -7px; height: 6px; border-radius: 3px;
+  background: var(--no-tinta); transform-origin: left center;
+}
+.zap-nada { color: var(--no-osso); }
+/* botões logo abaixo da headline, ocupando a largura da tela */
+.zap-centro .fim { margin-top: 18px; align-self: stretch; }
+
+/* ── CTA principal (WhatsApp) ── */
+.zap-cta {
+  position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 10px;
+  text-decoration: none; font-size: 17px; padding: 19px 20px;
+}
+.zap-cta__icone { width: 22px; height: 22px; flex: none; color: var(--no-verde); }
+.zap-cta2 { display: block; text-decoration: none; }
+.zap-cta, .zap-cta2 { transition: transform .15s ease; }
+.zap-cta:hover, .zap-cta2:hover { transform: translateY(-1px); }
+.zap-cta:focus-visible, .zap-cta2:focus-visible { outline: 3px solid var(--no-osso); outline-offset: 3px; }
+
+/* ── Movimento ── */
+@media (prefers-reduced-motion: no-preference) {
+  #t13.ativa .zap-logo { animation: zap-sobe .6s cubic-bezier(.22, 1, .36, 1) both; }
+  #t13.ativa .zap-titulo { animation: zap-sobe .6s .12s cubic-bezier(.22, 1, .36, 1) both; }
+  #t13.ativa .fim { animation: zap-sobe .6s .28s cubic-bezier(.22, 1, .36, 1) both; }
+
+  /* headline: o sublinhado de "fazer nada?" se desenha e "nada?" passa a alternar entre branco e preto */
+  #t13.ativa .zap-sub::after { animation: zap-risca .7s .75s cubic-bezier(.65, 0, .35, 1) both; }
+  #t13.ativa .zap-nada { animation: zap-alterna 2.4s 1.5s infinite; }
+
+  /* CTA principal: anel pulsando + brilho que passa + ícone que balança, chamando o toque */
+  #t13.ativa .zap-cta { animation: zap-anel 2.2s 1s infinite; }
+  .zap-cta::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--no-osso) 22%, transparent) 50%, transparent 70%);
+    transform: translateX(-120%);
+  }
+  #t13.ativa .zap-cta::after { animation: zap-brilho 3.2s 1.4s infinite; }
+  #t13.ativa .zap-cta__icone { animation: zap-balanca 3.2s 1.7s infinite; }
+}
+
+@keyframes zap-sobe { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes zap-risca { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes zap-alterna { 0%, 42% { color: var(--no-osso); } 50%, 92% { color: var(--no-tinta); } 100% { color: var(--no-osso); } }
+@keyframes zap-anel {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--no-osso) 55%, transparent); }
+  70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--no-osso) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--no-osso) 0%, transparent); }
+}
+@keyframes zap-brilho { 0% { transform: translateX(-120%); } 35%, 100% { transform: translateX(120%); } }
+@keyframes zap-balanca { 0%, 82%, 100% { transform: none; } 86% { transform: rotate(-14deg); } 90% { transform: rotate(12deg); } 94% { transform: rotate(-6deg); } }
+
+/* Limite diário atingido (?motivo=limite): o "Refazer com outra conta" fica travado, com cara de desativado.
+   Sem texto sobre cota (limite "invisível", Lucca 21/10). */
+.zap-cta2--travado,
+.zap-cta2--travado:hover {
+  cursor: not-allowed; pointer-events: none; transform: none;
+  background: color-mix(in srgb, var(--no-osso) 38%, transparent); color: color-mix(in srgb, var(--no-tinta) 45%, transparent);
+}

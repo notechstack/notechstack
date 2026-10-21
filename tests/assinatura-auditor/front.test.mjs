@@ -1,10 +1,10 @@
 // Front da assinatura do Auditor (TASK-mvbcb35pbn0, decisões de Lucca em 16/10):
 // (A) a LP do auditor volta ao aprovado: sem preço, sem seção de planos, sem assinatura.js. Os planos ficam só na
 //     tela final da retrospectiva (retrospectiva/index.html, na raiz da pasta da TASK, fora do repo);
-// (B) aceite único e obrigatório dos Termos, que já diz que o relatório chega no WhatsApp informado.
+// (B) aceite único e obrigatório dos Termos: o relatório chega por e-mail e no painel (Lucca, 21/10; antes, WhatsApp).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -14,10 +14,15 @@ const aqui = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(aqui, '..', '..');
 const lp = readFileSync(resolve(repo, 'agentes/auditor/index.html'), 'utf8');
 const lpCss = readFileSync(resolve(repo, 'agentes/auditor/auditor.css'), 'utf8');
-const html = readFileSync(resolve(repo, '..', 'retrospectiva', 'index.html'), 'utf8');
+// A cópia "da mesa" (fora do repo, com caminhos /repo/...) só existe na máquina da TASK original. Sem ela, as provas
+// de conteúdo rodam na cópia versionada do site; as 1–2 que são só da mesa ficam marcadas como skip (revisão do #66).
+const mesaHtml = resolve(repo, '..', 'retrospectiva', 'index.html');
+const temMesa = existsSync(mesaHtml);
+const SEM_MESA = temMesa ? false : 'cópia da mesa (../retrospectiva/) ausente nesta máquina';
+const html = readFileSync(temMesa ? mesaHtml : resolve(repo, 'agentes/auditor/retrospectiva/index.html'), 'utf8');
 const js = readFileSync(resolve(repo, 'agentes/auditor/assinatura.js'), 'utf8');
 
-const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).';
+const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.';
 const PRECO_RE = /R\$\s*(47|97|197)\b/;
 const lf = (s) => s.replace(/\r\n/g, '\n');
 const textContent = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -36,48 +41,41 @@ test('LP do auditor: nenhum preço R$ 47/97/197, sem seção de planos, não car
   assert.doesNotMatch(lp, /assinatura(-medicao)?\.js/, 'LP não carrega assinatura.js nem assinatura-medicao.js');
 });
 
-test('LP do auditor (index.html e auditor.css) é igual à de origin/main', () => {
-  assert.equal(lf(lp), lf(deMain('agentes/auditor/index.html')));
-  assert.equal(lf(lpCss), lf(deMain('agentes/auditor/auditor.css')));
+// Lucca, 21/10: o limite de diagnósticos grátis ficou "invisível" (3 por dispositivo por dia, sem texto de cota).
+test('LP do auditor não cita cota de diagnósticos grátis', () => {
+  assert.doesNotMatch(lp, /\b3 diagnósticos|diagnósticos gratuitos a cada|restam \d/i);
+  assert.match(lp, /limitar o número de diagnósticos gratuitos por dia/, 'FAQ explica o uso do IP embaralhado sem citar número');
 });
 
 // ── Tela final da retrospectiva ──
 const telas = [...html.matchAll(/<section\b[^>]*\bdata-estado="([^"]*)"[^>]*>[\s\S]*?<\/section>/g)];
 const ultima = telas.at(-1);
 const tela = ultima[0];
-// só os cartões de plano (não o lead nem a nota, que são .au-planos-*)
-const cartoes = tela.split(/<div class="cartao au-plano(?=[ "])/).slice(1);
-const codigoDe = (c) => c.match(/data-plano="(\w+)"/)[1];
 
-test('a última tela da retrospectiva é a de planos: 3 planos da T1, preço dentro de cada cartão, sem "a definir"', () => {
-  assert.equal(ultima[1], 'planos');
-  assert.match(tela, /\bid="planos"/, 'assinatura.js só liga com #planos na página');
-  assert.doesNotMatch(tela, /a definir/i);
-  assert.deepEqual(cartoes.map(codigoDe), ['mensal', 'semanal', 'agencia']);
-  const esperado = { mensal: ['Mensal', 'R$ 47'], semanal: ['Semanal', 'R$ 97'], agencia: ['Agência', 'R$ 197'] };
-  for (const c of cartoes) {
-    const codigo = codigoDe(c);
-    const [nome, preco] = esperado[codigo];
-    assert.ok(c.includes(nome), `nome ${nome}`);
-    assert.ok(c.includes(preco), `preço ${preco} dentro do cartão ${codigo}`);
-    assert.match(c, /WhatsApp/, `canal WhatsApp ${codigo}`);
-    assert.match(c, new RegExp(`<button\\b[^>]*class="[^"]*au-plano-btn[^"]*"[^>]*data-plano="${codigo}"[^>]*\\bdisabled`), `botão ${codigo} começa desabilitado`);
-  }
-  assert.match(tela, /au-plano--recomendado[^>]*data-plano="semanal"/, 'Semanal é o recomendado');
-  for (const outra of telas.slice(0, -1)) assert.doesNotMatch(outra[0], PRECO_RE, `preço só na tela final (${outra[1]})`);
+// Lucca, 21/10: a tela final deixou de ser a de planos. Agora é uma tela única com CTA para o WhatsApp da nó.
+test('a última tela da retrospectiva é "receber no celular": sem preço, CTA para o WhatsApp da nó e refazer para a LP', () => {
+  assert.equal(ultima[1], 'receber-no-celular');
+  assert.doesNotMatch(tela, PRECO_RE, 'sem preço');
+  assert.doesNotMatch(tela, /au-plano|id="planos"/, 'sem cartões de plano');
+  assert.match(textContent(tela), /Quer se manter atualizado sem fazer nada\?/);
+  assert.match(tela, /<a\b[^>]*id="zap-receber"[^>]*href="https:\/\/wa\.me\/5511939289413"[^>]*target="_blank"[^>]*rel="noopener"/, 'CTA abre o WhatsApp da nó em nova aba');
+  assert.match(tela, /<a\b[^>]*id="zap-refazer"[^>]*href="\/agentes\/auditor\/#au-form"[^>]*>Refazer com outra conta<\/a>/, 'refazer leva ao formulário da LP');
+  assert.doesNotMatch(textContent(tela), /\b\d+ diagnósticos|\d\/\d/, 'sem cota visível');
+  for (const outra of telas.slice(0, -1)) assert.doesNotMatch(outra[0], PRECO_RE, `sem preço nas outras telas (${outra[1]})`);
 });
 
-// Rodada 5 (Lucca, 16/10): "tópicos diretos e descritivos"; os planos se diferenciam pelo ritmo do envio do relatório.
-test('cartões diretos: até 4 tópicos curtos, ritmo do envio (mês, segunda, personalizado), sem "Para quem" nem Frequência/Canal', () => {
-  assert.doesNotMatch(tela, /Para quem|Frequência|Canal/, 'sem os blocos longos da versão anterior');
-  const ritmo = { mensal: /1 relatório por mês/i, semanal: /toda segunda/i, agencia: /personalizado/i };
-  for (const c of cartoes) {
-    const codigo = codigoDe(c);
-    const itens = [...c.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textContent(m[1]));
-    assert.ok(itens.length >= 3 && itens.length <= 4, `${codigo}: 3 ou 4 tópicos (tem ${itens.length})`);
-    for (const i of itens) assert.ok(i.length <= 60, `${codigo}: tópico curto "${i}"`);
-    assert.match(textContent(c), ritmo[codigo], `${codigo}: ritmo do envio no cartão`);
-  }
+test('cta-whatsapp.js: mensagem pronta com o site do diagnóstico real; sem diagnóstico, mensagem genérica', () => {
+  const codigo = readFileSync(resolve(repo, 'agentes/auditor/retrospectiva/cta-whatsapp.js'), 'utf8');
+  const monta = (sessao) => {
+    const a = { href: '' };
+    const doc = { readyState: 'complete', getElementById: (id) => (id === 'zap-receber' ? a : null), addEventListener() {} };
+    const store = { getItem: () => sessao };
+    vm.runInNewContext(codigo, { window: { sessionStorage: store }, document: doc, URL, encodeURIComponent, JSON });
+    return decodeURIComponent(a.href.split('?text=')[1]);
+  };
+  const diag = JSON.stringify({ v: 1, report: { url: 'https://www.exemplo.com.br/', checagens: [{}] } });
+  assert.equal(monta(diag), 'Olá! Fiz a retrospectiva do Auditor do site exemplo.com.br e quero receber os relatórios no meu celular.');
+  assert.equal(monta(null), 'Olá! Fiz a retrospectiva do Auditor e quero receber os relatórios no meu celular.');
 });
 
 // Rodada 5 (Lucca, 16/10): escolhe o plano → cadastro base (nome, sobrenome, e-mail, WhatsApp) e aceite dos Termos →
@@ -97,19 +95,19 @@ test('checkout em duas etapas: cadastro base e aceite primeiro; documento, cart�
   assert.match(e2, /^<div class="au-etapa-2" id="au-etapa-2" hidden>/, 'etapa 2 começa fechada');
   assert.match(html, /<button type="submit"[^>]*id="au-checkout-assinar"[^>]*\bhidden\b/, '"Pagar e assinar" só aparece na etapa 2');
   assert.match(html, /<button type="button"[^>]*id="au-checkout-continuar"/, '"Continuar" não envia o formulário');
-  const css = readFileSync(resolve(repo, '..', 'retrospectiva', 'planos.css'), 'utf8');
+  const css = readFileSync(temMesa ? resolve(repo, '..', 'retrospectiva', 'planos.css') : resolve(repo, 'agentes/auditor/retrospectiva/planos.css'), 'utf8');
   assert.match(css, /\.au-checkout \[hidden\]\s*\{\s*display:\s*none !important/, 'etapa fechada some mesmo com display de .au-fieldset/.botao');
   assert.match(js, /if \(etapa2\.hidden\) \{ continuar\(\); return; \}/, 'Enter na etapa 1 vale como Continuar, nunca como pagamento');
 });
 
-test('tela final carrega assinatura.js e assinatura-medicao.js do repo por caminho absoluto, sem CDN novo', () => {
+test('tela final carrega assinatura.js e assinatura-medicao.js do repo por caminho absoluto, sem CDN novo', { skip: SEM_MESA }, () => {
   assert.match(html, /<script\b[^>]*src="\/repo\/agentes\/auditor\/assinatura-medicao\.js[^"]*"/);
   assert.match(html, /<script\b[^>]*src="\/repo\/agentes\/auditor\/assinatura\.js[^"]*"/);
   assert.match(html, /<link\b[^>]*href="planos\.css"/);
   assert.doesNotMatch(html, /<(script|link)\b[^>]*\b(src|href)="(https?:)?\/\//, 'nenhum script ou css de CDN');
 });
 
-test('checkout: uma só caixa obrigatória com o texto do aceite, WhatsApp obrigatório, nenhuma caixa do relatório', () => {
+test('checkout: uma só caixa obrigatória com o texto do aceite, celular obrigatório, nenhuma caixa do relatório', () => {
   const caixas = (html.match(/<input\b[^>]*type="checkbox"[^>]*>/g) || []).filter((t) => /au-ck-/.test(t));
   assert.equal(caixas.length, 1, 'uma única caixa de aceite no checkout');
   const termos = tag('au-ck-termos');
@@ -126,7 +124,7 @@ test('checkout: uma só caixa obrigatória com o texto do aceite, WhatsApp obrig
   const tel = tag('au-as-telefone');
   assert.match(tel, /\brequired\b/);
   const labelTel = html.match(/<label\b[^>]*for="au-as-telefone"[^>]*>([\s\S]*?)<\/label>/);
-  assert.equal(textContent(labelTel[1]), 'WhatsApp (com DDD)');
+  assert.equal(textContent(labelTel[1]), 'Celular (com DDD)');
 });
 
 test('inputs do cartão não têm atributo name', () => {
@@ -168,8 +166,8 @@ test('etapa 1 valida só o cadastro base e o aceite; etapa 2 só documento, cart
     const erros = validarEtapa2({ ...dadosOk, endereco: { ...dadosOk.endereco, ...ruim } });
     assert.ok(erros.some((e) => /endereço de cobrança/.test(e)), `endereço ${JSON.stringify(ruim)} → erro`);
   }
-  assert.equal(resumoEtapa1(dadosOk), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 99999-0000');
-  assert.equal(resumoEtapa1({ ...dadosOk, telefone: '1133334444' }), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 3333-4444');
+  assert.equal(resumoEtapa1(dadosOk), 'Ana Lima · ana@exemplo.com.br · celular (11) 99999-0000');
+  assert.equal(resumoEtapa1({ ...dadosOk, telefone: '1133334444' }), 'Ana Lima · ana@exemplo.com.br · celular (11) 3333-4444');
 });
 
 test('montarPedido: corpo exato (plano, nome, email, documento, telefone, card_token, termos_aceite, aceite_texto, endereco), sem cartão', () => {
@@ -194,10 +192,10 @@ test('normalizarTexto: espaços e quebras viram um espaço só', () => {
   assert.equal(montarPedido(dadosOk, 'tok', ' ' + TEXTO_ACEITE.replace(' Sei', '\n   Sei') + '\n').aceite_texto, TEXTO_ACEITE);
 });
 
-test('validar: WhatsApp é obrigatório (vazio ou sem DDD dá erro)', () => {
+test('validar: celular é obrigatório (vazio ou sem DDD dá erro)', () => {
   for (const tel of ['', '   ', '9999-0000', '11 99999-00001']) {
     const erros = validar({ ...dadosOk, telefone: tel });
-    assert.ok(erros.some((e) => /WhatsApp/i.test(e)), `telefone "${tel}" → erro de WhatsApp`);
+    assert.ok(erros.some((e) => /celular/i.test(e)), `telefone "${tel}" → erro de celular`);
   }
 });
 
@@ -226,12 +224,12 @@ test('medicao do checkout segurada: so com venda aberta e medicao_liberada da fu
 
 // ── Rodada 3: a retrospectiva do site (logo depois da URL na LP) tem a MESMA tela de planos do protótipo ──
 // Todas as provas acima sobre a tela final valem para a cópia do site porque a seção t13 é idêntica.
-test('retrospectiva do site: tela de planos idêntica à do protótipo e JS da assinatura pela pasta da LP', () => {
+test('retrospectiva do site: tela final idêntica à do protótipo e JS da assinatura pela pasta da LP', () => {
   const site = readFileSync(resolve(repo, 'agentes/auditor/retrospectiva/index.html'), 'utf8');
   const t13 = (h) => lf(h).match(/<section id="t13"[\s\S]*?<\/section>/)[0];
   assert.equal(t13(site), t13(html));
   const telasSite = [...site.matchAll(/<section\b[^>]*\bdata-estado="([^"]*)"/g)].map((m) => m[1]);
-  assert.equal(telasSite.at(-1), 'planos', 'planos continua sendo a última tela');
+  assert.equal(telasSite.at(-1), 'receber-no-celular', '"receber no celular" é a última tela');
   assert.match(site, /<script src="\.\.\/assinatura-medicao\.js"><\/script>/);
   assert.match(site, /<script src="\.\.\/assinatura\.js"><\/script>/);
   assert.doesNotMatch(site, /(src|href)="\/repo\//, 'nenhum arquivo carregado pelo caminho da mesa (/repo/) na cópia do site');

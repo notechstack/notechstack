@@ -41,7 +41,7 @@ function timeRange(p: Periodo): string {
   return JSON.stringify({ since: p.de, until: p.ate });
 }
 
-async function paginar<T>(path: string, params: Record<string, string | undefined>, limitePaginas = 5): Promise<T[]> {
+export async function paginar<T>(path: string, params: Record<string, string | undefined>, limitePaginas = 5): Promise<T[]> {
   const itens: T[] = [];
   let resp = await metaFetch<{ data?: T[]; paging?: { next?: string } }>(path, params);
   itens.push(...(resp.data ?? []));

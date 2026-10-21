@@ -46,7 +46,7 @@
 
   <div class="lg-rot">Privacidade</div>
   <h1>Política de Privacidade e Cookies</h1>
-  <p class="lg-data">Última atualização: 15 de outubro de 2026</p>
+  <p class="lg-data">Última atualização: 21 de outubro de 2026</p>
   <p class="lg-abre">Esta política explica quais dados pessoais a nó tech stack coleta neste
   site, por que coleta, com quem compartilha e o que você pode exigir a respeito. Está
   escrita para ser lida, não para ser tolerada.</p>
@@ -133,7 +133,9 @@
         <tr><td>Resend</td><td>Envio do e-mail de notificação do contato</td><td>Estados Unidos</td></tr>
         <tr><td>Google (Analytics, Ads, Tag Manager)</td><td>Medição de audiência e de anúncios</td><td>Estados Unidos</td></tr>
         <tr><td>Meta (Pixel e Conversions API)</td><td>Medição de anúncios do Facebook e Instagram</td><td>Estados Unidos</td></tr>
-        <tr><td>Anthropic</td><td>Assistente de conversa por IA, quando você usa o chat</td><td>Estados Unidos</td></tr>
+        <tr><td>Meta (Marketing API) e Google (Ads, Analytics e Search Console APIs)</td><td>Leitura dos dados das contas que você conecta ao auditor (seção 7.7)</td><td>Estados Unidos</td></tr>
+        <tr><td>Anthropic</td><td>Assistente de conversa por IA, quando você usa o chat, e redação da análise dos relatórios do auditor</td><td>Estados Unidos</td></tr>
+        <tr><td>WhatsApp (Meta)</td><td>Envio da cópia do relatório do auditor, só para quem pedir (seção 7.7)</td><td>Estados Unidos</td></tr>
       </tbody>
     </table>
   </div>
@@ -230,7 +232,8 @@
   <p>O <a href="/agentes/auditor/">Auditor de anúncios</a> é a ferramenta gratuita que lê o
   rastreamento de um site a partir do endereço que você informa. Esta seção explica o que ele
   guarda, para quê, o que sai para a Meta e o Google, por quanto tempo tudo fica e como pedir
-  acesso ou exclusão.</p>
+  acesso ou exclusão. Quem assina o auditor também pode conectar as próprias contas da Meta e
+  do Google; isso está na seção 7.7.</p>
 
   <h3>7.1. O que guardamos</h3>
   <ul>
@@ -248,8 +251,8 @@
     <li>Entregar o diagnóstico.</li>
     <li>Reaproveitar o mesmo resultado por <strong>24 horas</strong>: quem auditar o mesmo
     endereço nesse período vê o mesmo relatório.</li>
-    <li>Limitar a <strong>3 diagnósticos gratuitos por conexão a cada 90 dias</strong>, usando
-    o código gerado a partir do IP.</li>
+    <li>Limitar o número de diagnósticos gratuitos <strong>por dia</strong>, para evitar abuso,
+    usando o código gerado a partir do IP.</li>
     <li>Medir a campanha que trouxe você até o auditor.</li>
   </ul>
 
@@ -284,6 +287,99 @@
   mesmos direitos e o mesmo prazo de resposta da seção 9. Para a medição, você também pode
   recusar ou revogar a qualquer momento em “Preferências de cookies”, na própria página do
   auditor.</p>
+
+  <h3 id="conexoes">7.7. Contas da Meta e do Google que você conecta</h3>
+  <p>Na área do assinante, você pode conectar as contas de anúncios e de audiência da sua
+  empresa para que o auditor leia os números e monte os seus relatórios. A conexão é feita na
+  tela oficial da Meta ou do Google, onde você escolhe as contas e as permissões. <strong>A nó
+  nunca vê nem guarda a sua senha.</strong></p>
+
+  <p><strong>O que lemos</strong> (só das contas que você escolher):</p>
+  <ul>
+    <li><strong>Meta — Facebook e Instagram</strong> (permissão <code>ads_read</code>): nome e
+    identificador das contas de anúncios; campanhas, conjuntos e anúncios; investimento,
+    impressões, alcance, cliques, conversões e resultados, por período.</li>
+    <li><strong>Google Ads</strong> (escopo <code>adwords</code>): contas, campanhas, grupos,
+    anúncios e palavras-chave, com custo, impressões, cliques e conversões. A permissão do
+    Google também permitiria alterações, mas o auditor <strong>só faz consultas de
+    leitura</strong>: não cria, altera, pausa nem exclui nada.</li>
+    <li><strong>Google Analytics 4</strong> (escopo <code>analytics.readonly</code>):
+    relatórios agregados da propriedade escolhida, como sessões, usuários, origem do tráfego,
+    eventos e conversões.</li>
+    <li><strong>Google Search Console</strong> (escopo <code>webmasters.readonly</code>):
+    consultas de busca, páginas, cliques, impressões e posição média do site escolhido.</li>
+  </ul>
+
+  <p><strong>Para quê:</strong> só para gerar o diagnóstico e os relatórios do auditor para a
+  sua própria empresa, mostrá-los a você e a quem tiver acesso à sua conta na nó e, se você
+  pedir, enviar a cópia do relatório pelo WhatsApp (abaixo).</p>
+
+  <p><strong>O que não fazemos com esses dados:</strong></p>
+  <ul>
+    <li>Não escrevemos nas suas contas.</li>
+    <li>Não vendemos, não usamos para publicidade e não cruzamos com dados de outros
+    clientes.</li>
+    <li>Não usamos para treinar modelos de inteligência artificial. Para redigir a análise de
+    um relatório, enviamos à Anthropic apenas os números agregados e os achados daquele
+    relatório, sem seus dados de contato, só para gerar aquele texto.</li>
+    <li>Ninguém da equipe da nó lê as suas métricas ou relatórios, salvo se você liberar
+    acesso de suporte por tempo limitado na sua conta, se pedir a cópia pelo WhatsApp (abaixo),
+    por segurança ou por exigência legal. A equipe vê só dados de operação, como o estado da
+    conexão e se o relatório saiu.</li>
+  </ul>
+
+  <p id="copia-whatsapp"><strong>Como o relatório chega e a cópia opcional pelo WhatsApp:</strong>
+  o relatório chega no e-mail da sua conta e fica no seu painel do auditor. Se você marcar,
+  no checkout ou depois em “Conta”, a opção <em>“Quero receber também uma cópia do relatório
+  pelo WhatsApp, enviada pela equipe da nó”</em>, uma pessoa da equipe envia essa cópia para o
+  celular que você informar. Para isso, ela lê <strong>o mesmo texto do e-mail</strong>: o
+  resumo do período, que traz totais como investimento, conversões e sessões, e as
+  prioridades, que podem citar números do período. Ela <strong>não</strong> vê o painel, os
+  dados por campanha nem as suas contas na Meta e no Google, e cada leitura fica registrada. Base legal: o seu consentimento (art. 7º, I), que você retira
+  quando quiser em “Conta”; ao retirar, apagamos o número dessa opção. As mensagens trafegam
+  pelo WhatsApp (Meta), com as regras de privacidade dele.</p>
+
+  <p>O uso e a transferência, para qualquer outro aplicativo, de informações recebidas das APIs
+  do Google seguem a
+  <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política
+  de Dados do Usuário dos Serviços de API do Google</a>, incluindo os requisitos de Uso
+  Limitado. O uso de dados da Meta segue os
+  <a href="https://developers.facebook.com/terms" target="_blank" rel="noopener">Termos da
+  Plataforma Meta</a>.</p>
+
+  <p><strong>Base legal:</strong> execução do contrato da assinatura (art. 7º, V). Os dados
+  lidos são, em regra, da sua empresa. Quando incluírem dados pessoais (por exemplo, termos
+  de busca com nomes de pessoas), valem as mesmas garantias desta política.</p>
+
+  <p><strong>Onde e por quanto tempo guardamos:</strong></p>
+  <ul>
+    <li><strong>Credenciais de acesso (tokens):</strong> criptografadas no cofre do nosso
+    banco de dados e usadas só pelo servidor. São apagadas <strong>na hora</strong> quando você
+    desconecta, revoga o acesso ou pede exclusão; em até <strong>30 dias</strong> depois do
+    cancelamento da assinatura; e 30 dias depois de uma conexão feita sem assinatura.</li>
+    <li><strong>Números lidos e relatórios:</strong> até <strong>13 meses</strong> enquanto a
+    conta estiver ativa e até <strong>90 dias</strong> depois do encerramento da conta.
+    Depois, apagados.</li>
+  </ul>
+
+  <p id="exclusao-meta"><strong>Como desconectar e pedir exclusão dos dados da Meta e do
+  Google:</strong></p>
+  <ul>
+    <li><strong>Na nó:</strong> em “Conexões”, na área do assinante, clique em
+    “Desconectar”. O acesso é revogado e o token é apagado na hora.</li>
+    <li><strong>Na Meta:</strong> remova o app “nó tech stack” nas Integrações comerciais das
+    configurações do Facebook, ou em Configurações do negócio → Integrações.</li>
+    <li><strong>No Google:</strong> em
+    <a href="https://myaccount.google.com/connections" target="_blank" rel="noopener">myaccount.google.com/connections</a>,
+    remova “No Tech Stack Marketing”.</li>
+    <li><strong>Exclusão de tudo pela tela:</strong> em “Conta”, na área do assinante, use
+    “Excluir minha conta”. Cancelamos a assinatura, revogamos as conexões e apagamos tudo na
+    hora; você recebe um código do pedido.</li>
+    <li><strong>Exclusão de tudo por e-mail:</strong> escreva para
+    <a href="mailto:notechstack@gmail.com">notechstack@gmail.com</a> pedindo a exclusão da sua
+    conta e dos dados obtidos da Meta e do Google. Apagamos tokens, contas escolhidas, números
+    e relatórios em até <strong>15 dias</strong> e confirmamos por e-mail.</li>
+  </ul>
 
   <h2>8. Segurança</h2>
   <p>Os dados trafegam por conexão criptografada (HTTPS) e ficam em bancos com acesso

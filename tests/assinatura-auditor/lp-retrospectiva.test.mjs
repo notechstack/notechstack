@@ -93,25 +93,24 @@ test('sem sessionStorage: o relatório aparece na LP como antes e nada é aberto
   assert.match(estado, /Diagnóstico inicial pronto/);
 });
 
-test('limite, teto e falha continuam na LP, sem gravar nem abrir a retrospectiva', async () => {
-  for (const [status, texto] of [[429, /diagnósticos grátis/], [503, /teto diário/], [500, /Não conseguimos/]]) {
-    const { abertas, sessao, estado } = await rodar({ status, corpo: { limite: 3 } });
+test('teto e falha continuam na LP, sem gravar nem abrir a retrospectiva', async () => {
+  for (const [status, texto] of [[503, /teto diário/], [500, /Não conseguimos/]]) {
+    const { abertas, sessao, estado } = await rodar({ status, corpo: {} });
     assert.equal(abertas.length, 0, `status ${status}`);
     assert.equal(sessao.size, 0, `status ${status}`);
     assert.match(estado, texto);
   }
 });
 
-test('limite (429): "Ver os planos" leva a retrospectiva/?motivo=limite…#t13 com utm e fbclid, mantém o evento e não tem R$', async () => {
-  const { estado, dataLayer, abertas } = await rodar({ status: 429, corpo: { status: 'limite_usuario', limite: 3 } });
+// Lucca, 21/10: limite "invisível" (3 por dispositivo por dia). Sem aviso de cota na LP: vai direto à tela final
+// da retrospectiva (?motivo=limite#t13), onde o "Refazer com outra conta" aparece travado.
+test('limite (429): sem aviso de cota, abre a retrospectiva/?motivo=limite#t13 com utm e fbclid e mantém o evento', async () => {
+  const { estado, dataLayer, abertas, sessao } = await rodar({ status: 429, corpo: { status: 'limite_usuario', limite: 3 } });
   assert.ok(dataLayer.some((e) => e && e.event === 'diagnostico_limite_usuario'), 'evento diagnostico_limite_usuario');
-  assert.match(estado, /<h2>Você já fez seus 3 diagnósticos grátis<\/h2>/);
-  assert.match(estado, /<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp\.<\/p>/);
-  assert.doesNotMatch(estado, /R\$|Crie sua conta|Criar minha conta|app\.notechstack/, 'sem preço e sem cadastro do app');
-  const m = /<a class="ag-btn[^"]*" href="([^"]+)">Ver os planos<\/a>/.exec(estado);
-  assert.ok(m, 'link "Ver os planos" com a classe ag-btn');
-  assert.ok(m[1].endsWith('#t13'), 'termina em #t13');
-  const u = new URL(m[1].replace(/&amp;/g, '&'));
+  assert.doesNotMatch(estado, /diagnósticos grátis|Ver os planos|assine um plano/, 'nenhum texto de cota na LP');
+  assert.equal(sessao.size, 0, 'não grava diagnóstico novo');
+  assert.equal(abertas.length, 1, 'navega direto para a tela final');
+  const u = new URL(abertas[0]);
   assert.equal(u.pathname, '/agentes/auditor/retrospectiva/');
   assert.equal(u.searchParams.get('motivo'), 'limite');
   assert.equal(u.searchParams.get('utm_source'), 'meta');
@@ -119,15 +118,6 @@ test('limite (429): "Ver os planos" leva a retrospectiva/?motivo=limite…#t13 c
   assert.equal(u.searchParams.get('fbclid'), 'abc');
   assert.equal(u.searchParams.get('outro'), null, 'só utm_*, fbclid e motivo');
   assert.equal(u.hash, '#t13');
-  assert.equal(abertas.length, 0, 'não navega sozinho: a pessoa clica');
-});
-
-test('limite (429): número vem do servidor (padrão 3) e é escapado', async () => {
-  assert.match((await rodar({ status: 429, corpo: { limite: 5 } })).estado, /seus 5 diagnósticos grátis/);
-  assert.match((await rodar({ status: 429, corpo: {} })).estado, /seus 3 diagnósticos grátis/);
-  const { estado } = await rodar({ status: 429, corpo: { limite: '<img src=x>' } });
-  assert.doesNotMatch(estado, /<img/);
-  assert.match(estado, /&lt;img src=x&gt;/);
 });
 
 test('voltar da retrospectiva pelo navegador: a LP volta a aceitar outra URL', async () => {

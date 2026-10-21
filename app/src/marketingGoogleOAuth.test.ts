@@ -6,7 +6,7 @@ import { limparCacheGoogle } from '../../supabase/functions/_shared/marketing/go
 
 const admin: Chamador = { userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'NO_ADMIN', aal: 'aal2', banido: false }
 const host = 'https://untrusted.example/marketing-hub'
-function montar(ch: Chamador | null = admin) {
+function montar(ch: Chamador | null = admin, hubUrl?: string) {
   let clock = Date.parse('2026-10-01T12:00:00Z')
   const states = new Map<string, { value: { user_id: string }; until: number }>()
   let vault: string | null = null
@@ -37,7 +37,8 @@ function montar(ch: Chamador | null = admin) {
     config: { metaToken: null, googleCriacaoLiberada: false, appUrl: 'https://app.notechstack.com.br', google: {
       clientId: 'client-test', clientSecret: 'secret-fixture', refreshToken: 'fallback-fixture',
       developerToken: null, customerId: null, loginCustomerId: null, ga4PropertyId: '123', gscSiteUrl: null,
-    } }, agora: () => new Date(clock), esperar: async () => {}, uuid: () => crypto.randomUUID(), log })
+    }, ...(hubUrl ? { clientes: { stateSecret: null, hubUrl, voltaUrl: 'https://app.notechstack.com.br/auditor/{client_id}/conexoes', meta: { appId: null, appSecret: null, configId: null } } } : {}),
+    }, agora: () => new Date(clock), esperar: async () => {}, uuid: () => crypto.randomUUID(), log })
   const call = (path: string, method = 'GET') => handler(new Request(`${host}/${path}`, {
     method, headers: method === 'POST' ? { authorization: 'Bearer session-test' } : {},
   }))
@@ -50,6 +51,17 @@ function montar(ch: Chamador | null = admin) {
 afterEach(() => { vi.unstubAllGlobals(); limparCacheGoogle() })
 
 describe('Google OAuth T1', () => {
+  it('base pública /hub (proxy do app): consentimento e troca usam a mesma callback; sem ela, a do supabase.co', async () => {
+    const hub = montar(admin, 'https://app.notechstack.com.br/hub')
+    const remote = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ refresh_token: 'vault-fixture', scope: GOOGLE_ESCOPOS.join(' ') }))
+    vi.stubGlobal('fetch', remote)
+    const { url } = await hub.connect()
+    expect(url.searchParams.get('redirect_uri')).toBe('https://app.notechstack.com.br/hub/google/callback')
+    await hub.call(`google/callback?state=${url.searchParams.get('state')}&code=code-fixture`)
+    expect(new URLSearchParams(remote.mock.calls[0][1]?.body as string).get('redirect_uri')).toBe('https://app.notechstack.com.br/hub/google/callback')
+    const padrao = montar(admin, 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/marketing-hub')
+    expect((await padrao.connect()).url.searchParams.get('redirect_uri')).toBe(GOOGLE_CALLBACK)
+  })
   it('17 pede exatamente três escopos offline e consent, state 32 bytes TTL 600 e callback fixo', async () => {
     const m = montar(), { result, url } = await m.connect()
     expect(result.status).toBe(200)

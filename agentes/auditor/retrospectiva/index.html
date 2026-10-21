@@ -199,6 +199,7 @@
 <link rel="stylesheet" href="shared/telas-r5.css">
 <link rel="stylesheet" href="shared/telas-r6.css">
 <link rel="stylesheet" href="planos.css">
+<link rel="stylesheet" href="cta-whatsapp.css">
 </head>
 <body>
 <!-- Cópia inline de shared/marcas.svg: em file:// o <use> externo não renderiza no Chromium. Cores de marca de terceiros só aqui. -->
@@ -228,7 +229,7 @@
     <li><a href="#t08"><span>08</span>Google</a></li>
     <li><a href="#t-caminho"><span>09</span>Onde o clique se perde</a></li>
     <li><a href="#t12"><span>10</span>O que vem agora</a></li>
-    <li><a href="#t13"><span>11</span>Planos</a></li>
+    <li><a href="#t13"><span>11</span>Receber no celular</a></li>
   </ol>
   <p class="legenda">Protótipo local · dados de demonstração</p>
   <p class="dica">Toque à direita avança, à esquerda volta. Setas do teclado também; espaço pausa.</p>
@@ -540,84 +541,27 @@
     </div>
     <div class="fim">
       <button class="botao" data-acao="contato">Falar com a equipe nó</button>
-      <a href="#t01" data-ir="t01" class="link-refazer" aria-label="Refazer com outra conta. Restam 2 de 3 diagnósticos gratuitos.">
+      <a href="#t01" data-ir="t01" class="link-refazer">
         <svg class="link-refazer__seta" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 3.5 8.5l4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8.5h7.5a5 5 0 0 1 0 10H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
         <span>Refazer com outra conta</span>
-        <span class="link-refazer__cota" title="diagnósticos gratuitos restantes">2/3</span>
       </a>
     </div>
   </section>
 
-  <!-- 11 · planos (TASK-mvbcb35pbn0: os valores aparecem só aqui, no fim da retrospectiva; LP do auditor fica como aprovada).
-       Textos e preços: fontes/proposta-planos-T1.md, aprovada por Lucca em 16/10. Botões começam desabilitados; /repo/agentes/auditor/assinatura.js libera só com venda_aberta. -->
-  <section id="t13" data-estado="planos" data-fundo="verde" class="tela">
+  <!-- 11 · receber no celular (Lucca, 21/10): no lugar dos planos, uma tela única com CTA para o WhatsApp da nó.
+       Sem preço e sem limite de diagnósticos. cta-whatsapp.js monta as mensagens (com o site do diagnóstico real, se houver). -->
+  <section id="t13" data-estado="receber-no-celular" data-fundo="verde" class="tela">
     <div class="topo"><span class="lockup"><span class="no-wordmark">nó<span class="no-wordmark__ponto">.</span></span><span class="sub">agentes</span></span><span class="selo">DEMONSTRAÇÃO</span></div>
-    <p class="rot rot-chip">Próximo passo</p>
-    <h1 class="titulo titulo--g">Três jeitos de seguir com o agente.</h1>
-    <div class="pilhas planos" id="planos">
-      <div class="cartao au-planos-lead"><p class="texto">O agente refaz o relatório sozinho e manda no seu WhatsApp. Entre os planos, muda o ritmo do envio.</p></div>
-
-      <div class="cartao au-plano" data-plano="mensal">
-        <div class="au-plano-cabeca">
-          <h2 class="au-plano-nome">Mensal</h2>
-          <p class="au-plano-preco"><span class="au-plano-valor">R$ 47</span><span class="au-plano-periodo">/mês</span></p>
-        </div>
-        <div class="au-ritmo" aria-hidden="true">
-          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
-          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
-        </div>
-        <p class="au-plano-ritmo">1 relatório por mês</p>
-        <ul class="au-plano-itens">
-          <li>Relatório todo mês no seu WhatsApp</li>
-          <li>1 site + contas Meta e Google</li>
-          <li>Nota de 0 a 10 com o placar ok · atenção · problema</li>
-          <li>O que corrigir, uma linha por ponto</li>
-        </ul>
-        <button type="button" class="botao au-plano-btn" data-plano="mensal" disabled>Assinatura em breve</button>
+    <div class="zap-centro">
+      <p class="zap-logo" aria-label="nó.agentes"><span class="zap-logo__no">nó</span><span class="zap-logo__resto">.agentes</span></p>
+      <h1 class="titulo titulo--g zap-titulo">Quer se manter atualizado sem <span class="zap-sub">fazer <span class="zap-nada">nada?</span></span></h1>
+      <div class="fim">
+        <a class="botao zap-cta" id="zap-receber" href="https://wa.me/5511939289413" target="_blank" rel="noopener" data-zap="receber">
+          <svg class="zap-cta__icone" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.66 15l-1.32 4.82 4.94-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.18-1.14l-.3-.18-2.93.77.78-2.86-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.14c-.25-.12-1.46-.72-1.69-.8-.23-.09-.39-.13-.56.12-.16.25-.64.8-.78.96-.15.17-.29.19-.54.06a6.7 6.7 0 0 1-3.34-2.92c-.25-.43.25-.4.72-1.34.08-.16.04-.3-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.41-.56-.42h-.47c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07s.89 2.4 1.01 2.57c.13.16 1.75 2.67 4.24 3.75 1.58.68 2.2.74 2.98.62.48-.07 1.46-.6 1.67-1.18.2-.58.2-1.08.14-1.18-.06-.1-.22-.16-.47-.29Z"/></svg>
+          <span>Quero receber no meu celular</span>
+        </a>
+        <a class="botao botao--claro zap-cta2" id="zap-refazer" href="/agentes/auditor/#au-form" data-zap="refazer">Refazer com outra conta</a>
       </div>
-
-      <div class="cartao au-plano au-plano--recomendado" data-plano="semanal">
-        <span class="au-plano-selo">Recomendado</span>
-        <div class="au-plano-cabeca">
-          <h2 class="au-plano-nome">Semanal</h2>
-          <p class="au-plano-preco"><span class="au-plano-valor">R$ 97</span><span class="au-plano-periodo">/mês</span></p>
-        </div>
-        <div class="au-ritmo" aria-hidden="true">
-          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
-          <span class="au-ritmo-linha"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
-        </div>
-        <p class="au-plano-ritmo">Toda segunda</p>
-        <ul class="au-plano-itens">
-          <li>Relatório toda segunda no seu WhatsApp</li>
-          <li>Tudo do Mensal + o que mudou na semana</li>
-          <li>Horário em que seu público responde</li>
-          <li>Onde o clique se perde, do anúncio ao site</li>
-        </ul>
-        <button type="button" class="botao au-plano-btn" data-plano="semanal" disabled>Assinatura em breve</button>
-      </div>
-
-      <div class="cartao au-plano" data-plano="agencia">
-        <div class="au-plano-cabeca">
-          <h2 class="au-plano-nome">Agência</h2>
-          <p class="au-plano-preco"><span class="au-plano-valor">R$ 197</span><span class="au-plano-periodo">/mês</span></p>
-        </div>
-        <div class="au-ritmo au-ritmo--clientes" aria-hidden="true">
-          <span class="au-ritmo-sem"><b>S1</b><b>S2</b><b>S3</b><b>S4</b></span>
-          <span class="au-ritmo-linha"><i class="on"></i><i></i><i class="on"></i><i></i></span>
-          <span class="au-ritmo-linha"><i></i><i class="on"></i><i></i><i class="on"></i></span>
-          <span class="au-ritmo-linha"><i></i><i></i><i></i><i class="on"></i></span>
-        </div>
-        <p class="au-plano-ritmo">Personalizado</p>
-        <ul class="au-plano-itens">
-          <li>Envio personalizado por cliente, no seu WhatsApp</li>
-          <li>Até 5 clientes, 1 site + contas cada</li>
-          <li>Tudo do Semanal, por cliente</li>
-          <li>Link de cada relatório pronto para repassar</li>
-        </ul>
-        <button type="button" class="botao au-plano-btn" data-plano="agencia" disabled>Assinatura em breve</button>
-      </div>
-
-      <div class="cartao au-planos-nota"><p class="texto">3 diagnósticos grátis por pessoa. Do 4º em diante, só assinando. Cobrança mensal no cartão de crédito.</p></div>
     </div>
   </section>
 
@@ -625,10 +569,11 @@
 </main>
 <!-- Diagnóstico real da LP (sessionStorage.no_auditor_diagnostico): precisa rodar antes dos outros scripts. -->
 <script src="diagnostico-real.js"></script>
+<script src="cta-whatsapp.js"></script>
 
 <!-- Checkout da assinatura (fora da moldura do celular: showModal() usa o top layer e o clique no diálogo não troca de tela).
      Inputs do cartão SEM name (nunca vão por formulário); assinatura.js tokeniza no Pagar.me e manda só o token.
-     Aceite único e obrigatório (decisão de Lucca, 16/10): Termos + relatório no WhatsApp informado. -->
+     Aceite único e obrigatório: Termos + relatório por e-mail e no painel (Lucca, 21/10). O checkout agora é no app (/auditor/planos). -->
 <dialog class="au-checkout" id="au-checkout" aria-labelledby="au-checkout-titulo">
   <form class="au-checkout-form" id="au-checkout-form" novalidate>
     <h2 class="au-checkout-titulo" id="au-checkout-titulo">Assinar o Auditor</h2>
@@ -650,12 +595,12 @@
       </div>
       <label class="au-label" for="au-as-email">E-mail</label>
       <input class="au-input" id="au-as-email" name="email" type="email" inputmode="email" autocomplete="email" required>
-      <label class="au-label" for="au-as-telefone">WhatsApp (com DDD)</label>
+      <label class="au-label" for="au-as-telefone">Celular (com DDD)</label>
       <input class="au-input" id="au-as-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel-national" aria-describedby="au-as-telefone-nota" required>
-      <p class="au-ajuda" id="au-as-telefone-nota">É neste número que o relatório do Auditor chega.</p>
+      <p class="au-ajuda" id="au-as-telefone-nota">O sistema de pagamento pede um celular para a cobrança. O relatório chega no seu e-mail e no painel.</p>
       <div class="au-check">
         <input type="checkbox" id="au-ck-termos" required>
-        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).</label>
+        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.</label>
       </div>
       <button type="button" class="botao au-etapa-btn" id="au-checkout-continuar">Continuar para o pagamento</button>
     </fieldset>

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { log } from "../_shared/logger.ts";
-import { envelopeSeguro, eventoEmDoPayload, mapearEvento } from "./core.ts";
+import { envelopeSeguro, eventoEmDoPayload, mapearEvento, PLANOS_AUDITOR, triarEvento } from "./core.ts";
 
 const json = (status: number, body: unknown) => new Response(
   JSON.stringify(body),
@@ -42,10 +42,29 @@ Deno.serve(async (request) => {
     const data = body?.data && typeof body.data === "object" ? body.data as Record<string, unknown> : {};
     if (!eventId || !tipo) return json(400, { ok: false, error_code: "EVENTO_INVALIDO" });
 
+    const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+    // Só assinaturas do auditor (21/10): o Pagar.me manda aqui também cobranças do Roteador e de testes.
+    const triagem = triarEvento(tipo, data, PLANOS_AUDITOR.map((nome) => Deno.env.get(nome) || ""));
+    let doAuditor = triagem.decisao === "auditor";
+    if (triagem.decisao === "consultar") {
+      const { data: conhecida, error: erroConsulta } = await sb.from("auditor_assinaturas").select("id")
+        .eq("pagarme_subscription_id", triagem.subscriptionId).limit(1);
+      if (erroConsulta) {
+        log("error", "assinatura_auditor_webhook_triagem_falhou", {});
+        return json(500, { ok: false, error_code: "EVENTO_FALHOU" }); // o Pagar.me reenvia
+      }
+      doAuditor = (conhecida ?? []).length > 0;
+    }
+    if (!doAuditor) {
+      // Nada gravado; no log, só a contagem (sem ids, e-mail, documento ou valores).
+      log("info", "assinatura_auditor_webhook_ignorado", { fora_do_auditor: 1 });
+      return json(200, { ok: true, ignorado: "fora_do_auditor" });
+    }
+
     const { subscriptionId, status } = mapearEvento(tipo, data);
     // created_at do aviso no Pagar.me: o banco usa para ignorar aviso fora de ordem (achado F-01).
     const eventoEm = eventoEmDoPayload(body);
-    const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     const { data: result, error } = await sb.rpc("aplicar_evento_assinatura_auditor", {
       p_gateway_event_id: eventId,
       p_tipo: tipo,

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { envelopeSeguro, eventoEmDoPayload, mapearEvento } from "../../supabase/functions/assinatura-auditor-webhook/core.ts";
+import { envelopeSeguro, eventoEmDoPayload, mapearEvento, PLANOS_AUDITOR, planosDoEvento, triarEvento } from "../../supabase/functions/assinatura-auditor-webhook/core.ts";
+import { PLANOS } from "../../supabase/functions/assinatura-auditor/core.ts";
 
 test("created_at do topo do payload -> ISO em UTC; invalido ou ausente -> null", () => {
   assert.equal(eventoEmDoPayload({ id: "hook_1", created_at: "2026-10-16T12:34:56Z" }), "2026-10-16T12:34:56.000Z");
@@ -66,4 +67,44 @@ test("envelope sem e-mail, documento, telefone ou cartao", () => {
   assert.equal(env.data.charge_id, "ch_1");
   assert.equal(env.data.customer_id, "cus_1");
   assert.equal(env.status_aplicado, "recusada");
+});
+
+// ── Só eventos do auditor (21/10): o Pagar.me manda para todos os webhooks cadastrados ──
+const NOSSOS = ["plan_mensal", "plan_semanal", "plan_agencia"];
+
+test("os nomes dos secrets de plano são os mesmos do checkout", () => {
+  assert.deepEqual([...PLANOS_AUDITOR].sort(), Object.values(PLANOS).map((p) => p.env).sort());
+});
+
+test("metadata origem=auditor, em qualquer lugar do payload, marca o evento como do auditor", () => {
+  for (const data of [
+    { id: "sub_1", metadata: { origem: "auditor", plano: "semanal" } },
+    { subscription: { id: "sub_1", metadata: { origem: "auditor" } } },
+    { invoice: { id: "in_1", metadata: { origem: "auditor" } } },
+    { invoice: { subscription: { id: "sub_1", metadata: { origem: "auditor" } } } },
+  ]) {
+    assert.deepEqual(triarEvento("invoice.paid", data, NOSSOS), { decisao: "auditor", sinal: "metadata" }, JSON.stringify(data));
+  }
+});
+
+test("plan_id de um plano do auditor marca o evento como do auditor", () => {
+  assert.deepEqual(triarEvento("subscription.canceled", { id: "sub_2", plan: { id: "plan_semanal" } }, NOSSOS), { decisao: "auditor", sinal: "plano" });
+  assert.deepEqual(triarEvento("invoice.paid", { subscription: { id: "sub_2", plan_id: "plan_agencia" } }, NOSSOS), { decisao: "auditor", sinal: "plano" });
+  assert.deepEqual(planosDoEvento({ plan_id: "a", subscription: { plan: { id: "b" } }, invoice: { subscription: { plan_id: "c" } } }).sort(), ["a", "b", "c"]);
+});
+
+test("cobrança avulsa do Roteador ou de teste (sem assinatura, sem metadata, sem plano) → ignorar", () => {
+  const roteador = {
+    id: "ch_roteador", status: "paid", amount: 19700, metadata: { origem: "roteador" },
+    customer: { id: "cus_x", email: "pessoa@exemplo.com", document: "12345678909" },
+  };
+  assert.deepEqual(triarEvento("charge.paid", roteador, NOSSOS), { decisao: "ignorar" });
+  assert.deepEqual(triarEvento("order.paid", { id: "or_1" }, NOSSOS), { decisao: "ignorar" });
+  // sem planos configurados (secrets ausentes) a regra continua valendo: ignora em vez de aceitar tudo
+  assert.deepEqual(triarEvento("charge.paid", roteador, ["", ""]), { decisao: "ignorar" });
+});
+
+test("assinatura de outro produto, com plano que não é do auditor → só segue se o banco conhecer o id", () => {
+  assert.deepEqual(triarEvento("invoice.paid", { subscription: { id: "sub_outro", plan: { id: "plan_roteador" } } }, NOSSOS),
+    { decisao: "consultar", subscriptionId: "sub_outro" });
 });

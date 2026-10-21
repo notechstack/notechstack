@@ -220,7 +220,7 @@ test("limites do endereco aceitos: rua 120, numero 1 e 20, complemento 60, bairr
   }
 });
 
-test("CNPJ vira company e o WhatsApp vai em phones e no registro", async () => {
+test("CNPJ vira company e o celular vai em phones e no registro", async () => {
   const { deps, chamadas } = falsos();
   const r = await processarCheckout(pedido({ documento: "12.345.678/0001-95" }), deps);
   assert.equal(r.http, 200);
@@ -229,10 +229,10 @@ test("CNPJ vira company e o WhatsApp vai em phones e no registro", async () => {
   assert.equal(chamadas.registrar[0].whatsapp, "11987654321");
 });
 
-// Aceite unico e obrigatorio (Lucca, 16/10): Termos + relatorio no WhatsApp. Sem ele, nenhuma chamada ao Pagar.me.
+// Aceite unico e obrigatorio: Termos + relatorio por e-mail e no painel (Lucca, 21/10). Sem ele, nenhuma chamada ao Pagar.me.
 for (const [nome, extra] of [
-  ["sem WhatsApp", { telefone: undefined }],
-  ["WhatsApp vazio", { telefone: "" }],
+  ["sem celular", { telefone: undefined }],
+  ["celular vazio", { telefone: "" }],
   ["aceite ausente", { termos_aceite: undefined }],
   ["aceite desmarcado", { termos_aceite: false }],
   ['aceite "true" em string', { termos_aceite: "true" }],
@@ -269,7 +269,7 @@ test("plano sem plan_id -> 409 PLANO_INDISPONIVEL sem fetch", async () => {
   assert.equal(chamadas.fetch.length, 0);
 });
 
-test("ok -> 200 pendente e o registrar recebe WhatsApp + texto fixo do aceite", async () => {
+test("ok -> 200 pendente e o registrar recebe o celular + texto fixo do aceite", async () => {
   const { deps, chamadas } = falsos();
   // Espacos e quebras do textContent do navegador sao normalizados; o que se grava e a constante do servidor.
   const r = await processarCheckout(
@@ -285,7 +285,8 @@ test("ok -> 200 pendente e o registrar recebe WhatsApp + texto fixo do aceite", 
     status: "pendente",
     aceite_texto: TEXTO_ACEITE_ASSINATURA,
   }]);
-  assert.ok(TEXTO_ACEITE_ASSINATURA.includes("relatório do Auditor chega no WhatsApp que informei"));
+  assert.ok(TEXTO_ACEITE_ASSINATURA.includes("relatório do Auditor chega no meu e-mail e no meu painel"));
+  assert.ok(!/WhatsApp/.test(TEXTO_ACEITE_ASSINATURA), "o aceite não promete WhatsApp (Lucca, 21/10)");
   assert.ok(TEXTO_ACEITE_ASSINATURA.includes("Termos de Uso") && TEXTO_ACEITE_ASSINATURA.includes("Política de Privacidade"));
   assert.ok(!JSON.stringify(chamadas.log).includes("maria@exemplo.com"), "log com e-mail");
   assert.ok(!JSON.stringify(chamadas.log).includes("12345678909"), "log com documento");
@@ -388,4 +389,11 @@ test("reconciliacao trouxe pagamento -> 200 ok paga", async () => {
   deps.registrar = async () => ({ id: UUID, status: "paga" });
   const r = await processarCheckout(pedido(), deps);
   assert.deepEqual(r, { http: 200, body: { ok: true, status: "paga", assinatura_id: UUID } });
+});
+
+test("A2: o POST /subscriptions leva Idempotency-Key derivada do cartão tokenizado", async () => {
+  const { deps, chamadas } = falsos();
+  await processarCheckout(pedido(), deps);
+  const h = chamadas.fetch[0].init?.headers ?? chamadas.fetch[0].headers ?? {};
+  assert.match(String(h["Idempotency-Key"] ?? ""), /^auditor-token_/);
 });

@@ -5,11 +5,12 @@
 // O Deno.serve e o Supabase ficam em index.ts/store.ts; aqui é lógica testável.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { type ClienteStore, type ClientesConfig, criarRotasCliente } from "./clientes.ts";
 import { MetaApiError } from "../_shared/meta.ts";
 import { adsAlterarStatus, adsAtualizarOrcamento, adsCampanhaDetalhe, adsCampanhas, adsCriarCampanhaPesquisa, adsResumo, adsSugerirLocais, type AdsCtx } from "../_shared/marketing/google-ads.ts";
 import { type EscritaOk, diagnosticarConexoes } from "../_shared/marketing/conexoes.ts";
 import { type EstadoMetrica, Registro, type Valores, calcularEstados, semPermissao, semSegredo } from "../_shared/marketing/estados.ts";
-import { googleConsentimento, googleState, googleTrocarCodigo } from "../_shared/marketing/google-oauth.ts";
+import { GOOGLE_CALLBACK, googleConsentimento, googleState, googleTrocarCodigo } from "../_shared/marketing/google-oauth.ts";
 import { GoogleApiError, googleAccessToken, limparCacheGoogle } from "../_shared/marketing/google-auth.ts";
 import { ga4Resumo } from "../_shared/marketing/ga4.ts";
 import { gscResumo } from "../_shared/marketing/gsc.ts";
@@ -145,16 +146,22 @@ export type HubConfig = {
   google: GoogleConfig;
   googleCriacaoLiberada: boolean;
   appUrl: string;
+  // Conexões dos clientes do auditor (/cliente/*). Ausente = rotas respondem 503.
+  clientes?: ClientesConfig;
 };
 
 export type Deps = {
   store: MarketingStore;
+  clienteStore?: ClienteStore;
   autenticar: (token: string) => Promise<Chamador | null>;
   config: HubConfig;
   agora: () => Date;
   esperar: (ms: number) => Promise<void>;
   uuid: () => string;
   log: (nivel: "info" | "warn" | "error", evento: string, dados?: Record<string, unknown>) => void;
+  // Rotas do auditor (Frente 3, marketing-hub/auditor.ts): null = não é rota dele.
+  auditor?: (req: Request, partes: string[], json: (req: Request, status: number, corpo: unknown) => Response,
+    erro: (req: Request, status: number, code: string, mensagem: string, extra?: Record<string, unknown>) => Response) => Promise<Response | null>;
 };
 
 // ------------------------------------------------------------------- Helpers
@@ -206,11 +213,11 @@ function mensagemDe(e: unknown): string {
 }
 
 // `estados` (T2 Decided 1–2): só as métricas que não estão `disponivel`.
-type Bloco<T> =
+export type Bloco<T> =
   | { ok: true; dados: T; cache: boolean; estados: Record<string, EstadoMetrica> }
   | { ok: false; motivo: "nao_configurado" | "falha" | "sem_permissao"; mensagem: string };
 
-type Leitura<T> = {
+export type Leitura<T> = {
   ler: (reg: Registro) => Promise<T | null>;
   metricas?: (dados: T) => { periodo?: Valores; fixas?: Valores };
   atrasado: boolean;
@@ -228,6 +235,8 @@ const pagas = (d: { total: MetricasPagas }) => ({ periodo: { ...d.total } });
 
 export function criarHandler(deps: Deps) {
   const { store, config } = deps;
+  // Reconexão Google do admin: mesma base pública das rotas /cliente (proxy /hub do app quando configurado).
+  const callbackGoogle = config.clientes?.hubUrl ? `${config.clientes.hubUrl}/google/callback` : GOOGLE_CALLBACK;
 
   function autorizar(ch: Chamador | null, soAdmin = false): void {
     if (!ch || ch.banido) throw new HttpErro(401, "UNAUTHENTICATED", "Sessão inválida ou conta desligada.");
@@ -521,11 +530,19 @@ export function criarHandler(deps: Deps) {
 
   // --------------------------------------------------------------- Roteamento
 
+  // Autorização própria (membro do cliente ou NO_ADMIN aal2); não passa por `autorizar`.
+  const rotasCliente = criarRotasCliente({ deps, json, erro, bloco, periodo });
+
   async function atender(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const partes = rota(req);
     const m = req.method;
     const [r0, r1, r2, r3] = partes;
+
+    // Auditor: /internal/auditor/*, /cliente/excluir-conta e /auditor/operacao; antes de /cliente/* e de autorizar().
+    const doAuditor = deps.auditor ? await deps.auditor(req, partes, json, erro) : null;
+    if (doAuditor) return doAuditor;
+    if (r0 === "cliente") return await rotasCliente(req, url, partes);
 
     if (m === "POST" && r0 === "internal" && r1 === "publish-due" && partes.length === 2) {
       const segredo = req.headers.get("x-cron-secret") ?? "";
@@ -551,7 +568,7 @@ export function criarHandler(deps: Deps) {
       const code = url.searchParams.get("code");
       if (url.searchParams.has("error") || !code || !config.google.clientId || !config.google.clientSecret || !store.googleConexaoSalvar) return voltar("troca_falhou");
       try {
-        const refreshToken = await googleTrocarCodigo(config.google.clientId, config.google.clientSecret, code);
+        const refreshToken = await googleTrocarCodigo(config.google.clientId, config.google.clientSecret, code, callbackGoogle);
         await store.googleConexaoSalvar(dono.user_id, refreshToken, deps.uuid());
         limparCacheGoogle();
         for (const prefix of ["ga4:", "gsc:", "google_ads:", "campanhas_google:", "connections:", CHAVE_CONEXOES]) {
@@ -596,7 +613,7 @@ export function criarHandler(deps: Deps) {
       }
       const state = googleState();
       await store.cacheGravar(`google_oauth_state:${state}`, { user_id: chamador.userId }, 600);
-      const resposta = json(req, 200, { url: googleConsentimento(config.google.clientId, state) });
+      const resposta = json(req, 200, { url: googleConsentimento(config.google.clientId, state, callbackGoogle) });
       resposta.headers.set("Cache-Control", "no-store");
       return resposta;
     }
