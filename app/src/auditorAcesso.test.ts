@@ -36,13 +36,13 @@ describe('auditor-acesso (C6)', () => {
       { auditor_aceite_versao: 'termos-2026-10-21', auditor_aceite_em: '2026-10-21T04:00:00.000Z' })
     expect(d.gerarLink).toHaveBeenCalledWith('pessoa@loja.com.br', 'https://app.notechstack.com.br/auditor/entrar?site=https%3A%2F%2Floja.com.br%2F')
     expect(d.enviar).toHaveBeenCalledTimes(1)
-    expect((d.enviar.mock.calls[0] as unknown as [string, { texto: string }])[1].texto).toContain('/auth/v1/verify?token=x')
+    expect((vi.mocked(d.enviar).mock.calls[0] as unknown as [string, { texto: string }])[1].texto).toContain('/auth/v1/verify?token=x')
   })
 
   it('só hashes vão ao banco: e-mail e IP nunca em texto na chave', async () => {
     const d = deps({ permitido: true, user_id: null, papel: null })
     await handle(pedido(VALIDO), d)
-    const [, chaveEmail, chaveIp] = d.preparar.mock.calls[0] as unknown as [string, string, string]
+    const [, chaveEmail, chaveIp] = vi.mocked(d.preparar).mock.calls[0] as unknown as [string, string, string]
     expect(chaveEmail).toMatch(/^[0-9a-f]{64}$/)
     expect(chaveIp).toMatch(/^[0-9a-f]{64}$/)
     expect(chaveEmail).not.toBe(chaveIp)

@@ -105,6 +105,12 @@ export function LoginPage() {
       return
     }
 
+    // Cliente do auditor (inclui a conta de revisor da Meta/Google, que entra com senha).
+    if (user.app_metadata.role === 'AUDITOR_CLIENT') {
+      navigate('/auditor', { replace: true })
+      return
+    }
+
     const { projects, error: projectsError } = await listAccessibleProjects()
 
     if (projectsError) {
