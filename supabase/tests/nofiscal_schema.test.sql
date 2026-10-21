@@ -187,11 +187,12 @@ select ok(not has_function_privilege('supabase_read_only_user', 'nofiscal.read_c
 -- e authenticated.
 -- Agente fiscal (lote A, Landing de .checks/agente-fiscal-whatsapp.md): 5 tabelas do motor
 -- mais 9 do agente; o lote B acrescenta fiscal_agent_once (Landing, "Mensagem repetida e
--- avisos únicos"). A contagem continua exata: tabela nova exige rever esta prova.
+-- avisos únicos"); a v2 (lote D, .checks/agente-fiscal-v2.md, "Cota de PDFs") acrescenta
+-- fiscal_importacao_pdfs. A contagem continua exata: tabela nova exige rever esta prova.
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  15, 'papéis de fora não leem nofiscal: o schema tem as 15 tabelas avaliadas abaixo');
+  16, 'papéis de fora não leem nofiscal: o schema tem as 16 tabelas avaliadas abaixo');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated')) r(role)
