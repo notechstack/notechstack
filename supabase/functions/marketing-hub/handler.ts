@@ -10,7 +10,7 @@ import { MetaApiError } from "../_shared/meta.ts";
 import { adsAlterarStatus, adsAtualizarOrcamento, adsCampanhaDetalhe, adsCampanhas, adsCriarCampanhaPesquisa, adsResumo, adsSugerirLocais, type AdsCtx } from "../_shared/marketing/google-ads.ts";
 import { type EscritaOk, diagnosticarConexoes } from "../_shared/marketing/conexoes.ts";
 import { type EstadoMetrica, Registro, type Valores, calcularEstados, semPermissao, semSegredo } from "../_shared/marketing/estados.ts";
-import { googleConsentimento, googleState, googleTrocarCodigo } from "../_shared/marketing/google-oauth.ts";
+import { GOOGLE_CALLBACK, googleConsentimento, googleState, googleTrocarCodigo } from "../_shared/marketing/google-oauth.ts";
 import { GoogleApiError, googleAccessToken, limparCacheGoogle } from "../_shared/marketing/google-auth.ts";
 import { ga4Resumo } from "../_shared/marketing/ga4.ts";
 import { gscResumo } from "../_shared/marketing/gsc.ts";
@@ -232,6 +232,8 @@ const pagas = (d: { total: MetricasPagas }) => ({ periodo: { ...d.total } });
 
 export function criarHandler(deps: Deps) {
   const { store, config } = deps;
+  // Reconexão Google do admin: mesma base pública das rotas /cliente (proxy /hub do app quando configurado).
+  const callbackGoogle = config.clientes?.hubUrl ? `${config.clientes.hubUrl}/google/callback` : GOOGLE_CALLBACK;
 
   function autorizar(ch: Chamador | null, soAdmin = false): void {
     if (!ch || ch.banido) throw new HttpErro(401, "UNAUTHENTICATED", "Sessão inválida ou conta desligada.");
@@ -560,7 +562,7 @@ export function criarHandler(deps: Deps) {
       const code = url.searchParams.get("code");
       if (url.searchParams.has("error") || !code || !config.google.clientId || !config.google.clientSecret || !store.googleConexaoSalvar) return voltar("troca_falhou");
       try {
-        const refreshToken = await googleTrocarCodigo(config.google.clientId, config.google.clientSecret, code);
+        const refreshToken = await googleTrocarCodigo(config.google.clientId, config.google.clientSecret, code, callbackGoogle);
         await store.googleConexaoSalvar(dono.user_id, refreshToken, deps.uuid());
         limparCacheGoogle();
         for (const prefix of ["ga4:", "gsc:", "google_ads:", "campanhas_google:", "connections:", CHAVE_CONEXOES]) {
@@ -605,7 +607,7 @@ export function criarHandler(deps: Deps) {
       }
       const state = googleState();
       await store.cacheGravar(`google_oauth_state:${state}`, { user_id: chamador.userId }, 600);
-      const resposta = json(req, 200, { url: googleConsentimento(config.google.clientId, state) });
+      const resposta = json(req, 200, { url: googleConsentimento(config.google.clientId, state, callbackGoogle) });
       resposta.headers.set("Cache-Control", "no-store");
       return resposta;
     }

@@ -335,6 +335,25 @@ function metaOk(c: Chamada, extra: Partial<{ appId: string; scopes: string[]; ex
   return undefined
 }
 
+describe('/cliente — atrás do proxy /hub do app (MARKETING_HUB_PUBLIC_URL)', () => {
+  const PROXY = 'https://app.notechstack.com.br/hub'
+  it('ida e volta usam a base pública; o cookie é host-only, então fica preso ao domínio do proxy', async () => {
+    const m = montar({ clientes: { ...CONFIG.clientes!, hubUrl: PROXY } })
+    const r = await m.chamar('POST', `/cliente/${CLI_A}/meta/conectar`, 'cliente-a')
+    const ir = new URL(r.body.url)
+    expect(`${ir.origin}${ir.pathname}`).toBe(`${PROXY}/cliente/meta/ir`)
+    const via = await m.chamar('GET', `/cliente/meta/ir${ir.search}`)
+    const destino = new URL(via.headers.get('location')!)
+    expect(destino.searchParams.get('redirect_uri')).toBe(`${PROXY}/cliente/meta/callback`)
+    const cookie = via.headers.get('set-cookie')!
+    expect(cookie).toMatch(/^__Host-no_oauth_meta=[a-f0-9]{64}; Path=\/;/)
+    expect(cookie).not.toMatch(/domain=/i)
+    mockFetch((c) => metaOk(c))
+    const volta = await m.chamar('GET', `/cliente/meta/callback?code=C&state=${ir.searchParams.get('state')}`, undefined, undefined, { cookie: cookie.split(';')[0] })
+    expect(voltaDe(volta).searchParams.get('resultado')).toBe('ok')
+  })
+})
+
 describe('/cliente/meta — ida e volta', () => {
   it('ida: /ir põe cookie HttpOnly e manda ao Facebook com o challenge do verifier', async () => {
     const m = montar()

@@ -69,12 +69,15 @@ Os ids da Meta (conta de anúncios `act_…`, Página, Instagram) ficam em `ad_a
 | `MARKETING_OAUTH_STATE_SECRET` | chave HMAC do state e do PKCE (32+ caracteres aleatórios) |
 | `AUDITOR_META_APP_ID` / `AUDITOR_META_APP_SECRET` | app da Meta usado no login dos clientes (nomes próprios: `META_APP_SECRET` é do legado de abril) |
 | `AUDITOR_META_LOGIN_CONFIG_ID` | configuração do Facebook Login for Business (`ads_read`); sem ela, pede `scope=ads_read` |
-| `MARKETING_HUB_PUBLIC_URL` | opcional; base pública da função para o `redirect_uri` (domínio verificado, para a verificação Google) |
+| `MARKETING_HUB_PUBLIC_URL` | base pública da função para os `redirect_uri` (das rotas `/cliente/*` e da reconexão Google do admin). Em produção: `https://app.notechstack.com.br/hub`, o proxy da Vercel (`app/vercel.json`), porque o Google exige um domínio verificado. Sem ela, a base é a URL da função no `supabase.co` |
 | `AUDITOR_VOLTA_URL` | opcional; destino da volta, com `{client_id}` (padrão `APP_URL/auditor/{client_id}/conexoes`) |
 
 O Google reaproveita `GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`. Se `GOOGLE_ADS_DEVELOPER_TOKEN`
 existir, ele vai no cabeçalho; se não existir, o cabeçalho é omitido. Os redirect URIs a cadastrar são
-`<base>/cliente/meta/callback` e `<base>/cliente/google/callback`. A listagem de propriedades GA4 usa
+`<base>/cliente/meta/callback`, `<base>/cliente/google/callback` e `<base>/google/callback` (admin), além do
+Deauthorize Callback da Meta em `<base>/cliente/meta/desautorizar`. Mantenha também as URIs do `supabase.co` durante a troca.
+O cookie do fluxo é host-only (`__Host-`, sem `Domain`): ele fica preso ao host que respondeu `/ir`, então a ida e a volta
+precisam usar a mesma base. Isso é garantido porque as duas vêm de `MARKETING_HUB_PUBLIC_URL`. A listagem de propriedades GA4 usa
 a Analytics Admin API, que precisa estar ativada no projeto Cloud.
 
 ### Provas locais
