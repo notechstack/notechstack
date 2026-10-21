@@ -6,6 +6,7 @@
     "dev": "npx --yes http-server -p 3000 -c-1 -o",
     "start": "npx --yes http-server -p 3000 -c-1",
     "sync:layout": "node shared/sync-site-layout.mjs",
-    "check:layout": "node shared/sync-site-layout.mjs --check"
+    "check:layout": "node shared/sync-site-layout.mjs --check",
+    "fiscal:demo": "node tools/fiscal-demo/demo.mjs"
   }
 }
