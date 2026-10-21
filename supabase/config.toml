@@ -91,3 +91,6 @@ verify_jwt = true
 # /internal/publish-due é chamada pelo pg_cron com x-cron-secret, sem JWT.
 [functions.marketing-hub]
 verify_jwt = false
+
+[functions.auditor-acesso]
+verify_jwt = false

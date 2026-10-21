@@ -11,7 +11,7 @@ const API_PADRAO = 'https://api.pagar.me/core/v5';
 export const FUNCAO_URL_PADRAO = 'http://127.0.0.1:54321/functions/v1/assinatura-auditor';
 const CARTAO_TESTE_APROVADO = '4000000000000010';
 // Igual a TEXTO_ACEITE_ASSINATURA de supabase/functions/assinatura-auditor/core.ts (scripts.test.mjs confere).
-export const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).';
+export const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.';
 // Endereço de cobrança fictício de teste (o token da v5 não leva endereço; a função manda este ao Pagar.me).
 export const ENDERECO_TESTE = { cep: '01001000', rua: 'Praça da Sé', numero: '100', bairro: 'Sé', cidade: 'São Paulo', uf: 'SP' };
 

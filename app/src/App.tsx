@@ -24,6 +24,16 @@ const LogPage = lazy(() => import('./marketing/LogPage').then(m => ({ default: m
 const AgentPage = lazy(() => import('./marketing/AgentPage').then(m => ({ default: m.AgentPage })))
 const LeadsPage = lazy(() => import('./marketing/LeadsPage').then(m => ({ default: m.LeadsPage })))
 const ConnectionsPage = lazy(() => import('./marketing/ConnectionsPage').then(m => ({ default: m.ConnectionsPage })))
+const EntrarAuditorPage = lazy(() => import('./auditor/EntrarPage').then(m => ({ default: m.EntrarPage })))
+const AuditorLayout = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.AuditorLayout })))
+const AuditorHomePage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.AuditorHomePage })))
+const AuditorConexoesPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.ConexoesPage })))
+const AuditorRelatoriosPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatoriosPage })))
+const AuditorRelatorioPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatorioPage })))
+const AuditorContaPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.ContaPage })))
+const AuditorRota = lazy(() => import('./auditor/AuditorRota').then(m => ({ default: m.AuditorRota })))
+const AuditorPlanosPage = lazy(() => import('./auditor/PlanosPage').then(m => ({ default: m.PlanosPage })))
+const AuditorOperacaoPage = lazy(() => import('./auditor/OperacaoPage').then(m => ({ default: m.OperacaoPage })))
 const MarketingAccessPage = lazy(() => import('./marketing/MarketingAccessPage').then(m => ({ default: m.MarketingAccessPage })))
 
 const AgencyConsolePage = lazy(() => import('./agency/AgencyConsolePage').then(m => ({ default: m.AgencyConsolePage })))
@@ -41,6 +51,19 @@ export function AppRoutes() {
       {BrandingPreview ? <Route path="/__preview/cliente-agencia/:module" element={<Suspense fallback={<p>Carregando prévia…</p>}><BrandingPreview /></Suspense>} /> : null}
       <Route path="/acesso" element={<AccessPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auditor/entrar" element={<EntrarAuditorPage />} />
+      {/* Auditor por cliente: o acesso é decidido no servidor (RLS + auditor_eu_*), não pelo papel.
+          Sem sessão, vai para /auditor/entrar com o destino guardado (revisão B1). */}
+      <Route element={<AuditorRota />}>
+        <Route path="/auditor" element={<AuditorLayout />}>
+          <Route index element={<AuditorHomePage />} />
+          <Route path="conta" element={<AuditorContaPage />} />
+          <Route path="planos" element={<AuditorPlanosPage />} />
+          <Route path=":clientId/conexoes" element={<AuditorConexoesPage />} />
+          <Route path=":clientId/relatorios" element={<AuditorRelatoriosPage />} />
+          <Route path=":clientId/relatorios/:relatorioId" element={<AuditorRelatorioPage />} />
+        </Route>
+      </Route>
       <Route element={<ProtectedRoute />}>
         <Route path="/agencia" element={<AgencyConsolePage />} />
         <Route path="/agencia/:agencyId" element={<AgencyConsolePage />} />
@@ -75,6 +98,7 @@ export function AppRoutes() {
         <Route path="/no/*" element={<RoleRoute roles={['NO_ADMIN']} requireAal2 />}>
           <Route path="projetos" element={<AdminProjectsPage />} />
           <Route path="agencias" element={<AgencyManagementPage />} />
+          <Route path="auditor" element={<AuditorOperacaoPage />} />
           <Route path="projetos/:projectId" element={<AdminProjectDetailPage />} />
           <Route path="atividade" element={<AdminActivityPage />} />
           <Route path="saldos" element={<SaldosPage />} />

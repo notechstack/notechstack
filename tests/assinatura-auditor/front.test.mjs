@@ -1,10 +1,10 @@
 // Front da assinatura do Auditor (TASK-mvbcb35pbn0, decisões de Lucca em 16/10):
 // (A) a LP do auditor volta ao aprovado: sem preço, sem seção de planos, sem assinatura.js. Os planos ficam só na
 //     tela final da retrospectiva (retrospectiva/index.html, na raiz da pasta da TASK, fora do repo);
-// (B) aceite único e obrigatório dos Termos, que já diz que o relatório chega no WhatsApp informado.
+// (B) aceite único e obrigatório dos Termos: o relatório chega por e-mail e no painel (Lucca, 21/10; antes, WhatsApp).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -14,10 +14,15 @@ const aqui = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(aqui, '..', '..');
 const lp = readFileSync(resolve(repo, 'agentes/auditor/index.html'), 'utf8');
 const lpCss = readFileSync(resolve(repo, 'agentes/auditor/auditor.css'), 'utf8');
-const html = readFileSync(resolve(repo, '..', 'retrospectiva', 'index.html'), 'utf8');
+// A cópia "da mesa" (fora do repo, com caminhos /repo/...) só existe na máquina da TASK original. Sem ela, as provas
+// de conteúdo rodam na cópia versionada do site; as 1–2 que são só da mesa ficam marcadas como skip (revisão do #66).
+const mesaHtml = resolve(repo, '..', 'retrospectiva', 'index.html');
+const temMesa = existsSync(mesaHtml);
+const SEM_MESA = temMesa ? false : 'cópia da mesa (../retrospectiva/) ausente nesta máquina';
+const html = readFileSync(temMesa ? mesaHtml : resolve(repo, 'agentes/auditor/retrospectiva/index.html'), 'utf8');
 const js = readFileSync(resolve(repo, 'agentes/auditor/assinatura.js'), 'utf8');
 
-const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).';
+const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.';
 const PRECO_RE = /R\$\s*(47|97|197)\b/;
 const lf = (s) => s.replace(/\r\n/g, '\n');
 const textContent = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -60,7 +65,8 @@ test('a última tela da retrospectiva é a de planos: 3 planos da T1, preço den
     const [nome, preco] = esperado[codigo];
     assert.ok(c.includes(nome), `nome ${nome}`);
     assert.ok(c.includes(preco), `preço ${preco} dentro do cartão ${codigo}`);
-    assert.match(c, /WhatsApp/, `canal WhatsApp ${codigo}`);
+    assert.match(c, /e-mail e no painel/, `canal e-mail + painel ${codigo}`);
+    assert.doesNotMatch(c, /WhatsApp/, `sem promessa de WhatsApp ${codigo}`);
     assert.match(c, new RegExp(`<button\\b[^>]*class="[^"]*au-plano-btn[^"]*"[^>]*data-plano="${codigo}"[^>]*\\bdisabled`), `botão ${codigo} começa desabilitado`);
   }
   assert.match(tela, /au-plano--recomendado[^>]*data-plano="semanal"/, 'Semanal é o recomendado');
@@ -97,19 +103,19 @@ test('checkout em duas etapas: cadastro base e aceite primeiro; documento, cart�
   assert.match(e2, /^<div class="au-etapa-2" id="au-etapa-2" hidden>/, 'etapa 2 começa fechada');
   assert.match(html, /<button type="submit"[^>]*id="au-checkout-assinar"[^>]*\bhidden\b/, '"Pagar e assinar" só aparece na etapa 2');
   assert.match(html, /<button type="button"[^>]*id="au-checkout-continuar"/, '"Continuar" não envia o formulário');
-  const css = readFileSync(resolve(repo, '..', 'retrospectiva', 'planos.css'), 'utf8');
+  const css = readFileSync(temMesa ? resolve(repo, '..', 'retrospectiva', 'planos.css') : resolve(repo, 'agentes/auditor/retrospectiva/planos.css'), 'utf8');
   assert.match(css, /\.au-checkout \[hidden\]\s*\{\s*display:\s*none !important/, 'etapa fechada some mesmo com display de .au-fieldset/.botao');
   assert.match(js, /if \(etapa2\.hidden\) \{ continuar\(\); return; \}/, 'Enter na etapa 1 vale como Continuar, nunca como pagamento');
 });
 
-test('tela final carrega assinatura.js e assinatura-medicao.js do repo por caminho absoluto, sem CDN novo', () => {
+test('tela final carrega assinatura.js e assinatura-medicao.js do repo por caminho absoluto, sem CDN novo', { skip: SEM_MESA }, () => {
   assert.match(html, /<script\b[^>]*src="\/repo\/agentes\/auditor\/assinatura-medicao\.js[^"]*"/);
   assert.match(html, /<script\b[^>]*src="\/repo\/agentes\/auditor\/assinatura\.js[^"]*"/);
   assert.match(html, /<link\b[^>]*href="planos\.css"/);
   assert.doesNotMatch(html, /<(script|link)\b[^>]*\b(src|href)="(https?:)?\/\//, 'nenhum script ou css de CDN');
 });
 
-test('checkout: uma só caixa obrigatória com o texto do aceite, WhatsApp obrigatório, nenhuma caixa do relatório', () => {
+test('checkout: uma só caixa obrigatória com o texto do aceite, celular obrigatório, nenhuma caixa do relatório', () => {
   const caixas = (html.match(/<input\b[^>]*type="checkbox"[^>]*>/g) || []).filter((t) => /au-ck-/.test(t));
   assert.equal(caixas.length, 1, 'uma única caixa de aceite no checkout');
   const termos = tag('au-ck-termos');
@@ -126,7 +132,7 @@ test('checkout: uma só caixa obrigatória com o texto do aceite, WhatsApp obrig
   const tel = tag('au-as-telefone');
   assert.match(tel, /\brequired\b/);
   const labelTel = html.match(/<label\b[^>]*for="au-as-telefone"[^>]*>([\s\S]*?)<\/label>/);
-  assert.equal(textContent(labelTel[1]), 'WhatsApp (com DDD)');
+  assert.equal(textContent(labelTel[1]), 'Celular (com DDD)');
 });
 
 test('inputs do cartão não têm atributo name', () => {
@@ -168,8 +174,8 @@ test('etapa 1 valida só o cadastro base e o aceite; etapa 2 só documento, cart
     const erros = validarEtapa2({ ...dadosOk, endereco: { ...dadosOk.endereco, ...ruim } });
     assert.ok(erros.some((e) => /endereço de cobrança/.test(e)), `endereço ${JSON.stringify(ruim)} → erro`);
   }
-  assert.equal(resumoEtapa1(dadosOk), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 99999-0000');
-  assert.equal(resumoEtapa1({ ...dadosOk, telefone: '1133334444' }), 'Ana Lima · ana@exemplo.com.br · WhatsApp (11) 3333-4444');
+  assert.equal(resumoEtapa1(dadosOk), 'Ana Lima · ana@exemplo.com.br · celular (11) 99999-0000');
+  assert.equal(resumoEtapa1({ ...dadosOk, telefone: '1133334444' }), 'Ana Lima · ana@exemplo.com.br · celular (11) 3333-4444');
 });
 
 test('montarPedido: corpo exato (plano, nome, email, documento, telefone, card_token, termos_aceite, aceite_texto, endereco), sem cartão', () => {
@@ -194,10 +200,10 @@ test('normalizarTexto: espaços e quebras viram um espaço só', () => {
   assert.equal(montarPedido(dadosOk, 'tok', ' ' + TEXTO_ACEITE.replace(' Sei', '\n   Sei') + '\n').aceite_texto, TEXTO_ACEITE);
 });
 
-test('validar: WhatsApp é obrigatório (vazio ou sem DDD dá erro)', () => {
+test('validar: celular é obrigatório (vazio ou sem DDD dá erro)', () => {
   for (const tel of ['', '   ', '9999-0000', '11 99999-00001']) {
     const erros = validar({ ...dadosOk, telefone: tel });
-    assert.ok(erros.some((e) => /WhatsApp/i.test(e)), `telefone "${tel}" → erro de WhatsApp`);
+    assert.ok(erros.some((e) => /celular/i.test(e)), `telefone "${tel}" → erro de celular`);
   }
 });
 

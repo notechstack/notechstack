@@ -159,6 +159,9 @@ export type Deps = {
   esperar: (ms: number) => Promise<void>;
   uuid: () => string;
   log: (nivel: "info" | "warn" | "error", evento: string, dados?: Record<string, unknown>) => void;
+  // Rotas do auditor (Frente 3, marketing-hub/auditor.ts): null = não é rota dele.
+  auditor?: (req: Request, partes: string[], json: (req: Request, status: number, corpo: unknown) => Response,
+    erro: (req: Request, status: number, code: string, mensagem: string, extra?: Record<string, unknown>) => Response) => Promise<Response | null>;
 };
 
 // ------------------------------------------------------------------- Helpers
@@ -536,6 +539,9 @@ export function criarHandler(deps: Deps) {
     const m = req.method;
     const [r0, r1, r2, r3] = partes;
 
+    // Auditor: /internal/auditor/*, /cliente/excluir-conta e /auditor/operacao; antes de /cliente/* e de autorizar().
+    const doAuditor = deps.auditor ? await deps.auditor(req, partes, json, erro) : null;
+    if (doAuditor) return doAuditor;
     if (r0 === "cliente") return await rotasCliente(req, url, partes);
 
     if (m === "POST" && r0 === "internal" && r1 === "publish-due" && partes.length === 2) {
