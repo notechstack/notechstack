@@ -11,7 +11,7 @@ export const TEXTO_ACEITE =
   'e no meu painel do auditor.'
 
 // Opt-in OPCIONAL e desmarcado (Lucca, 21/10): a equipe da nó manda uma cópia do relatório pelo WhatsApp, à mão.
-// Só com ele a equipe lê o texto final do relatório (nunca as métricas brutas), e cada leitura fica registrada.
+// Só com ele a equipe lê o texto do e-mail (resumo com totais + prioridades; nunca o painel nem dados por campanha), e cada leitura fica registrada.
 export const TEXTO_COPIA_WHATSAPP = 'Quero receber também uma cópia do relatório pelo WhatsApp, enviada pela equipe da nó, no celular informado acima.'
 
 export const PLANOS: { codigo: CodigoPlano; nome: string; preco: string; ritmo: string; itens: string[]; recomendado?: boolean }[] = [

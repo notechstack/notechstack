@@ -32,7 +32,7 @@ export function CopiaWhatsappConta() {
         <>
           <p className="mt-2 text-sm">
             A equipe da nó manda uma cópia de cada relatório para o celular terminado em <strong>{conta.dados.copia_whatsapp_numero?.slice(-4)}</strong>.
-            Para isso, ela lê só o texto final do relatório, nunca os números das suas contas.
+            Para isso, ela lê o mesmo texto do e-mail (o resumo, com os totais do período, e as prioridades); não vê o painel, os dados por campanha nem as suas contas.
           </p>
           <button type="button" className={`${botaoSecundario} mt-3`} disabled={estado.ocupado} onClick={() => void alternar(false)}>Parar a cópia pelo WhatsApp</button>
         </>
