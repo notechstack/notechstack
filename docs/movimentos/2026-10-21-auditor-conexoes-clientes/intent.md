@@ -1,6 +1,6 @@
 ---
 movement_id: auditor-conexoes-clientes
-status: proposed
+status: approved
 owner: Lucca
 created: 2026-10-21
 updated: 2026-10-21
@@ -103,4 +103,4 @@ significaria escrevê-lo duas vezes.
 
 ## Decisão do gate
 
-Pendente: aguarda o Lucca junto com a spec.
+**Aprovado** pelo Lucca em 21/10/2026, junto com a spec (D1–D10 como recomendado).
