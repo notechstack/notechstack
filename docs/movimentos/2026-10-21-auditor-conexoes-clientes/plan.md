@@ -3,7 +3,7 @@ movement_id: auditor-conexoes-clientes
 intent: ./intent.md
 spec: ./spec.md
 spec_revision: 1.1 (aprovada em 21/10/2026, D1–D10 como recomendado)
-status: proposed
+status: approved
 updated: 2026-10-21
 ---
 
@@ -385,4 +385,6 @@ Testes: `supabase/tests/auditor_clientes.test.sql` (pgTAP), com os critérios C1
 
 ## Decisão do gate
 
-Pendente. Aguarda o Lucca. Nenhuma implementação começa antes desta aprovação.
+**Aprovado** em 21/10/2026 pelo orquestrador das três frentes, a quem o Lucca delegou a coordenação,
+"como está", incluindo o checkout no app (`/auditor/planos`). O orquestrador leva essa decisão nova ao
+Lucca no resumo; se ele mudar, ajusta-se depois. Execução registrada em `execution.md`.
