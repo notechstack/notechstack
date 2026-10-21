@@ -208,7 +208,7 @@ select is((select count(*)::int from public.auditor_relatorios where client_id =
 select is((select count(*)::int from public.auditor_clientes where client_id = (select x from ids)), 0, 'C16 negócio apagado');
 select is((select count(*)::int from public.clients where id = (select x from ids)), 0, 'C16 clients apagado');
 select is((select count(*)::int from auth.users where id = 'a3000000-0000-4000-8000-00000000000a'), 0, 'C16 usuário Auth apagado');
-select is((select estado from public.auditor_exclusoes where origem = 'cliente'), 'concluido', 'C16 exclusão concluída');
+select is((select estado from public.auditor_exclusoes where origem = 'cliente' and conta_id = (select id from conta_a)), 'concluido', 'C16 exclusão concluída');
 select results_eq($$select nome, email like 'excluido+%', whatsapp, conta_id from public.auditor_assinaturas where id = 'a3100000-0000-4000-8000-000000000001'$$,
   $$values ('[excluído]'::text, true, '0000000000'::text, null::uuid)$$, 'C16 assinatura anonimizada e guardada');
 select is((select count(*)::int from public.clients where id = (select y from ids)), 1, 'C16 negócio de B intocado');
@@ -311,6 +311,31 @@ reset role;
 select results_eq($$select copia_whatsapp, copia_whatsapp_numero from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000c1'$$,
   $$values (false, null::text)$$, 'cópia desligada apaga o número');
 select is(public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad'), null, 'cópia desligada: equipe não lê mais');
+
+-- ------------------------------------------------------------ 11 cobranças de fora do auditor (Roteador/testes, 19–21/10)
+-- Gravadas pela versão antiga do webhook: pagas, sem id de assinatura nem de fatura. Ficam no banco (não apagar),
+-- mas não podem criar conta, assinatura, acesso nem relatório.
+create temp table antes on commit drop as
+select (select count(*) from public.auditor_contas) contas, (select count(*) from public.auditor_assinaturas) assinaturas,
+       (select count(*) from public.auditor_relatorios) relatorios, (select count(*) from public.auditor_lista_envio_relatorio) lista;
+select public.aplicar_evento_assinatura_auditor('hook_fora_' || g, 'charge.paid', null, 'paga',
+  jsonb_build_object('id', 'hook_fora_' || g, 'type', 'charge.paid', 'data', jsonb_build_object('id', 'ch_fora_' || g, 'subscription_id', null, 'invoice_id', null)),
+  now() - make_interval(hours => g))
+from generate_series(1, 11) g;
+select is((select count(*)::int from public.auditor_assinatura_eventos where gateway_event_id like 'hook_fora_%'), 11, '11 cobranças de fora gravadas (como em produção)');
+select is((select count(*) from public.auditor_assinaturas), (select assinaturas from antes), 'cobranças de fora não criam assinatura');
+select is((select count(*) from public.auditor_contas), (select contas from antes), 'cobranças de fora não criam conta');
+select is((select count(*) from public.auditor_lista_envio_relatorio), (select lista from antes), 'cobranças de fora não dão acesso (lista de envio igual)');
+select is(public.auditor_planejar_relatorios(timestamptz '2026-11-02 09:00:00+00') >= 0, true, 'planejar roda com elas no banco');
+select is((select count(*) from public.auditor_relatorios r where not exists (select 1 from public.auditor_clientes ac where ac.client_id = r.client_id)), 0::bigint,
+  'nenhum relatório sem negócio');
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
+  ('a3000000-0000-4000-8000-0000000000e9', 'authenticated', 'authenticated', 'fora@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+select public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000e9', 'fora@example.test', null);
+select results_eq($$select plano, assinatura_id from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000e9'$$,
+  $$values ('gratis'::text, null::uuid)$$, 'conta nova não herda nada das cobranças de fora');
+select is(public.auditor_conta_com_acesso((select id from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000e9')), false,
+  'sem acesso pago');
 
 select * from finish();
 rollback;

@@ -90,8 +90,11 @@ ok(linha.fontes.meta_ads === 'sem_conexao' && linha.fontes.site === 'nao_disponi
 const ac = `${API}/functions/v1/auditor-acesso`
 ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'x' } })).status === 400, 'auditor-acesso: e-mail inválido → 400')
 ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'a@b.com', aceite: false } })).status === 400, 'auditor-acesso: sem aceite → 400')
-const semResend = await chamar(ac, { metodo: 'POST', corpo: { email: `novo-${randomUUID().slice(0, 6)}@example.test`, aceite: true, aceite_versao: 'termos-2026-10-21' } })
+const emailNovo = `novo-${randomUUID().slice(0, 6)}@example.test`
+const semResend = await chamar(ac, { metodo: 'POST', corpo: { email: emailNovo, aceite: true, aceite_versao: 'termos-2026-10-21' } })
 ok(semResend.status === 502 && semResend.json?.motivo === 'indisponivel', 'auditor-acesso sem RESEND_API_KEY → 502 controlado', semResend)
+// o usuário nasce antes do envio falhar; o teste não deixa sobra no banco
+psql(`delete from auth.users where email = '${emailNovo}'`)
 
 // 4b · checkout logado (C19): sem sessão 401 antes do Pagar.me; sessão sem conta do auditor 409.
 const ck = `${API}/functions/v1/assinatura-auditor`
@@ -101,6 +104,24 @@ const semConta = await usuario('AUDITOR_CLIENT')
 const r409 = await chamar(ck, { metodo: 'POST', jwt: semConta.jwt, corpo: { plano: 'semanal' } })
 ok(r409.status === 409 && r409.json?.error_code === 'SEM_CONTA', 'assinatura-auditor com sessão sem conta → 409 SEM_CONTA', r409)
 psql(`delete from auth.users where id = '${semConta.id}'`)
+
+// 4c · webhook: só eventos do auditor (21/10). Credencial Basic só de teste local (AUDITOR_WEBHOOK_BASIC).
+const BASIC = process.env.AUDITOR_WEBHOOK_BASIC
+if (BASIC) {
+  const wh = `${API}/functions/v1/assinatura-auditor-webhook`
+  const ev = (id, data, tipo = 'charge.paid') => chamar(wh, { metodo: 'POST', corpo: { id, type: tipo, created_at: new Date().toISOString(), data }, headers: { authorization: `Basic ${Buffer.from(BASIC).toString('base64')}` } })
+  const idFora = `hook_roteador_${randomUUID().slice(0, 8)}`
+  const fora = await ev(idFora, { id: 'ch_r', status: 'paid', metadata: { origem: 'roteador' }, customer: { email: 'pessoa@exemplo.com' } })
+  ok(fora.status === 200 && fora.json?.ignorado === 'fora_do_auditor', 'webhook: cobrança do Roteador → 200 fora_do_auditor', fora)
+  ok(psql(`select count(*) from public.auditor_assinatura_eventos where gateway_event_id = '${idFora}'`) === '0', 'webhook: nada gravado do Roteador')
+  const idNosso = `hook_auditor_${randomUUID().slice(0, 8)}`
+  const nosso = await ev(idNosso, { id: 'sub_edge', status: 'canceled', metadata: { origem: 'auditor' } }, 'subscription.canceled')
+  ok(nosso.status === 200 && psql(`select count(*) from public.auditor_assinatura_eventos where gateway_event_id = '${idNosso}'`) === '1', 'webhook: evento do auditor gravado', nosso)
+  const idPlano = `hook_plano_${randomUUID().slice(0, 8)}`
+  await ev(idPlano, { id: 'sub_edge2', plan: { id: 'plan_local_semanal' } }, 'subscription.canceled')
+  ok(psql(`select count(*) from public.auditor_assinatura_eventos where gateway_event_id = '${idPlano}'`) === '1', 'webhook: plano do auditor gravado')
+  psql(`delete from public.auditor_assinatura_eventos where gateway_event_id in ('${idNosso}', '${idPlano}')`)
+}
 
 // 5 · exclusão de conta (sem assinatura): apaga negócio, conta e usuário.
 const exc = await chamar(`${HUB}/cliente/excluir-conta`, { metodo: 'POST', jwt: cliente.jwt, corpo: { confirmar: true } })
