@@ -82,6 +82,14 @@ verify_jwt = false
 [functions.assinatura-fiscal-webhook]
 verify_jwt = false
 
+# Agente fiscal v2 (lote B): "Minha conta" confere a sessão no código (auth.getUser); o ciclo da
+# assinatura é chamado pelo pg_cron com x-cron-secret, conferido no banco.
+[functions.fiscal-conta]
+verify_jwt = false
+
+[functions.assinatura-fiscal-ciclo]
+verify_jwt = false
+
 [functions.skill-01-ativar-dashboard]
 verify_jwt = true
 

@@ -1,0 +1,11 @@
+{
+  "name": "tests-agente-fiscal-v2-conta",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "pg": "^8.13.0"
+  }
+}
