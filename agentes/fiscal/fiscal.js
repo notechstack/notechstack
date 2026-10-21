@@ -2,7 +2,7 @@
    (nada sai para a Sefin), 3 testes por navegador em localStorage, entradas por rolagem e consentimento LGPD. */
 (function () {
   'use strict';
-  var APP_URL = 'https://app.notechstack.com.br/';
+  var CADASTRO_URL = '/agentes/fiscal/comecar/'; // cadastro, pagamento e onboarding no site (tarefa agente-fiscal-v2)
   var CONSENT_KEY = 'no_fiscal_consent';
   var SIM_KEY = 'no_fiscal_simulacoes';
   var LIMITE = 3;
@@ -43,7 +43,7 @@
   function brl(n) { try { return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); } catch (e) { return 'R$ ' + n.toFixed(2).replace('.', ','); } }
   function espera(ms) { return new Promise(function (r) { setTimeout(r, reduzido ? Math.min(ms, 120) : ms); }); }
   function cadastroUrl() {
-    var u = new URL(APP_URL);
+    var u = new URL(CADASTRO_URL, location.origin);
     var q = new URLSearchParams(location.search);
     ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'].forEach(function (k) { var v = q.get(k); if (v) u.searchParams.set(k, v); });
     u.searchParams.set('origem', 'fiscal');

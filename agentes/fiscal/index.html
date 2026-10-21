@@ -59,7 +59,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "O que é o agente fiscal?", "acceptedAnswer": {"@type": "Answer", "text": "Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail."}},
     {"@type": "Question", "name": "Preciso criar conta para testar?", "acceptedAnswer": {"@type": "Answer", "text": "Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: os primeiros 7 dias da assinatura são grátis, com emissão real."}},
     {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "Empresas do Simples Nacional que prestam serviço e emitem NFS-e pelo padrão nacional (Sefin Nacional). O agente trabalha com CNPJ, inscrição municipal, código do município e certificado digital A1 da empresa. Se o seu município ainda não aderiu ao padrão nacional, a gente avisa no cadastro."}},
-    {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, numa página segura do cadastro, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp."}},
+    {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp."}},
     {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "O teste no site é grátis, e os primeiros 7 dias da assinatura também, já com emissão real. Depois há planos por quantidade de notas por mês, com assinatura pelo Pagar.me e aceite dos Termos de uso. Os valores da seção de planos são provisórios e aparecem confirmados na tela de assinatura."}},
     {"@type": "Question", "name": "O agente substitui o meu contador?", "acceptedAnswer": {"@type": "Answer", "text": "Não. Ele emite e cancela as notas; o enquadramento, o percentual de tributos do Simples e a apuração continuam com a sua contabilidade. Dá para cadastrar o e-mail do contador para que cada nota chegue lá também, com PDF e XML."}},
     {"@type": "Question", "name": "E se a Sefin estiver fora do ar?", "acceptedAnswer": {"@type": "Answer", "text": "A nota entra numa fila e o agente tenta de novo sozinho, até 5 vezes, com intervalo crescente. Você acompanha pelo WhatsApp: o agente avisa quando a nota é autorizada ou se algo for rejeitado, com o motivo e o que fazer."}},
@@ -135,7 +135,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <h3>Inicial<small>Pra quem emite poucas por mês</small></h3>
         <span class="fi-plano-pill">Por mês</span>
         <p class="fi-plano-preco">R$ 49</p>
-        <button type="button" class="fi-btn fi-btn--tinta" data-plano="inicial" disabled>Assinatura em breve</button>
+        <a class="fi-btn fi-btn--tinta" data-plano="inicial" href="/agentes/fiscal/comecar/?plano=inicial">Testar 7 dias grátis</a>
         <span class="fi-plano-inclui">Até 20 notas por mês</span>
         <ul class="fi-plano-itens">
           <li>1 CNPJ do Simples, 1 certificado A1</li>
@@ -151,7 +151,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <h3>Pro<small>Pra rotina de atendimento</small></h3>
         <span class="fi-plano-pill">Por mês</span>
         <p class="fi-plano-preco">R$ 129</p>
-        <button type="button" class="fi-btn fi-btn--tinta" data-plano="pro" disabled>Assinatura em breve</button>
+        <a class="fi-btn fi-btn--tinta" data-plano="pro" href="/agentes/fiscal/comecar/?plano=pro">Testar 7 dias grátis</a>
         <span class="fi-plano-inclui">Tudo do Inicial + os itens abaixo</span>
         <ul class="fi-plano-itens">
           <li>Até 100 notas por mês</li>
@@ -164,7 +164,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <h3>Escritório<small>Sob medida pra vários CNPJs</small></h3>
         <span class="fi-plano-pill">Valores combinados</span>
         <p class="fi-plano-preco fi-plano-preco--texto">Sob medida</p>
-        <a class="fi-btn fi-btn--tinta" href="/contato/">Falar com a Nó</a>
+        <a class="fi-btn fi-btn--tinta" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Quero%20o%20plano%20sob%20medida%20do%20n%C3%B3.fiscal%20para%20a%20minha%20empresa" target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <span class="fi-plano-inclui">Tudo do Pro + os itens abaixo</span>
         <ul class="fi-plano-itens">
           <li>Contabilidades e grupos com mais de um CNPJ</li>
@@ -224,7 +224,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     </article>
     <article class="fi-mod fi-mod--inv fi-reveal">
       <div class="fi-mod-visual fi-fluido fi-fluido--b">
-        <div class="fi-notif"><span class="fi-notif-avatar" aria-hidden="true"><img src="/brand/logo/svg/no-branca-ponto-ambar.svg" alt="" width="28" height="18"></span><div><b>nó.fiscal</b><p>Seu certificado A1 vence em 30 dias. Quando renovar, envie o novo arquivo pelo link seguro que mandei no seu e-mail.</p></div></div>
+        <div class="fi-notif"><span class="fi-notif-avatar" aria-hidden="true"><img src="/brand/logo/svg/no-branca-ponto-ambar.svg" alt="" width="28" height="18"></span><div><b>nó.fiscal</b><p>Seu certificado A1 vence em 30 dias. Quando renovar, envie o novo arquivo em Minha conta, no site da Nó.</p></div></div>
       </div>
       <div class="fi-mod-card">
         <span class="fi-mod-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
@@ -276,7 +276,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Como fica o meu certificado digital A1?</summary>
-          <p>Você envia o arquivo A1 e a senha uma única vez, numa página segura do cadastro, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp.</p>
+          <p>Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp.</p>
         </details>
         <details>
           <summary>Quanto custa?</summary>
