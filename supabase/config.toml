@@ -83,13 +83,12 @@ verify_jwt = false
 verify_jwt = false
 
 # Agente fiscal v2 (lote A): código por e-mail e cadastro pelo site. fiscal-cadastro confere a sessão
-# no código (auth.getUser) e lê a lista de municípios do padrão nacional (lote P) como arquivo estático.
+# no código (auth.getUser); a lista de municípios do padrão nacional (lote P) vai embutida no bundle.
 [functions.fiscal-acesso]
 verify_jwt = false
 
 [functions.fiscal-cadastro]
 verify_jwt = false
-static_files = ["./functions/_shared/fiscal/*.json"]
 
 [functions.skill-01-ativar-dashboard]
 verify_jwt = true

@@ -188,3 +188,85 @@ begin
   end loop;
 end;
 $$;
+
+-- ------------------------------------------------------------ Conferência do código (C7s)
+
+-- Um código vivo por e-mail (Landing "fiscal-acesso {acao:'verificar'}"): só hashes; cada envio
+-- substitui o anterior e zera as tentativas.
+create table public.fiscal_acesso_codigos (
+  chave_email text primary key check (chave_email ~ '^[0-9a-f]{64}$'),
+  codigo_hash text not null check (codigo_hash ~ '^[0-9a-f]{64}$'),
+  enviado_em timestamptz not null default now(),
+  tentativas smallint not null default 0 check (tentativas between 0 and 5),
+  esgotado_em timestamptz
+);
+alter table public.fiscal_acesso_codigos enable row level security;
+revoke all on public.fiscal_acesso_codigos from public, anon, authenticated;
+
+create function public.fiscal_acesso_registrar_codigo(p_chave_email text, p_codigo_hash text)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from public.fiscal_acesso_codigos where enviado_em < now() - interval '1 day';
+  insert into public.fiscal_acesso_codigos (chave_email, codigo_hash, enviado_em, tentativas, esgotado_em)
+  values (p_chave_email, p_codigo_hash, now(), 0, null)
+  on conflict (chave_email) do update
+     set codigo_hash = excluded.codigo_hash, enviado_em = now(), tentativas = 0, esgotado_em = null;
+$$;
+
+-- status: correto | incorreto (restantes) | esgotou (esta foi a 5ª errada) | esgotado | vencido.
+create function public.fiscal_acesso_conferir(p_chave_email text, p_codigo_hash text, p_validade_s integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v public.fiscal_acesso_codigos;
+begin
+  select * into v from public.fiscal_acesso_codigos c where c.chave_email = p_chave_email for update;
+  if not found or v.enviado_em < now() - make_interval(secs => p_validade_s) then
+    return jsonb_build_object('status', 'vencido');
+  end if;
+  if v.esgotado_em is not null then
+    return jsonb_build_object('status', 'esgotado');
+  end if;
+  if v.codigo_hash = p_codigo_hash then
+    return jsonb_build_object('status', 'correto');
+  end if;
+  update public.fiscal_acesso_codigos c
+     set tentativas = c.tentativas + 1,
+         esgotado_em = case when c.tentativas + 1 >= 5 then now() end
+   where c.chave_email = p_chave_email
+  returning * into v;
+  if v.esgotado_em is not null then
+    return jsonb_build_object('status', 'esgotou');
+  end if;
+  return jsonb_build_object('status', 'incorreto', 'restantes', 5 - v.tentativas);
+end;
+$$;
+
+create function public.fiscal_acesso_consumir(p_chave_email text)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from public.fiscal_acesso_codigos where chave_email = p_chave_email;
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'public.fiscal_acesso_registrar_codigo(text, text)',
+    'public.fiscal_acesso_conferir(text, text, integer)',
+    'public.fiscal_acesso_consumir(text)'
+  ] loop
+    execute format('revoke all on function %s from public, anon, authenticated', f);
+    execute format('grant execute on function %s to service_role', f);
+  end loop;
+end;
+$$;
