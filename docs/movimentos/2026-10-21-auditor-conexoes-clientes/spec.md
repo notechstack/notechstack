@@ -1,9 +1,9 @@
 ---
 movement_id: auditor-conexoes-clientes
 intent: ./intent.md
-status: proposed
+status: approved
 updated: 2026-10-21
-revision: 1 — Frente 3 (solutions), partindo do esquema provisório da Frente 1
+revision: 1.1 — Frente 3 (solutions); aprovada pelo Lucca em 21/10/2026 com D1–D10 como recomendado
 ---
 
 # Spec: um auditor por cliente, com o marketing-hub no centro
@@ -680,4 +680,6 @@ Ordem de blocos sugerida, para o `plan.md` depois do gate:
 
 ## Decisão do gate
 
-Pendente. Nenhuma implementação começa antes da aprovação do Lucca.
+**Aprovada** pelo Lucca em 21/10/2026, com D1–D10 exatamente como recomendado na
+tabela acima. Segue para o Gate 3 (`plan.md`). Nenhuma implementação começa antes
+da aprovação do plano.
