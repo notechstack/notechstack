@@ -1,12 +1,16 @@
-// Cliente real da WhatsApp Cloud API (Meta), atrás de `EnviaWhatsApp`. Nenhum teste o chama.
-// Fonte: developers.facebook.com, "Cloud API – Messages" e "Media": `POST /{versão}/{Phone-Number-ID}/messages`
-// e `POST /{versão}/{Phone-Number-ID}/media` (multipart `messaging_product`, `type`, `file` → `id`),
+// Cliente real da WhatsApp Cloud API (Meta), atrás de `EnviaWhatsApp`. Nenhum teste o chama
+// fora da Meta: os testes passam um `fetch` de dublê. Fonte: developers.facebook.com,
+// "Cloud API – Messages", "Media" e "Send message templates": `POST /{versão}/{Phone-Number-ID}/messages`
+// (texto, documento ou `type:'template'` com `template:{name, language:{code}, components}`) e
+// `POST /{versão}/{Phone-Number-ID}/media` (multipart `messaging_product`, `type`, `file` → `id`),
 // com `Authorization: Bearer <token>`. Versão v26.0 (changelog da Graph API, 29/07/2026).
+// A base vem de `WHATSAPP_GRAPH_URL` (padrão oficial; Landing v2, lote C), para a demonstração.
 // O token e o corpo das respostas nunca vão para o log.
 import type { AnexoEmail, EnviaWhatsApp } from './canais.js'
 
 export const GRAPH_API = 'https://graph.facebook.com'
 export const GRAPH_VERSION = 'v26.0'
+export const IDIOMA_DOS_MODELOS = 'pt_BR'
 const TIMEOUT_MS = 10_000
 
 type FetchLike = typeof fetch
@@ -18,9 +22,16 @@ export class WhatsAppHttpError extends Error {
   }
 }
 
-export function whatsappCloud(opcoes: { token: string; phoneNumberId: string; versao?: string; fetch?: FetchLike }): EnviaWhatsApp {
+export function whatsappCloud(opcoes: {
+  token: string
+  phoneNumberId: string
+  versao?: string
+  graphUrl?: string
+  fetch?: FetchLike
+}): EnviaWhatsApp {
   const doFetch = opcoes.fetch ?? fetch
-  const base = `${GRAPH_API}/${opcoes.versao ?? GRAPH_VERSION}/${encodeURIComponent(opcoes.phoneNumberId)}`
+  const raiz = (opcoes.graphUrl || GRAPH_API).replace(/\/+$/, '')
+  const base = `${raiz}/${opcoes.versao ?? GRAPH_VERSION}/${encodeURIComponent(opcoes.phoneNumberId)}`
   const autorizacao = { authorization: `Bearer ${opcoes.token}` }
   // A Cloud API endereça o número só com dígitos, como chega em `messages[].from`.
   const destino = (para: string) => para.replace(/\D/g, '')
@@ -59,6 +70,13 @@ export function whatsappCloud(opcoes: { token: string; phoneNumberId: string; ve
     async enviarDocumento(para, anexo, legenda) {
       const id = await subirMidia(anexo)
       await mensagem({ to: destino(para), type: 'document', document: { id, filename: anexo.nome, caption: legenda } })
+    },
+    async enviarModelo(para, nome, parametros) {
+      const template: Record<string, unknown> = { name: nome, language: { code: IDIOMA_DOS_MODELOS } }
+      if (parametros.length) {
+        template.components = [{ type: 'body', parameters: parametros.map((text) => ({ type: 'text', text })) }]
+      }
+      await mensagem({ to: destino(para), type: 'template', template })
     },
   }
 }

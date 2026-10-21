@@ -49,11 +49,13 @@ describe('rotas do Nó Fiscal', () => {
     // O critério 31 foi substituído pelo agente fiscal (Impact da tarefa e Landing de
     // .checks/agente-fiscal-whatsapp.md, lote A): a única rota que recebe A1 é a do cadastro,
     // autenticada e gravando por nofiscal.onboarding_set_certificate. O lote B acrescenta o
-    // webhook da Meta (Landing, "Provas do motor que esta feature muda").
+    // webhook da Meta (Landing, "Provas do motor que esta feature muda"). A v2 acrescenta a
+    // ativação do WhatsApp (lote C de .checks/agente-fiscal-v2.md), que não recebe A1.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
       'api/v1/nfse.ts',
+      'api/v1/onboarding/ativacao.ts',
       ONBOARDING_CERTIFICATE,
       'api/whatsapp/webhook.ts',
     ])

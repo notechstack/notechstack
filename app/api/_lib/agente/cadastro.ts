@@ -29,10 +29,10 @@ type Dono = { userId: string } | { phoneId: string }
 export type MotivoCodigo = 'SEM_CODIGO' | 'CODIGO_VENCIDO' | 'CODIGO_INVALIDO'
 
 const agoraDe = (deps: CadastroDeps) => (deps.now ?? (() => new Date()))()
-const codigoAleatorio = () => String(randomInt(0, 1_000_000)).padStart(6, '0')
-const hashDoCodigo = (id: string, codigo: string) => createHash('sha256').update(`${id}:${codigo}`, 'utf8').digest('hex')
+export const codigoAleatorio = () => String(randomInt(0, 1_000_000)).padStart(6, '0')
+export const hashDoCodigo = (id: string, codigo: string) => createHash('sha256').update(`${id}:${codigo}`, 'utf8').digest('hex')
 
-function iguais(a: string, b: string): boolean {
+export function iguais(a: string, b: string): boolean {
   const x = Buffer.from(a, 'utf8')
   const y = Buffer.from(b, 'utf8')
   return x.length === y.length && timingSafeEqual(x, y)
