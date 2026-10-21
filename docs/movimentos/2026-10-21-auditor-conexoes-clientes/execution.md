@@ -184,3 +184,34 @@ Diferenças esperadas nos advisors:
 - **Vitest do auditor:** 58. **Suíte do app em sequência:** 483 de 485 (as 2 do `pipelineExamples`).
 - **Testes do site** (`tests/assinatura-auditor`): 106 de 110, o mesmo de antes. As 4 falhas são de ambiente: `front` e `consistencia` leem arquivos fora do repo, e `acesso` e `sql` dependem do `@electric-sql/pglite`, que não está instalado. O `front.test.mjs` foi atualizado para o texto novo, mas não roda aqui.
 - **`tsc`, `eslint` e `vite build`:** limpos.
+
+## Rodada 4 — correções da revisão do #66 (21/10/2026)
+
+O que foi feito item a item, com o teste correspondente: `C:/Users/lucca/projetos/.tasks/auditor-revisao-pr66.md`, nas notas "Frente 3".
+
+### O que muda no passo a passo de produção
+- **A migration B também altera objetos que já estão em produção.** Conferir antes de aplicar:
+  - **policies do R1 em `memberships`** (`memberships_insert_admin`, `_update_admin`, `_delete_admin`): passam a exigir `role='CLIENT'`. O NO_ADMIN continua criando vínculos de clientes de projeto (CLIENT); só não cria nem altera vínculos AUDITOR;
+  - **`marketing_cliente_conexao_salvar`** (da migration A): redefinida, com a checagem de posse no lugar do vínculo.
+- **Objetos novos** na pré-checagem e nos advisors:
+  - tabela `auditor_aceites`, com RLS e sem policy (só service_role);
+  - funções `auditor_dono_do_negocio`, `auditor_assinatura_ja_pagou` e `auditor_assinatura_paga_vigente`, todas só para service_role;
+  - gatilhos `auditor_contas_antes_de_apagar` e `auditor_clientes_depois_de_apagar`;
+  - `auditor_eu_iniciar(text, text)`.
+- **Ordem de deploy (seção "Ordem de deploy" da revisão):**
+  1. migration B;
+  2. `marketing-hub`;
+  3. smoke test do admin (mesmas respostas da prova das 10:25/10:41 da Frente 1);
+  4. `auditor-acesso`, `assinatura-auditor` e `assinatura-auditor-webhook`.
+  - A migration C (cron a cada 2 min) continua de fora até haver cliente real.
+- **Smoke test extra depois do deploy:**
+  - `POST /rest/v1/rpc/auditor_eu_iniciar`, com um usuário de teste e sem `p_aceite_versao` → erro `aceite_pendente`;
+  - `GET /auditor/copia/<uuid>` sem login → 401.
+
+### Provas desta rodada
+- **pgTAP:** 672 no total (`auditor_clientes`: 164; `hub_marketing_clientes` com a fixture de posse).
+- **Rollback com dados:** zera os negócios e os vínculos AUDITOR e a B reaplica.
+- **Deno:** 33. **Concorrência:** 7.
+- **Testes do site:** 131 passam, 1 skip justificado; as 3 falhas são de ambiente (`pglite` e arquivos fora do repo).
+- **App em sequência:** 490 de 492 (`pipelineExamples`).
+- **`tsc`, `eslint` e build:** limpos.
