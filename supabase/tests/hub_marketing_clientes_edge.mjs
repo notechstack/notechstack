@@ -4,7 +4,7 @@
 // Pré-requisitos: `supabase start` e, em outro terminal,
 //   supabase functions serve marketing-hub --env-file <arquivo com as variáveis abaixo>
 //   MARKETING_OAUTH_STATE_SECRET=<fixture com 32+ caracteres>
-//   META_APP_ID=424242  META_APP_SECRET=<fixture, igual a FIXTURE_META_SECRET abaixo>  META_LOGIN_CONFIG_ID=cfg-local
+//   AUDITOR_META_APP_ID=424242  AUDITOR_META_APP_SECRET=<fixture, igual a FIXTURE_META_SECRET abaixo>  AUDITOR_META_LOGIN_CONFIG_ID=cfg-local
 //   GOOGLE_OAUTH_CLIENT_ID=fixture-client  GOOGLE_OAUTH_CLIENT_SECRET=fixture
 //   MARKETING_HUB_PUBLIC_URL=<API_URL>/functions/v1/marketing-hub
 //   AUDITOR_VOLTA_URL=http://localhost/auditor/{client_id}/conexoes

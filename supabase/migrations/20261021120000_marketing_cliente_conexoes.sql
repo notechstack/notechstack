@@ -55,6 +55,12 @@ create table public.marketing_cliente_ativos (
   check (tipo <> 'meta_ads' or external_id ~ '^act_\d{1,30}$')
 );
 
+-- Índices das FKs (o índice único parcial não cobre client_id sozinho).
+create index marketing_cliente_conexoes_cliente on public.marketing_cliente_conexoes (client_id);
+create index marketing_cliente_conexoes_conectado_por on public.marketing_cliente_conexoes (conectado_por);
+create index marketing_cliente_ativos_conexao on public.marketing_cliente_ativos (conexao_id);
+create index marketing_cliente_ativos_selecionado_por on public.marketing_cliente_ativos (selecionado_por);
+
 -- Trilha: sem FK em client_id para sobreviver à exclusão do negócio. Nunca token, e-mail ou métrica.
 create table public.marketing_cliente_eventos (
   id bigint generated always as identity primary key,
