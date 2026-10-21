@@ -1,0 +1,504 @@
+// /agentes/fiscal/comecar/ (lote E de .checks/agente-fiscal-v2.md): C1, C2u, C3u, C4, C7u, C8u, C10u–C13u, C15,
+// C16u, C17u, C19u, C20u, C24 e C25u. A página roda de verdade no jsdom; a rede é o dublê da Surface.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  abrir, superficie, sessaoValida, estado, preencherEtapa1, ateEtapa3, preencherCartao, abrirNaEtapa,
+  TENANT, CNPJ, CPF, CODIGO_CERTO, ACEITE, CARTAO, CANDIDATOS
+} from './pagina-falsa.mjs';
+
+const r = (status, corpo) => () => ({ status, corpo });
+const funcoes = (p) => p.rede.chamadas.filter((c) => c.rota && !c.rota.startsWith('dados:'));
+
+test('etapa 1 e plano', async () => {
+  const pro = await abrir('/agentes/fiscal/comecar/?plano=pro');
+  assert.equal(pro.etapa(), 1);
+  assert.equal(pro.passo(), '1 de 7 · Sua empresa');
+  const rotulos = pro.rotulos('fc-etapa-1');
+  for (const campo of ['Nome da empresa', 'CNPJ', 'Responsável', 'CPF do responsável', 'E-mail', 'WhatsApp']) {
+    assert.ok(rotulos.includes(campo), `campo "${campo}" (rótulos: ${rotulos.join(' | ')})`);
+  }
+  assert.equal(pro.texto('fc-plano'), 'Plano Pro · R$ 129/mês · 7 dias grátis');
+  assert.ok(pro.visivel('fc-plano'));
+  assert.deepEqual(funcoes(pro), [], 'abrir sem sessão não chama nada');
+
+  for (const rota of ['/agentes/fiscal/comecar/', '/agentes/fiscal/comecar/?plano=empresarial', '/agentes/fiscal/comecar/?plano=inicial']) {
+    const p = await abrir(rota);
+    assert.equal(p.texto('fc-plano'), 'Plano Inicial · R$ 49/mês · 7 dias grátis', rota);
+  }
+});
+
+test('cnpj preenche a empresa', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro');
+  await p.preencher('fc-cnpj', '11.222.333/0001-81');
+  const consulta = p.rede.de('fiscal-cadastro:consultar_cnpj');
+  assert.equal(consulta.length, 1);
+  assert.deepEqual(consulta[0].corpo, { acao: 'consultar_cnpj', cnpj: CNPJ });
+  assert.equal(p.$('fc-empresa').value, 'CLINICA AURORA LTDA');
+
+  // 503: a página deixa seguir com a razão social digitada.
+  const rede = superficie({ 'fiscal-cadastro:consultar_cnpj': r(503, { ok: false, error_code: 'CONSULTA_INDISPONIVEL', mensagem: 'fora do ar' }) });
+  const q = await abrir('/agentes/fiscal/comecar/', { rede });
+  await preencherEtapa1(q, { empresa: 'Minha Empresa Digitada' });
+  assert.equal(q.$('fc-empresa').value, 'Minha Empresa Digitada');
+  await q.enviar('fc-form-1');
+  assert.equal(rede.de('fiscal-acesso').length, 1, 'segue para o código');
+  assert.equal(q.etapa(), 2);
+});
+
+test('município bloqueia', async () => {
+  const rede = superficie({ 'fiscal-cadastro:consultar_cnpj': (c) => ({ status: 200, corpo: { ok: true, cnpj: c.cnpj, razao_social: 'EMPRESA FORA LTDA', municipio: 'Cidade Fora', uf: 'MG', codigo_municipio_ibge: '3100000', cnae: '8630503', padrao_nacional: false } }) });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede });
+  await preencherEtapa1(p);
+  assert.match(p.textoVisivel(), /Seu município ainda não emite pelo padrão nacional/);
+  await p.enviar('fc-form-1');
+  assert.equal(rede.de('fiscal-acesso').length, 0, 'não pede código');
+  assert.equal(rede.de('fiscal-cadastro:criar').length, 0);
+  assert.equal(p.etapa(), 1);
+  assert.match(p.texto('fc-aviso-1'), /Seu município ainda não emite pelo padrão nacional/);
+});
+
+test('cpf inválido', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/');
+  await preencherEtapa1(p, { cpf: '529.982.247-26' });
+  const antes = p.rede.chamadas.length;
+  await p.enviar('fc-form-1');
+  assert.equal(p.texto('fc-cpf-erro'), 'CPF inválido');
+  assert.ok(p.visivel('fc-cpf-erro'));
+  assert.equal(p.rede.chamadas.length, antes, 'nenhuma chamada depois de enviar');
+  assert.equal(p.etapa(), 1);
+  // Também sem CNPJ digitado: nenhuma chamada.
+  const q = await abrir('/agentes/fiscal/comecar/');
+  await q.preencher('fc-cpf', '111.111.111-11');
+  await q.enviar('fc-form-1');
+  assert.equal(q.texto('fc-cpf-erro'), 'CPF inválido');
+  assert.deepEqual(q.rede.chamadas, []);
+});
+
+test('código incorreto', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro');
+  await preencherEtapa1(p);
+  await p.enviar('fc-form-1');
+  assert.equal(p.etapa(), 2);
+  assert.equal(p.passo(), '2 de 7 · Código');
+  assert.equal(p.texto('fc-email-mascarado'), 'lu•••@exemplo.com');
+  assert.deepEqual(p.rede.de('fiscal-acesso')[0].corpo, { email: 'lucca@exemplo.com' });
+
+  for (let i = 1; i <= 4; i++) {
+    await p.preencher('fc-codigo', '000000');
+    await p.enviar('fc-form-2');
+    assert.equal(p.texto('fc-codigo-erro'), 'Código incorreto', `tentativa ${i}`);
+  }
+  await p.preencher('fc-codigo', '000000');
+  await p.enviar('fc-form-2');
+  assert.equal(p.texto('fc-codigo-erro'), 'Peça um código novo', '5ª tentativa errada');
+  assert.equal(p.rede.de('fiscal-cadastro:criar').length, 0, 'nada criado');
+  assert.equal(p.rede.de('auth:verify').length, 5);
+  // Depois da 5ª, nem o código certo vai ao servidor.
+  await p.preencher('fc-codigo', CODIGO_CERTO);
+  await p.enviar('fc-form-2');
+  assert.equal(p.rede.de('auth:verify').length, 5);
+  assert.equal(p.texto('fc-codigo-erro'), 'Peça um código novo');
+
+  // Limite do GoTrue (429) → "Peça um código novo".
+  const rede = superficie({ 'auth:verify': r(429, { code: 429, error_code: 'over_request_rate_limit' }) });
+  const q = await abrir('/agentes/fiscal/comecar/', { rede });
+  await preencherEtapa1(q);
+  await q.enviar('fc-form-1');
+  await q.preencher('fc-codigo', CODIGO_CERTO);
+  await q.enviar('fc-form-2');
+  assert.equal(q.texto('fc-codigo-erro'), 'Peça um código novo');
+
+  // Código vencido (pedido há mais de 1 hora) → "Peça um código novo", sem ir ao GoTrue.
+  const v = await abrir('/agentes/fiscal/comecar/');
+  await preencherEtapa1(v);
+  await v.enviar('fc-form-1');
+  const agora = v.window.Date.now();
+  v.window.Date.now = () => agora + 61 * 60 * 1000;
+  await v.preencher('fc-codigo', CODIGO_CERTO);
+  await v.enviar('fc-form-2');
+  assert.equal(v.texto('fc-codigo-erro'), 'Peça um código novo');
+  assert.equal(v.rede.de('auth:verify').length, 0);
+
+  // "Pedir um código novo" zera as tentativas.
+  await v.clicar('fc-reenviar');
+  v.window.Date.now = () => agora + 62 * 60 * 1000;
+  await v.preencher('fc-codigo', CODIGO_CERTO);
+  await v.enviar('fc-form-2');
+  assert.equal(v.rede.de('auth:verify').length, 1);
+  assert.equal(v.etapa(), 3, 'código novo certo cria a empresa e abre o pagamento');
+});
+
+test('conflitos aparecem', async () => {
+  const cnpj = superficie({ 'fiscal-cadastro:criar': r(409, { ok: false, error_code: 'CNPJ_JA_CADASTRADO', mensagem: 'já existe' }) });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede: cnpj });
+  await ateEtapa3(p);
+  assert.equal(p.etapa(), 1);
+  assert.equal(p.texto('fc-aviso-1'), 'Este CNPJ já tem conta. Entre pela sua conta');
+  const link = p.$('fc-aviso-1').querySelector('a');
+  assert.ok(link, 'link para a conta');
+  assert.equal(link.getAttribute('href'), '/agentes/fiscal/conta/');
+  assert.equal(link.textContent, 'Entre pela sua conta');
+
+  const tel = superficie({ 'fiscal-cadastro:criar': r(409, { ok: false, error_code: 'TELEFONE_DE_OUTRA_EMPRESA', mensagem: 'outro' }) });
+  const q = await abrir('/agentes/fiscal/comecar/', { rede: tel });
+  await ateEtapa3(q);
+  assert.equal(q.etapa(), 1);
+  assert.equal(q.texto('fc-aviso-1'), 'Este WhatsApp já está ligado a outra empresa');
+  assert.equal(q.texto('fc-telefone-erro'), 'Este WhatsApp já está ligado a outra empresa');
+});
+
+test('criar manda os dados da etapa 1 com a sessão', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro');
+  await ateEtapa3(p);
+  const verify = p.rede.de('auth:verify')[0];
+  assert.deepEqual(verify.corpo, { type: 'email', email: 'lucca@exemplo.com', token: CODIGO_CERTO });
+  assert.equal(verify.headers.apikey, 'anon-de-teste');
+  const criar = p.rede.de('fiscal-cadastro:criar')[0];
+  assert.deepEqual(criar.corpo, { acao: 'criar', cnpj: CNPJ, razao_social: 'CLINICA AURORA LTDA', responsavel: 'Lucca Teste', telefone: '+5511987654321', plano: 'pro' });
+  assert.equal(criar.headers.authorization, 'Bearer at-1');
+  assert.equal(p.etapa(), 3);
+  const s = JSON.parse(p.window.localStorage.getItem('nofiscal.sessao'));
+  assert.deepEqual(Object.keys(s).sort(), ['access_token', 'expires_at', 'refresh_token']);
+});
+
+test('venda fechada', async () => {
+  const p = await abrirNaEtapa('pagamento', {
+    respostas: { 'GET assinatura-fiscal': r(200, { ok: true, venda_aberta: false, public_key: 'pk_test_abc', aceite_texto: ACEITE, planos: { inicial: { valor_centavos: 4900 }, pro: { valor_centavos: 12900 } } }) }
+  });
+  assert.equal(p.etapa(), 3);
+  assert.equal(p.passo(), '3 de 7 · Pagamento');
+  const botao = p.$('fc-pagar');
+  assert.equal(botao.disabled, true);
+  assert.equal(p.texto(botao), 'Vendas abrem em breve');
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.preencher('fc-cpf-pagamento', CPF);
+  await p.enviar('fc-form-3');
+  assert.equal(p.rede.de('pagarme:tokens').length, 0);
+  assert.equal(p.rede.de('POST assinatura-fiscal').length, 0);
+});
+
+test('cartão só no pagar.me', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro');
+  await ateEtapa3(p);
+  assert.equal(p.etapa(), 3);
+  assert.equal(p.texto('fc-pagar'), 'Começar 7 dias grátis');
+  assert.equal(p.texto('fc-aceite-texto'), ACEITE);
+  assert.equal(p.visivel('fc-cpf-pagamento-bloco'), false, 'o CPF vem da etapa 1');
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+
+  const [tok] = p.rede.de('pagarme:tokens');
+  assert.ok(tok, 'tokenização no Pagar.me');
+  assert.equal(tok.url, 'https://api.pagar.me/core/v5/tokens?appId=pk_test_abc');
+  assert.equal(tok.corpo.card.number, '4111111111111111');
+
+  const [pag] = p.rede.de('POST assinatura-fiscal');
+  assert.ok(pag, 'POST assinatura-fiscal');
+  assert.deepEqual(Object.keys(pag.corpo).sort(), ['aceite_texto', 'card_token', 'cpf', 'endereco', 'plano', 'termos_aceite']);
+  assert.equal(pag.corpo.card_token, 'token_abc123');
+  assert.equal(pag.corpo.cpf, CPF);
+  assert.equal(pag.corpo.plano, 'pro');
+  assert.equal(pag.corpo.termos_aceite, true);
+  assert.equal(pag.corpo.aceite_texto, ACEITE);
+  assert.deepEqual(pag.corpo.endereco, { cep: '01310100', rua: 'Avenida Paulista', numero: '1000', complemento: '', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'SP' });
+  const bruto = String(pag.bruto);
+  for (const proibido of ['4111111111111111', '4111 1111', CARTAO.validade, '"cvv"', '"number"', 'exp_month', 'holder_name']) {
+    assert.ok(!bruto.includes(proibido), `o corpo não leva ${proibido}`);
+  }
+  assert.ok(!bruto.includes('"123"'), 'sem o CVV');
+  assert.equal(pag.headers.authorization, 'Bearer at-1');
+  assert.equal(p.etapa(), 4);
+  assert.equal(p.passo(), '4 de 7 · Certificado');
+  assert.equal(p.$('fc-cc-numero').value, '', 'o número do cartão sai da tela');
+});
+
+test('aviso de reteste', async () => {
+  const aviso = 'Este CNPJ, e-mail ou telefone já usou o teste grátis';
+  const rede = superficie({ 'POST assinatura-fiscal': r(200, { ok: true, status: 'pendente', com_teste: false, trial_ends_at: null, aviso }) });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede });
+  await ateEtapa3(p);
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  assert.equal(p.etapa(), 3, 'mostra o aviso antes de seguir');
+  assert.equal(p.texto('fc-aviso-3'), aviso);
+  assert.ok(p.visivel('fc-aviso-3'));
+  assert.ok(p.visivel('fc-seguir-sem-teste'));
+  await p.clicar('fc-seguir-sem-teste');
+  assert.equal(p.etapa(), 4);
+});
+
+test('cartão recusado', async () => {
+  const rede = superficie({ 'POST assinatura-fiscal': r(402, { ok: false, error_code: 'PAGAMENTO_RECUSADO', mensagem: 'O pagamento não foi aprovado pelo cartão.' }) });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede });
+  await ateEtapa3(p);
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  assert.equal(p.texto('fc-aviso-3'), 'Cartão recusado. Tente outro cartão');
+  assert.equal(p.etapa(), 3);
+  assert.equal(p.$('fc-pagar').disabled, false, 'pode tentar outro cartão');
+});
+
+test('certificado na etapa 4', async () => {
+  const p = await abrirNaEtapa('certificado');
+  assert.equal(p.etapa(), 4);
+  await p.arquivos('fc-pfx', [['empresa.pfx', new Uint8Array([48, 130, 1, 2]), 'application/x-pkcs12']]);
+  await p.preencher('fc-pfx-senha', 'segredo');
+  await p.enviar('fc-form-4');
+  const [env] = p.rede.de('app:certificate');
+  assert.ok(env, 'envio do A1');
+  assert.equal(env.url, 'https://www.notechstack.com.br/agentes/fiscal/api/v1/onboarding/certificate/');
+  assert.equal(env.headers.authorization, 'Bearer at-0');
+  assert.equal(env.corpo.tenant_id, TENANT);
+  assert.equal(env.corpo.senha, 'segredo');
+  assert.equal(env.corpo.pfx.name, 'empresa.pfx');
+  assert.equal(p.texto('fc-aviso-4'), 'Certificado de CLINICA AURORA LTDA válido até 31/03/2027');
+  assert.equal(p.$('fc-pfx-senha').value, '', 'a senha sai da tela');
+  await p.clicar('fc-continuar-4');
+  assert.equal(p.etapa(), 5);
+
+  for (const [codigo, msg] of [['CERT_SENHA_INVALIDA', 'Senha incorreta'], ['CERT_VENCIDO', 'Certificado vencido'], ['CERT_CNPJ_DIFERENTE', 'Este certificado é de outro CNPJ']]) {
+    const q = await abrirNaEtapa('certificado', { respostas: { 'app:certificate': r(422, { error: { code: codigo, message: 'x' } }) } });
+    await q.arquivos('fc-pfx', [['empresa.pfx', new Uint8Array([1, 2, 3]), 'application/x-pkcs12']]);
+    await q.preencher('fc-pfx-senha', 'errada');
+    await q.enviar('fc-form-4');
+    assert.equal(q.texto('fc-aviso-4'), msg, codigo);
+    assert.equal(q.etapa(), 4, codigo);
+  }
+});
+
+test('sugestões de código', async () => {
+  const p = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' } });
+  assert.equal(p.etapa(), 5);
+  assert.equal(p.passo(), '5 de 7 · Dados fiscais');
+  await p.esvaziar(40);
+  const sugeridos = [...p.$('fc-seletor').querySelectorAll('.nf-sugestoes input[type=radio]')].map((i) => i.value);
+  assert.deepEqual(sugeridos, ['040101', '040102'], 'sugestões do CNAE 8630503');
+  assert.match(p.texto(p.$('fc-seletor').querySelector('.nf-sugestoes')), /04\.01\.01 Medicina e biomedicina/);
+  const arquivos = p.rede.chamadas.filter((c) => c.rota && c.rota.startsWith('dados:')).map((c) => c.url);
+  assert.ok(arquivos.includes('https://www.notechstack.com.br/agentes/fiscal/dados/cnae-servico.json'));
+  assert.ok(arquivos.includes('https://www.notechstack.com.br/agentes/fiscal/dados/codigos-servico.json'));
+
+  await p.preencher('fc-busca-codigo', 'enfermagem');
+  const achados = [...p.$('fc-seletor').querySelectorAll('.nf-resultados input[type=radio]')].map((i) => i.value);
+  assert.deepEqual(achados, ['040601'], 'busca por texto na lista nacional');
+  await p.preencher('fc-busca-codigo', 'analises clinicas');
+  assert.deepEqual([...p.$('fc-seletor').querySelectorAll('.nf-resultados input')].map((i) => i.value), ['040102'], 'sem diferenciar acento');
+  await p.preencher('fc-busca-codigo', 'enfermagem');
+  const radio = p.$('fc-seletor').querySelector('.nf-resultados input[value="040601"]');
+  radio.checked = true;
+  radio.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  await p.preencher('fc-percentual', '6,5');
+  await p.enviar('fc-form-5');
+  const [conf] = p.rede.de('fiscal-conta:configurar');
+  assert.ok(conf, 'configurar');
+  assert.deepEqual(conf.corpo, { acao: 'configurar', codigo_servico_nacional: '040601', p_tot_trib_sn: 6.5 });
+  assert.equal(p.etapa(), 6);
+});
+
+test('sem os arquivos de dados, a etapa 5 aceita o código digitado', async () => {
+  const sem = { 'dados:codigos-servico.json': r(404, null), 'dados:cnae-servico.json': r(404, null) };
+  const p = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' }, respostas: sem });
+  await p.esvaziar(40);
+  assert.equal(p.$('fc-seletor').querySelectorAll('.nf-sugestoes input').length, 0);
+  await p.preencher('fc-busca-codigo', '040101');
+  const radio = p.$('fc-seletor').querySelector('.nf-resultados input[value="040101"]');
+  assert.ok(radio, 'o código digitado vira opção');
+  radio.checked = true;
+  radio.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  await p.preencher('fc-percentual', '100');
+  await p.enviar('fc-form-5');
+  assert.equal(p.rede.de('fiscal-conta:configurar')[0].corpo.codigo_servico_nacional, '040101');
+});
+
+test('dados fiscais inválidos ficam na página e o 422 aponta o campo', async () => {
+  const p = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' } });
+  await p.esvaziar(40);
+  await p.preencher('fc-percentual', '100,01');
+  await p.enviar('fc-form-5');
+  assert.equal(p.rede.de('fiscal-conta:configurar').length, 0);
+  assert.equal(p.texto('fc-codigo-servico-erro'), 'Escolha o código de serviço.');
+  assert.equal(p.texto('fc-percentual-erro'), 'Use um número de 0 a 100, com até 2 casas.');
+
+  const q = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' }, respostas: { 'fiscal-conta:configurar': r(422, { ok: false, error_code: 'DADOS_FISCAIS_INVALIDOS', campo: 'codigo_servico_nacional', mensagem: 'Código fora da lista nacional.' }) } });
+  await q.esvaziar(40);
+  const radio = q.$('fc-seletor').querySelector('.nf-sugestoes input[value="040101"]');
+  radio.checked = true;
+  radio.dispatchEvent(new q.window.Event('change', { bubbles: true }));
+  await q.preencher('fc-percentual', '6');
+  await q.enviar('fc-form-5');
+  assert.equal(q.texto('fc-codigo-servico-erro'), 'Código fora da lista nacional.');
+  assert.equal(q.etapa(), 5);
+});
+
+test('campos do pro', async () => {
+  const pro = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'pro' } });
+  await pro.esvaziar(40);
+  assert.ok(pro.visivel('fc-pro'));
+  const rotulos = pro.rotulos('fc-etapa-5');
+  assert.ok(rotulos.includes('E-mail do contador (opcional)'), rotulos.join(' | '));
+  assert.ok(pro.visivel('fc-resumo'));
+  assert.equal(pro.texto(pro.$('fc-resumo').querySelector('legend')), 'Resumo das notas');
+  assert.deepEqual([...pro.$('fc-resumo-dia-mes').options].map((o) => o.value), Array.from({ length: 28 }, (_, i) => String(i + 1)), 'Mensal: dia 1 a 28');
+  assert.deepEqual([...pro.$('fc-resumo-dia-semana').options].map((o) => [o.value, o.textContent]),
+    [['1', 'segunda'], ['2', 'terça'], ['3', 'quarta'], ['4', 'quinta'], ['5', 'sexta'], ['6', 'sábado'], ['7', 'domingo']], 'Semanal: dia da semana ISO');
+  const radio = pro.$('fc-seletor').querySelector('.nf-sugestoes input[value="040101"]');
+  radio.checked = true;
+  radio.dispatchEvent(new pro.window.Event('change', { bubbles: true }));
+  await pro.preencher('fc-percentual', '6');
+  await pro.preencher('fc-contador', 'contador@escritorio.com.br');
+  const semanal = pro.$('fc-resumo').querySelector('input[value="semanal"]');
+  semanal.checked = true;
+  await pro.preencher('fc-resumo-dia-semana', '1');
+  await pro.enviar('fc-form-5');
+  assert.deepEqual(pro.rede.de('fiscal-conta:configurar')[0].corpo, {
+    acao: 'configurar', codigo_servico_nacional: '040101', p_tot_trib_sn: 6, contador_email: 'contador@escritorio.com.br', resumo: { frequencia: 'semanal', dia: 1 }
+  });
+
+  const ini = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' } });
+  await ini.esvaziar(40);
+  assert.equal(ini.visivel('fc-pro'), false);
+  assert.ok(!ini.rotulos('fc-etapa-5').includes('E-mail do contador (opcional)'));
+  assert.doesNotMatch(ini.textoVisivel(), /Resumo das notas/);
+  const r2 = ini.$('fc-seletor').querySelector('.nf-sugestoes input[value="040101"]');
+  r2.checked = true;
+  r2.dispatchEvent(new ini.window.Event('change', { bubbles: true }));
+  await ini.preencher('fc-percentual', '6');
+  await ini.enviar('fc-form-5');
+  const corpo = ini.rede.de('fiscal-conta:configurar')[0].corpo;
+  assert.ok(!('resumo' in corpo) && !('contador_email' in corpo), JSON.stringify(corpo));
+});
+
+test('cartões de clientes', async () => {
+  const p = await abrirNaEtapa('clientes');
+  assert.equal(p.etapa(), 6);
+  assert.equal(p.passo(), '6 de 7 · Seus clientes');
+  assert.deepEqual(p.rede.de('app:clientes:buscar_adn')[0].corpo, { tenant_id: TENANT, acao: 'buscar_adn' });
+  const cartoes = [...p.$('fc-clientes').querySelectorAll('.nf-cliente')];
+  assert.equal(cartoes.length, 2, 'um cartão por tomador');
+  const campo = (c, k) => c.querySelector(`[data-campo="${k}"]`);
+  const [a, b] = cartoes;
+  assert.equal(campo(a, 'nome').value, 'Prontia Saúde');
+  assert.equal(campo(a, 'tomador_nome').value, 'Prontia Saúde Ltda');
+  assert.equal(campo(a, 'tomador_documento').value, '11.444.777/0001-61');
+  assert.equal(campo(a, 'tomador_email').value, 'financeiro@prontia.com.br');
+  assert.equal(campo(a, 'codigo_servico_nacional').value, '040101');
+  assert.equal(campo(a, 'descricao').value, 'Consulta médica');
+  assert.equal(campo(a, 'valor_padrao').value, '150,00');
+  assert.equal(campo(b, 'tomador_documento').value, '529.982.247-25');
+  for (const c of cartoes) {
+    const salvar = campo(c, 'salvar');
+    assert.equal(salvar.checked, true, '"Salvar como modelo" marcado');
+    assert.match(salvar.parentElement.textContent, /Salvar como modelo/);
+    for (const k of ['nome', 'tomador_nome', 'tomador_documento', 'tomador_email', 'codigo_servico_nacional', 'descricao', 'valor_padrao']) {
+      assert.equal(campo(c, k).readOnly || campo(c, k).disabled, false, `${k} editável`);
+    }
+  }
+  assert.ok(p.visivel('fc-salvar-clientes'));
+  assert.equal(p.rede.de('app:clientes:salvar').length, 0, 'nada é salvo antes de "Salvar clientes"');
+
+  // Editar um e desmarcar o outro: só o marcado vai, com a edição.
+  campo(a, 'descricao').value = 'Consulta médica de retorno';
+  campo(b, 'salvar').checked = false;
+  await p.clicar('fc-salvar-clientes');
+  const [salvar] = p.rede.de('app:clientes:salvar');
+  assert.equal(salvar.corpo.tenant_id, TENANT);
+  assert.equal(salvar.corpo.modelos.length, 1);
+  assert.deepEqual(salvar.corpo.modelos[0], { ...CANDIDATOS[0], descricao: 'Consulta médica de retorno' });
+  assert.equal(p.etapa(), 7);
+});
+
+test('ignorados no salvar aparecem com o motivo', async () => {
+  const p = await abrirNaEtapa('clientes', { respostas: { 'app:clientes:salvar': r(201, { salvos: 1, ignorados: [{ nome: 'Clínica Aurora', motivo: 'documento inválido' }] }) } });
+  await p.clicar('fc-salvar-clientes');
+  assert.equal(p.etapa(), 6);
+  assert.equal(p.texto('fc-aviso-6'), '1 cliente salvo. Ficaram de fora: Clínica Aurora (documento inválido).');
+  await p.clicar('fc-continuar-6');
+  assert.equal(p.etapa(), 7);
+});
+
+test('oferece pdf', async () => {
+  const p = await abrirNaEtapa('clientes', { respostas: { 'app:clientes:buscar_adn': r(503, { error: { code: 'ADN_INDISPONIVEL', message: 'fora' } }) } });
+  assert.ok(p.visivel('fc-pdfs'));
+  assert.equal(p.texto(p.$('fc-pdfs').querySelector('label.nf-arquivo')), 'Enviar PDFs das notas');
+  assert.equal(p.$('fc-clientes').querySelectorAll('.nf-cliente').length, 0);
+
+  const vazio = await abrirNaEtapa('clientes', { respostas: { 'app:clientes:buscar_adn': r(200, { candidatos: [] }) } });
+  assert.ok(vazio.visivel('fc-pdfs'), 'sem notas no ADN também oferece os PDFs');
+
+  // Cada PDF vai numa requisição ler_pdf; o lido vira cartão; o ilegível vira aviso.
+  const leituras = [];
+  const q = await abrirNaEtapa('clientes', {
+    respostas: {
+      'app:clientes:buscar_adn': r(503, { error: { code: 'ADN_INDISPONIVEL', message: 'fora' } }),
+      'app:clientes:ler_pdf': (c) => {
+        leituras.push(c);
+        return c.arquivo.name === 'foto.pdf'
+          ? { status: 422, corpo: { error: { code: 'PDF_ILEGIVEL', message: 'não é DANFSe' } } }
+          : { status: 200, corpo: { candidato: { ...CANDIDATOS[0], origem: 'importacao_pdf' } } };
+      }
+    }
+  });
+  await q.arquivos('fc-pdf', [['nota-1.pdf', '%PDF-1.4', 'application/pdf'], ['foto.pdf', '%PDF-1.4', 'application/pdf']]);
+  assert.equal(leituras.length, 2);
+  for (const c of leituras) { assert.equal(c.acao, 'ler_pdf'); assert.equal(c.tenant_id, TENANT); }
+  assert.equal(q.$('fc-clientes').querySelectorAll('.nf-cliente').length, 1);
+  assert.match(q.texto('fc-aviso-pdf'), /foto\.pdf: não conseguimos ler este PDF como nota \(DANFSe\)\./);
+
+  const lim = await abrirNaEtapa('clientes', { respostas: { 'app:clientes:buscar_adn': r(200, { candidatos: [] }), 'app:clientes:ler_pdf': r(429, { error: { code: 'LIMITE_PDFS', message: 'limite' } }) } });
+  await lim.arquivos('fc-pdf', [['a.pdf', '%PDF', 'application/pdf'], ['b.pdf', '%PDF', 'application/pdf']]);
+  assert.equal(lim.rede.de('app:clientes:ler_pdf').length, 1, 'para no limite');
+  assert.match(lim.texto('fc-aviso-pdf'), /limite de 30 PDFs/);
+});
+
+test('pular clientes', async () => {
+  const p = await abrirNaEtapa('clientes');
+  await p.clicar('fc-pular');
+  assert.equal(p.etapa(), 7);
+  assert.equal(p.rede.de('app:clientes:salvar').length, 0);
+});
+
+test('concluir no whatsapp', async () => {
+  const p = await abrirNaEtapa('ativacao');
+  assert.equal(p.etapa(), 7);
+  assert.equal(p.passo(), '7 de 7 · Concluir no WhatsApp');
+  assert.deepEqual(p.rede.de('app:ativacao')[0].corpo, { tenant_id: TENANT });
+  const botao = p.$('fc-whatsapp');
+  assert.ok(p.visivel(botao));
+  assert.equal(p.texto(botao), 'Concluir no WhatsApp');
+  assert.equal(botao.getAttribute('href'), 'https://wa.me/5511900000000?text=ATIVAR%20482913');
+  assert.match(p.texto('fc-ativar-texto'), /ATIVAR 482913/);
+  assert.match(p.texto('fc-ativar-texto'), /\(11\) 9••••-4321/);
+});
+
+test('retomada abre na etapa do servidor', async () => {
+  const casos = [['pagamento', 3], ['certificado', 4], ['dados_fiscais', 5], ['clientes', 6], ['ativacao', 7], ['boas_vindas_cliente', 7]];
+  for (const [etapa, n] of casos) {
+    const p = await abrirNaEtapa(etapa);
+    assert.equal(p.etapa(), n, etapa);
+    assert.deepEqual(p.rede.de('fiscal-conta:estado')[0].corpo, { acao: 'estado' });
+  }
+  const semEmpresa = await abrirNaEtapa('pagamento', { respostas: { 'fiscal-conta:estado': r(403, { ok: false, error_code: 'CONTA_SEM_EMPRESA', mensagem: 'x' }) } });
+  assert.equal(semEmpresa.etapa(), 1);
+});
+
+test('sessão vencida no meio volta ao código com o que foi digitado', async () => {
+  let vezes = 0;
+  const rede = superficie({
+    'auth:refresh': r(400, { error: 'invalid_grant' }),
+    'fiscal-cadastro:criar': () => (vezes++ === 0 ? { status: 401, corpo: { ok: false, error_code: 'SEM_SESSAO' } } : { status: 201, corpo: { ok: true, tenant_id: TENANT, etapa: 'pagamento' } })
+  });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede });
+  await ateEtapa3(p);
+  assert.equal(p.etapa(), 2, 'volta à etapa do código');
+  assert.equal(rede.de('fiscal-acesso').length, 2, 'manda um código novo');
+  assert.equal(p.window.localStorage.getItem('nofiscal.sessao'), null);
+  await p.preencher('fc-codigo', CODIGO_CERTO);
+  await p.enviar('fc-form-2');
+  assert.equal(p.etapa(), 3);
+  assert.equal(rede.de('fiscal-cadastro:criar')[1].corpo.cnpj, CNPJ, 'o que foi digitado continua');
+});
