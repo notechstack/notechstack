@@ -91,6 +91,15 @@ ok((await chamar(ac, { metodo: 'POST', corpo: { email: 'a@b.com', aceite: false 
 const semResend = await chamar(ac, { metodo: 'POST', corpo: { email: `novo-${randomUUID().slice(0, 6)}@example.test`, aceite: true, aceite_versao: 'termos-2026-10-21' } })
 ok(semResend.status === 502 && semResend.json?.motivo === 'indisponivel', 'auditor-acesso sem RESEND_API_KEY → 502 controlado', semResend)
 
+// 4b · checkout logado (C19): sem sessão 401 antes do Pagar.me; sessão sem conta do auditor 409.
+const ck = `${API}/functions/v1/assinatura-auditor`
+const semSessao = await chamar(ck, { metodo: 'POST', corpo: { plano: 'semanal' } })
+ok(semSessao.status === 401 && semSessao.json?.motivo === 'login_necessario', 'assinatura-auditor sem sessão → 401', semSessao)
+const semConta = await usuario('AUDITOR_CLIENT')
+const r409 = await chamar(ck, { metodo: 'POST', jwt: semConta.jwt, corpo: { plano: 'semanal' } })
+ok(r409.status === 409 && r409.json?.error_code === 'SEM_CONTA', 'assinatura-auditor com sessão sem conta → 409 SEM_CONTA', r409)
+psql(`delete from auth.users where id = '${semConta.id}'`)
+
 // 5 · exclusão de conta (sem assinatura): apaga negócio, conta e usuário.
 const exc = await chamar(`${HUB}/cliente/excluir-conta`, { metodo: 'POST', jwt: cliente.jwt, corpo: { confirmar: true } })
 ok(exc.status === 200 && exc.json?.ok === true && /^[0-9a-f]{24}$/.test(exc.json.codigo), 'excluir-conta → 200 com código', exc)
