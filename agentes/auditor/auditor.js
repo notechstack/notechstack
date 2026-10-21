@@ -195,19 +195,17 @@
       '<div class="au-fundo"><h3>Quer ir mais fundo? Conecte Meta e Google</h3><p>Eventos pelo servidor e o que roda dentro do GTM só aparecem com as contas conectadas: aí o auditor compara o que o site dispara com o que Meta e Google recebem.</p>' + ctaCadastro('Conectar Meta e Google') + '</div>' +
       '</div>', false);
   }
-  /* 429 limite_usuario (regra de Lucca: 3 diagnósticos grátis; o quarto pede assinatura): leva aos planos no fim
-     da retrospectiva (?motivo=limite#t13), com os mesmos utm_* e fbclid da navegação de sucesso. A LP segue sem preço. */
+  /* 429 limite_usuario (Lucca, 21/10: limite "invisível" por dia): sem aviso de cota. Leva direto à tela final da
+     retrospectiva (?motivo=limite#t13), onde o "Refazer com outra conta" aparece travado. Mantém utm_* e fbclid. */
   function planosLimiteUrl() {
     var u = new URL(retrospectivaUrl());
     u.searchParams.set('motivo', 'limite');
     u.hash = 't13';
     return u.toString();
   }
-  function renderLimite(data) {
+  function renderLimite() {
     dl({ event: 'diagnostico_limite_usuario' });
-    render('<div class="au-box au-box--limite"><h2>Você já fez seus ' + esc((data && data.limite) || 3) + ' diagnósticos grátis</h2>' +
-      '<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu e-mail.</p>' +
-      '<a class="ag-btn ag-btn--primario" href="' + esc(planosLimiteUrl()) + '">Ver os planos</a></div>', false);
+    location.assign(planosLimiteUrl());
   }
   function renderTeto() {
     dl({ event: 'diagnostico_teto_atingido' });
@@ -292,7 +290,7 @@
         }
         if (r.status === 400) { estado.innerHTML = ''; showInputError('URL inválida. Confira o endereço e tente de novo.'); return; }
         if (r.status === 409) { renderAndamento(); return; }
-        if (r.status === 429) { renderLimite(r.data); return; }
+        if (r.status === 429) { renderLimite(); return; }
         if (r.status === 503) { renderTeto(); return; }
         tentativa = null;
         renderFalha(false);

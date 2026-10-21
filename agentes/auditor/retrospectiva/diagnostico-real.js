@@ -168,9 +168,18 @@
     return n;
   }
 
-  /* c) modo limite (regra de Lucca: 3 diagnósticos grátis; o quarto pede assinatura). A LP, ao receber 429
-     limite_usuario, manda para cá com ?motivo=limite#t13. Sem diagnóstico na sessão, a sequência vira só [t13]
-     (mesmo mecanismo da sequência real: tira data-estado e põe hidden), sem o selo de demonstração. */
+  /* c) modo limite (Lucca, 21/10: limite "invisível" de diagnósticos por dia, sem texto sobre cota). A LP, ao receber
+     429 limite_usuario, manda para cá com ?motivo=limite#t13. A tela final fica igual; só o "Refazer com outra conta"
+     trava (cinza, sem clique). Sem diagnóstico na sessão, a sequência vira só [t13]. */
+  function travarRefazer(doc) {
+    var b = doc.getElementById('zap-refazer');
+    if (!b) return;
+    b.classList.add('zap-cta2--travado');
+    b.removeAttribute('href');
+    b.setAttribute('aria-disabled', 'true');
+    b.setAttribute('tabindex', '-1');
+  }
+
   function querLimite(search) {
     var partes = texto(search).replace(/^\?/, '').split('&');
     for (var i = 0; i < partes.length; i++) {
@@ -187,9 +196,8 @@
     if (t13) {
       var selo = t13.querySelector('.selo');
       if (selo) selo.setAttribute('hidden', '');
-      setTexto(t13, '.rot', '3 diagnósticos grátis usados');
-      setTexto(t13, 'h1.titulo', 'Para seguir auditando, escolha um plano.');
     }
+    travarRefazer(doc);
     var fora = DEMO.concat(['t01', 't06']);
     for (i = 0; i < fora.length; i++) {
       var s = doc.getElementById(fora[i]);
@@ -203,6 +211,11 @@
     var dados = ler(bruto);
     if (dados) {
       aplicar(document, dados, window.location.search);
+      /* chegou pelo limite com um diagnóstico anterior na sessão: mantém a sequência real e só trava o refazer */
+      if (querLimite(window.location.search)) {
+        travarRefazer(document);
+        try { if (window.location.hash !== '#t13' && window.history && window.history.replaceState) window.history.replaceState(null, '', '#t13'); } catch (e) {}
+      }
       return true;
     }
     if (querLimite(window.location.search)) {
@@ -213,6 +226,6 @@
     return false;
   }
 
-  window.NoDiagnosticoReal = { CHAVE: CHAVE, ler: ler, contar: contar, destinoApp: destinoApp, aplicar: aplicar, querLimite: querLimite, aplicarLimite: aplicarLimite, iniciar: iniciar };
+  window.NoDiagnosticoReal = { CHAVE: CHAVE, ler: ler, contar: contar, destinoApp: destinoApp, aplicar: aplicar, querLimite: querLimite, aplicarLimite: aplicarLimite, travarRefazer: travarRefazer, iniciar: iniciar };
   if (typeof document !== 'undefined' && document && document.getElementById) iniciar();
 })();
