@@ -1,6 +1,7 @@
 // Dublê da BrasilAPI (:3006): GET /api/cnpj/v1/:cnpj com os campos que a consulta usa (razão social, município,
 // UF, código IBGE e CNAE). Qualquer CNPJ com dígitos válidos existe, em São Paulo/SP (IBGE 3550308), CNAE 8630503.
 // Começando com 00000000: não encontrado (404). Começando com 99: município fictício fora do padrão nacional.
+// Os CNPJs de exemplo das telas (Prontia, Clínica Aurora) têm razão social própria; os outros, EMPRESA DEMO.
 import { servidor, json } from '../http.mjs';
 
 export function cnpjValido(v) {
@@ -36,8 +37,9 @@ export async function iniciarBrasilApi({ porta = 3006 } = {}) {
     if (!cnpjValido(cnpj)) { json(res, 400, { message: `CNPJ ${cnpj} inválido.`, type: 'bad_request', name: 'BadRequestError' }); return; }
     if (cnpj.startsWith('00000000')) { json(res, 404, { message: `CNPJ ${cnpj} não encontrado.`, type: 'not_found', name: 'NotFoundError' }); return; }
     const fora = cnpj.startsWith('99');
+    const conhecidos = { '11444777000161': 'PRONTIA SAUDE LTDA', '11222333000181': 'CLINICA AURORA LTDA' };
     json(res, 200, {
-      cnpj, razao_social: `EMPRESA DEMO ${cnpj.slice(8, 12)} LTDA`, nome_fantasia: 'DEMO',
+      cnpj, razao_social: conhecidos[cnpj] || `EMPRESA DEMO ${cnpj.slice(8, 12)} LTDA`, nome_fantasia: 'DEMO',
       municipio: fora ? 'CIDADE FORA DO PADRAO' : 'SAO PAULO', uf: fora ? 'MG' : 'SP',
       codigo_municipio_ibge: fora ? 3199999 : 3550308, codigo_municipio: fora ? 9999 : 7107,
       cnae_fiscal: 8630503, cnae_fiscal_descricao: 'Atividade médica ambulatorial restrita a consultas',
