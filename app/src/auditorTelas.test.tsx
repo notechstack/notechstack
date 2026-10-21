@@ -51,7 +51,7 @@ function abrir(caminho: string, s: Session | null) {
 }
 
 const CONTA: Conta = {
-  conta_id: 'k1', plano: 'gratis', encerrada_em: null, excluir_apos: null, limite_negocios: 1,
+  conta_id: 'k1', plano: 'gratis', encerrada_em: null, excluir_apos: null, limite_negocios: 1, copia_whatsapp: false, copia_whatsapp_numero: null,
   negocios: [{ client_id: CLIENTE, nome: 'loja.com.br', site_url: 'https://loja.com.br/', frequencia: null, retrospectiva_gerada_em: null, suporte_ate: null }],
 }
 

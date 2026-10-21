@@ -23,6 +23,8 @@ export type Conta = {
   excluir_apos: string | null
   limite_negocios: number
   negocios: Negocio[]
+  copia_whatsapp: boolean
+  copia_whatsapp_numero: string | null
 }
 
 export type Provedor = 'meta' | 'google'
@@ -45,8 +47,9 @@ export type Snapshot = { tipo: 'meta_ads' | 'google_ads' | 'ga4' | 'gsc' | 'site
 export type ConfigAssinatura = { ambiente: string; venda_aberta: boolean; public_key: string; planos: { codigo: string; disponivel: boolean }[] }
 export type Operacao = {
   client_id: string; negocio: string; site_url: string | null; plano: Plano; conta_criada_em: string; encerrada_em: string | null
+  copia_whatsapp: boolean
   conexoes: Record<string, { estado: string; expira_em: string | null }>
-  ultimo_relatorio: { estado: string; tipo: string; periodo_ate: string; erro: string | null } | null
+  ultimo_relatorio: { id: string; estado: string; tipo: string; periodo_ate: string; erro: string | null } | null
   relatorios_falhos: number
 }
 
@@ -68,6 +71,7 @@ const MENSAGENS: Record<string, string> = {
   email_invalido: 'Confira o e-mail digitado.',
   aceite_obrigatorio: 'Para continuar, aceite os Termos e a Política de Privacidade.',
   conta_sistema: 'Esta conta não pode ser usada no auditor.',
+  numero_invalido: 'Informe o celular com DDD (10 ou 11 dígitos).',
 }
 
 function erroDe(codigoBruto: string | undefined, padrao: string): ErroAuditor {
@@ -154,6 +158,9 @@ export const auditor = {
     return contexto && typeof contexto.json === 'function' ? await contexto.clone().json().catch(() => ({ ok: false })) : { ok: false }
   },
   operacao: () => hub<{ negocios: Operacao[] }>('GET', '/auditor/operacao'),
+  // Equipe (NO_ADMIN aal2): texto final para a cópia por WhatsApp; cada leitura é registrada no servidor.
+  copiaWhatsapp: (relatorioId: string) => hub<{ numero: string; negocio: string; texto: string }>('GET', `/auditor/copia/${encodeURIComponent(relatorioId)}`),
+  copiaLigar: (ativo: boolean, numero: string | null) => rpc<void>('auditor_eu_copia_whatsapp', { p_ativo: ativo, p_numero: numero }),
 
   conectar: (clientId: string, provedor: Provedor) => hub<{ url: string }>('POST', `/cliente/${encodeURIComponent(clientId)}/${provedor}/conectar`),
   desconectar: (clientId: string, provedor: Provedor) => hub<unknown>('DELETE', `/cliente/${encodeURIComponent(clientId)}/${provedor}`),

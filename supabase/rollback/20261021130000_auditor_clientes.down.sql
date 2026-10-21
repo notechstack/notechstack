@@ -15,7 +15,9 @@ $$;
 
 drop trigger if exists auditor_assinatura_sincronizar on public.auditor_assinaturas;
 drop function if exists public.auditor_assinatura_sincronizar();
-drop function if exists public.auditor_assinatura_vincular(text, uuid);
+drop function if exists public.auditor_assinatura_vincular(text, uuid, boolean);
+drop function if exists public.auditor_copia_whatsapp_ler(uuid, uuid);
+drop function if exists public.auditor_eu_copia_whatsapp(boolean, text);
 drop function if exists public.auditor_checkout_preparar(uuid);
 drop function if exists public.auditor_invoke_processar();
 drop function if exists public.auditor_eu_frequencia(uuid, text);

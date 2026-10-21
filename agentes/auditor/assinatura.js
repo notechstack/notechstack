@@ -1,13 +1,15 @@
 /* Assinatura do Auditor: 3 planos + checkout. Cartão é tokenizado direto no Pagar.me; só o token vai à nossa função (CONTRATO.md).
    Decisões de Lucca (16/10): os planos ficam na tela final da retrospectiva (não na LP); aceite único e obrigatório dos Termos,
-   que já diz que o relatório chega no WhatsApp informado (não há mais caixa separada do relatório).
-   Checkout em duas etapas (Lucca, 16/10): 1) cadastro base (nome, sobrenome, e-mail, WhatsApp) e o aceite dos Termos,
+   que diz que o relatório chega por e-mail e no painel (Lucca, 21/10; antes, WhatsApp).
+   Desde 21/10 a assinatura exige login: o botão "Assinar" leva ao checkout do app (/auditor/planos).
+   Checkout em duas etapas (Lucca, 16/10): 1) cadastro base (nome, sobrenome, e-mail, celular) e o aceite dos Termos,
    no momento do cadastro pré-venda; 2) só depois abrem CPF/CNPJ, cartão e o endereço de cobrança que o Pagar.me pede. */
 (function () {
   'use strict';
   var SUPABASE_BASE = 'https://sdeowbqmwkwseyktyemn.supabase.co'; // mesma base de auditor.js
   var ENDPOINT = SUPABASE_BASE + '/functions/v1/assinatura-auditor';
   var TOKENS_URL = 'https://api.pagar.me/core/v5/tokens';
+  var APP_PLANOS = 'https://app.notechstack.com.br/auditor/planos';
   var PLANOS = {
     mensal: { nome: 'Mensal', valor: 47 },
     semanal: { nome: 'Semanal', valor: 97 },
@@ -32,8 +34,8 @@
     if (texto(d.sobrenome).length < 2) erros.push('Informe seu sobrenome.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(texto(d.email))) erros.push('Informe um e-mail válido.');
     var tel = soDigitos(d.telefone);
-    if (tel.length < 10 || tel.length > 11) erros.push('Informe o WhatsApp com DDD (10 ou 11 dígitos): é nele que o relatório chega.');
-    if (d.termos_aceite !== true) erros.push('Para continuar, marque o aceite dos Termos de Uso e da Política de Privacidade (o relatório chega no WhatsApp informado).');
+    if (tel.length < 10 || tel.length > 11) erros.push('Informe um celular com DDD (10 ou 11 dígitos).');
+    if (d.termos_aceite !== true) erros.push('Para continuar, marque o aceite dos Termos de Uso e da Política de Privacidade.');
     return erros;
   }
 
@@ -89,7 +91,7 @@
     d = d || {};
     var t = soDigitos(d.telefone);
     var tel = t.length >= 10 ? '(' + t.slice(0, 2) + ') ' + t.slice(2, t.length - 4) + '-' + t.slice(-4) : t;
-    return nomeCompleto(d) + ' · ' + texto(d.email) + ' · WhatsApp ' + tel;
+    return nomeCompleto(d) + ' · ' + texto(d.email) + ' · celular ' + tel;
   }
 
   function mensagem(resp) {
@@ -193,7 +195,13 @@
     .catch(function () { /* botões continuam "Assinatura em breve" */ });
 
   botoes.forEach(function (b) {
-    b.addEventListener('click', function () { if (!b.disabled) abrir(b.getAttribute('data-plano')); });
+    b.addEventListener('click', function () {
+      if (b.disabled) return;
+      var codigo = b.getAttribute('data-plano');
+      medicao('iniciada', codigo);
+      /* Checkout logado no app: a conta do auditor e o plano ficam ligados (spec 2026-10-21, passo 6). */
+      location.href = APP_PLANOS + '?plano=' + encodeURIComponent(codigo);
+    });
   });
   $('au-checkout-cancelar').addEventListener('click', fechar);
   dialog.addEventListener('close', limparCartao);

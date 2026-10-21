@@ -106,7 +106,7 @@ test('limite (429): "Ver os planos" leva a retrospectiva/?motivo=limite…#t13 c
   const { estado, dataLayer, abertas } = await rodar({ status: 429, corpo: { status: 'limite_usuario', limite: 3 } });
   assert.ok(dataLayer.some((e) => e && e.event === 'diagnostico_limite_usuario'), 'evento diagnostico_limite_usuario');
   assert.match(estado, /<h2>Você já fez seus 3 diagnósticos grátis<\/h2>/);
-  assert.match(estado, /<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp\.<\/p>/);
+  assert.match(estado, /<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu e-mail\.<\/p>/);
   assert.doesNotMatch(estado, /R\$|Crie sua conta|Criar minha conta|app\.notechstack/, 'sem preço e sem cadastro do app');
   const m = /<a class="ag-btn[^"]*" href="([^"]+)">Ver os planos<\/a>/.exec(estado);
   assert.ok(m, 'link "Ver os planos" com a classe ag-btn');

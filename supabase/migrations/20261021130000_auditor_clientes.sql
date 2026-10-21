@@ -17,7 +17,13 @@ create table public.auditor_contas (
   assinatura_id uuid unique references public.auditor_assinaturas(id) on delete set null,
   criada_em timestamptz not null default now(),
   encerrada_em timestamptz,
-  excluir_apos timestamptz
+  excluir_apos timestamptz,
+  -- Cópia do relatório pelo WhatsApp, enviada à mão pela equipe da nó (decisão do Lucca, 21/10).
+  -- Opt-in opcional no checkout; o cliente desliga no painel. Só com ela a equipe lê o texto final do relatório.
+  copia_whatsapp boolean not null default false,
+  copia_whatsapp_numero text check (copia_whatsapp_numero ~ '^[0-9]{10,11}$'),
+  copia_whatsapp_em timestamptz,
+  check (not copia_whatsapp or (copia_whatsapp_numero is not null and copia_whatsapp_em is not null))
 );
 
 alter table public.auditor_assinaturas
@@ -161,7 +167,7 @@ revoke all on public.auditor_contas, public.auditor_clientes, public.marketing_c
   public.auditor_exclusoes, public.auditor_avisos
   from public, anon, authenticated;
 
-grant select (id, plano, criada_em, encerrada_em, excluir_apos) on public.auditor_contas to authenticated;
+grant select (id, plano, criada_em, encerrada_em, excluir_apos, copia_whatsapp, copia_whatsapp_numero, copia_whatsapp_em) on public.auditor_contas to authenticated;
 create policy auditor_contas_dono on public.auditor_contas
   for select to authenticated using (dono_user_id = (select auth.uid()));
 
@@ -590,6 +596,7 @@ returns jsonb language sql stable security definer set search_path = ''
 as $$
   select case when c.id is null then null else jsonb_build_object(
     'conta_id', c.id, 'plano', c.plano, 'encerrada_em', c.encerrada_em, 'excluir_apos', c.excluir_apos,
+    'copia_whatsapp', c.copia_whatsapp, 'copia_whatsapp_numero', c.copia_whatsapp_numero,
     'limite_negocios', case c.plano when 'agencia' then 5 else 1 end,
     'negocios', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -604,6 +611,27 @@ as $$
       where ac.conta_id = c.id), '[]'::jsonb)) end
   from (select 1) x
   left join public.auditor_contas c on c.dono_user_id = (select auth.uid());
+$$;
+
+-- Liga (com o número) ou desliga a cópia por WhatsApp. Desligar apaga o número.
+create or replace function public.auditor_eu_copia_whatsapp(p_ativo boolean, p_numero text default null)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare v_numero text := nullif(regexp_replace(coalesce(p_numero, ''), '[^0-9]', '', 'g'), '');
+begin
+  if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  if p_ativo and (v_numero is null or v_numero !~ '^[0-9]{10,11}$') then raise exception 'numero_invalido'; end if;
+  update public.auditor_contas
+     set copia_whatsapp = p_ativo,
+         copia_whatsapp_numero = case when p_ativo then v_numero else null end,
+         copia_whatsapp_em = case when p_ativo then now() else null end
+   where dono_user_id = (select auth.uid());
+  if not found then raise exception 'conta_inexistente'; end if;
+  perform public.marketing_cliente_evento(
+    (select ac.client_id from public.auditor_clientes ac join public.auditor_contas c on c.id = ac.conta_id
+      where c.dono_user_id = (select auth.uid()) order by ac.criado_em limit 1),
+    (select auth.uid()), 'AUDITOR', case when p_ativo then 'copia_whatsapp_ligada' else 'copia_whatsapp_desligada' end, '{}'::jsonb);
+end;
 $$;
 
 create or replace function public.auditor_eu_iniciar(p_site_url text default null)
@@ -663,7 +691,7 @@ do $$
 declare f text;
 begin
   foreach f in array array[
-    'public.auditor_eu()', 'public.auditor_eu_iniciar(text)', 'public.auditor_eu_suporte(uuid, boolean, text)',
+    'public.auditor_eu()', 'public.auditor_eu_iniciar(text)', 'public.auditor_eu_copia_whatsapp(boolean, text)', 'public.auditor_eu_suporte(uuid, boolean, text)',
     'public.auditor_eu_retrospectiva(uuid)', 'public.auditor_eu_negocio_criar(text, text)', 'public.auditor_eu_frequencia(uuid, text)'
   ] loop
     execute format('revoke all on function %s from public, anon', f);
@@ -687,7 +715,7 @@ as $$
 $$;
 
 -- Depois do registro no Pagar.me: liga a assinatura à conta. Se o webhook 'paga' já chegou, o plano vale na hora.
-create or replace function public.auditor_assinatura_vincular(p_subscription_id text, p_user_id uuid)
+create or replace function public.auditor_assinatura_vincular(p_subscription_id text, p_user_id uuid, p_copia_whatsapp boolean default false)
 returns void language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -705,7 +733,10 @@ begin
      set assinatura_id = v_ass.id,
          plano = case when v_ass.status in ('paga', 'recusada') then v_ass.plano else plano end,
          encerrada_em = case when v_ass.status = 'paga' then null else encerrada_em end,
-         excluir_apos = case when v_ass.status = 'paga' then null else excluir_apos end
+         excluir_apos = case when v_ass.status = 'paga' then null else excluir_apos end,
+         copia_whatsapp = case when p_copia_whatsapp then true else copia_whatsapp end,
+         copia_whatsapp_numero = case when p_copia_whatsapp then v_ass.whatsapp else copia_whatsapp_numero end,
+         copia_whatsapp_em = case when p_copia_whatsapp then now() else copia_whatsapp_em end
    where id = v_conta.id;
   perform public.marketing_cliente_evento(
     (select ac.client_id from public.auditor_clientes ac where ac.conta_id = v_conta.id order by ac.criado_em limit 1),
@@ -740,7 +771,7 @@ do $$
 declare f text;
 begin
   foreach f in array array[
-    'public.auditor_checkout_preparar(uuid)', 'public.auditor_assinatura_vincular(text, uuid)', 'public.auditor_assinatura_sincronizar()'
+    'public.auditor_checkout_preparar(uuid)', 'public.auditor_assinatura_vincular(text, uuid, boolean)', 'public.auditor_assinatura_sincronizar()'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
     if f not like '%sincronizar%' then execute format('grant execute on function %s to service_role', f); end if;
@@ -748,15 +779,42 @@ begin
 end;
 $$;
 
+-- Texto final de um relatório para a equipe mandar pelo WhatsApp. Só com o opt-in da conta, só relatório
+-- pronto/enviado/parcial, só resumo + prioridades (o mesmo do e-mail), nunca snapshots nem achados.
+-- Cada leitura vira 'copia_whatsapp_leu' na trilha. Chamada pela marketing-hub (NO_ADMIN aal2).
+create or replace function public.auditor_copia_whatsapp_ler(p_relatorio_id uuid, p_ator uuid)
+returns jsonb language plpgsql security definer set search_path = ''
+as $$
+declare v jsonb;
+begin
+  select jsonb_build_object(
+      'relatorio_id', r.id, 'client_id', r.client_id, 'negocio', cl.name, 'tipo', r.tipo,
+      'periodo_de', r.periodo_de, 'periodo_ate', r.periodo_ate, 'numero', c.copia_whatsapp_numero,
+      'resumo', r.narrativa ->> 'resumo', 'prioridades', coalesce(r.narrativa -> 'prioridades', '[]'::jsonb))
+    into v
+    from public.auditor_relatorios r
+    join public.auditor_clientes ac on ac.client_id = r.client_id
+    join public.auditor_contas c on c.id = ac.conta_id
+    join public.clients cl on cl.id = r.client_id
+   where r.id = p_relatorio_id and c.copia_whatsapp and r.estado in ('pronto', 'enviado', 'parcial') and r.narrativa is not null;
+  if v is null then return null; end if;
+  perform public.marketing_cliente_evento((v ->> 'client_id')::uuid, p_ator, 'NO_ADMIN', 'copia_whatsapp_leu',
+    jsonb_build_object('relatorio_id', p_relatorio_id));
+  return v;
+end;
+$$;
+revoke all on function public.auditor_copia_whatsapp_ler(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.auditor_copia_whatsapp_ler(uuid, uuid) to service_role;
+
 -- ------------------------------------------------------------ 10 · Operação (NO_ADMIN, sem métricas)
 
 create or replace view public.auditor_operacao
 with (security_invoker = true) as
 select ac.client_id, cl.name as negocio, ac.site_url, ct.plano, ct.criada_em as conta_criada_em,
-       ct.encerrada_em,
+       ct.encerrada_em, ct.copia_whatsapp,
        (select coalesce(jsonb_object_agg(c.provedor, jsonb_build_object('estado', c.estado, 'expira_em', c.expira_em)), '{}'::jsonb)
           from public.marketing_cliente_conexoes c where c.client_id = ac.client_id) as conexoes,
-       (select jsonb_build_object('estado', r.estado, 'tipo', r.tipo, 'periodo_ate', r.periodo_ate, 'erro', r.erro)
+       (select jsonb_build_object('id', r.id, 'estado', r.estado, 'tipo', r.tipo, 'periodo_ate', r.periodo_ate, 'erro', r.erro)
           from public.auditor_relatorios r where r.client_id = ac.client_id
           order by r.criado_em desc limit 1) as ultimo_relatorio,
        (select count(*) from public.auditor_relatorios r where r.client_id = ac.client_id and r.estado = 'falhou') as relatorios_falhos

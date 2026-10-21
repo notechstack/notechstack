@@ -7,8 +7,12 @@ export type CodigoPlano = 'mensal' | 'semanal' | 'agencia'
 // Tem de ser idêntico a TEXTO_ACEITE_ASSINATURA (assinatura-auditor/core.ts): o servidor recusa outro texto.
 // Um teste garante a igualdade.
 export const TEXTO_ACEITE =
-  'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp ' +
-  'que informei acima, enviado pelo número da nó (+55 11 93928-9413).'
+  'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail ' +
+  'e no meu painel do auditor.'
+
+// Opt-in OPCIONAL e desmarcado (Lucca, 21/10): a equipe da nó manda uma cópia do relatório pelo WhatsApp, à mão.
+// Só com ele a equipe lê o texto final do relatório (nunca as métricas brutas), e cada leitura fica registrada.
+export const TEXTO_COPIA_WHATSAPP = 'Quero receber também uma cópia do relatório pelo WhatsApp, enviada pela equipe da nó, no celular informado acima.'
 
 export const PLANOS: { codigo: CodigoPlano; nome: string; preco: string; ritmo: string; itens: string[]; recomendado?: boolean }[] = [
   { codigo: 'mensal', nome: 'Mensal', preco: 'R$ 47', ritmo: '1 relatório por mês', itens: ['1 site + contas Meta e Google', 'Nota de 0 a 10 com o placar ok · atenção · problema', 'O que corrigir, uma linha por ponto'] },
@@ -29,6 +33,7 @@ export type DadosCheckout = {
   validade: string
   cvv: string
   termos_aceite: boolean
+  copia_whatsapp: boolean
   endereco: { cep: string; rua: string; numero: string; complemento: string; bairro: string; cidade: string; uf: string }
 }
 
@@ -40,7 +45,7 @@ export function validar(d: DadosCheckout): string[] {
   if (limpo(d.nome).length < 2) erros.push('Informe seu nome completo.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email.trim())) erros.push('Informe um e-mail válido.')
   const tel = digitos(d.telefone)
-  if (tel.length < 10 || tel.length > 11) erros.push('Informe o WhatsApp com DDD (10 ou 11 dígitos).')
+  if (tel.length < 10 || tel.length > 11) erros.push('Informe um celular com DDD (10 ou 11 dígitos).')
   const doc = digitos(d.documento)
   if (doc.length !== 11 && doc.length !== 14) erros.push('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).')
   const num = digitos(d.numero_cartao)
@@ -70,6 +75,7 @@ export function montarPedido(d: DadosCheckout, cardToken: string) {
     card_token: cardToken,
     termos_aceite: true,
     aceite_texto: TEXTO_ACEITE,
+    copia_whatsapp: d.copia_whatsapp === true,
     endereco: {
       cep: digitos(e.cep), rua: limpo(e.rua), numero: limpo(e.numero), complemento: limpo(e.complemento),
       bairro: limpo(e.bairro), cidade: limpo(e.cidade), uf: e.uf.trim().toUpperCase(),

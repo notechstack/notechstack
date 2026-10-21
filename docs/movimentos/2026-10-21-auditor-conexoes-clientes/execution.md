@@ -138,7 +138,7 @@ Diferenças esperadas nos advisors:
 **4 · Deploy das funções**, a partir da branch `claude/auditor-clientes-frente3`:
 - `auditor-acesso`, com `verify_jwt=false`. Precisa de `RESEND_API_KEY` e `DIAG_IP_SALT`, que já existem; e de `APP_URL`.
 - `marketing-hub`, com `verify_jwt=false`. Inclui tudo da v12 da Frente 1 mais as rotas do auditor. Antes, rodar `marketingHub.test.ts`, `marketingClientes.test.ts`, `marketingAdapters.test.ts` e o pgTAP `hub_marketing`.
-- **`assinatura-auditor`: segurar** enquanto `venda_aberta=true`, porque quebra o botão do site. Publicar só depois que o Lucca decidir.
+- **`assinatura-auditor`: publicar.** A venda foi fechada pelo Lucca (`venda_aberta:false`, conferido às 11:37). Com ela fechada, a exigência de login não quebra nada no site, e o botão do site passa a levar ao app.
 
 **5 · Provas pós-deploy** (sem login, todas sem efeito colateral):
 - `POST marketing-hub/internal/auditor/processar` sem segredo → 401;
@@ -146,7 +146,41 @@ Diferenças esperadas nos advisors:
 - `GET marketing-hub/auditor/operacao` sem login → 401;
 - `/overview`, `/connections`, `/config` e `/internal/publish-due` com as mesmas respostas da prova das 10:25/10:41;
 - `POST auditor-acesso` com `{"email":"x"}` → 400.
+- `GET marketing-hub/auditor/copia/<uuid>` sem login → 401;
+- `POST assinatura-auditor` sem login → 401 `login_necessario`;
+- `GET assinatura-auditor` → `venda_aberta:false`.
 
 **Rollback:**
 - `supabase/rollback/20261021130000_auditor_clientes.down.sql`, que devolve `auditor_pode_ler` à versão da A;
 - redeploy da `marketing-hub` v12.
+
+
+## Rodada 3 (21/10/2026, 11:00–11:40) — decisões do Lucca via orquestrador
+
+### Feito
+- **Rebase** sobre a `origin/main` com o #67 (`f6a104f9`). O diff da `marketing-hub` contra a main tem só as adições da Frente 3.
+- **Fora o WhatsApp como canal do relatório.** Agora é e-mail + painel em todos os lugares:
+  - `TEXTO_ACEITE_ASSINATURA` (servidor), `checkout.ts` (app) e o script de sandbox: "Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.";
+  - planos da retrospectiva do site, `auditor.js`, `assinatura.js` (mensagens) e app: "celular" no lugar de "WhatsApp";
+  - continuam os links de **contato** por WhatsApp (rodapé e a mensagem de compensação do checkout): são canal de suporte, não promessa de entrega.
+- **Checkout do site:** o botão "Assinar" do site leva a `https://app.notechstack.com.br/auditor/planos?plano=…`, onde o formulário daquele plano já abre. O diálogo antigo do site fica sem uso.
+- **Cópia opcional pelo WhatsApp** (proposta do orquestrador, implementada; cabe no modelo):
+  - `auditor_contas.copia_whatsapp`, `copia_whatsapp_numero` e `copia_whatsapp_em` (consentimento);
+  - opt-in **desmarcado** no checkout. O número vem do celular informado, por `auditor_assinatura_vincular(…, p_copia_whatsapp)`;
+  - o cliente liga e desliga em "Conta" (`auditor_eu_copia_whatsapp`). Desligar apaga o número;
+  - a equipe abre em `/no/auditor` → "Cópia para WhatsApp" (`GET /auditor/copia/:relatorioId`, NO_ADMIN aal2, por `auditor_copia_whatsapp_ler`):
+    - **só com opt-in**, e devolve 404 igual a inexistente;
+    - só relatório pronto, enviado ou parcial;
+    - só **resumo + prioridades** (o texto do e-mail), nunca snapshots nem achados;
+    - **cada leitura** gera `copia_whatsapp_leu` na trilha;
+    - o texto vem pronto para colar, com o link para o relatório completo.
+  - Como passa por RPC de service role, e não pela RLS, o registro é garantido.
+- **Política** (`/privacidade/#copia-whatsapp`) e **Termos** (seção 6): a entrega é por e-mail e painel, e a cópia opcional entra como exceção explícita à regra "ninguém da equipe lê". Base legal: consentimento (art. 7º, I), revogável em "Conta".
+
+### Provas
+- **pgTAP:** 634 (126 em `auditor_clientes.test.sql`, 12 delas da cópia). Só `agency_console.sql` falha, como antes. Rollback e reaplicação OK.
+- **Integração Deno:** 28, incluindo a rota da cópia (401 sem login, 403 para cliente).
+- **Concorrência:** 7.
+- **Vitest do auditor:** 58. **Suíte do app em sequência:** 483 de 485 (as 2 do `pipelineExamples`).
+- **Testes do site** (`tests/assinatura-auditor`): 106 de 110, o mesmo de antes. As 4 falhas são de ambiente: `front` e `consistencia` leem arquivos fora do repo, e `acesso` e `sql` dependem do `@electric-sql/pglite`, que não está instalado. O `front.test.mjs` foi atualizado para o texto novo, mas não roda aqui.
+- **`tsc`, `eslint` e `vite build`:** limpos.

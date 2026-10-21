@@ -283,5 +283,34 @@ update public.auditor_assinaturas set status = 'cancelada' where pagarme_subscri
 select isnt((select excluir_apos from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1'), null, 'C19 cancelada: conta encerrada com data de exclusão');
 select is(public.auditor_conta_com_acesso((select id from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000f1')), false, 'C19 cancelada: sem acesso');
 
+-- ------------------------------------------------------------ Cópia por WhatsApp (opt-in, decisão 21/10)
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, last_sign_in_at) values
+  ('a3000000-0000-4000-8000-0000000000c1', 'authenticated', 'authenticated', 'copia@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now());
+select public.auditor_primeiro_acesso('a3000000-0000-4000-8000-0000000000c1', 'copia@example.test', 'https://copia.example');
+create temp table cop on commit drop as select m.client_id as x from public.memberships m where m.user_id = 'a3000000-0000-4000-8000-0000000000c1';
+insert into public.auditor_assinaturas (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+values ('mensal', 'Copia', 'copia@example.test', '11977776666', 'sub_c1', 'pendente', now(), 'Aceito');
+insert into public.auditor_relatorios (id, client_id, tipo, periodo_de, periodo_ate, estado, narrativa, achados)
+select 'a3200000-0000-4000-8000-0000000000c1', x, 'mensal', date '2026-09-01', date '2026-09-30', 'enviado',
+  '{"origem":"modelo","resumo":"Resumo de setembro.","prioridades":[{"achado_id":"a","titulo":"T","o_que_fazer":"F"}]}'::jsonb,
+  '[{"id":"a","numeros":{"gasto":"R$ 1,00"}}]'::jsonb from cop;
+select is(public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad'), null, 'cópia: sem opt-in a equipe não lê');
+select lives_ok($$select public.auditor_assinatura_vincular('sub_c1', 'a3000000-0000-4000-8000-0000000000c1', true)$$, 'cópia: opt-in no checkout');
+select results_eq($$select copia_whatsapp, copia_whatsapp_numero from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000c1'$$,
+  $$values (true, '11977776666'::text)$$, 'cópia: número do checkout gravado');
+select is((public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad') ->> 'resumo'), 'Resumo de setembro.', 'cópia: com opt-in a equipe lê o resumo');
+select is((public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad') ? 'achados'), false, 'cópia: nunca leva achados nem números brutos');
+select is((select count(*)::int from public.marketing_cliente_eventos where acao = 'copia_whatsapp_leu' and client_id = (select x from cop)), 2, 'cópia: cada leitura registrada');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a3000000-0000-4000-8000-0000000000c1","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
+select is((public.auditor_eu() ->> 'copia_whatsapp')::boolean, true, 'cliente vê a cópia ligada');
+select throws_ok($$select public.auditor_eu_copia_whatsapp(true, '123')$$, 'P0001', 'numero_invalido', 'cópia: número inválido recusado');
+select lives_ok($$select public.auditor_eu_copia_whatsapp(false)$$, 'cliente desliga a cópia');
+select throws_ok($$select public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad')$$, '42501', null, 'cliente não chama a leitura da equipe');
+reset role;
+select results_eq($$select copia_whatsapp, copia_whatsapp_numero from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000c1'$$,
+  $$values (false, null::text)$$, 'cópia desligada apaga o número');
+select is(public.auditor_copia_whatsapp_ler('a3200000-0000-4000-8000-0000000000c1', 'a3000000-0000-4000-8000-0000000000ad'), null, 'cópia desligada: equipe não lê mais');
+
 select * from finish();
 rollback;

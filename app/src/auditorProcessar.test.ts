@@ -136,6 +136,10 @@ describe('rotas do auditor na marketing-hub', () => {
       apagarConta: vi.fn(async () => ({ codigo: 'abc', usuario_apagado: true })),
       operacao: vi.fn(async () => [{ client_id: CLIENTE, plano: 'semanal', conexoes: {}, ultimo_relatorio: null }]),
       suporteVigente: vi.fn(async () => false),
+      copiaWhatsapp: vi.fn(async (id: string) => (id === 'a1111111-1111-4111-8111-111111111111' ? {
+        relatorio_id: id, client_id: CLIENTE, negocio: 'Loja', tipo: 'semanal', periodo_de: '2026-10-12', periodo_ate: '2026-10-18',
+        numero: '11977776666', resumo: 'Resumo.', prioridades: [{ titulo: 'T', o_que_fazer: 'F' }],
+      } : null)),
       ...extra,
     }
     const tokenLer = vi.fn(async () => null)
@@ -202,5 +206,21 @@ describe('rotas do auditor na marketing-hub', () => {
     expect((await r(pedido('GET', 'admin1'), ['auditor', 'operacao'], json, erro))!.status).toBe(403)
     expect((await r(pedido('GET', 'dot'), ['auditor', 'operacao'], json, erro))!.status).toBe(403)
     expect((await r(pedido('GET', 'dono'), ['auditor', 'operacao'], json, erro))!.status).toBe(403)
+  })
+
+  it('cópia por WhatsApp: só NO_ADMIN aal2; sem opt-in é 404; o texto é o do e-mail', async () => {
+    const { r, auditorStore } = rotas()
+    const ok = await r(pedido('GET', 'admin'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro)
+    expect(ok!.status).toBe(200)
+    const corpo = await ok!.json()
+    expect(corpo.numero).toBe('11977776666')
+    expect(corpo.texto).toContain('*Relatório semanal · Loja* (12/10 a 18/10)')
+    expect(corpo.texto).toContain('1. T: F')
+    expect(corpo.texto).toContain('/auditor/' + CLIENTE + '/relatorios/a1111111-1111-4111-8111-111111111111')
+    expect(auditorStore.copiaWhatsapp).toHaveBeenCalledWith('a1111111-1111-4111-8111-111111111111', 'a1')
+    expect((await r(pedido('GET', 'admin'), ['auditor', 'copia', 'b2222222-2222-4222-8222-222222222222'], json, erro))!.status).toBe(404)
+    expect((await r(pedido('GET', 'admin1'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
+    expect((await r(pedido('GET', 'dot'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
+    expect((await r(pedido('GET', 'dono'), ['auditor', 'copia', 'a1111111-1111-4111-8111-111111111111'], json, erro))!.status).toBe(403)
   })
 })

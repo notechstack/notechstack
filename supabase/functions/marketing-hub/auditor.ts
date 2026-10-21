@@ -2,6 +2,7 @@
 //   POST /internal/auditor/processar   x-cron-secret   → até 3 relatórios + avisos (pg_cron a cada 10 min)
 //   POST /cliente/excluir-conta        JWT do dono     → revoga no provedor, cancela no Pagar.me, apaga tudo
 //   GET  /auditor/operacao             NO_ADMIN aal2   → metadados operacionais (sem métricas, achados ou texto)
+//   GET  /auditor/copia/:relatorioId   NO_ADMIN aal2   → texto final para a cópia por WhatsApp (só com opt-in; registrado)
 // Spec 2026-10-21, seções 2, 4 e 5. Nada aqui lê o token ou as contas da Nó.
 
 import { MetaApiError } from "../_shared/meta.ts";
@@ -31,7 +32,25 @@ export interface AuditorStore extends ProcessarStore {
   contaDoDono(userId: string): Promise<ContaDoDono | null>;
   apagarConta(contaId: string): Promise<{ codigo: string; usuario_apagado: boolean }>;
   operacao(): Promise<unknown[]>;
+  // null = sem opt-in da conta, relatório inexistente ou ainda sem texto. Registra a leitura.
+  copiaWhatsapp(relatorioId: string, ator: string): Promise<CopiaWhatsapp | null>;
   suporteVigente(userId: string, clientId: string): Promise<boolean>;
+}
+
+export type CopiaWhatsapp = {
+  relatorio_id: string; client_id: string; negocio: string; tipo: string; periodo_de: string; periodo_ate: string;
+  numero: string; resumo: string; prioridades: { titulo: string; o_que_fazer: string }[];
+};
+
+// Mensagem pronta para colar no WhatsApp: o mesmo resumo e as mesmas prioridades do e-mail.
+export function textoCopia(c: CopiaWhatsapp, appUrl: string): string {
+  const titulo = { retrospectiva: "Retrospectiva", semanal: "Relatório semanal", mensal: "Relatório mensal" }[c.tipo] ?? "Relatório";
+  const data = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  return [
+    `*${titulo} · ${c.negocio}* (${data(c.periodo_de)} a ${data(c.periodo_ate)})`, "", c.resumo,
+    ...(c.prioridades.length ? ["", "*Prioridades*", ...c.prioridades.map((p, i) => `${i + 1}. ${p.titulo}: ${p.o_que_fazer}`)] : []),
+    "", `Relatório completo: ${appUrl}/auditor/${c.client_id}/relatorios/${c.relatorio_id}`,
+  ].join("\n");
 }
 
 export type AuditorDeps = {
@@ -177,6 +196,18 @@ export function criarRotasAuditor(d: AuditorDeps) {
     return json(req, 200, { negocios: await d.store.operacao() });
   }
 
+  async function copia(req: Request, relatorioId: string, json: Resp, erro: Erro): Promise<Response> {
+    const ch = await sessao(req);
+    if (!ch) return erro(req, 401, "UNAUTHENTICATED", "Sessão inválida.");
+    if (ch.role !== "NO_ADMIN") return erro(req, 403, "FORBIDDEN", "Sem acesso.");
+    if (ch.aal !== "aal2") return erro(req, 403, "MFA_REQUIRED", "Conclua o segundo fator.");
+    if (!/^[0-9a-f-]{36}$/i.test(relatorioId)) return erro(req, 404, "NOT_FOUND", "Relatório não encontrado.");
+    const c = await d.store.copiaWhatsapp(relatorioId, ch.userId);
+    // Mesma resposta para relatório inexistente e para conta sem opt-in: não revela nada.
+    if (!c) return erro(req, 404, "NOT_FOUND", "Sem cópia por WhatsApp para este relatório.");
+    return json(req, 200, { numero: c.numero, negocio: c.negocio, texto: textoCopia(c, d.appUrl) });
+  }
+
   // null = não é rota do auditor (o handler segue o roteamento de sempre).
   return async function rotasAuditor(req: Request, partes: string[], json: Resp, erro: Erro): Promise<Response | null> {
     const m = req.method;
@@ -186,6 +217,9 @@ export function criarRotasAuditor(d: AuditorDeps) {
     }
     if (r0 === "cliente" && r1 === "excluir-conta" && partes.length === 2) {
       return m === "POST" ? await excluirConta(req, json, erro) : erro(req, 405, "METHOD_NOT_ALLOWED", "Use POST.");
+    }
+    if (r0 === "auditor" && r1 === "copia" && partes.length === 3) {
+      return m === "GET" ? await copia(req, r2, json, erro) : erro(req, 405, "METHOD_NOT_ALLOWED", "Use GET.");
     }
     if (r0 === "auditor" && r1 === "operacao" && partes.length === 2) {
       return m === "GET" ? await operacao(req, json, erro) : erro(req, 405, "METHOD_NOT_ALLOWED", "Use GET.");

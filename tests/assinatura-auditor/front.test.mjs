@@ -1,7 +1,7 @@
 // Front da assinatura do Auditor (TASK-mvbcb35pbn0, decisões de Lucca em 16/10):
 // (A) a LP do auditor volta ao aprovado: sem preço, sem seção de planos, sem assinatura.js. Os planos ficam só na
 //     tela final da retrospectiva (retrospectiva/index.html, na raiz da pasta da TASK, fora do repo);
-// (B) aceite único e obrigatório dos Termos, que já diz que o relatório chega no WhatsApp informado.
+// (B) aceite único e obrigatório dos Termos: o relatório chega por e-mail e no painel (Lucca, 21/10; antes, WhatsApp).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ const lpCss = readFileSync(resolve(repo, 'agentes/auditor/auditor.css'), 'utf8')
 const html = readFileSync(resolve(repo, '..', 'retrospectiva', 'index.html'), 'utf8');
 const js = readFileSync(resolve(repo, 'agentes/auditor/assinatura.js'), 'utf8');
 
-const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).';
+const TEXTO_ACEITE = 'Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.';
 const PRECO_RE = /R\$\s*(47|97|197)\b/;
 const lf = (s) => s.replace(/\r\n/g, '\n');
 const textContent = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -194,10 +194,10 @@ test('normalizarTexto: espaços e quebras viram um espaço só', () => {
   assert.equal(montarPedido(dadosOk, 'tok', ' ' + TEXTO_ACEITE.replace(' Sei', '\n   Sei') + '\n').aceite_texto, TEXTO_ACEITE);
 });
 
-test('validar: WhatsApp é obrigatório (vazio ou sem DDD dá erro)', () => {
+test('validar: celular é obrigatório (vazio ou sem DDD dá erro)', () => {
   for (const tel of ['', '   ', '9999-0000', '11 99999-00001']) {
     const erros = validar({ ...dadosOk, telefone: tel });
-    assert.ok(erros.some((e) => /WhatsApp/i.test(e)), `telefone "${tel}" → erro de WhatsApp`);
+    assert.ok(erros.some((e) => /celular/i.test(e)), `telefone "${tel}" → erro de celular`);
   }
 });
 

@@ -2,7 +2,7 @@
 // não passam pelo JWT do cliente. Nenhum método devolve token.
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import type { AuditorStore } from "./auditor.ts";
+import type { AuditorStore, CopiaWhatsapp } from "./auditor.ts";
 import type { Aviso, AtivoColeta, ConexaoEstado, RelatorioFila } from "../_shared/auditor/processar.ts";
 
 function falhar(contexto: string, error: { message?: string; code?: string } | null): never {
@@ -118,6 +118,12 @@ export function criarAuditorStore(admin: SupabaseClient): AuditorStore {
       const peso = (x: { ultimo_relatorio?: { estado?: string } | null }) =>
         x.ultimo_relatorio?.estado === "falhou" ? 0 : x.ultimo_relatorio?.estado === "parcial" ? 1 : 2;
       return ((data ?? []) as { ultimo_relatorio?: { estado?: string } | null }[]).sort((a, b) => peso(a) - peso(b));
+    },
+
+    async copiaWhatsapp(relatorioId, ator) {
+      const { data, error } = await admin.rpc("auditor_copia_whatsapp_ler", { p_relatorio_id: relatorioId, p_ator: ator });
+      if (error) falhar("auditor_copia_whatsapp_ler", error);
+      return (data ?? null) as CopiaWhatsapp | null;
     },
 
     async suporteVigente(userId, clientId) {

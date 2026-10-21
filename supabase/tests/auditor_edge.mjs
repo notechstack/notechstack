@@ -73,6 +73,8 @@ ok((await chamar(`${HUB}/cliente/${clientId}/conexoes`, { jwt: outro.jwt })).sta
 const rlsOutro = await chamar(`${API}/rest/v1/auditor_clientes?client_id=eq.${clientId}`, { jwt: outro.jwt })
 ok(rlsOutro.status === 200 && rlsOutro.json.length === 0, 'RLS: outro cliente não lê o negócio (0 linhas)')
 ok((await chamar(`${HUB}/auditor/operacao`, { jwt: cliente.jwt })).status === 403, 'operação: cliente → 403')
+ok((await chamar(`${HUB}/auditor/copia/${randomUUID()}`)).status === 401, 'cópia WhatsApp sem login → 401')
+ok((await chamar(`${HUB}/auditor/copia/${randomUUID()}`, { jwt: cliente.jwt })).status === 403, 'cópia WhatsApp: cliente → 403')
 
 // 3 · relatório de verdade no runtime: sem fontes e sem Resend → gera achados e fica na fila do e-mail.
 const rel = psql(`insert into public.auditor_relatorios (client_id, tipo, periodo_de, periodo_ate, executar_em)

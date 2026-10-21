@@ -1,17 +1,17 @@
 import { useCallback, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/auth-context'
 import { useDados } from '../marketing/useDados'
 import { botaoPrimario, botaoSecundario, campo, Carregando } from '../marketing/ui'
 import { auditor } from './auditor-service'
-import { mensagemResultado, montarPedido, PLANOS, TEXTO_ACEITE, tokenizarCartao, UFS, validar, type CodigoPlano, type DadosCheckout } from './checkout'
+import { mensagemResultado, montarPedido, PLANOS, TEXTO_ACEITE, TEXTO_COPIA_WHATSAPP, tokenizarCartao, UFS, validar, type CodigoPlano, type DadosCheckout } from './checkout'
 
 // Planos e checkout no app (plan, passo 6): a assinatura nasce ligada à conta logada.
 // O cartão é tokenizado no navegador; o servidor só recebe o token.
 
 function vazio(plano: CodigoPlano, email: string): DadosCheckout {
   return {
-    plano, nome: '', email, telefone: '', documento: '', numero_cartao: '', nome_cartao: '', validade: '', cvv: '', termos_aceite: false,
+    plano, nome: '', email, telefone: '', documento: '', numero_cartao: '', nome_cartao: '', validade: '', cvv: '', termos_aceite: false, copia_whatsapp: false,
     endereco: { cep: '', rua: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
   }
 }
@@ -29,12 +29,16 @@ function Campo({ id, rotulo, valor, onMudar, tipo = 'text', autoComplete, classN
 
 export function PlanosPage() {
   const { session } = useAuth()
+  const [params] = useSearchParams()
+  const planoPedido = PLANOS.find((p) => p.codigo === params.get('plano'))?.codigo ?? null
   const carregar = useCallback(async () => {
     const [config, conta] = await Promise.all([auditor.assinaturaConfig(), auditor.eu()])
     return { config, conta }
   }, [])
   const r = useDados(carregar)
+  // Vindo do site (?plano=semanal), o formulário daquele plano já abre quando a venda estiver aberta.
   const [dados, setDados] = useState<DadosCheckout | null>(null)
+  const [preAberto, setPreAberto] = useState(false)
   const [estado, setEstado] = useState<{ enviando: boolean; concluida: boolean; texto: string; erro: boolean }>({ enviando: false, concluida: false, texto: '', erro: false })
 
   if (r.carregando && !r.dados) return <Carregando />
@@ -42,6 +46,11 @@ export function PlanosPage() {
   const { config, conta } = r.dados
   const jaAssinante = conta && conta.plano !== 'gratis' && !conta.encerrada_em
   const disponivel = (c: CodigoPlano) => config.venda_aberta && Boolean(config.public_key) && config.planos.some((p) => p.codigo === c && p.disponivel)
+
+  if (planoPedido && !preAberto && !dados && disponivel(planoPedido) && !jaAssinante) {
+    setPreAberto(true)
+    setDados(vazio(planoPedido, session?.user.email ?? ''))
+  }
 
   const mudar = (patch: Partial<DadosCheckout>) => setDados((d) => (d ? { ...d, ...patch } : d))
   const mudarEndereco = (patch: Partial<DadosCheckout['endereco']>) => setDados((d) => (d ? { ...d, endereco: { ...d.endereco, ...patch } } : d))
@@ -93,7 +102,7 @@ export function PlanosPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Campo id="ck-nome" rotulo="Nome completo" valor={dados.nome} onMudar={(v) => mudar({ nome: v })} autoComplete="name" />
             <Campo id="ck-email" rotulo="E-mail de cobrança" tipo="email" valor={dados.email} onMudar={(v) => mudar({ email: v })} autoComplete="email" />
-            <Campo id="ck-tel" rotulo="WhatsApp com DDD" valor={dados.telefone} onMudar={(v) => mudar({ telefone: v })} autoComplete="tel" />
+            <Campo id="ck-tel" rotulo="Celular com DDD" valor={dados.telefone} onMudar={(v) => mudar({ telefone: v })} autoComplete="tel" />
             <Campo id="ck-doc" rotulo="CPF ou CNPJ" valor={dados.documento} onMudar={(v) => mudar({ documento: v })} />
           </div>
           <fieldset className="grid gap-3 sm:grid-cols-2">
@@ -120,6 +129,10 @@ export function PlanosPage() {
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={dados.termos_aceite} onChange={(e) => mudar({ termos_aceite: e.target.checked })} />
             <span>{TEXTO_ACEITE}</span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={dados.copia_whatsapp} onChange={(e) => mudar({ copia_whatsapp: e.target.checked })} />
+            <span>{TEXTO_COPIA_WHATSAPP} <span className="text-cinza">(opcional; dá para desligar depois em Conta)</span></span>
           </label>
           {estado.texto ? <p role={estado.erro ? 'alert' : 'status'} className={`text-sm ${estado.erro ? 'text-vermelho' : ''}`}>{estado.texto}</p> : null}
           <div className="flex gap-2">

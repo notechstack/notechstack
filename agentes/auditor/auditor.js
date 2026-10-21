@@ -206,7 +206,7 @@
   function renderLimite(data) {
     dl({ event: 'diagnostico_limite_usuario' });
     render('<div class="au-box au-box--limite"><h2>Você já fez seus ' + esc((data && data.limite) || 3) + ' diagnósticos grátis</h2>' +
-      '<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu WhatsApp.</p>' +
+      '<p>Para fazer o próximo, assine um plano: o agente refaz o diagnóstico sozinho e manda o relatório no seu e-mail.</p>' +
       '<a class="ag-btn ag-btn--primario" href="' + esc(planosLimiteUrl()) + '">Ver os planos</a></div>', false);
   }
   function renderTeto() {

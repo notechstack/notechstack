@@ -91,6 +91,8 @@ Deno.serve(async (request) => {
 
   try {
     const body = await request.json().catch(() => null);
+    // Opt-in opcional (desmarcado): cópia do relatório pelo WhatsApp, enviada à mão pela equipe da nó.
+    const copiaWhatsapp = Boolean(body && typeof body === "object" && (body as { copia_whatsapp?: unknown }).copia_whatsapp === true);
     const resultado = await processarCheckout(body, {
       env,
       fetch: (url, init) => fetch(url, init),
@@ -108,7 +110,7 @@ Deno.serve(async (request) => {
         });
         if (error || !data?.id) throw new Error("registrar_assinatura_auditor_falhou");
         // Liga à conta de quem está logado. Se falhar, o core compensa cancelando no Pagar.me.
-        const vinculo = await sb.rpc("auditor_assinatura_vincular", { p_subscription_id: row.subscription_id, p_user_id: userId });
+        const vinculo = await sb.rpc("auditor_assinatura_vincular", { p_subscription_id: row.subscription_id, p_user_id: userId, p_copia_whatsapp: copiaWhatsapp });
         if (vinculo.error) throw new Error("auditor_assinatura_vincular_falhou");
         // Log sem dado pessoal: so plano, ids do gateway e resultado.
         log("info", "assinatura_auditor_registrada", {

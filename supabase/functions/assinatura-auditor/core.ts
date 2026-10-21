@@ -22,12 +22,12 @@ const UFS = new Set([
 ]);
 const MSG_ENDERECO = "Confira o endereço de cobrança do cartão.";
 
-// Texto exato da caixa de aceite (obrigatoria) da tela de planos no fim da retrospectiva: Termos + relatorio no
-// WhatsApp, decisao de Lucca em 16/10. O banco grava ESTA constante, nunca a string do cliente. Mudar o texto da
-// caixa exige mudar esta constante junto (front.test.mjs e checkout-core.test.mjs conferem).
+// Texto exato da caixa de aceite (obrigatoria) do checkout no app (/auditor/planos): Termos + relatorio por e-mail e
+// no painel (Lucca, 21/10; antes, 16/10, era no WhatsApp). O banco grava ESTA constante, nunca a string do cliente.
+// Mudar o texto exige mudar junto app/src/auditor/checkout.ts (auditorRodada2.test.tsx confere) e os testes do site.
 export const TEXTO_ACEITE_ASSINATURA =
-  "Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no WhatsApp " +
-  "que informei acima, enviado pelo número da nó (+55 11 93928-9413).";
+  "Li e aceito os Termos de Uso e a Política de Privacidade. Sei que o relatório do Auditor chega no meu e-mail " +
+  "e no meu painel do auditor.";
 
 function normalizarTexto(texto: string): string {
   return texto.normalize("NFC").replace(/\s+/g, " ").trim();
@@ -49,7 +49,7 @@ export type Pedido = {
   nome: string;
   email: string;
   documento: string;
-  // WhatsApp com DDD, so digitos: obrigatorio, e para onde vai o relatorio.
+  // Celular com DDD, so digitos: obrigatorio (vai ao Pagar.me). O relatorio vai por e-mail e no painel (Lucca, 21/10).
   telefone: string;
   card_token: string;
   aceite_texto: string;
@@ -187,9 +187,9 @@ export function validarPedido(body: unknown):
   }
 
   const telefone = typeof b.telefone === "string" ? b.telefone.replace(/\D/g, "") : "";
-  if (!telefone) return invalido("Informe o WhatsApp com DDD: é nele que chega o relatório do Auditor.");
+  if (!telefone) return invalido("Informe um celular com DDD.");
   if (telefone.length < 10 || telefone.length > 11) {
-    return invalido("Confira o WhatsApp: use o DDD e o número (10 ou 11 números).");
+    return invalido("Confira o celular: use o DDD e o número (10 ou 11 números).");
   }
 
   const endereco = lerEndereco(b.endereco);
@@ -200,9 +200,9 @@ export function validarPedido(body: unknown):
     return invalido("Não conseguimos ler o cartão. Confira os dados do cartão e tente de novo.");
   }
 
-  // Aceite unico e obrigatorio: Termos + relatorio no WhatsApp informado. Sem ele, nao ha assinatura.
+  // Aceite unico e obrigatorio: Termos + relatorio por e-mail e no painel (Lucca, 21/10). Sem ele, nao ha assinatura.
   if (b.termos_aceite !== true) {
-    return invalido("Para assinar, aceite os Termos e o envio do relatório no seu WhatsApp.");
+    return invalido("Para assinar, aceite os Termos de Uso e a Política de Privacidade.");
   }
   const recebido = typeof b.aceite_texto === "string" ? normalizarTexto(b.aceite_texto) : "";
   if (recebido !== TEXTO_ACEITE_ASSINATURA) {

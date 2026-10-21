@@ -555,7 +555,7 @@
     <p class="rot rot-chip">Próximo passo</p>
     <h1 class="titulo titulo--g">Três jeitos de seguir com o agente.</h1>
     <div class="pilhas planos" id="planos">
-      <div class="cartao au-planos-lead"><p class="texto">O agente refaz o relatório sozinho e manda no seu WhatsApp. Entre os planos, muda o ritmo do envio.</p></div>
+      <div class="cartao au-planos-lead"><p class="texto">O agente refaz o relatório sozinho e manda no seu e-mail, com a versão completa no seu painel. Entre os planos, muda o ritmo do envio.</p></div>
 
       <div class="cartao au-plano" data-plano="mensal">
         <div class="au-plano-cabeca">
@@ -568,7 +568,7 @@
         </div>
         <p class="au-plano-ritmo">1 relatório por mês</p>
         <ul class="au-plano-itens">
-          <li>Relatório todo mês no seu WhatsApp</li>
+          <li>Relatório todo mês no seu e-mail e no painel</li>
           <li>1 site + contas Meta e Google</li>
           <li>Nota de 0 a 10 com o placar ok · atenção · problema</li>
           <li>O que corrigir, uma linha por ponto</li>
@@ -588,7 +588,7 @@
         </div>
         <p class="au-plano-ritmo">Toda segunda</p>
         <ul class="au-plano-itens">
-          <li>Relatório toda segunda no seu WhatsApp</li>
+          <li>Relatório toda segunda no seu e-mail e no painel</li>
           <li>Tudo do Mensal + o que mudou na semana</li>
           <li>Horário em que seu público responde</li>
           <li>Onde o clique se perde, do anúncio ao site</li>
@@ -609,7 +609,7 @@
         </div>
         <p class="au-plano-ritmo">Personalizado</p>
         <ul class="au-plano-itens">
-          <li>Envio personalizado por cliente, no seu WhatsApp</li>
+          <li>Envio personalizado por cliente, no seu e-mail e no painel</li>
           <li>Até 5 clientes, 1 site + contas cada</li>
           <li>Tudo do Semanal, por cliente</li>
           <li>Link de cada relatório pronto para repassar</li>
@@ -628,7 +628,7 @@
 
 <!-- Checkout da assinatura (fora da moldura do celular: showModal() usa o top layer e o clique no diálogo não troca de tela).
      Inputs do cartão SEM name (nunca vão por formulário); assinatura.js tokeniza no Pagar.me e manda só o token.
-     Aceite único e obrigatório (decisão de Lucca, 16/10): Termos + relatório no WhatsApp informado. -->
+     Aceite único e obrigatório: Termos + relatório por e-mail e no painel (Lucca, 21/10). O checkout agora é no app (/auditor/planos). -->
 <dialog class="au-checkout" id="au-checkout" aria-labelledby="au-checkout-titulo">
   <form class="au-checkout-form" id="au-checkout-form" novalidate>
     <h2 class="au-checkout-titulo" id="au-checkout-titulo">Assinar o Auditor</h2>
@@ -650,12 +650,12 @@
       </div>
       <label class="au-label" for="au-as-email">E-mail</label>
       <input class="au-input" id="au-as-email" name="email" type="email" inputmode="email" autocomplete="email" required>
-      <label class="au-label" for="au-as-telefone">WhatsApp (com DDD)</label>
+      <label class="au-label" for="au-as-telefone">Celular (com DDD)</label>
       <input class="au-input" id="au-as-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel-national" aria-describedby="au-as-telefone-nota" required>
       <p class="au-ajuda" id="au-as-telefone-nota">É neste número que o relatório do Auditor chega.</p>
       <div class="au-check">
         <input type="checkbox" id="au-ck-termos" required>
-        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no WhatsApp que informei acima, enviado pelo número da nó (+55 11 93928-9413).</label>
+        <label for="au-ck-termos" id="au-ck-termos-rotulo">Li e aceito os <a href="/termos/">Termos de Uso</a> e a <a href="/privacidade/">Política de Privacidade</a>. Sei que o relatório do Auditor chega no meu e-mail e no meu painel do auditor.</label>
       </div>
       <button type="button" class="botao au-etapa-btn" id="au-checkout-continuar">Continuar para o pagamento</button>
     </fieldset>

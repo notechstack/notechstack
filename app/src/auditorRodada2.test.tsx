@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   auditor: {
     pedirLink: vi.fn(), eu: vi.fn(), iniciar: vi.fn(), suporte: vi.fn(), retrospectiva: vi.fn(), novoNegocio: vi.fn(), frequencia: vi.fn(),
     conexoes: vi.fn(), relatorios: vi.fn(), relatorio: vi.fn(), snapshots: vi.fn(), contasDisponiveis: vi.fn(), salvarAtivos: vi.fn(),
-    assinaturaConfig: vi.fn(), assinar: vi.fn(), operacao: vi.fn(), conectar: vi.fn(), desconectar: vi.fn(), excluirConta: vi.fn(),
+    assinaturaConfig: vi.fn(), assinar: vi.fn(), operacao: vi.fn(), copiaWhatsapp: vi.fn(), copiaLigar: vi.fn(), conectar: vi.fn(), desconectar: vi.fn(), excluirConta: vi.fn(),
   },
 }))
 
@@ -54,14 +54,14 @@ function abrir(caminho: string, s: Session | null) {
 }
 
 const CONTA: Conta = {
-  conta_id: 'k1', plano: 'gratis', encerrada_em: null, excluir_apos: null, limite_negocios: 1,
+  conta_id: 'k1', plano: 'gratis', encerrada_em: null, excluir_apos: null, limite_negocios: 1, copia_whatsapp: false, copia_whatsapp_numero: null,
   negocios: [{ client_id: CLIENTE, nome: 'loja.com.br', site_url: 'https://loja.com.br/', frequencia: null, retrospectiva_gerada_em: null, suporte_ate: null }],
 }
 
 function dados(extra: Partial<DadosCheckout> = {}): DadosCheckout {
   return {
     plano: 'semanal', nome: 'Ana Souza', email: 'ana@loja.com.br', telefone: '(11) 99999-8888', documento: '123.456.789-09',
-    numero_cartao: '4111 1111 1111 1111', nome_cartao: 'ANA SOUZA', validade: '12/30', cvv: '123', termos_aceite: true,
+    numero_cartao: '4111 1111 1111 1111', nome_cartao: 'ANA SOUZA', validade: '12/30', cvv: '123', termos_aceite: true, copia_whatsapp: false,
     endereco: { cep: '01310-100', rua: 'Av. Paulista', numero: '1000', complemento: '', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'sp' },
     ...extra,
   }
@@ -73,8 +73,14 @@ beforeEach(() => {
 })
 
 describe('checkout (funções puras)', () => {
-  it('o texto de aceite do app é idêntico ao que o servidor exige', () => {
+  it('o texto de aceite do app é idêntico ao que o servidor exige e não promete WhatsApp', () => {
     expect(TEXTO_ACEITE).toBe(TEXTO_ACEITE_ASSINATURA)
+    expect(TEXTO_ACEITE).not.toMatch(/WhatsApp/)
+  })
+
+  it('cópia por WhatsApp: desmarcada por padrão; quando marcada, vai no pedido', () => {
+    expect(montarPedido(dados(), 't').copia_whatsapp).toBe(false)
+    expect(montarPedido(dados({ copia_whatsapp: true }), 't').copia_whatsapp).toBe(true)
   })
 
   it('valida e monta o pedido sem nenhum dado do cartão', () => {
@@ -188,7 +194,7 @@ describe('telas da rodada 2', () => {
       expect(within(form).getByLabelText('E-mail de cobrança')).toHaveValue('dono@loja.com.br')
       const d = dados()
       await user.type(within(form).getByLabelText('Nome completo'), d.nome)
-      await user.type(within(form).getByLabelText('WhatsApp com DDD'), d.telefone)
+      await user.type(within(form).getByLabelText('Celular com DDD'), d.telefone)
       await user.type(within(form).getByLabelText('CPF ou CNPJ'), d.documento)
       await user.type(within(form).getByLabelText('Número do cartão'), d.numero_cartao)
       await user.type(within(form).getByLabelText('Nome impresso'), d.nome_cartao)
@@ -200,11 +206,12 @@ describe('telas da rodada 2', () => {
       await user.type(within(form).getByLabelText('Bairro'), d.endereco.bairro)
       await user.type(within(form).getByLabelText('Cidade'), d.endereco.cidade)
       await user.selectOptions(within(form).getByLabelText('UF'), 'SP')
-      await user.click(within(form).getByRole('checkbox'))
+      expect(within(form).getByRole('checkbox', { name: /cópia do relatório pelo WhatsApp/ })).not.toBeChecked()
+      await user.click(within(form).getByRole('checkbox', { name: /Li e aceito/ }))
       await user.click(within(form).getByRole('button', { name: 'Assinar' }))
       expect(await within(form).findByRole('status')).toHaveTextContent('Recebemos sua assinatura')
       const pedido = mocks.auditor.assinar.mock.calls[0][0]
-      expect(pedido).toMatchObject({ plano: 'semanal', card_token: 'token_ok', email: 'dono@loja.com.br' })
+      expect(pedido).toMatchObject({ plano: 'semanal', card_token: 'token_ok', email: 'dono@loja.com.br', copia_whatsapp: false })
       expect(JSON.stringify(pedido)).not.toContain('4111')
       expect(within(form).getByRole('button', { name: 'Assinar' })).toBeDisabled()
     } finally {
@@ -214,12 +221,35 @@ describe('telas da rodada 2', () => {
 
   it('/no/auditor: NO_ADMIN com aal2 vê só metadados', async () => {
     mocks.auditor.operacao.mockResolvedValue({ negocios: [{
-      client_id: CLIENTE, negocio: 'loja.com.br', site_url: 'https://loja.com.br/', plano: 'semanal', conta_criada_em: '2026-10-21', encerrada_em: null,
-      conexoes: { meta: { estado: 'expirado', expira_em: null } }, ultimo_relatorio: { estado: 'falhou', tipo: 'semanal', periodo_ate: '2026-10-18', erro: 'fonte_indisponivel' }, relatorios_falhos: 1,
+      client_id: CLIENTE, negocio: 'loja.com.br', site_url: 'https://loja.com.br/', plano: 'semanal', conta_criada_em: '2026-10-21', encerrada_em: null, copia_whatsapp: false,
+      conexoes: { meta: { estado: 'expirado', expira_em: null } }, ultimo_relatorio: { id: 'r9', estado: 'falhou', tipo: 'semanal', periodo_ate: '2026-10-18', erro: 'fonte_indisponivel' }, relatorios_falhos: 1,
     }] })
     abrir('/no/auditor', sessao('NO_ADMIN', 'aal2'))
     expect(await screen.findByText('loja.com.br')).toBeInTheDocument()
     expect(screen.getByText('expirado')).toBeInTheDocument()
     expect(screen.getByText(/fonte_indisponivel/)).toBeInTheDocument()
+  })
+
+  it('Conta: cliente liga a cópia pelo WhatsApp com o celular', async () => {
+    mocks.auditor.copiaLigar.mockResolvedValue(undefined)
+    abrir('/auditor/conta', sessao())
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Celular com DDD'), '11977776666')
+    await user.click(screen.getByRole('button', { name: 'Quero a cópia pelo WhatsApp' }))
+    await waitFor(() => expect(mocks.auditor.copiaLigar).toHaveBeenCalledWith(true, '11977776666'))
+  })
+
+  it('/no/auditor: com opt-in, a equipe abre só o texto final do último relatório', async () => {
+    mocks.auditor.operacao.mockResolvedValue({ negocios: [{
+      client_id: CLIENTE, negocio: 'loja.com.br', site_url: null, plano: 'semanal', conta_criada_em: '2026-10-21', encerrada_em: null, copia_whatsapp: true,
+      conexoes: {}, ultimo_relatorio: { id: 'r1', estado: 'enviado', tipo: 'semanal', periodo_ate: '2026-10-18', erro: null }, relatorios_falhos: 0,
+    }] })
+    mocks.auditor.copiaWhatsapp.mockResolvedValue({ numero: '11977776666', negocio: 'loja.com.br', texto: '*Relatório semanal · loja.com.br*' })
+    abrir('/no/auditor', sessao('NO_ADMIN', 'aal2'))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Cópia para WhatsApp' }))
+    expect(await screen.findByLabelText('Texto da cópia')).toHaveValue('*Relatório semanal · loja.com.br*')
+    expect(screen.getByText(/Leitura registrada/)).toBeInTheDocument()
+    expect(mocks.auditor.copiaWhatsapp).toHaveBeenCalledWith('r1')
   })
 })

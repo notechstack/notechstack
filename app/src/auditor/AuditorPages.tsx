@@ -9,6 +9,7 @@ import {
 } from './auditor-service'
 import { EscolherContas, VoltaOauth } from './EscolherContas'
 import { Retrospectiva } from './Retrospectiva'
+import { CopiaWhatsappConta } from './CopiaWhatsapp'
 
 // Mesmo padrão do planner: `carregar` estável (useCallback) e os dados anteriores ficam na tela ao recarregar.
 function useCarregar<T>(carregar: () => Promise<T>) {
@@ -350,6 +351,7 @@ export function ContaPage() {
   return (
     <>
       <h1 className="text-3xl font-extrabold uppercase tracking-[-0.03em]">Conta<span className="text-ambar">.</span></h1>
+      <CopiaWhatsappConta />
       <Cartao titulo="Excluir conta e dados">
         <p className="text-sm text-cinza">
           Cancela a assinatura, desconecta Facebook e Google e apaga negócios, relatórios e o seu acesso. Os registros de cobrança ficam
