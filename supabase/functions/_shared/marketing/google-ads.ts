@@ -32,8 +32,9 @@ export function idCliente(valor: string): string {
 
 function cabecalhos(ctx: AdsCtx): Record<string, string> {
   const login = ctx.loginCustomerId ? idCliente(ctx.loginCustomerId) : "";
+  // Sem developer token (o acesso passou a ser do projeto Cloud em 09/2026) o cabeçalho não vai.
   return {
-    "developer-token": ctx.developerToken,
+    ...(ctx.developerToken ? { "developer-token": ctx.developerToken } : {}),
     ...(login ? { "login-customer-id": login } : {}),
   };
 }

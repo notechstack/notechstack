@@ -13,6 +13,7 @@ import {
   type MarketingStore,
   type PostRow,
 } from "./handler.ts";
+import type { AtivoCliente, ClienteStore, ConexaoCliente } from "./clientes.ts";
 
 const SLUG_NO = "no-tech-stack";
 const BUCKET = "marketing-media";
@@ -294,6 +295,73 @@ export function criarStore(admin: SupabaseClient): MarketingStore {
     async agenteBanir(userId, banir) {
       const { error } = await admin.auth.admin.updateUserById(userId, { ban_duration: banir ? "876000h" : "none" });
       if (error) falhar("auth.ban", error);
+    },
+  };
+}
+
+// Conexões dos clientes do auditor. Token só entra e sai do Vault pelas RPCs
+// (service role); erros nunca carregam o valor do token.
+export function criarClienteStore(admin: SupabaseClient): ClienteStore {
+  return {
+    async clienteAutorizado(userId, clientId) {
+      const { data, error } = await admin.from("memberships").select("id").eq("user_id", userId).eq("client_id", clientId).maybeSingle();
+      if (error) falhar("memberships", error);
+      return Boolean(data);
+    },
+
+    async nonceRegistrar(nonce, expiraEm) {
+      const { error } = await admin.rpc("marketing_oauth_nonce_registrar", { p_nonce: nonce, p_expira_em: expiraEm });
+      if (error) throw new Error("OAuth state indisponível.");
+    },
+
+    async nonceConsumir(nonce) {
+      const { data, error } = await admin.rpc("marketing_oauth_nonce_consumir", { p_nonce: nonce });
+      if (error) throw new Error("OAuth state indisponível.");
+      return data === true;
+    },
+
+    async conexaoSalvar(l) {
+      const { error } = await admin.rpc("marketing_cliente_conexao_salvar", {
+        p_client_id: l.clientId, p_provedor: l.provedor, p_token: l.token, p_escopos: l.escopos,
+        p_expira_em: l.expiraEm, p_usuario_externo: l.usuarioExterno, p_user_id: l.userId,
+      });
+      if (error) throw new Error("Conexão do cliente não foi salva.");
+    },
+
+    async tokenLer(clientId, provedor) {
+      const { data, error } = await admin.rpc("marketing_cliente_token_ler", { p_client_id: clientId, p_provedor: provedor });
+      if (error) throw new Error("Vault indisponível.");
+      const linha = (data as { token: string | null; escopos: string[] | null }[] | null)?.[0];
+      return linha?.token ? { token: linha.token, escopos: linha.escopos ?? [] } : null;
+    },
+
+    async conexoesListar(clientId) {
+      const { data, error } = await admin.from("marketing_cliente_conexoes")
+        .select("provedor, estado, escopos, expira_em, conectado_em, atualizado_em, ultimo_erro").eq("client_id", clientId);
+      if (error) falhar("marketing_cliente_conexoes", error);
+      return (data ?? []) as ConexaoCliente[];
+    },
+
+    async conexaoMarcar(clientId, provedor, estado, erro) {
+      const { error } = await admin.rpc("marketing_cliente_conexao_marcar", { p_client_id: clientId, p_provedor: provedor, p_estado: estado, p_erro: erro });
+      if (error) falhar("marketing_cliente_conexao_marcar", error);
+    },
+
+    async conexaoRevogar(clientId, provedor, userId) {
+      const { error } = await admin.rpc("marketing_cliente_conexao_revogar", { p_client_id: clientId, p_provedor: provedor, p_user_id: userId });
+      if (error) falhar("marketing_cliente_conexao_revogar", error);
+    },
+
+    async ativosListar(clientId) {
+      const { data, error } = await admin.from("marketing_cliente_ativos")
+        .select("tipo, external_id, nome, login_customer_id").eq("client_id", clientId);
+      if (error) falhar("marketing_cliente_ativos", error);
+      return (data ?? []) as AtivoCliente[];
+    },
+
+    async ativosSalvar(clientId, provedor, ativos, userId) {
+      const { error } = await admin.rpc("marketing_cliente_ativos_salvar", { p_client_id: clientId, p_provedor: provedor, p_ativos: ativos, p_user_id: userId });
+      if (error) falhar("marketing_cliente_ativos_salvar", error);
     },
   };
 }

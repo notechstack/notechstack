@@ -37,6 +37,37 @@ No Vault do banco: `MARKETING_CRON_SECRET` (criado pela migration, nunca sai do 
 Os ids da Meta (conta de anúncios `act_…`, Página, Instagram) ficam em `ad_accounts`
 (cliente `no-tech-stack`), com `access_token` nulo.
 
+### Conexões dos clientes do auditor (`/cliente/*`, 21/10/2026)
+
+"Conectar com Facebook/Google" por cliente, para o auditor da nó.agentes. O código fica em
+`marketing-hub/clientes.ts`, `_shared/marketing/oauth-cliente.ts` e `contas-cliente.ts`. O modelo
+(`20261021120000_marketing_cliente_conexoes.sql`) é **provisório** até a spec da Frente 3.
+
+- **Quem conecta:** o membro do cliente (`memberships`) ou o `NO_ADMIN` com aal2. O dot não conecta.
+- **Fluxo:** `POST /cliente/{meta|google}/conectar` → `GET /cliente/{p}/ir` (cookie HttpOnly) →
+  provedor → `GET /cliente/{p}/callback` → 303 para a retrospectiva.
+  - O state é assinado (HMAC), expira em 10 min e tem nonce de uso único.
+  - O PKCE é S256.
+- **Tokens:** o token da Meta (longo ou de usuário do sistema) e o refresh token do Google ficam **só no Vault**
+  (`marketing_cliente:<client_id>:<provedor>`). Nenhum papel do navegador lê o segredo nem o id dele.
+- **Depois de conectar:**
+  - `GET|POST /cliente/{p}/contas` lista as contas e grava a seleção. Só aceita o que o token do cliente lista.
+  - `GET /cliente/overview` lê as métricas pelos mesmos adaptadores do hub.
+  - `POST /cliente/{p}/revogar` revoga no provedor e apaga do Vault.
+
+| Nome (secret da função) | O que é |
+| --- | --- |
+| `MARKETING_OAUTH_STATE_SECRET` | chave HMAC do state e do PKCE (32+ caracteres aleatórios) |
+| `META_APP_ID` / `META_APP_SECRET` | app da Meta usado no login dos clientes |
+| `META_LOGIN_CONFIG_ID` | configuração do Facebook Login for Business (`ads_read`); sem ela, pede `scope=ads_read` |
+| `MARKETING_HUB_PUBLIC_URL` | opcional; base pública da função para o `redirect_uri` (domínio verificado, para a verificação Google) |
+| `AUDITOR_RETRO_URL` | opcional; destino da volta (padrão `https://www.notechstack.com.br/agentes/auditor/retrospectiva/`) |
+
+O Google reaproveita `GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`. Se `GOOGLE_ADS_DEVELOPER_TOKEN`
+existir, ele vai no cabeçalho; se não existir, o cabeçalho é omitido. Os redirect URIs a cadastrar são
+`<base>/cliente/meta/callback` e `<base>/cliente/google/callback`. A listagem de propriedades GA4 usa
+a Analytics Admin API, que precisa estar ativada no projeto Cloud.
+
 ### Provas locais
 
 ```bash
@@ -44,7 +75,13 @@ supabase db reset --local
 supabase test db
 supabase functions serve marketing-hub
 node supabase/tests/hub_marketing_edge.mjs
+# conexões dos clientes: variáveis de fixture no cabeçalho do script
+node supabase/tests/hub_marketing_clientes_edge.mjs
 ```
+
+Nota: desde `20261001214638_marketing_lead_classificacao.sql`, um banco local vazio não passa do
+backfill (a migration exige os 10 leads de produção). Para subir a stack, insira 10 leads de fixture
+no período, numa cópia local que não seja commitada.
 
 ## Histórico — Fase 1 de abril (arquivada)
 

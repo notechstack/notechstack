@@ -5,6 +5,7 @@
 // O Deno.serve e o Supabase ficam em index.ts/store.ts; aqui é lógica testável.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { type ClienteStore, type ClientesConfig, criarRotasCliente } from "./clientes.ts";
 import { MetaApiError } from "../_shared/meta.ts";
 import { adsAlterarStatus, adsAtualizarOrcamento, adsCampanhaDetalhe, adsCampanhas, adsCriarCampanhaPesquisa, adsResumo, adsSugerirLocais, type AdsCtx } from "../_shared/marketing/google-ads.ts";
 import { type EscritaOk, diagnosticarConexoes } from "../_shared/marketing/conexoes.ts";
@@ -145,10 +146,13 @@ export type HubConfig = {
   google: GoogleConfig;
   googleCriacaoLiberada: boolean;
   appUrl: string;
+  // Conexões dos clientes do auditor (/cliente/*). Ausente = rotas respondem 503.
+  clientes?: ClientesConfig;
 };
 
 export type Deps = {
   store: MarketingStore;
+  clienteStore?: ClienteStore;
   autenticar: (token: string) => Promise<Chamador | null>;
   config: HubConfig;
   agora: () => Date;
@@ -206,11 +210,11 @@ function mensagemDe(e: unknown): string {
 }
 
 // `estados` (T2 Decided 1–2): só as métricas que não estão `disponivel`.
-type Bloco<T> =
+export type Bloco<T> =
   | { ok: true; dados: T; cache: boolean; estados: Record<string, EstadoMetrica> }
   | { ok: false; motivo: "nao_configurado" | "falha" | "sem_permissao"; mensagem: string };
 
-type Leitura<T> = {
+export type Leitura<T> = {
   ler: (reg: Registro) => Promise<T | null>;
   metricas?: (dados: T) => { periodo?: Valores; fixas?: Valores };
   atrasado: boolean;
@@ -521,11 +525,16 @@ export function criarHandler(deps: Deps) {
 
   // --------------------------------------------------------------- Roteamento
 
+  // Autorização própria (membro do cliente ou NO_ADMIN aal2); não passa por `autorizar`.
+  const rotasCliente = criarRotasCliente({ deps, json, erro, bloco, periodo });
+
   async function atender(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const partes = rota(req);
     const m = req.method;
     const [r0, r1, r2, r3] = partes;
+
+    if (r0 === "cliente") return await rotasCliente(req, url, partes);
 
     if (m === "POST" && r0 === "internal" && r1 === "publish-due" && partes.length === 2) {
       const segredo = req.headers.get("x-cron-secret") ?? "";
