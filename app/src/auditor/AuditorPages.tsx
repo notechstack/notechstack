@@ -5,8 +5,10 @@ import { useDados } from '../marketing/useDados'
 import { botaoPrimario, botaoSecundario, Carregando, Selo, Vazio } from '../marketing/ui'
 import {
   auditor, ErroAuditor, NOME_FONTE, NOME_PLANO,
-  type Ativo, type Conexao, type Conta, type Provedor, type Relatorio, type ResumoRelatorio,
+  type Ativo, type Conexao, type Conta, type Provedor, type Relatorio, type ResumoRelatorio, type Snapshot,
 } from './auditor-service'
+import { EscolherContas, VoltaOauth } from './EscolherContas'
+import { Retrospectiva } from './Retrospectiva'
 
 // Mesmo padrão do planner: `carregar` estável (useCallback) e os dados anteriores ficam na tela ao recarregar.
 function useCarregar<T>(carregar: () => Promise<T>) {
@@ -74,7 +76,7 @@ export function AuditorHomePage() {
           <p className="font-mono text-xs uppercase tracking-[0.14em] text-cinza">Plano {NOME_PLANO[c.plano]}</p>
           <h1 className="text-3xl font-extrabold uppercase tracking-[-0.03em]">Meus negócios<span className="text-ambar">.</span></h1>
         </div>
-        {c.plano === 'gratis' ? <a className={botaoPrimario} href="https://www.notechstack.com.br/agentes/auditor/retrospectiva/#t13">Ver planos</a> : null}
+        {c.plano === 'gratis' ? <Link className={botaoPrimario} to="/auditor/planos">Ver planos</Link> : null}
       </div>
       {c.encerrada_em ? <Falha texto={`Esta conta foi encerrada. Os dados serão apagados em ${dataBr(c.excluir_apos)}.`} /> : null}
       {c.negocios.map((n) => (
@@ -177,6 +179,7 @@ export function ConexoesPage() {
     <>
       <h1 className="text-3xl font-extrabold uppercase tracking-[-0.03em]">Conexões<span className="text-ambar">.</span></h1>
       <p className="text-sm text-cinza">Só leitura: o auditor nunca cria, pausa ou altera nada nas suas contas.</p>
+      <VoltaOauth />
       {erro ? <Falha texto={erro} /> : null}
       {PROVEDORES.map((p) => {
         const c = conexoes.find((x) => x.provedor === p.id)
@@ -188,6 +191,7 @@ export function ConexoesPage() {
               <ul className="text-sm">{escolhidos.map((a) => <li key={a.tipo}>{NOME_FONTE[a.tipo]}: <strong>{a.nome ?? a.external_id}</strong></li>)}</ul>
             ) : <p className="text-sm text-cinza">{c?.estado === 'conectado' ? 'Escolha quais contas o auditor lê.' : 'Nenhuma conta escolhida.'}</p>}
             {c?.estado === 'conectado' && c.expira_em ? <p className="mt-2 text-xs text-cinza">O acesso expira em {dataBr(c.expira_em)}.</p> : null}
+            {c?.estado === 'conectado' ? <EscolherContas clientId={clientId} provedor={p.id} escolhidos={escolhidos} onSalvo={dados.recarregar} /> : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {!c || c.estado !== 'conectado'
                 ? <button type="button" className={botaoPrimario} disabled={ocupado !== null} onClick={() => void conectar(p.id)}>{`Conectar com o ${p.rotulo}`}</button>
@@ -255,14 +259,22 @@ const SEVERIDADE: Record<string, ['ok' | 'alerta' | 'erro' | 'neutro', string]> 
 
 export function RelatorioPage() {
   const { clientId = '', relatorioId = '' } = useParams()
-  const r = useCarregar(useCallback(() => auditor.relatorio(relatorioId), [relatorioId]))
+  const r = useCarregar(useCallback(async () => {
+    const relatorio = await auditor.relatorio(relatorioId)
+    if (!relatorio) return null
+    const [snapshots, conta] = await Promise.all([
+      auditor.snapshots(relatorio.client_id, relatorio.periodo_de, relatorio.periodo_ate),
+      auditor.eu(),
+    ])
+    return { relatorio, snapshots, plano: conta?.plano ?? null }
+  }, [relatorioId]))
   if (r.carregando && !r.dados) return <Carregando />
   if (r.erro) return <Falha texto={r.erro} onTentar={r.recarregar} />
   if (!r.dados) return <Vazio texto="Relatório não encontrado." />
-  return <RelatorioConteudo relatorio={r.dados} clientId={clientId} />
+  return <RelatorioConteudo relatorio={r.dados.relatorio} clientId={clientId} snapshots={r.dados.snapshots} plano={r.dados.plano} />
 }
 
-export function RelatorioConteudo({ relatorio, clientId }: { relatorio: Relatorio; clientId: string }) {
+export function RelatorioConteudo({ relatorio, clientId, snapshots = [], plano = null }: { relatorio: Relatorio; clientId: string; snapshots?: Snapshot[]; plano?: string | null }) {
   const achados = relatorio.achados ?? []
   const reconectar = Object.entries(relatorio.fontes).some(([, e]) => e === 'expirado' || e === 'revogado')
   return (
@@ -285,6 +297,7 @@ export function RelatorioConteudo({ relatorio, clientId }: { relatorio: Relatori
           ) : null}
         </Cartao>
       ) : null}
+      <Retrospectiva relatorio={relatorio} snapshots={snapshots} plano={plano} />
       <Cartao titulo="Fontes">
         <ul className="grid gap-2 text-sm sm:grid-cols-2">
           {Object.entries(relatorio.fontes).map(([f, e]) => {

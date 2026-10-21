@@ -64,6 +64,31 @@ Deno.serve(async (request) => {
     });
   }
 
+  // Checkout logado (spec 2026-10-21, seção 1; plan, passo 6): a assinatura nasce ligada à conta do auditor.
+  // Sem sessão, recusa antes de qualquer chamada ao Pagar.me (C19).
+  const autorizacao = request.headers.get("authorization") ?? "";
+  const jwt = autorizacao.startsWith("Bearer ") ? autorizacao.slice(7) : "";
+  const semLogin = () => json(401, {
+    ok: false, error_code: "LOGIN_NECESSARIO", motivo: "login_necessario",
+    mensagem: "Entre na sua conta do auditor para assinar.",
+  });
+  if (!jwt || !supabaseUrl || !serviceKey) return semLogin();
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const { data: sessao, error: erroSessao } = await admin.auth.getUser(jwt);
+  if (erroSessao || !sessao.user) return semLogin();
+  const userId = sessao.user.id;
+  const { data: preparo, error: erroPreparo } = await admin.rpc("auditor_checkout_preparar", { p_user_id: userId });
+  if (erroPreparo) {
+    log("error", "assinatura_auditor_preparo_falhou", {});
+    return json(500, { ok: false, error_code: "INTERNAL", mensagem: "Algo deu errado do nosso lado. Nada foi cobrado; tente de novo." });
+  }
+  if (!preparo) {
+    return json(409, { ok: false, error_code: "SEM_CONTA", mensagem: "Conecte-se ao auditor antes de assinar." });
+  }
+  if ((preparo as { ja_assinante?: boolean }).ja_assinante) {
+    return json(409, { ok: false, error_code: "JA_ASSINANTE", mensagem: "Sua conta já tem uma assinatura ativa." });
+  }
+
   try {
     const body = await request.json().catch(() => null);
     const resultado = await processarCheckout(body, {
@@ -82,6 +107,9 @@ Deno.serve(async (request) => {
           p_aceite_texto: row.aceite_texto,
         });
         if (error || !data?.id) throw new Error("registrar_assinatura_auditor_falhou");
+        // Liga à conta de quem está logado. Se falhar, o core compensa cancelando no Pagar.me.
+        const vinculo = await sb.rpc("auditor_assinatura_vincular", { p_subscription_id: row.subscription_id, p_user_id: userId });
+        if (vinculo.error) throw new Error("auditor_assinatura_vincular_falhou");
         // Log sem dado pessoal: so plano, ids do gateway e resultado.
         log("info", "assinatura_auditor_registrada", {
           plano: row.plano,

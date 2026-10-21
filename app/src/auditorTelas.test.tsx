@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Session } from '@supabase/supabase-js'
 import { BrowserRouter } from 'react-router-dom'
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   auditor: {
     pedirLink: vi.fn(), eu: vi.fn(), iniciar: vi.fn(), suporte: vi.fn(), retrospectiva: vi.fn(), novoNegocio: vi.fn(),
-    frequencia: vi.fn(), conexoes: vi.fn(), relatorios: vi.fn(), relatorio: vi.fn(), conectar: vi.fn(), desconectar: vi.fn(), excluirConta: vi.fn(),
+    frequencia: vi.fn(), conexoes: vi.fn(), relatorios: vi.fn(), relatorio: vi.fn(), snapshots: vi.fn(), conectar: vi.fn(), desconectar: vi.fn(), excluirConta: vi.fn(),
   },
 }))
 
@@ -61,6 +61,7 @@ beforeEach(() => {
   mocks.auditor.iniciar.mockResolvedValue(CONTA)
   mocks.auditor.conexoes.mockResolvedValue({ conexoes: [], ativos: [] })
   mocks.auditor.relatorios.mockResolvedValue([])
+  mocks.auditor.snapshots.mockResolvedValue([])
 })
 
 describe('entrada do auditor', () => {
@@ -121,10 +122,12 @@ describe('conexões e relatórios (C20)', () => {
     }
     mocks.auditor.relatorio.mockResolvedValue(rel)
     abrir(`/auditor/${CLIENTE}/relatorios/r1`, sessao())
-    expect(await screen.findByRole('alert')).toHaveTextContent('Reconecte suas contas')
-    expect(screen.getByRole('link', { name: 'Ir para conexões' })).toHaveAttribute('href', `/auditor/${CLIENTE}/conexoes`)
-    expect(screen.getByText('Não disponível')).toBeInTheDocument()
-    expect(screen.getAllByText('Não conectado')).toHaveLength(2)
+    const alerta = await screen.findByRole('alert')
+    expect(alerta).toHaveTextContent('Reconecte suas contas')
+    expect(within(alerta).getByRole('link', { name: 'Ir para conexões' })).toHaveAttribute('href', `/auditor/${CLIENTE}/conexoes`)
+    const fontes = screen.getByRole('heading', { name: 'Fontes' }).closest('section')!
+    expect(within(fontes).getByText('Não disponível')).toBeInTheDocument()
+    expect(within(fontes).getAllByText('Não conectado')).toHaveLength(2)
     expect(screen.getByText('Reconecte o Facebook para ver Meta Ads')).toBeInTheDocument()
   })
 })

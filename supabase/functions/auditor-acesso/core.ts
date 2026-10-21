@@ -28,7 +28,8 @@ const RE_EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,24}$/i;
 const RE_VERSAO = /^[a-z0-9._-]{1,40}$/i;
 
 function origensPermitidas(env: AcessoDeps["env"]): Set<string> {
-  const s = new Set(["https://app.notechstack.com.br"]);
+  // Mesmas origens do app que o _shared/cors.ts aceita (domínio próprio e o alias de produção na Vercel).
+  const s = new Set(["https://app.notechstack.com.br", "https://notechstack-app.vercel.app"]);
   const app = env("APP_URL");
   if (app) {
     try { s.add(new URL(app).origin); } catch { /* APP_URL inválida: fica só o domínio fixo */ }

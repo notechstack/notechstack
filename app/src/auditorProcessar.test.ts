@@ -147,7 +147,7 @@ describe('rotas do auditor na marketing-hub', () => {
         admin: { userId: 'a1', role: 'NO_ADMIN', aal: 'aal2', banido: false },
         admin1: { userId: 'a1', role: 'NO_ADMIN', aal: 'aal1', banido: false },
         dot: { userId: 'd1', role: 'MARKETING_AGENT', aal: 'aal1', banido: false },
-      } as Record<string, never>)[jwt] ?? null),
+      } as Record<string, unknown>)[jwt] as never ?? null),
       google: { clientId: null, clientSecret: null, developerToken: null },
       site: vi.fn(async () => null),
       gerar: null,

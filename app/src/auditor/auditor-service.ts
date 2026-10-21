@@ -40,6 +40,16 @@ export type Relatorio = ResumoRelatorio & {
   narrativa: { origem: 'ia' | 'modelo'; resumo: string; prioridades: { achado_id: string; titulo: string; o_que_fazer: string }[] } | null
 }
 
+export type ContaDisponivel = { tipo: Ativo['tipo']; external_id: string; nome: string | null; login_customer_id: string | null; detalhe: string | null }
+export type Snapshot = { tipo: 'meta_ads' | 'google_ads' | 'ga4' | 'gsc' | 'site'; external_id: string; dados: Record<string, unknown> }
+export type ConfigAssinatura = { ambiente: string; venda_aberta: boolean; public_key: string; planos: { codigo: string; disponivel: boolean }[] }
+export type Operacao = {
+  client_id: string; negocio: string; site_url: string | null; plano: Plano; conta_criada_em: string; encerrada_em: string | null
+  conexoes: Record<string, { estado: string; expira_em: string | null }>
+  ultimo_relatorio: { estado: string; tipo: string; periodo_ate: string; erro: string | null } | null
+  relatorios_falhos: number
+}
+
 export class ErroAuditor extends Error {
   readonly codigo: string
   constructor(codigo: string, mensagem: string) {
@@ -119,6 +129,31 @@ export const auditor = {
     if (error) throw erroDe(undefined, 'Não foi possível carregar o relatório.')
     return data as Relatorio | null
   },
+
+  async snapshots(clientId: string, de: string, ate: string): Promise<Snapshot[]> {
+    const { data, error } = await supabase.from('marketing_cliente_snapshots').select('tipo, external_id, dados')
+      .eq('client_id', clientId).eq('periodo_de', de).eq('periodo_ate', ate)
+    if (error) throw erroDe(undefined, 'Não foi possível carregar os números do período.')
+    return (data ?? []) as Snapshot[]
+  },
+
+  contasDisponiveis: (clientId: string, provedor: Provedor) =>
+    hub<Partial<Record<Ativo['tipo'], ContaDisponivel[] | null>> & { falhas: { tipo: string; mensagem: string }[] }>('GET', `/cliente/${encodeURIComponent(clientId)}/${provedor}/contas`),
+  salvarAtivos: (clientId: string, escolha: Record<string, unknown>) => hub<{ ativos: Ativo[] }>('POST', `/cliente/${encodeURIComponent(clientId)}/ativos`, escolha),
+
+  async assinaturaConfig(): Promise<ConfigAssinatura> {
+    const { data, error } = await supabase.functions.invoke('assinatura-auditor', { method: 'GET' })
+    if (error) throw erroDe(undefined, 'Não foi possível carregar os planos agora.')
+    return data as ConfigAssinatura
+  },
+  // Devolve o corpo da função mesmo em erro (402 recusado, 409 já assinante…), para a tela mostrar a mensagem.
+  async assinar(pedido: Record<string, unknown>): Promise<{ ok?: boolean; status?: string; error_code?: string; mensagem?: string }> {
+    const { data, error } = await supabase.functions.invoke('assinatura-auditor', { body: pedido })
+    if (!error) return data as { ok: boolean; status: string }
+    const contexto = (error as { context?: Response }).context
+    return contexto && typeof contexto.json === 'function' ? await contexto.clone().json().catch(() => ({ ok: false })) : { ok: false }
+  },
+  operacao: () => hub<{ negocios: Operacao[] }>('GET', '/auditor/operacao'),
 
   conectar: (clientId: string, provedor: Provedor) => hub<{ url: string }>('POST', `/cliente/${encodeURIComponent(clientId)}/${provedor}/conectar`),
   desconectar: (clientId: string, provedor: Provedor) => hub<unknown>('DELETE', `/cliente/${encodeURIComponent(clientId)}/${provedor}`),

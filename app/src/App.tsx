@@ -31,6 +31,8 @@ const AuditorConexoesPage = lazy(() => import('./auditor/AuditorPages').then(m =
 const AuditorRelatoriosPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatoriosPage })))
 const AuditorRelatorioPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.RelatorioPage })))
 const AuditorContaPage = lazy(() => import('./auditor/AuditorPages').then(m => ({ default: m.ContaPage })))
+const AuditorPlanosPage = lazy(() => import('./auditor/PlanosPage').then(m => ({ default: m.PlanosPage })))
+const AuditorOperacaoPage = lazy(() => import('./auditor/OperacaoPage').then(m => ({ default: m.OperacaoPage })))
 const MarketingAccessPage = lazy(() => import('./marketing/MarketingAccessPage').then(m => ({ default: m.MarketingAccessPage })))
 
 const AgencyConsolePage = lazy(() => import('./agency/AgencyConsolePage').then(m => ({ default: m.AgencyConsolePage })))
@@ -54,6 +56,7 @@ export function AppRoutes() {
         <Route path="/auditor" element={<AuditorLayout />}>
           <Route index element={<AuditorHomePage />} />
           <Route path="conta" element={<AuditorContaPage />} />
+          <Route path="planos" element={<AuditorPlanosPage />} />
           <Route path=":clientId/conexoes" element={<AuditorConexoesPage />} />
           <Route path=":clientId/relatorios" element={<AuditorRelatoriosPage />} />
           <Route path=":clientId/relatorios/:relatorioId" element={<AuditorRelatorioPage />} />
@@ -91,6 +94,7 @@ export function AppRoutes() {
         <Route path="/no/*" element={<RoleRoute roles={['NO_ADMIN']} requireAal2 />}>
           <Route path="projetos" element={<AdminProjectsPage />} />
           <Route path="agencias" element={<AgencyManagementPage />} />
+          <Route path="auditor" element={<AuditorOperacaoPage />} />
           <Route path="projetos/:projectId" element={<AdminProjectDetailPage />} />
           <Route path="atividade" element={<AdminActivityPage />} />
           <Route path="saldos" element={<SaldosPage />} />
