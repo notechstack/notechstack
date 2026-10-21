@@ -10,7 +10,8 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "skill:01": "node scripts/skill-01.mjs",
-    "seed:exemplos": "node scripts/seed-exemplos.mjs"
+    "seed:exemplos": "node scripts/seed-exemplos.mjs",
+    "spike:interprete": "node scripts/spike-interprete/spike.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
