@@ -80,3 +80,13 @@ export async function enviarResend(o: { apiKey: string; para: string; email: Ema
   if (!resp.ok || !corpo.id) throw new Error(resp.status >= 500 || resp.status === 429 ? "resend_transitorio" : "resend_recusou");
   return corpo.id;
 }
+
+export function emailLinkAcesso(link: string): Email {
+  const assunto = "Seu link de acesso ao auditor da nó.agentes";
+  const corpo = "Use o botão abaixo para entrar. O link vale por pouco tempo e só funciona uma vez. Se não foi você que pediu, ignore este e-mail.";
+  return {
+    assunto,
+    texto: `${corpo}\n\n${link}`,
+    html: `<!doctype html><html lang="pt-BR"><body style="font-family:Arial,sans-serif;color:#141414;max-width:560px;margin:0 auto;padding:24px"><h1 style="font-size:18px">${esc(assunto)}</h1><p style="font-size:15px;line-height:1.5">${esc(corpo)}</p><p><a href="${esc(link)}" style="background:#141414;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Entrar no auditor</a></p></body></html>`,
+  };
+}

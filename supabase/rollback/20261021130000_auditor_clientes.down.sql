@@ -26,6 +26,7 @@ drop function if exists public.auditor_suporte_revogar(uuid, uuid);
 drop function if exists public.auditor_suporte_conceder(uuid, uuid, text, integer);
 drop function if exists public.auditor_negocio_criar(uuid, text, text);
 drop function if exists public.auditor_primeiro_acesso(uuid, text, text);
+drop function if exists public.auditor_acesso_preparar(text, text, text);
 
 -- Volta auditor_pode_ler à versão da migration A (só membro AUDITOR), antes de apagar a tabela de suporte.
 create or replace function public.auditor_pode_ler(p_client_id uuid)
@@ -38,6 +39,7 @@ as $$
 $$;
 
 drop table if exists public.auditor_avisos;
+drop table if exists public.auditor_acesso_tentativas;
 drop table if exists public.auditor_exclusoes;
 drop table if exists public.auditor_acessos_suporte;
 drop table if exists public.auditor_relatorios;

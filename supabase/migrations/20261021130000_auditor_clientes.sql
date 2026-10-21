@@ -113,6 +113,16 @@ create table public.auditor_avisos (
   unique (client_id, tipo, referencia)
 );
 
+-- Pedidos de link mágico (auditor-acesso): só hashes, guardados 1 dia, para o limite por hora (U5).
+create table public.auditor_acesso_tentativas (
+  id bigint generated always as identity primary key,
+  chave_email text not null check (chave_email ~ '^[0-9a-f]{64}$'),
+  chave_ip text not null check (chave_ip ~ '^[0-9a-f]{64}$'),
+  em timestamptz not null default now()
+);
+create index auditor_acesso_tentativas_email on public.auditor_acesso_tentativas (chave_email, em);
+create index auditor_acesso_tentativas_ip on public.auditor_acesso_tentativas (chave_ip, em);
+
 -- ------------------------------------------------------------ 5 · Quem lê o quê (D2)
 
 -- Membro AUDITOR de um negócio do auditor, ou NO_ADMIN com aal2 e concessão vigente do cliente.
@@ -173,9 +183,37 @@ grant select (id, client_id, motivo, inicio, expira_em, revogado_em) on public.a
 create policy auditor_acessos_suporte_leitor on public.auditor_acessos_suporte
   for select to authenticated using ((select public.auditor_pode_ler(client_id)));
 
+grant select, insert, delete on public.auditor_acesso_tentativas to service_role;
 grant select, insert, update, delete on public.auditor_contas, public.auditor_clientes,
   public.marketing_cliente_snapshots, public.auditor_relatorios, public.auditor_acessos_suporte,
   public.auditor_exclusoes, public.auditor_avisos to service_role;
+
+alter table public.auditor_acesso_tentativas enable row level security;
+revoke all on public.auditor_acesso_tentativas from public, anon, authenticated;
+
+-- Limite do link mágico (3 por e-mail e 20 por IP, por hora) + quem é o usuário desse e-mail.
+-- Uma ida ao banco; evita varrer o Auth inteiro. Registra a tentativa só quando permitida.
+create or replace function public.auditor_acesso_preparar(p_email text, p_chave_email text, p_chave_ip text)
+returns table (permitido boolean, user_id uuid, papel text)
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_email text := lower(trim(p_email));
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('auditor_acesso:' || p_chave_email));
+  delete from public.auditor_acesso_tentativas where em < now() - interval '1 day';
+  if (select count(*) from public.auditor_acesso_tentativas where chave_email = p_chave_email and em > now() - interval '1 hour') >= 3
+     or (select count(*) from public.auditor_acesso_tentativas where chave_ip = p_chave_ip and em > now() - interval '1 hour') >= 20 then
+    return query select false, null::uuid, null::text;
+    return;
+  end if;
+  insert into public.auditor_acesso_tentativas (chave_email, chave_ip) values (p_chave_email, p_chave_ip);
+  return query
+    select true, u.id, u.raw_app_meta_data ->> 'role'
+      from (select 1) x
+      left join auth.users u on lower(u.email) = v_email;
+end;
+$$;
 
 -- ------------------------------------------------------------ 6 · Primeiro acesso e negócios
 
@@ -567,6 +605,7 @@ do $$
 declare f text;
 begin
   foreach f in array array[
+    'public.auditor_acesso_preparar(text, text, text)',
     'public.auditor_primeiro_acesso(uuid, text, text)',
     'public.auditor_negocio_criar(uuid, text, text)',
     'public.auditor_suporte_conceder(uuid, uuid, text, integer)',

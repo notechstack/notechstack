@@ -214,5 +214,19 @@ select results_eq($$select nome, email like 'excluido+%', whatsapp, conta_id fro
 select is((select count(*)::int from public.clients where id = (select y from ids)), 1, 'C16 negócio de B intocado');
 select is((select origem from public.clients where slug = 'no-tech-stack'), 'interno', 'a Nó é interno');
 
+-- ------------------------------------------------------------ U5: limite do link mágico
+select results_eq($$select permitido, user_id, papel from public.auditor_acesso_preparar('Cliente-B@Example.test', repeat('e', 64), repeat('1', 64))$$,
+  $$values (true, 'a3000000-0000-4000-8000-00000000000b'::uuid, 'AUDITOR_CLIENT'::text)$$, 'acesso: acha o usuário pelo e-mail sem diferenciar maiúsculas');
+select results_eq($$select permitido, user_id from public.auditor_acesso_preparar('novo@example.test', repeat('f', 64), repeat('1', 64))$$,
+  $$values (true, null::uuid)$$, 'acesso: e-mail novo é permitido e sem usuário');
+select public.auditor_acesso_preparar('cliente-b@example.test', repeat('e', 64), repeat('2', 64));
+select public.auditor_acesso_preparar('cliente-b@example.test', repeat('e', 64), repeat('3', 64));
+select is((select permitido from public.auditor_acesso_preparar('cliente-b@example.test', repeat('e', 64), repeat('4', 64))), false, 'U5 4º link do mesmo e-mail na hora: recusado');
+select is((select count(*)::int from public.auditor_acesso_tentativas where chave_email = repeat('e', 64)), 3, 'U5 recusa não registra tentativa');
+insert into public.auditor_acesso_tentativas (chave_email, chave_ip) select md5(g::text) || md5(g::text), repeat('9', 64) from generate_series(1, 20) g;
+select is((select permitido from public.auditor_acesso_preparar('outro@example.test', repeat('a', 64), repeat('9', 64))), false, 'U5 21º pedido do mesmo IP na hora: recusado');
+update public.auditor_acesso_tentativas set em = now() - interval '2 hours' where chave_email = repeat('e', 64);
+select is((select permitido from public.auditor_acesso_preparar('cliente-b@example.test', repeat('e', 64), repeat('5', 64))), true, 'U5 depois de uma hora, libera');
+
 select * from finish();
 rollback;
