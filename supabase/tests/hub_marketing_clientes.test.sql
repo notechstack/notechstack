@@ -28,6 +28,13 @@ insert into public.memberships (user_id, client_id, role) values
   ('c1aaaaaa-0000-4000-8000-00000000000a', 'c1000000-0000-4000-8000-00000000000a', 'AUDITOR'),
   ('c1bbbbbb-0000-4000-8000-00000000000b', 'c1000000-0000-4000-8000-00000000000b', 'AUDITOR'),
   ('c1cccccc-0000-4000-8000-00000000000c', 'c1000000-0000-4000-8000-00000000000c', 'CLIENT');
+-- Posse dos negócios (migration B, revisão A1): é a conta do auditor, não o vínculo, que dá acesso.
+insert into public.auditor_contas (id, dono_user_id) values
+  ('c1c00000-0000-4000-8000-00000000000a', 'c1aaaaaa-0000-4000-8000-00000000000a'),
+  ('c1c00000-0000-4000-8000-00000000000b', 'c1bbbbbb-0000-4000-8000-00000000000b');
+insert into public.auditor_clientes (client_id, conta_id) values
+  ('c1000000-0000-4000-8000-00000000000a', 'c1c00000-0000-4000-8000-00000000000a'),
+  ('c1000000-0000-4000-8000-00000000000b', 'c1c00000-0000-4000-8000-00000000000b');
 select throws_ok($$insert into public.memberships (user_id, client_id, role) values ('c1dddddd-0000-4000-8000-00000000000d', 'c1000000-0000-4000-8000-00000000000a', 'DONO')$$,
   '23514', null, 'I1 papel de membership só CLIENT ou AUDITOR');
 

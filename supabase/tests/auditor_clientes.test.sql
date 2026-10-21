@@ -7,6 +7,14 @@ create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 select no_plan();
 
+create function pg_temp.aceite_fixture() returns trigger language plpgsql as $f$
+begin
+  insert into public.auditor_aceites (user_id, versao) values (new.id, 'termos-teste') on conflict do nothing;
+  return new;
+end;
+$f$;
+create trigger aceite_fixture after insert on auth.users for each row execute function pg_temp.aceite_fixture();
+
 -- ------------------------------------------------------------ fixtures
 insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, last_sign_in_at) values
   ('a3000000-0000-4000-8000-00000000000a', 'authenticated', 'authenticated', 'cliente-a@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now()),
@@ -103,7 +111,7 @@ select lives_ok($$select public.auditor_suporte_conceder('a3000000-0000-4000-800
 set local role authenticated;
 select set_config('request.jwt.claims',
   '{"sub":"a3000000-0000-4000-8000-0000000000ad","role":"authenticated","aal":"aal2","app_metadata":{"role":"NO_ADMIN"}}', true);
-select is((select count(*)::int from public.marketing_cliente_snapshots where client_id = (select x from ids)), 1, 'C2 com concessão: lê X');
+select is((select count(*)::int from public.marketing_cliente_snapshots where client_id = (select x from ids)), 0, 'B6 com concessão: pela RLS o NO_ADMIN não lê (suporte só pela marketing-hub, que registra)');
 select is((select count(*)::int from public.marketing_cliente_snapshots where client_id = (select y from ids)), 0, 'C2 com concessão de X: não lê Y');
 select set_config('request.jwt.claims',
   '{"sub":"a3000000-0000-4000-8000-0000000000ad","role":"authenticated","aal":"aal1","app_metadata":{"role":"NO_ADMIN"}}', true);
@@ -249,7 +257,9 @@ select is((public.auditor_eu() -> 'negocios' -> 0 ->> 'suporte_ate'), null, 'rev
 select isnt(public.auditor_eu_retrospectiva((public.auditor_eu() -> 'negocios' -> 0 ->> 'client_id')::uuid), null, 'retrospectiva grátis pelo app');
 select throws_ok($$select public.auditor_eu_suporte((select y from ids), true, null)$$, 'P0001', 'so_o_dono_concede', 'não concede suporte de negócio alheio');
 reset role;
-update public.auditor_contas set plano = 'agencia' where dono_user_id = 'a3000000-0000-4000-8000-0000000000e1';
+insert into public.auditor_assinaturas (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+values ('agencia', 'Eu', 'eu@example.test', '11911112222', 'sub_e1', 'paga', now(), 'Aceito');
+select public.auditor_assinatura_vincular('sub_e1', 'a3000000-0000-4000-8000-0000000000e1', false);
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a3000000-0000-4000-8000-0000000000e1","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
 select lives_ok($$select public.auditor_eu_negocio_criar('https://n2.example', 'Cliente 2')$$, 'Agência cria segundo negócio');
@@ -336,6 +346,141 @@ select results_eq($$select plano, assinatura_id from public.auditor_contas where
   $$values ('gratis'::text, null::uuid)$$, 'conta nova não herda nada das cobranças de fora');
 select is(public.auditor_conta_com_acesso((select id from public.auditor_contas where dono_user_id = 'a3000000-0000-4000-8000-0000000000e9')), false,
   'sem acesso pago');
+
+-- ================================================================ Revisão do PR #66 (21/10)
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, last_sign_in_at) values
+  ('a5000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'dona-r@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now()),
+  ('a5000000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', 'intrusa-r@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now(), now()),
+  ('a5000000-0000-4000-8000-0000000000ad', 'authenticated', 'authenticated', 'admin-r@example.test', '{"role":"NO_ADMIN"}', '{}', now(), now(), now());
+select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000001', 'dona-r@example.test', 'https://dona-r.example');
+create temp table rv on commit drop as
+select (select m.client_id from public.memberships m where m.user_id = 'a5000000-0000-4000-8000-000000000001') as negocio,
+       (select id from public.auditor_contas where dono_user_id = 'a5000000-0000-4000-8000-000000000001') as conta;
+grant select on rv to authenticated;
+select public.marketing_cliente_conexao_salvar((select negocio from rv), 'meta', 'TOKEN-R', array['ads_read'], null, 'meta-r', 'a5000000-0000-4000-8000-000000000001');
+insert into public.marketing_cliente_snapshots (client_id, tipo, external_id, periodo_de, periodo_ate, dados)
+select negocio, 'meta_ads', 'act_9', current_date - 7, current_date - 1, '{}'::jsonb from rv;
+
+-- A1: NO_ADMIN (até com aal1) não cria vínculo AUDITOR; vínculo AUDITOR não dá acesso sem a posse da conta.
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a5000000-0000-4000-8000-0000000000ad","role":"authenticated","aal":"aal1","app_metadata":{"role":"NO_ADMIN"}}', true);
+select throws_ok($$insert into public.memberships (user_id, client_id, role) values ('a5000000-0000-4000-8000-0000000000ad', (select negocio from rv), 'AUDITOR')$$,
+  '42501', null, 'A1 NO_ADMIN insere vínculo AUDITOR → negado');
+update public.memberships set user_id = 'a5000000-0000-4000-8000-0000000000ad' where user_id = 'a5000000-0000-4000-8000-000000000001';
+reset role;
+select is((select count(*)::int from public.memberships where user_id = 'a5000000-0000-4000-8000-000000000001' and role = 'AUDITOR'), 1, 'A1 NO_ADMIN não altera vínculo AUDITOR (a policy esconde a linha)');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a5000000-0000-4000-8000-0000000000ad","role":"authenticated","aal":"aal1","app_metadata":{"role":"NO_ADMIN"}}', true);
+select is((select count(*)::int from public.memberships where role = 'AUDITOR' and user_id = 'a5000000-0000-4000-8000-0000000000ad'), 0, 'A1 nenhum vínculo criado');
+reset role;
+-- mesmo que um vínculo AUDITOR exista (gravado por fora), sem a posse não há leitura, conexão nem retrospectiva
+insert into public.memberships (user_id, client_id, role) select 'a5000000-0000-4000-8000-000000000002', negocio, 'AUDITOR' from rv;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a5000000-0000-4000-8000-000000000002","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
+select is((select count(*)::int from public.marketing_cliente_snapshots where client_id = (select negocio from rv)), 0, 'A1 vínculo sem posse: 0 snapshots');
+select is((select count(*)::int from public.marketing_cliente_conexoes where client_id = (select negocio from rv)), 0, 'A1 vínculo sem posse: 0 conexões');
+reset role;
+select throws_ok($$select public.marketing_cliente_conexao_salvar((select negocio from rv), 'google', 'T', null, null, null, 'a5000000-0000-4000-8000-000000000002')$$,
+  'P0001', 'autor não autorizado para este cliente', 'A1 vínculo sem posse não conecta');
+select throws_ok($$select public.auditor_retrospectiva_agendar('a5000000-0000-4000-8000-000000000002', (select negocio from rv))$$,
+  'P0001', 'sem_acesso', 'A1 vínculo sem posse não agenda retrospectiva');
+delete from public.memberships where user_id = 'a5000000-0000-4000-8000-000000000002';
+
+-- A4: checkout abandonado (pendente) e recusa sem pagamento não guardam tokens para sempre nem dão plano.
+insert into public.auditor_assinaturas (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+values ('agencia', 'Dona', 'dona-r@example.test', '11966665555', 'sub_r_recusada', 'recusada', now(), 'Aceito');
+select public.auditor_assinatura_vincular('sub_r_recusada', 'a5000000-0000-4000-8000-000000000001', false);
+select is((select plano from public.auditor_contas where id = (select conta from rv)), 'gratis', 'A4 recusada sem nenhum pagamento: plano não é promovido');
+update public.auditor_contas set plano = 'agencia' where id = (select conta from rv);
+select throws_ok($$select public.auditor_negocio_criar('a5000000-0000-4000-8000-000000000001', 'https://outro-r.example', null)$$,
+  'P0001', 'plano_sem_multiplos_negocios', 'A4/I4 cartão recusado não libera os 5 negócios do Agência');
+update public.marketing_cliente_conexoes set conectado_em = now() - interval '31 days' where client_id = (select negocio from rv);
+select public.auditor_limpar();
+select is((select vault_secret_id from public.marketing_cliente_conexoes where client_id = (select negocio from rv) and provedor = 'meta'), null,
+  'A4 conta sem acesso (recusada sem pagamento) e conexão de 31 dias: token apagado');
+
+-- B7: conta encerrada volta a valer quando a pessoa entra de novo.
+update public.auditor_contas set encerrada_em = now() - interval '1 day', excluir_apos = now() + interval '89 days' where id = (select conta from rv);
+select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000001', 'dona-r@example.test', null);
+select results_eq($$select encerrada_em, excluir_apos, plano from public.auditor_contas where id = (select conta from rv)$$,
+  $$values (null::timestamptz, null::timestamptz, 'gratis'::text)$$, 'B7 conta reaberta como grátis');
+
+-- B3: sem aceite registrado, o primeiro acesso não cria conta; com aceite pelo próprio usuário, cria.
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
+  ('a5000000-0000-4000-8000-000000000003', 'authenticated', 'authenticated', 'semaceite@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+delete from public.auditor_aceites where user_id = 'a5000000-0000-4000-8000-000000000003';
+select throws_ok($$select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000003', 'semaceite@example.test', null)$$,
+  'P0001', 'aceite_pendente', 'B3 sem aceite: nenhuma conta');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a5000000-0000-4000-8000-000000000003","role":"authenticated","aal":"aal1","app_metadata":{"role":"AUDITOR_CLIENT"}}', true);
+select throws_ok($$select public.auditor_eu_iniciar(null)$$, 'P0001', 'aceite_pendente', 'B3 app sem aceite recebe aceite_pendente');
+select is((public.auditor_eu_iniciar(null, 'termos-2026-10-21') ->> 'plano'), 'gratis', 'B3 com o aceite do próprio usuário: conta criada');
+reset role;
+select is((select versao from public.auditor_aceites where user_id = 'a5000000-0000-4000-8000-000000000003'), 'termos-2026-10-21', 'B3 aceite registrado com a versão');
+
+-- B4: teto global de 300 links por hora.
+insert into public.auditor_acesso_tentativas (chave_email, chave_ip) select md5('g' || g) || md5('h' || g), md5('i' || g) || md5('j' || g) from generate_series(1, 300) g;
+select is((select permitido from public.auditor_acesso_preparar('nova-r@example.test', repeat('b', 64), repeat('c', 64))), false, 'B4 teto global de 300 por hora');
+delete from public.auditor_acesso_tentativas;
+
+-- B5: relatório preso em coletando volta à fila; na 3ª tentativa, falhou.
+insert into public.auditor_relatorios (id, client_id, tipo, periodo_de, periodo_ate, estado, iniciado_em, tentativas)
+select 'a5200000-0000-4000-8000-000000000001'::uuid, negocio, 'semanal', date '2026-01-05', date '2026-01-11', 'coletando', now() - interval '21 minutes', 1 from rv
+union all
+select 'a5200000-0000-4000-8000-000000000002', negocio, 'semanal', date '2026-01-12', date '2026-01-18', 'gerando', now() - interval '21 minutes', 3 from rv
+union all
+select 'a5200000-0000-4000-8000-000000000003', negocio, 'semanal', date '2026-01-19', date '2026-01-25', 'coletando', now() - interval '5 minutes', 1 from rv;
+create temp table pegos on commit drop as select id from public.auditor_claim_relatorios(10);
+select is((select count(*)::int from pegos where id = 'a5200000-0000-4000-8000-000000000001'), 1, 'B5 o preso há mais de 20 min volta à fila');
+select is((select count(*)::int from pegos where id in ('a5200000-0000-4000-8000-000000000002', 'a5200000-0000-4000-8000-000000000003')), 0, 'B5 o de 5 min e o da 3ª tentativa não voltam');
+select is((select tentativas::int from public.auditor_relatorios where id = 'a5200000-0000-4000-8000-000000000001'), 2, 'B5 conta a nova tentativa');
+select is((select estado from public.auditor_relatorios where id = 'a5200000-0000-4000-8000-000000000002'), 'falhou', 'B5 preso na 3ª tentativa: falhou');
+select is((select estado from public.auditor_relatorios where id = 'a5200000-0000-4000-8000-000000000003'), 'coletando', 'B5 em andamento há 5 min fica');
+
+-- C: concessão de suporte acima de 72 h é recusada pela própria tabela.
+select throws_ok($$insert into public.auditor_acessos_suporte (client_id, concedido_por, expira_em) select negocio, 'a5000000-0000-4000-8000-000000000001', now() + interval '73 hours' from rv$$,
+  '23514', null, 'C concessão de 73 h barrada pela tabela');
+
+-- B8: a exclusão anonimiza também a assinatura antiga sem conta, do mesmo e-mail.
+insert into public.auditor_assinaturas (id, plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto)
+values ('a5300000-0000-4000-8000-000000000001', 'mensal', 'Dona Antiga', 'DONA-R@example.test', '11955554444', 'sub_r_antiga', 'cancelada', now(), 'Aceito');
+create temp table cont_r on commit drop as select conta from rv;
+select public.auditor_apagar_conta((select conta from cont_r), 'cliente');
+select is((select nome from public.auditor_assinaturas where id = 'a5300000-0000-4000-8000-000000000001'), '[excluído]', 'B8 assinatura antiga do mesmo e-mail anonimizada');
+
+-- A4: usuário apagado por fora (painel do Auth) não deixa negócio, conexão nem segredo órfãos.
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
+  ('a5000000-0000-4000-8000-000000000004', 'authenticated', 'authenticated', 'apagada@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000004', 'apagada@example.test', 'https://apagada.example');
+create temp table ap on commit drop as select m.client_id as negocio from public.memberships m where m.user_id = 'a5000000-0000-4000-8000-000000000004';
+select public.marketing_cliente_conexao_salvar((select negocio from ap), 'meta', 'TOKEN-AP', array['ads_read'], null, 'meta-ap', 'a5000000-0000-4000-8000-000000000004');
+insert into public.auditor_assinaturas (plano, nome, email, whatsapp, pagarme_subscription_id, status, relatorio_aceite_em, relatorio_aceite_texto, conta_id)
+select 'mensal', 'Apagada', 'apagada@example.test', '11944443333', 'sub_ap', 'cancelada', now(), 'Aceito', id from public.auditor_contas where dono_user_id = 'a5000000-0000-4000-8000-000000000004';
+delete from auth.users where id = 'a5000000-0000-4000-8000-000000000004';
+select is((select count(*)::int from public.clients where id = (select negocio from ap)), 0, 'A4 usuário apagado por fora: negócio some');
+select is((select count(*)::int from public.marketing_cliente_conexoes where client_id = (select negocio from ap)), 0, 'A4 conexões somem');
+select is((select count(*)::int from vault.secrets where name like 'marketing_cliente:' || (select negocio from ap) || ':%'), 0, 'A4 segredo sai do Vault');
+select is((select nome from public.auditor_assinaturas where pagarme_subscription_id = 'sub_ap'), '[excluído]', 'A4 assinatura anonimizada');
+
+-- B9: uma conta que falha na exclusão não derruba a limpeza das outras.
+insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
+  ('a5000000-0000-4000-8000-000000000005', 'authenticated', 'authenticated', 'falha@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now()),
+  ('a5000000-0000-4000-8000-000000000006', 'authenticated', 'authenticated', 'segue@example.test', '{"role":"AUDITOR_CLIENT"}', '{}', now(), now());
+select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000005', 'falha@example.test', null);
+select public.auditor_primeiro_acesso('a5000000-0000-4000-8000-000000000006', 'segue@example.test', null);
+update public.auditor_contas set excluir_apos = now() - interval '1 minute'
+ where dono_user_id in ('a5000000-0000-4000-8000-000000000005', 'a5000000-0000-4000-8000-000000000006');
+create function pg_temp.falha_de_proposito() returns trigger language plpgsql as $f$
+begin
+  if old.email = 'falha@example.test' then raise exception 'falha de teste'; end if;
+  return old;
+end;
+$f$;
+create trigger falha_de_proposito before delete on public.clients for each row execute function pg_temp.falha_de_proposito();
+select is((public.auditor_limpar() ->> 'falhas')::int >= 1, true, 'B9 a conta com erro é contada como falha');
+select is((select count(*)::int from public.auditor_contas where dono_user_id = 'a5000000-0000-4000-8000-000000000006'), 0, 'B9 a outra conta foi apagada mesmo assim');
+select is((select count(*)::int from public.auditor_contas where dono_user_id = 'a5000000-0000-4000-8000-000000000005'), 1, 'B9 a conta com erro fica para a próxima');
+drop trigger falha_de_proposito on public.clients;
 
 select * from finish();
 rollback;

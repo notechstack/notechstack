@@ -65,6 +65,7 @@ create table public.auditor_relatorios (
   estado text not null default 'agendado'
     check (estado in ('agendado', 'coletando', 'gerando', 'pronto', 'enviado', 'parcial', 'falhou', 'pulado')),
   executar_em timestamptz not null default now(),
+  iniciado_em timestamptz,               -- quando o processamento atual começou (relatório preso volta à fila)
   tentativas smallint not null default 0,
   fontes jsonb not null default '{}'::jsonb,
   achados jsonb,
@@ -91,7 +92,8 @@ create table public.auditor_acessos_suporte (
   inicio timestamptz not null default now(),
   expira_em timestamptz not null,
   revogado_em timestamptz,
-  check (expira_em > inicio)
+  check (expira_em > inicio),
+  check (expira_em <= inicio + interval '72 hours')
 );
 create index auditor_acessos_suporte_cliente on public.auditor_acessos_suporte (client_id, expira_em desc);
 
@@ -119,6 +121,14 @@ create table public.auditor_avisos (
   unique (client_id, tipo, referencia)
 );
 
+-- Aceite dos Termos e da Política, registrado pelo próprio usuário logado (revisão B3). O primeiro acesso exige.
+create table public.auditor_aceites (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  versao text not null check (versao ~ '^[a-z0-9._-]{1,40}$'),
+  aceito_em timestamptz not null default now(),
+  primary key (user_id, versao)
+);
+
 -- Pedidos de link mágico (auditor-acesso): só hashes, guardados 1 dia, para o limite por hora (U5).
 create table public.auditor_acesso_tentativas (
   id bigint generated always as identity primary key,
@@ -131,28 +141,96 @@ create index auditor_acesso_tentativas_ip on public.auditor_acesso_tentativas (c
 
 -- ------------------------------------------------------------ 5 · Quem lê o quê (D2)
 
--- Membro AUDITOR de um negócio do auditor, ou NO_ADMIN com aal2 e concessão vigente do cliente.
+-- Dono do negócio: a posse vem de auditor_clientes → auditor_contas, que só a service role e as RPCs escrevem.
+-- (Revisão A1: memberships não serve de prova; o NO_ADMIN tem INSERT nela pelas policies do R1.)
+create or replace function public.auditor_dono_do_negocio(p_user_id uuid, p_client_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select p_user_id is not null and exists (
+    select 1 from public.auditor_clientes ac
+    join public.auditor_contas c on c.id = ac.conta_id
+    join public.clients cl on cl.id = ac.client_id and cl.origem = 'auditor'
+    where ac.client_id = p_client_id and c.dono_user_id = p_user_id
+  );
+$$;
+revoke all on function public.auditor_dono_do_negocio(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.auditor_dono_do_negocio(uuid, uuid) to service_role;
+
+-- Pela RLS, só o dono lê o próprio negócio. A leitura de suporte do NO_ADMIN (D2) passa só pela marketing-hub,
+-- que confere a concessão vigente e registra cada leitura (revisão B6); pelo banco direto, o NO_ADMIN não lê.
 create or replace function public.auditor_pode_ler(p_client_id uuid)
 returns boolean language sql stable security definer set search_path = ''
 as $$
-  select exists (
-      select 1 from public.memberships m
-      join public.clients c on c.id = m.client_id
-      where m.user_id = (select auth.uid()) and m.client_id = p_client_id
-        and m.role = 'AUDITOR' and c.origem = 'auditor'
-    )
-    or (
-      public.is_no_admin()
-      and coalesce((select auth.jwt()) ->> 'aal', '') = 'aal2'
-      and exists (
-        select 1 from public.auditor_acessos_suporte s
-        where s.client_id = p_client_id and s.revogado_em is null
-          and now() >= s.inicio and now() < s.expira_em
-      )
-    );
+  select public.auditor_dono_do_negocio((select auth.uid()), p_client_id);
 $$;
 revoke all on function public.auditor_pode_ler(uuid) from public, anon;
 grant execute on function public.auditor_pode_ler(uuid) to authenticated, service_role;
+
+-- A1: o NO_ADMIN continua administrando os vínculos CLIENT (R1), mas não cria nem altera vínculos AUDITOR.
+drop policy if exists memberships_insert_admin on public.memberships;
+create policy memberships_insert_admin on public.memberships for insert to authenticated
+  with check (public.is_no_admin() and role = 'CLIENT');
+drop policy if exists memberships_update_admin on public.memberships;
+create policy memberships_update_admin on public.memberships for update to authenticated
+  using (public.is_no_admin() and role = 'CLIENT')
+  with check (public.is_no_admin() and role = 'CLIENT');
+drop policy if exists memberships_delete_admin on public.memberships;
+create policy memberships_delete_admin on public.memberships for delete to authenticated
+  using (public.is_no_admin() and role = 'CLIENT');
+
+-- A1: conectar Meta/Google exige a posse do negócio (redefine a função da migration A; só muda a checagem).
+create or replace function public.marketing_cliente_conexao_salvar(
+  p_client_id uuid, p_provedor text, p_token text, p_escopos text[], p_expira_em timestamptz,
+  p_usuario_externo text, p_user_id uuid
+)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  atual public.marketing_cliente_conexoes;
+  nome_segredo text := 'marketing_cliente:' || p_client_id || ':' || p_provedor;
+  segredo uuid;
+begin
+  if p_token is null or length(p_token) = 0 then raise exception 'token ausente'; end if;
+  if p_provedor not in ('meta', 'google') then raise exception 'provedor inválido'; end if;
+  -- Só o dono do negócio conecta (o NO_ADMIN não conecta em nome do cliente).
+  if not exists (
+    select 1 from auth.users u
+    where u.id = p_user_id and (u.banned_until is null or u.banned_until <= now())
+      and public.auditor_dono_do_negocio(u.id, p_client_id)
+  ) then
+    raise exception 'autor não autorizado para este cliente';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(nome_segredo));
+  select * into atual from public.marketing_cliente_conexoes
+  where client_id = p_client_id and provedor = p_provedor and estado <> 'desconectado';
+
+  select id into segredo from vault.secrets where id = atual.vault_secret_id;
+  if segredo is null then
+    delete from vault.secrets where name = nome_segredo; -- sobra de encerramento interrompido
+    segredo := vault.create_secret(p_token, nome_segredo, 'Token OAuth do cliente (marketing-hub)');
+  else
+    perform vault.update_secret(segredo, p_token);
+  end if;
+
+  if atual.id is null then
+    insert into public.marketing_cliente_conexoes (client_id, provedor, estado, escopos, expira_em, usuario_externo, vault_secret_id, conectado_por)
+    values (p_client_id, p_provedor, 'conectado', coalesce(p_escopos, '{}'), p_expira_em, p_usuario_externo, segredo, p_user_id);
+  else
+    -- Outra conta do provedor: as escolhas antigas não valem para o token novo.
+    if atual.usuario_externo is distinct from p_usuario_externo then
+      delete from public.marketing_cliente_ativos where conexao_id = atual.id;
+    end if;
+    update public.marketing_cliente_conexoes set
+      estado = 'conectado', escopos = coalesce(p_escopos, '{}'), expira_em = p_expira_em, usuario_externo = p_usuario_externo,
+      vault_secret_id = segredo, conectado_por = p_user_id, conectado_em = now(), ultimo_erro = null, encerrado_em = null
+    where id = atual.id;
+  end if;
+
+  perform public.marketing_cliente_evento(p_client_id, p_user_id, 'AUDITOR',
+    case when atual.id is null then 'conectou' else 'reconectou' end,
+    jsonb_build_object('provedor', p_provedor, 'escopos', coalesce(p_escopos, '{}'), 'expira_em', p_expira_em));
+end;
+$$;
 
 alter table public.auditor_contas enable row level security;
 alter table public.auditor_clientes enable row level security;
@@ -161,10 +239,11 @@ alter table public.auditor_relatorios enable row level security;
 alter table public.auditor_acessos_suporte enable row level security;
 alter table public.auditor_exclusoes enable row level security;
 alter table public.auditor_avisos enable row level security;
+alter table public.auditor_aceites enable row level security;
 
 revoke all on public.auditor_contas, public.auditor_clientes, public.marketing_cliente_snapshots,
   public.auditor_relatorios, public.auditor_acessos_suporte,
-  public.auditor_exclusoes, public.auditor_avisos
+  public.auditor_exclusoes, public.auditor_avisos, public.auditor_aceites
   from public, anon, authenticated;
 
 grant select (id, plano, criada_em, encerrada_em, excluir_apos, copia_whatsapp, copia_whatsapp_numero, copia_whatsapp_em) on public.auditor_contas to authenticated;
@@ -192,12 +271,12 @@ create policy auditor_acessos_suporte_leitor on public.auditor_acessos_suporte
 grant select, insert, delete on public.auditor_acesso_tentativas to service_role;
 grant select, insert, update, delete on public.auditor_contas, public.auditor_clientes,
   public.marketing_cliente_snapshots, public.auditor_relatorios, public.auditor_acessos_suporte,
-  public.auditor_exclusoes, public.auditor_avisos to service_role;
+  public.auditor_exclusoes, public.auditor_avisos, public.auditor_aceites to service_role;
 
 alter table public.auditor_acesso_tentativas enable row level security;
 revoke all on public.auditor_acesso_tentativas from public, anon, authenticated;
 
--- Limite do link mágico (3 por e-mail e 20 por IP, por hora) + quem é o usuário desse e-mail.
+-- Limite do link mágico (3 por e-mail e 20 por IP, por hora; e 300 no total por hora) + quem é o usuário desse e-mail.
 -- Uma ida ao banco; evita varrer o Auth inteiro. Registra a tentativa só quando permitida.
 create or replace function public.auditor_acesso_preparar(p_email text, p_chave_email text, p_chave_ip text)
 returns table (permitido boolean, user_id uuid, papel text)
@@ -209,7 +288,8 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('auditor_acesso:' || p_chave_email));
   delete from public.auditor_acesso_tentativas where em < now() - interval '1 day';
   if (select count(*) from public.auditor_acesso_tentativas where chave_email = p_chave_email and em > now() - interval '1 hour') >= 3
-     or (select count(*) from public.auditor_acesso_tentativas where chave_ip = p_chave_ip and em > now() - interval '1 hour') >= 20 then
+     or (select count(*) from public.auditor_acesso_tentativas where chave_ip = p_chave_ip and em > now() - interval '1 hour') >= 20
+     or (select count(*) from public.auditor_acesso_tentativas where em > now() - interval '1 hour') >= 300 then
     return query select false, null::uuid, null::text;
     return;
   end if;
@@ -219,6 +299,41 @@ begin
       from (select 1) x
       left join auth.users u on lower(u.email) = v_email;
 end;
+$$;
+
+-- ------------------------------------------------------------ 5b · Pagamento (A4)
+
+-- Já houve algum pagamento confirmado desta assinatura (evento 'paga' do webhook ou status atual 'paga').
+create or replace function public.auditor_assinatura_ja_pagou(p_assinatura_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select a.status = 'paga' or exists (
+      select 1 from public.auditor_assinatura_eventos e
+      where e.pagarme_subscription_id = a.pagarme_subscription_id and e.status_aplicado = 'paga')
+    from public.auditor_assinaturas a where a.id = p_assinatura_id), false);
+$$;
+
+-- Acesso pago vigente pela política D8 (paga, ou recusada dentro da tolerância depois de já ter pago).
+create or replace function public.auditor_assinatura_paga_vigente(p_assinatura_id uuid, p_agora timestamptz default now())
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select public.auditor_assinatura_com_acesso(a.status, r.recusada_desde, p.ultima_paga is not null, p_agora)
+      from public.auditor_assinaturas a
+      left join lateral (
+        select max(coalesce(e.evento_em, e.recebido_em)) as ultima_paga
+          from public.auditor_assinatura_eventos e
+         where e.pagarme_subscription_id = a.pagarme_subscription_id and e.status_aplicado = 'paga'
+      ) p on true
+      left join lateral (
+        select min(coalesce(e.evento_em, e.recebido_em)) as recusada_desde
+          from public.auditor_assinatura_eventos e
+         where e.pagarme_subscription_id = a.pagarme_subscription_id and e.status_aplicado = 'recusada'
+           and coalesce(e.evento_em, e.recebido_em) > coalesce(p.ultima_paga, '-infinity'::timestamptz)
+      ) r on true
+     where a.id = p_assinatura_id
+  ), false);
 $$;
 
 -- ------------------------------------------------------------ 6 · Primeiro acesso e negócios
@@ -240,10 +355,24 @@ begin
 
   select * into v_conta from public.auditor_contas where dono_user_id = p_user_id;
   if v_conta.id is not null then
+    -- B7: quem volta reabre a conta encerrada (por inatividade ou cancelamento) como grátis, salvo acesso pago vigente.
+    if v_conta.encerrada_em is not null then
+      update public.auditor_contas
+         set encerrada_em = null, excluir_apos = null,
+             plano = case when public.auditor_assinatura_paga_vigente(assinatura_id) then plano else 'gratis' end
+       where id = v_conta.id;
+      perform public.marketing_cliente_evento(
+        (select ac.client_id from public.auditor_clientes ac where ac.conta_id = v_conta.id order by ac.criado_em limit 1),
+        p_user_id, 'AUDITOR', 'conta_reaberta', '{}'::jsonb);
+    end if;
     select ac.client_id into v_client from public.auditor_clientes ac
       where ac.conta_id = v_conta.id order by ac.criado_em limit 1;
     return query select v_conta.id, v_client, false;
     return;
+  end if;
+  -- B3: a conta só nasce com o aceite dos Termos registrado pelo próprio usuário.
+  if not exists (select 1 from public.auditor_aceites a where a.user_id = p_user_id) then
+    raise exception 'aceite_pendente';
   end if;
 
   if not exists (select 1 from auth.users u where u.id = p_user_id) then
@@ -273,7 +402,8 @@ begin
     update public.auditor_assinaturas set conta_id = v_conta.id where id = v_assinatura.id;
     update public.auditor_contas
        set assinatura_id = v_assinatura.id,
-           plano = case when v_assinatura.status in ('paga', 'recusada') then v_assinatura.plano else 'gratis' end
+           plano = case when public.auditor_assinatura_ja_pagou(v_assinatura.id) and v_assinatura.status in ('paga', 'recusada')
+                        then v_assinatura.plano else 'gratis' end
      where id = v_conta.id;
     perform public.marketing_cliente_evento(v_client, p_user_id, 'SISTEMA', 'assinatura_vinculada',
       jsonb_build_object('plano', v_assinatura.plano));
@@ -294,7 +424,7 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('auditor_conta:' || p_user_id));
   select * into v_conta from public.auditor_contas where dono_user_id = p_user_id;
   if v_conta.id is null then raise exception 'conta_inexistente'; end if;
-  if v_conta.plano <> 'agencia' then raise exception 'plano_sem_multiplos_negocios'; end if;
+  if v_conta.plano <> 'agencia' or not public.auditor_conta_com_acesso(v_conta.id) then raise exception 'plano_sem_multiplos_negocios'; end if;
   if (select count(*) from public.auditor_clientes where conta_id = v_conta.id) >= 5 then
     raise exception 'limite_de_negocios';
   end if;
@@ -356,21 +486,9 @@ create or replace function public.auditor_conta_com_acesso(p_conta_id uuid, p_ag
 returns boolean language sql stable security definer set search_path = ''
 as $$
   select coalesce((
-    select public.auditor_assinatura_com_acesso(a.status, r.recusada_desde, p.ultima_paga is not null, p_agora)
+    select public.auditor_assinatura_paga_vigente(c.assinatura_id, p_agora)
       from public.auditor_contas c
-      join public.auditor_assinaturas a on a.id = c.assinatura_id
-      left join lateral (
-        select max(coalesce(e.evento_em, e.recebido_em)) as ultima_paga
-          from public.auditor_assinatura_eventos e
-         where e.pagarme_subscription_id = a.pagarme_subscription_id and e.status_aplicado = 'paga'
-      ) p on true
-      left join lateral (
-        select min(coalesce(e.evento_em, e.recebido_em)) as recusada_desde
-          from public.auditor_assinatura_eventos e
-         where e.pagarme_subscription_id = a.pagarme_subscription_id and e.status_aplicado = 'recusada'
-           and coalesce(e.evento_em, e.recebido_em) > coalesce(p.ultima_paga, '-infinity'::timestamptz)
-      ) r on true
-     where c.id = p_conta_id and c.plano <> 'gratis' and c.encerrada_em is null
+     where c.id = p_conta_id and c.plano <> 'gratis' and c.encerrada_em is null and c.assinatura_id is not null
   ), false);
 $$;
 
@@ -430,9 +548,7 @@ declare
   v_id uuid;
   v_hoje date;
 begin
-  if not exists (
-    select 1 from public.memberships m where m.user_id = p_user_id and m.client_id = p_client_id and m.role = 'AUDITOR'
-  ) then raise exception 'sem_acesso'; end if;
+  if not public.auditor_dono_do_negocio(p_user_id, p_client_id) then raise exception 'sem_acesso'; end if;
   update public.auditor_clientes set retrospectiva_gerada_em = p_agora
    where client_id = p_client_id and retrospectiva_gerada_em is null
    returning (p_agora at time zone fuso)::date into v_hoje;
@@ -445,20 +561,36 @@ end;
 $$;
 
 -- Fila: até p_limit relatórios vencidos, sem repetição entre chamadas simultâneas.
-create or replace function public.auditor_claim_relatorios(p_limit integer default 3)
+-- B5: relatório parado em coletando/gerando há mais de 20 min (função caiu no meio) volta a valer como vencido;
+-- na 3ª tentativa vira 'falhou'.
+create or replace function public.auditor_claim_relatorios(p_limit integer default 1)
 returns setof public.auditor_relatorios
-language sql security definer set search_path = ''
+language plpgsql security definer set search_path = ''
 as $$
-  update public.auditor_relatorios r
-     set estado = 'coletando', tentativas = r.tentativas + 1
-   where r.id in (
+declare r record;
+begin
+  for r in
+    select id, client_id, tentativas from public.auditor_relatorios
+     where estado in ('coletando', 'gerando') and iniciado_em < now() - interval '20 minutes' and tentativas >= 3
+     for update skip locked
+  loop
+    update public.auditor_relatorios set estado = 'falhou', erro = 'parado_no_processamento' where id = r.id;
+    perform public.marketing_cliente_evento(r.client_id, null, 'SISTEMA', 'relatorio_falhou',
+      jsonb_build_object('relatorio_id', r.id, 'tentativas', r.tentativas, 'motivo', 'parado'));
+  end loop;
+  return query
+  update public.auditor_relatorios a
+     set estado = 'coletando', tentativas = a.tentativas + 1, iniciado_em = now()
+   where a.id in (
      select id from public.auditor_relatorios
-      where estado = 'agendado' and executar_em <= now()
+      where (estado = 'agendado' and executar_em <= now())
+         or (estado in ('coletando', 'gerando') and iniciado_em < now() - interval '20 minutes')
       order by executar_em
       limit greatest(1, least(p_limit, 10))
       for update skip locked
    )
-  returning r.*;
+  returning a.*;
+end;
 $$;
 
 -- Erro na geração: transitório volta para a fila (+10 min, +30 min); na 3ª falha vira 'falhou'.
@@ -501,14 +633,18 @@ begin
   select * into v_conta from public.auditor_contas where id = p_conta_id for update;
   if v_conta.id is null then raise exception 'conta_inexistente'; end if;
 
-  select coalesce(array_agg(client_id), '{}') into v_clients from public.auditor_clientes where conta_id = v_conta.id;
+  select coalesce(array_agg(ac.client_id), '{}') into v_clients
+    from public.auditor_clientes ac join public.clients cl on cl.id = ac.client_id and cl.origem = 'auditor'
+   where ac.conta_id = v_conta.id;
 
   insert into public.auditor_exclusoes (origem, conta_id, estado)
   values (p_origem, v_conta.id, 'recebido') returning id into v_exclusao;
 
+  -- B8: também as assinaturas antigas sem conta com o mesmo e-mail do dono (checkout anterior ao login).
   update public.auditor_assinaturas
      set nome = '[excluído]', email = 'excluido+' || id || '@invalid.notechstack', whatsapp = '0000000000', conta_id = null
-   where conta_id = v_conta.id;
+   where conta_id = v_conta.id
+      or (conta_id is null and lower(email) = (select lower(u.email) from auth.users u where u.id = v_conta.dono_user_id));
 
   delete from public.memberships where client_id = any (v_clients);
   -- Conexões: o trigger da Frente 1 apaga o segredo do Vault junto com a linha.
@@ -536,6 +672,7 @@ returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare
   v_snap int; v_rel int; v_ev int; v_exc int; v_ass int; v_tok int := 0; v_enc int; v_apag int := 0;
+  v_falhas int := 0; v_orf int := 0; v_evass int;
   r record;
 begin
   delete from public.marketing_cliente_snapshots where periodo_ate < (p_agora - interval '13 months')::date;
@@ -543,23 +680,37 @@ begin
   delete from public.auditor_relatorios where periodo_ate < (p_agora - interval '13 months')::date;
   get diagnostics v_rel = row_count;
 
-  -- Tokens: conta grátis 30 dias após conectar sem assinatura; assinatura encerrada há 30 dias.
+  -- Tokens (D3, revisão A4): conta SEM acesso pago vigente (grátis, checkout abandonado, cobrança recusada sem
+  -- pagamento, cancelada) e conexão feita — ou conta encerrada — há mais de 30 dias.
   for r in
     select c.client_id, c.provedor
       from public.marketing_cliente_conexoes c
       join public.auditor_clientes ac on ac.client_id = c.client_id
       join public.auditor_contas ct on ct.id = ac.conta_id
      where c.vault_secret_id is not null and c.estado <> 'desconectado'
-       and ((ct.plano = 'gratis' and ct.assinatura_id is null and c.conectado_em < p_agora - interval '30 days')
-         or (ct.encerrada_em is not null and ct.encerrada_em < p_agora - interval '30 days'))
+       and not public.auditor_conta_com_acesso(ct.id, p_agora)
+       and coalesce(ct.encerrada_em, c.conectado_em) < p_agora - interval '30 days'
   loop
-    perform public.marketing_cliente_conexao_encerrar(r.client_id, r.provedor, 'desconectado', null, 'SISTEMA');
-    insert into public.auditor_avisos (client_id, tipo, referencia)
-    values (r.client_id, 'gratis_tokens_apagados', r.provedor || ':' || p_agora::date)
-    on conflict do nothing;
-    perform public.marketing_cliente_evento(r.client_id, null, 'SISTEMA', 'token_apagado_retencao', jsonb_build_object('provedor', r.provedor));
-    v_tok := v_tok + 1;
+    begin
+      perform public.marketing_cliente_conexao_encerrar(r.client_id, r.provedor, 'desconectado', null, 'SISTEMA');
+      insert into public.auditor_avisos (client_id, tipo, referencia)
+      values (r.client_id, 'gratis_tokens_apagados', r.provedor || ':' || p_agora::date)
+      on conflict do nothing;
+      perform public.marketing_cliente_evento(r.client_id, null, 'SISTEMA', 'token_apagado_retencao', jsonb_build_object('provedor', r.provedor));
+      v_tok := v_tok + 1;
+    exception when others then
+      v_falhas := v_falhas + 1;
+      raise warning 'auditor_limpar: token % não apagado (%)', r.client_id, sqlstate;
+    end;
   end loop;
+
+  -- Negócios órfãos (usuário apagado por fora antes do gatilho existir): apaga com conexões e Vault.
+  delete from public.memberships m using public.clients cl
+   where cl.id = m.client_id and cl.origem = 'auditor'
+     and not exists (select 1 from public.auditor_clientes ac where ac.client_id = cl.id);
+  delete from public.clients cl
+   where cl.origem = 'auditor' and not exists (select 1 from public.auditor_clientes ac where ac.client_id = cl.id);
+  get diagnostics v_orf = row_count;
 
   -- Conta grátis sem login há 12 meses: encerra (apaga em 90 dias).
   update public.auditor_contas c
@@ -569,9 +720,19 @@ begin
      and coalesce(u.last_sign_in_at, c.criada_em) < p_agora - interval '12 months';
   get diagnostics v_enc = row_count;
 
-  for r in select id from public.auditor_contas where excluir_apos is not null and excluir_apos < p_agora loop
-    perform public.auditor_apagar_conta(r.id, 'inatividade');
-    v_apag := v_apag + 1;
+  for r in
+    select c.id, (a.status = 'cancelada') as cancelada
+      from public.auditor_contas c left join public.auditor_assinaturas a on a.id = c.assinatura_id
+     where c.excluir_apos is not null and c.excluir_apos < p_agora
+  loop
+    -- B9: uma conta com erro não derruba o job; fica para a próxima rodada.
+    begin
+      perform public.auditor_apagar_conta(r.id, case when r.cancelada then 'cancelamento' else 'inatividade' end);
+      v_apag := v_apag + 1;
+    exception when others then
+      v_falhas := v_falhas + 1;
+      raise warning 'auditor_limpar: conta % não apagada (%)', r.id, sqlstate;
+    end;
   end loop;
 
   delete from public.marketing_cliente_eventos where em < p_agora - interval '12 months';
@@ -581,12 +742,49 @@ begin
   delete from public.auditor_assinaturas
    where conta_id is null and status = 'cancelada' and updated_at < p_agora - interval '5 years';
   get diagnostics v_ass = row_count;
+  -- Eventos do webhook: 5 anos, como as assinaturas (prazo fiscal, D3).
+  delete from public.auditor_assinatura_eventos where recebido_em < p_agora - interval '5 years';
+  get diagnostics v_evass = row_count;
 
   return jsonb_build_object('snapshots', v_snap, 'relatorios', v_rel, 'tokens', v_tok, 'contas_encerradas', v_enc,
-    'contas_apagadas', v_apag, 'eventos', v_ev, 'exclusoes', v_exc, 'assinaturas', v_ass);
+    'contas_apagadas', v_apag, 'eventos', v_ev, 'exclusoes', v_exc, 'assinaturas', v_ass,
+    'eventos_assinatura', v_evass, 'negocios_orfaos', v_orf, 'falhas', v_falhas);
 end;
 $$;
 
+
+-- A4: usuário apagado por fora (painel do Auth) → auditor_contas some em cascata. Antes disso, anonimiza as
+-- assinaturas; depois que o negócio some de auditor_clientes, apaga vínculos e o clients do auditor (conexões e
+-- Vault vão junto pelos gatilhos da migration A).
+create or replace function public.auditor_contas_antes_de_apagar()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
+begin
+  update public.auditor_assinaturas
+     set nome = '[excluído]', email = 'excluido+' || id || '@invalid.notechstack', whatsapp = '0000000000', conta_id = null
+   where conta_id = old.id;
+  return old;
+end;
+$$;
+drop trigger if exists auditor_contas_antes_de_apagar on public.auditor_contas;
+create trigger auditor_contas_antes_de_apagar before delete on public.auditor_contas
+  for each row execute function public.auditor_contas_antes_de_apagar();
+
+create or replace function public.auditor_clientes_depois_de_apagar()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
+begin
+  delete from public.memberships where client_id = old.client_id;
+  delete from public.clients where id = old.client_id and origem = 'auditor';
+  return old;
+end;
+$$;
+drop trigger if exists auditor_clientes_depois_de_apagar on public.auditor_clientes;
+create trigger auditor_clientes_depois_de_apagar after delete on public.auditor_clientes
+  for each row execute function public.auditor_clientes_depois_de_apagar();
+
+revoke all on function public.auditor_contas_antes_de_apagar() from public, anon, authenticated;
+revoke all on function public.auditor_clientes_depois_de_apagar() from public, anon, authenticated;
 
 -- ------------------------------------------------------------ 9b · RPCs do próprio cliente (app, com o JWT dele)
 -- Agem só sobre auth.uid(); executáveis por authenticated. Erros com código curto para o app.
@@ -634,12 +832,19 @@ begin
 end;
 $$;
 
-create or replace function public.auditor_eu_iniciar(p_site_url text default null)
+-- Inicia (ou reabre) a conta. Com p_aceite_versao, registra antes o aceite dos Termos do próprio usuário (B3);
+-- sem aceite registrado, o primeiro acesso devolve 'aceite_pendente' e o app mostra a caixa.
+create or replace function public.auditor_eu_iniciar(p_site_url text default null, p_aceite_versao text default null)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare v_email text;
 begin
   if (select auth.uid()) is null then raise exception 'sem_sessao'; end if;
+  if p_aceite_versao is not null then
+    if p_aceite_versao !~ '^[a-z0-9._-]{1,40}$' then raise exception 'aceite_invalido'; end if;
+    insert into public.auditor_aceites (user_id, versao) values ((select auth.uid()), p_aceite_versao)
+    on conflict do nothing;
+  end if;
   select email into v_email from auth.users where id = (select auth.uid());
   perform public.auditor_primeiro_acesso((select auth.uid()), v_email, p_site_url);
   return public.auditor_eu();
@@ -691,7 +896,7 @@ do $$
 declare f text;
 begin
   foreach f in array array[
-    'public.auditor_eu()', 'public.auditor_eu_iniciar(text)', 'public.auditor_eu_copia_whatsapp(boolean, text)', 'public.auditor_eu_suporte(uuid, boolean, text)',
+    'public.auditor_eu()', 'public.auditor_eu_iniciar(text, text)', 'public.auditor_eu_copia_whatsapp(boolean, text)', 'public.auditor_eu_suporte(uuid, boolean, text)',
     'public.auditor_eu_retrospectiva(uuid)', 'public.auditor_eu_negocio_criar(text, text)', 'public.auditor_eu_frequencia(uuid, text)'
   ] loop
     execute format('revoke all on function %s from public, anon', f);
@@ -710,17 +915,22 @@ as $$
   select jsonb_build_object(
     'conta_id', c.id,
     'email', (select u.email from auth.users u where u.id = p_user_id),
-    'ja_assinante', coalesce(public.auditor_conta_com_acesso(c.id), false))
+    'ja_assinante', coalesce(public.auditor_conta_com_acesso(c.id), false),
+    -- A2: checkout iniciado há menos de 30 min ainda pendente: não abre outro (evita cobrança duplicada).
+    'pendente_recente', exists (select 1 from public.auditor_assinaturas a
+                                 where a.conta_id = c.id and a.status = 'pendente' and a.created_at > now() - interval '30 minutes'))
   from public.auditor_contas c where c.dono_user_id = p_user_id;
 $$;
 
 -- Depois do registro no Pagar.me: liga a assinatura à conta. Se o webhook 'paga' já chegou, o plano vale na hora.
+-- Devolve {anterior}: id no Pagar.me da assinatura que esta substitui (não cancelada), para a função cancelar (A2).
 create or replace function public.auditor_assinatura_vincular(p_subscription_id text, p_user_id uuid, p_copia_whatsapp boolean default false)
-returns void language plpgsql security definer set search_path = ''
+returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare
   v_conta public.auditor_contas;
   v_ass public.auditor_assinaturas;
+  v_anterior text;
 begin
   select * into v_conta from public.auditor_contas where dono_user_id = p_user_id for update;
   if v_conta.id is null then raise exception 'conta_inexistente'; end if;
@@ -728,10 +938,12 @@ begin
   if v_ass.id is null then raise exception 'assinatura_inexistente'; end if;
   if v_ass.conta_id is not null and v_ass.conta_id <> v_conta.id then raise exception 'assinatura_de_outra_conta'; end if;
   update public.auditor_contas set assinatura_id = null where assinatura_id = v_ass.id and id <> v_conta.id;
+  select a.pagarme_subscription_id into v_anterior from public.auditor_assinaturas a
+   where a.id = v_conta.assinatura_id and a.id <> v_ass.id and a.status <> 'cancelada';
   update public.auditor_assinaturas set conta_id = v_conta.id where id = v_ass.id;
   update public.auditor_contas
      set assinatura_id = v_ass.id,
-         plano = case when v_ass.status in ('paga', 'recusada') then v_ass.plano else plano end,
+         plano = case when v_ass.status in ('paga', 'recusada') and public.auditor_assinatura_ja_pagou(v_ass.id) then v_ass.plano else plano end,
          encerrada_em = case when v_ass.status = 'paga' then null else encerrada_em end,
          excluir_apos = case when v_ass.status = 'paga' then null else excluir_apos end,
          copia_whatsapp = case when p_copia_whatsapp then true else copia_whatsapp end,
@@ -740,7 +952,8 @@ begin
    where id = v_conta.id;
   perform public.marketing_cliente_evento(
     (select ac.client_id from public.auditor_clientes ac where ac.conta_id = v_conta.id order by ac.criado_em limit 1),
-    p_user_id, 'AUDITOR', 'assinatura_vinculada', jsonb_build_object('plano', v_ass.plano));
+    p_user_id, 'AUDITOR', 'assinatura_vinculada', jsonb_build_object('plano', v_ass.plano, 'substitui_outra', v_anterior is not null));
+  return jsonb_build_object('anterior', v_anterior);
 end;
 $$;
 
@@ -831,6 +1044,8 @@ declare f text;
 begin
   foreach f in array array[
     'public.auditor_acesso_preparar(text, text, text)',
+    'public.auditor_assinatura_ja_pagou(uuid)',
+    'public.auditor_assinatura_paga_vigente(uuid, timestamptz)',
     'public.auditor_primeiro_acesso(uuid, text, text)',
     'public.auditor_negocio_criar(uuid, text, text)',
     'public.auditor_suporte_conceder(uuid, uuid, text, integer)',
