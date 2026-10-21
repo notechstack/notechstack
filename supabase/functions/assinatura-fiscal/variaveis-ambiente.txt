@@ -3,6 +3,8 @@
 
 # Compartilhadas com a assinatura do Auditor (mesma conta Pagar.me da nó).
 PAGARME_ASSINATURA_SECRET_KEY=
+# Chave pública (pk_...) que a página usa para tokenizar o cartão; devolvida pelo GET (v2, critério 10).
+PAGARME_ASSINATURA_PUBLIC_KEY=
 PAGARME_ASSINATURA_API_URL=
 # sandbox (padrão) ou producao. Em sandbox recusa chave que não comece com sk_test_.
 # Em produção recusa enquanto TEXTO_ACEITE_PROVISORIO = true em core.ts (RFC 1, Unresolved 8).

@@ -105,6 +105,25 @@ export function lerConfig(env: Record<string, string | undefined>): Config {
   };
 }
 
+/** GET assinatura-fiscal (critério 10 da v2): sem sessão, sempre 200. */
+export function responderConfiguracao(env: Record<string, string | undefined>): Resultado {
+  return { http: 200, body: configuracaoPublica(env) };
+}
+
+/** Corpo de GET assinatura-fiscal: o que a etapa de pagamento precisa. */
+export function configuracaoPublica(env: Record<string, string | undefined>): Record<string, unknown> {
+  return {
+    ok: true,
+    venda_aberta: lerConfig(env).vendaAberta,
+    public_key: env.PAGARME_ASSINATURA_PUBLIC_KEY || "",
+    aceite_texto: TEXTO_ACEITE_FISCAL,
+    planos: {
+      inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos },
+      pro: { valor_centavos: PLANOS_PAGARME.pro.centavos },
+    },
+  };
+}
+
 export type Endereco = {
   cep: string;
   rua: string;
@@ -154,6 +173,8 @@ export type Deps = {
   contexto: (userId: string) => Promise<Contexto | null>;
   reivindicarTeste: (tenantId: string, hashes: Record<string, string>) => Promise<boolean>;
   registrar: (linha: LinhaAssinatura) => Promise<{ id: string; status: string }>;
+  /** Fluxo v2: grava pago_em e passa onboarding_etapa a 'certificado' depois do registro. */
+  marcarPago?: (tenantId: string) => Promise<void>;
   agora?: () => Date;
   log?: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void;
 };
@@ -402,6 +423,14 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   }
   if (status === "cancelada") {
     return erro(409, "ASSINATURA_CANCELADA", "Esta assinatura foi cancelada no sistema de pagamento. Tente assinar de novo.");
+  }
+  // A assinatura já existe: uma falha aqui não muda a resposta (repetir o checkout daria 409).
+  if (deps.marcarPago) {
+    try {
+      await deps.marcarPago(contexto.tenant_id);
+    } catch {
+      log("error", "assinatura_fiscal_marca_pago_falhou", { subscription_id: subId });
+    }
   }
   return {
     http: 200,

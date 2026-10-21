@@ -1,11 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, handlePreflight } from "../_shared/cors.ts";
+import { corsFiscal } from "../_shared/fiscal/cors.ts";
 import { log } from "../_shared/logger.ts";
-import { type Contexto, processarCheckout } from "./core.ts";
+import { type Contexto, processarCheckout, responderConfiguracao } from "./core.ts";
 
 // Só nomes (variaveis-ambiente.txt); os valores ficam com Lucca.
 const NOMES_ENV = [
   "PAGARME_ASSINATURA_SECRET_KEY",
+  "PAGARME_ASSINATURA_PUBLIC_KEY",
   "PAGARME_SECRET_KEY",
   "PAGARME_ASSINATURA_API_URL",
   "PAGARME_ASSINATURA_AMBIENTE",
@@ -24,11 +25,16 @@ function lerEnv(): Record<string, string | undefined> {
 }
 
 Deno.serve(async (request) => {
-  const preflight = handlePreflight(request);
-  if (preflight) return preflight;
+  const cors = corsFiscal(request.headers.get("origin"), (k) => Deno.env.get(k));
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
-  const headers: Record<string, string> = { ...corsHeaders(request.headers.get("origin")), "Content-Type": "application/json" };
+  const headers: Record<string, string> = { ...cors, "Content-Type": "application/json" };
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers });
+  // Configuração pública da etapa de pagamento (sem sessão).
+  if (request.method === "GET") {
+    const r = responderConfiguracao(lerEnv());
+    return json(r.http, r.body);
+  }
   if (request.method !== "POST") {
     return json(405, { ok: false, error_code: "METHOD_NOT_ALLOWED", mensagem: "Método não permitido." });
   }
@@ -85,6 +91,9 @@ Deno.serve(async (request) => {
           reconciliada: Boolean(data.reconciliada),
         });
         return { id: String(data.id), status: String(data.status) };
+      },
+      marcarPago: async (tenantId) => {
+        await rpc("fiscal_marcar_pago", { p_tenant_id: tenantId });
       },
       log,
     });
