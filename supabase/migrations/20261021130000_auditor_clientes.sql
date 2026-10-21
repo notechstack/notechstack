@@ -815,16 +815,5 @@ end;
 $$;
 revoke all on function public.auditor_invoke_processar() from public, anon, authenticated;
 
-do $$
-declare j text;
-begin
-  foreach j in array array['auditor-relatorios-planejar', 'auditor-relatorios-processar', 'auditor_limpar_diario'] loop
-    if exists (select 1 from cron.job where jobname = j and username = current_user) then
-      perform cron.unschedule(j);
-    end if;
-  end loop;
-  perform cron.schedule('auditor-relatorios-planejar', '0 9 * * *', 'select public.auditor_planejar_relatorios()');
-  perform cron.schedule('auditor-relatorios-processar', '*/10 * * * *', 'select public.auditor_invoke_processar()');
-  perform cron.schedule('auditor_limpar_diario', '30 6 * * *', 'select public.auditor_limpar()');
-end;
-$$;
+-- Os jobs do pg_cron ficam na 20261021140000_auditor_agendamento.sql, aplicada só quando houver
+-- cliente real conectado (decisão do orquestrador, 21/10).
