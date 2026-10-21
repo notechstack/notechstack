@@ -66,16 +66,18 @@ test('planos da decisão de 20/10', () => {
 
   assert.match(inicial.txt, /R\$ 49(?![\d,])/);
   assert.match(inicial.txt, /até 20 notas/i);
-  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Assinatura em breve'), 'Inicial: "Assinatura em breve"');
+  // Critério 51 da tarefa agente-fiscal-v2 (21/10): o botão "Assinatura em breve" virou a entrada do cadastro no site.
+  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Testar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=inicial'), 'Inicial: "Testar 7 dias grátis"');
 
   assert.match(pro.txt, /R\$ 129(?![\d,])/);
   assert.match(pro.txt, /até 100 notas/i);
   assert.match(pro.txt, /cópia[^.]*cliente[^.]*contador/i);
   assert.match(pro.txt, /resumo mensal/i);
-  assert.ok(pro.acoes.some((a) => a.rotulo === 'Assinatura em breve'), 'Pro: "Assinatura em breve"');
+  assert.ok(pro.acoes.some((a) => a.rotulo === 'Testar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=pro'), 'Pro: "Testar 7 dias grátis"');
 
   assert.match(escritorio.txt, /sob medida/i);
-  assert.ok(escritorio.acoes.some((a) => a.href === '/contato/'), 'Escritório: link para /contato/');
+  // Critério 51 da tarefa agente-fiscal-v2: o sob medida vai direto ao WhatsApp comercial (antes, /contato/).
+  assert.ok(escritorio.acoes.some((a) => a.href && a.href.startsWith('https://wa.me/5511939289413?text=')), 'Escritório: link para o WhatsApp comercial');
 
   for (const c of [inicial, pro]) assert.ok(!c.acoes.some((a) => a.href && /pagar|checkout|app\./i.test(a.href)), `${c.nome}: sem link de assinatura`);
   assert.match(texto(secao[1]), /7 dias grátis/);

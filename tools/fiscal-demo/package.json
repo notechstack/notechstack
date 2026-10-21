@@ -1,0 +1,12 @@
+{
+  "name": "nofiscal-demo",
+  "private": true,
+  "type": "module",
+  "description": "Demonstração local do nó.fiscal: site, API do app, edge functions e dublês (npm run fiscal:demo na raiz).",
+  "scripts": {
+    "start": "node demo.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}
