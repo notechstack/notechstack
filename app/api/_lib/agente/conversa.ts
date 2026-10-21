@@ -8,12 +8,17 @@ import type { Db, Queryable } from '../db.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
+import { tratarAtivacao } from './ativacao.js'
+import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
 import { whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
+import type { CatalogoDeServicos } from './catalogo-servicos.js'
+import { tratarComando } from './comandos.js'
 import { documentoNoTexto, emailNoTexto, formatarDocumento, formatarReais, tipoDoDocumento } from './documentos.js'
 import { validarParsed, type Interprete, type Parsed } from './interprete.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
+import { registrarJanela } from './janela.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 
@@ -44,6 +49,8 @@ export type ConversaDeps = {
   interprete: Interprete
   links?: Links
   consultaCnpj?: ConsultaCnpj
+  /** Descrição do código de serviço na conferência das boas-vindas (v2, lote C). */
+  catalogo?: CatalogoDeServicos
   now?: () => Date
 }
 
@@ -92,17 +99,17 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
 // ---------------------------------------------------------------------------------------
 // Palavras lidas por código.
 
-const semAcento = (texto: string) =>
+export const semAcento = (texto: string) =>
   texto
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .trim()
-const limpa = (texto: string) => semAcento(texto).replace(/[.!?\s]+$/g, '')
+export const limpa = (texto: string) => semAcento(texto).replace(/[.!?\s]+$/g, '')
 
 export const ehConfirmar = (texto: string) => /^(confirmar|confirmo|confirma|confirmado|confirmada)$/.test(limpa(texto))
-const ehSim = (texto: string) => /^(sim|s|pode|pode salvar|salvar|salva|quero|pode substituir|substituir|substitui)$/.test(limpa(texto))
-const ehNao = (texto: string) => /^(nao|n|corrigir|corrige|cancelar|desistir|deixa|deixa pra la)$/.test(limpa(texto))
+export const ehSim = (texto: string) => /^(sim|s|pode|pode salvar|salvar|salva|quero|pode substituir|substituir|substitui)$/.test(limpa(texto))
+export const ehNao = (texto: string) => /^(nao|n|corrigir|corrige|cancelar|desistir|deixa|deixa pra la)$/.test(limpa(texto))
 
 function ehCertificado(arquivo: MensagemRecebida['arquivo']): boolean {
   const nome = semAcento(arquivo?.nome ?? '')
@@ -136,7 +143,7 @@ type Pedido = {
 
 const COLUNAS_DO_PEDIDO = 'id, tenant_id, phone_id, kind, status, etapa, conversa, invoice_id, expires_at'
 
-type Contexto = {
+export type Contexto = {
   deps: ConversaDeps
   whatsapp: EnviaWhatsApp
   links: Links
@@ -149,7 +156,7 @@ type Contexto = {
   enviadas: number
 }
 
-async function responder(ctx: Pick<Contexto, 'whatsapp' | 'para'> & Partial<Contexto>, texto: string): Promise<void> {
+export async function responder(ctx: Pick<Contexto, 'whatsapp' | 'para'> & Partial<Contexto>, texto: string): Promise<void> {
   await ctx.whatsapp.enviarTexto(ctx.para, texto)
   if (ctx.enviadas !== undefined) ctx.enviadas++
 }
@@ -292,6 +299,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     return
   }
 
+  // Janela de 24 h da Meta (v2, lote C): toda mensagem de um número cadastrado conta.
+  await registrarJanela(deps.db, msg.de, agora)
+
+  // Ativação do WhatsApp do dono (critérios 26 a 28): o número ainda não emite.
+  if (await tratarAtivacao({ db: deps.db, whatsapp, links, agora, catalogo: deps.catalogo }, msg)) return
+
   const numero = await numeroPodeEmitir(deps.db, msg.de)
   if (!numero) {
     await numeroSemPermissao(deps, msg, links, fora)
@@ -314,6 +327,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     enviadas: 0,
   }
   const texto = msg.texto.trim()
+  // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
+  if (await tratarComando(ctx, texto)) return
+  if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido') {
+    await conversarNasBoasVindas(ctx, texto)
+    return
+  }
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
     if (!(pedido && (await responderEtapa(ctx, pedido, texto)))) {
@@ -324,6 +343,13 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     // A mensagem recebida e as respostas contam no pedido a que pertencem (C39).
     if (ctx.pedidoId) await contarMensagens(deps.db, ctx.pedidoId, 1 + ctx.enviadas)
   }
+}
+
+async function etapaDoOnboarding(db: Queryable, tenantId: string): Promise<string> {
+  const { rows } = await db.query<{ etapa: string }>('select onboarding_etapa as etapa from nofiscal.fiscal_tenants where id = $1', [
+    tenantId,
+  ])
+  return rows[0]?.etapa ?? 'concluido'
 }
 
 /** Critério 21, e a confirmação de número autorizado pelo próprio WhatsApp (critério 4). */
@@ -626,7 +652,7 @@ async function substituirModelo(ctx: Contexto, pedido: Pedido): Promise<void> {
   await responder(ctx, `Modelo ${nome} substituído.`)
 }
 
-type Modelo = {
+export type Modelo = {
   id: string
   nome: string
   tomador_documento: string
@@ -638,7 +664,7 @@ type Modelo = {
 }
 
 /** Landing, lote B - conversa: nome do modelo, documento, nome do tomador, prefixo. */
-async function resolverModelo(db: Queryable, tenantId: string, parsed: Parsed): Promise<Modelo | { ambiguos: string[] } | null> {
+export async function resolverModelo(db: Queryable, tenantId: string, parsed: Parsed): Promise<Modelo | { ambiguos: string[] } | null> {
   const { rows: modelos } = await db.query<Modelo>(
     `select id, nome, tomador_documento, tomador_nome, tomador_email, codigo_servico_nacional, descricao, valor_padrao::text
        from nofiscal.fiscal_models where tenant_id = $1 order by nome`,

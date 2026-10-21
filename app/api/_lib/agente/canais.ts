@@ -22,6 +22,8 @@ export interface EnviaWhatsApp {
   enviarTexto(para: string, texto: string): Promise<void>
   /** Documento (o PDF da nota) com a legenda na mesma mensagem. */
   enviarDocumento(para: string, anexo: AnexoEmail, legenda: string): Promise<void>
+  /** Modelo aprovado na Meta, o único envio aceito fora da janela de 24 h (Landing v2, lote C). */
+  enviarModelo(para: string, nome: string, parametros: string[]): Promise<void>
 }
 
 export const TENTATIVAS_DE_ENVIO = 3
@@ -55,6 +57,9 @@ export function whatsappComRetentativa(whatsapp: EnviaWhatsApp): EnviaWhatsApp {
     },
     async enviarDocumento(para, anexo, legenda) {
       await tentar('whatsapp', () => whatsapp.enviarDocumento(para, anexo, legenda))
+    },
+    async enviarModelo(para, nome, parametros) {
+      await tentar('whatsapp', () => whatsapp.enviarModelo(para, nome, parametros))
     },
   }
 }

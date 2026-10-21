@@ -67,6 +67,12 @@ export type SelfServiceTenant = {
 export type SelfServiceOptions = TestTenantOptions & {
   plan?: 'inicial' | 'pro'
   contadorEmail?: string | null
+  /** Etapa do onboarding da v2; padrão `concluido`, como um tenant que já passou pelas boas-vindas. */
+  onboardingEtapa?: string
+  /** WhatsApp do dono já ativado (conta e `fiscal_phones`); padrão `true`. */
+  ativado?: boolean
+  pagoEm?: Date | null
+  razaoSocial?: string
 }
 
 /** Tenant do self-service: usuário dono, `clients`, `memberships`, conta ativa e número do dono. */
@@ -81,23 +87,34 @@ export async function createSelfServiceTenant(db: Db, options: SelfServiceOption
     `agente-fiscal-${clientId}`,
   ])
   await db.query(`insert into public.memberships (user_id, client_id, role) values ($1, $2, 'CLIENT')`, [ownerUserId, clientId])
+  const ativado = options.ativado ?? true
   await db.query(
     `insert into nofiscal.fiscal_accounts (user_id, email, phone_e164, email_verified_at, phone_verified_at, client_id)
-     values ($1, $2, $3, now(), now(), $4)`,
-    [ownerUserId, ownerEmail, ownerPhone, clientId],
+     values ($1, $2, $3, now(), case when $5 then now() end, $4)`,
+    [ownerUserId, ownerEmail, ownerPhone, clientId, ativado],
   )
   const tenant = await createTestTenant(db, options)
   const plan = options.plan ?? 'pro'
   await db.query(
     `update nofiscal.fiscal_tenants
         set client_id = $2, plan = $3, monthly_note_limit = $4, contador_email = $5,
-            codigo_servico_nacional = '010701'
+            codigo_servico_nacional = '010701', onboarding_etapa = $6, pago_em = $7,
+            razao_social = coalesce($8, razao_social)
       where id = $1`,
-    [tenant.id, clientId, plan, plan === 'pro' ? 100 : 20, options.contadorEmail ?? null],
+    [
+      tenant.id,
+      clientId,
+      plan,
+      plan === 'pro' ? 100 : 20,
+      options.contadorEmail ?? null,
+      options.onboardingEtapa ?? 'concluido',
+      options.pagoEm ?? null,
+      options.razaoSocial ?? null,
+    ],
   )
   await db.query(
-    `insert into nofiscal.fiscal_phones (tenant_id, phone_e164, role, verified_at) values ($1, $2, 'owner', now())`,
-    [tenant.id, ownerPhone],
+    `insert into nofiscal.fiscal_phones (tenant_id, phone_e164, role, verified_at) values ($1, $2, 'owner', case when $3 then now() end)`,
+    [tenant.id, ownerPhone, ativado],
   )
   return { tenant, ownerUserId, ownerEmail, ownerPhone, clientId }
 }
@@ -106,6 +123,7 @@ export async function createSelfServiceTenant(db: Db, options: SelfServiceOption
 export async function dropSelfServiceTenant(db: Db, s: SelfServiceTenant): Promise<void> {
   await dropAgenteRows(db, s.tenant.id)
   await dropTestTenant(db, s.tenant.id)
+  await db.query('delete from nofiscal.fiscal_verification_codes where user_id = $1', [s.ownerUserId])
   await db.query('delete from nofiscal.fiscal_accounts where client_id = $1', [s.clientId])
   await db.query('delete from public.memberships where client_id = $1', [s.clientId])
   await db.query('delete from public.clients where id = $1', [s.clientId])
@@ -129,15 +147,18 @@ export async function dropAuthUser(db: Db, userId: string): Promise<void> {
   await db.query('delete from auth.users where id = $1', [userId])
 }
 
+/** O que o dublê guardou; modelo (v2) entra com o nome e os parâmetros. */
+export type MensagemDeWhatsApp = { para: string; texto: string; anexo?: AnexoEmail; modelo?: { nome: string; parametros: string[] } }
+
 /** Dublê dos canais: guarda o que seria enviado, na ordem. Documento entra com a legenda em `texto`. */
 export function canaisDouble(): {
   email: EnviaEmail
   whatsapp: EnviaWhatsApp
   emails: MensagemEmail[]
-  whatsapps: { para: string; texto: string; anexo?: AnexoEmail }[]
+  whatsapps: MensagemDeWhatsApp[]
 } {
   const emails: MensagemEmail[] = []
-  const whatsapps: { para: string; texto: string; anexo?: AnexoEmail }[] = []
+  const whatsapps: MensagemDeWhatsApp[] = []
   return {
     emails,
     whatsapps,
@@ -152,6 +173,9 @@ export function canaisDouble(): {
       },
       async enviarDocumento(para, anexo, legenda) {
         whatsapps.push({ para, texto: legenda, anexo })
+      },
+      async enviarModelo(para, nome, parametros) {
+        whatsapps.push({ para, texto: `[modelo ${nome}] ${parametros.join(' | ')}`, modelo: { nome, parametros } })
       },
     },
   }
@@ -275,6 +299,7 @@ export const LINKS_DE_TESTE: Links = {
   site: 'https://site.test/agentes/fiscal/',
   certificado: 'https://site.test/agentes/fiscal/certificado/',
   assinatura: 'https://site.test/agentes/fiscal/assinatura/',
+  conta: 'https://site.test/agentes/fiscal/conta/',
 }
 
 /** Uma rodada do worker do motor, restrita ao tenant, com o agente ligado aos canais de teste. */
