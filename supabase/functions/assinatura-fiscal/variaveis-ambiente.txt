@@ -1,0 +1,26 @@
+# Assinatura do Agente Fiscal no Pagar.me (.tasks/agente-fiscal-whatsapp.md, S3 e S8). SÓ OS NOMES:
+# os valores Lucca cadastra nos secrets do Supabase (Unresolved 9). Nenhuma chave real neste arquivo.
+
+# Compartilhadas com a assinatura do Auditor (mesma conta Pagar.me da nó).
+PAGARME_ASSINATURA_SECRET_KEY=
+# Chave pública (pk_...) que a página usa para tokenizar o cartão; devolvida pelo GET (v2, critério 10).
+PAGARME_ASSINATURA_PUBLIC_KEY=
+PAGARME_ASSINATURA_API_URL=
+# sandbox (padrão) ou producao. Em sandbox recusa chave que não comece com sk_test_.
+# Em produção recusa enquanto TEXTO_ACEITE_PROVISORIO = true em core.ts (RFC 1, Unresolved 8).
+PAGARME_ASSINATURA_AMBIENTE=sandbox
+# Ids plan_... dos quatro planos (corpoDoPlano em core.ts): os dois primeiros com trial_period_days = 7.
+PAGARME_PLANO_FISCAL_INICIAL_ID=
+PAGARME_PLANO_FISCAL_PRO_ID=
+PAGARME_PLANO_FISCAL_INICIAL_SEM_TESTE_ID=
+PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID=
+# "sim" libera o checkout.
+FISCAL_VENDA_ABERTA=
+# Sal do hash do teste grátis (o mesmo do app). Sem ele o checkout recusa.
+FISCAL_TRIAL_SALT=
+# Basic Auth que o Pagar.me usa ao chamar assinatura-fiscal-webhook.
+PAGARME_FISCAL_WEBHOOK_USER=
+PAGARME_FISCAL_WEBHOOK_PASS=
+# O Supabase injeta nas funções.
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=

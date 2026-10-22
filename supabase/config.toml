@@ -75,6 +75,29 @@ verify_jwt = false
 [functions.assinatura-auditor-webhook]
 verify_jwt = false
 
+# Agente fiscal: o checkout confere a sessão no código (auth.getUser); o webhook usa Basic Auth do Pagar.me.
+[functions.assinatura-fiscal]
+verify_jwt = false
+
+[functions.assinatura-fiscal-webhook]
+verify_jwt = false
+
+# Agente fiscal v2 (lote B): "Minha conta" confere a sessão no código (auth.getUser); o ciclo da
+# assinatura é chamado pelo pg_cron com x-cron-secret, conferido no banco.
+[functions.fiscal-conta]
+verify_jwt = false
+
+[functions.assinatura-fiscal-ciclo]
+verify_jwt = false
+
+# Agente fiscal v2 (lote A): código por e-mail e cadastro pelo site. fiscal-cadastro confere a sessão
+# no código (auth.getUser); a lista de municípios do padrão nacional (lote P) vai embutida no bundle.
+[functions.fiscal-acesso]
+verify_jwt = false
+
+[functions.fiscal-cadastro]
+verify_jwt = false
+
 [functions.skill-01-ativar-dashboard]
 verify_jwt = true
 

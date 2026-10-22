@@ -1,0 +1,81 @@
+/* /agentes/fiscal/comecar/: trilha das 7 etapas e cartões de clientes (o resto vem de ../paginas.css). */
+.nf-trilha{display:flex;justify-content:center;gap:6px;margin:22px auto 0;padding:0;list-style:none;counter-reset:etapa}
+.nf-trilha li{counter-increment:etapa;display:flex}
+/* Cada etapa é um botão: as já alcançadas que dá para rever (.is-aberta) abrem com um clique (comecar.js, podeAbrir). */
+.nf-trilha button{display:grid;place-items:center;width:30px;height:30px;margin:0;padding:0;border:0;border-radius:50%;background:var(--fi-branco);box-shadow:var(--no-shadow-sm);font-size:0;color:transparent;cursor:default;-webkit-appearance:none;appearance:none}
+.nf-trilha button:disabled{opacity:1}
+.nf-trilha button::before{content:counter(etapa);font:600 12px/1 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-texto-sec)}
+.nf-trilha li.is-feita button{background:var(--fi-texto)}
+.nf-trilha li.is-feita button::before{content:'✓';color:var(--fi-fundo)}
+.nf-trilha li.is-atual button{background:var(--fi-acento)}
+.nf-trilha li.is-atual button::before{color:var(--fi-texto)}
+.nf-trilha li.is-aberta button{cursor:pointer}
+.nf-trilha li.is-aberta button:hover,.nf-trilha button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
+@media(min-width:900px){
+  .nf-trilha{gap:4px}
+  .nf-trilha button{display:inline-flex;align-items:center;gap:6px;width:auto;height:auto;padding:7px 12px;border-radius:999px;font:600 12px/1.2 var(--font-core,'Sora',sans-serif);color:var(--fi-texto-sec);white-space:nowrap}
+  .nf-trilha button::before{content:counter(etapa);font-size:12px}
+  .nf-trilha li.is-feita button{color:var(--fi-fundo)}
+  .nf-trilha li.is-feita button::before{content:'✓ '}
+  .nf-trilha li.is-atual button{color:var(--fi-texto)}
+  .nf-trilha li.is-aberta:not(.is-feita) button{color:var(--fi-texto)}
+}
+
+/* cupom na etapa de pagamento */
+.nf-cupom{margin:0 0 18px}
+.nf-cupom-linha{display:flex;gap:8px}
+.nf-cupom-linha input{flex:1;min-width:0;text-transform:uppercase;font-family:var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.06em}
+.nf-cupom-linha .fi-btn{flex:none;min-height:48px}
+.nf-cupom-ok{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0;padding:12px 16px;border-radius:14px;background:var(--fi-acento-tint);font-size:14.5px;line-height:1.45}
+.nf-cupom-ok b{font-family:var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.04em}
+.nf-cupom-ok s{color:var(--fi-texto-sec)}
+
+.nf-clientes{display:grid;gap:14px;margin:0 0 18px}
+.nf-clientes:empty{display:none}
+.nf-cliente{padding:18px;border:1.5px solid var(--fi-borda);border-left:4px solid var(--fi-acento);border-radius:18px;background:var(--fi-fundo)}
+.nf-cliente-campos{display:grid;grid-template-columns:1fr;gap:12px 14px}
+@media(min-width:700px){.nf-cliente-campos{grid-template-columns:1fr 1fr}}
+.nf-cliente .nf-campo input,.nf-cliente .nf-campo textarea{min-height:44px;padding:9px 12px;background:var(--fi-branco);font-size:15px}
+.nf-salvar-modelo{display:inline-flex;align-items:center;gap:8px;margin:0 0 12px;font:600 14px/1.3 var(--font-core,'Sora',sans-serif)}
+.nf-salvar-modelo input{width:18px;height:18px;accent-color:var(--fi-texto)}
+.nf-pdfs{display:grid;justify-items:start;gap:12px;margin:0 0 18px;padding:18px;border-radius:18px;background:var(--fi-fundo-alt)}
+.nf-pdfs .nf-texto{margin:0}
+.nf-arquivo{cursor:pointer}
+.nf-whatsapp::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--no-verde)}
+
+/* etapa 7: número cadastrado e a mensagem de ativação que vai pronta */
+.nf-ativacao{display:grid;gap:6px;margin:0 0 18px;padding:16px 18px;border-radius:18px;background:var(--fi-fundo-alt)}
+.nf-ativacao dt{font:600 11px/1.3 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--fi-texto-sec)}
+.nf-ativacao dd{margin:0 0 8px;font-size:15.5px;font-weight:600}
+.nf-ativacao dd:last-child{margin-bottom:0}
+.nf-balao{display:inline-block;max-width:100%;padding:10px 14px;border-radius:16px 16px 6px 16px;background:var(--no-verde-tint);color:var(--fi-texto);font-weight:400;font-size:14.5px;line-height:1.45;overflow-wrap:anywhere}
+
+/* ajuda com o A1 (etapa 4) */
+.nf-ajuda-a1{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px;padding:14px 16px;border-radius:16px;background:var(--fi-fundo-alt)}
+.nf-ajuda-a1 p{flex:1 1 240px;margin:0;font-size:14px;line-height:1.5;color:var(--fi-texto-sec)}
+.nf-ajuda-a1 .fi-btn{min-height:42px;padding:9px 16px;font-size:14px}
+/* "O que é o A1": recolhido por padrão, discreto, logo acima do envio */
+.nf-a1-explica{margin:0 0 18px;font-size:14px;line-height:1.55;color:var(--fi-texto-sec)}
+.nf-a1-explica summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;font-weight:600;color:var(--fi-acento-texto);text-decoration:underline;text-underline-offset:3px}
+.nf-a1-explica summary::-webkit-details-marker{display:none}
+.nf-a1-explica summary::after{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .2s}
+.nf-a1-explica[open] summary::after{transform:translateY(1px) rotate(-135deg)}
+.nf-a1-explica summary:focus-visible{outline:2px solid var(--fi-acento);outline-offset:3px;border-radius:4px}
+.nf-a1-explica-corpo{margin-top:10px;padding:14px 16px;border-radius:16px;background:var(--fi-fundo-alt)}
+.nf-a1-explica-corpo p{margin:0 0 8px}
+.nf-a1-explica-corpo ol{margin:0 0 8px;padding-left:20px;display:grid;gap:6px}
+.nf-a1-explica-corpo b{color:var(--fi-texto)}
+.nf-a1-explica-nota{font-size:13px}
+.nf-a1-explica-corpo .nf-a1-explica-nota{margin:0}
+@media (prefers-reduced-motion:reduce){.nf-a1-explica summary::after{transition:none}}
+
+/* atalho fixo para o WhatsApp da Nó: abaixo da navbar no celular e no tablet, no canto quando sobra espaço */
+.nf-zap-fixo{position:fixed;z-index:1150;right:14px;top:calc(max(14px, env(safe-area-inset-top, 0px)) + 72px);display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 12px;border-radius:999px;background:var(--fi-branco);color:var(--fi-texto);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-lg);font:600 13.5px/1 var(--font-core,'Sora',sans-serif);text-decoration:none;transition:transform .2s ease}
+.nf-zap-fixo svg{width:26px;height:26px;color:#25D366;flex:none} /* verde oficial do logo do WhatsApp (marca de terceiro) */
+.nf-zap-fixo:hover{transform:translateY(-2px)}
+.nf-zap-fixo:focus-visible{outline:3px solid var(--fi-acento);outline-offset:3px}
+.nf-zap-fixo-rotulo{white-space:nowrap}
+@media(max-width:600px){.nf-zap-fixo{width:48px;padding:0;justify-content:center}.nf-zap-fixo-rotulo{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}}
+@media(min-width:601px){.nf-zap-fixo{right:20px;top:calc(max(20px, env(safe-area-inset-top, 0px)) + 78px)}}
+@media(min-width:1000px){.nf-zap-fixo{top:max(26px, env(safe-area-inset-top, 0px))}}
+@media(prefers-reduced-motion:reduce){.nf-zap-fixo{transition:none}}

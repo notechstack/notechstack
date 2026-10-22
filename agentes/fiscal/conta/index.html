@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="only light">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Minha conta do nó.fiscal | Nó Agentes</title>
+<meta name="description" content="Plano, assinatura, certificado A1 e dados fiscais do seu agente fiscal da Nó.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://www.notechstack.com.br/agentes/fiscal/conta/">
+<meta name="theme-color" content="#FAFAF7">
+<link rel="icon" type="image/svg+xml" href="/brand/favicon/favicon.svg">
+<link rel="icon" href="/brand/favicon/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="/brand/favicon/favicon-180.png">
+<link rel="preload" href="/brand/fonts/sora/sora-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/brand/fonts/sora/sora-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/brand/fonts/fonts.css">
+<link rel="stylesheet" href="/brand/tokens/tokens.css">
+<link rel="stylesheet" href="/shared/brand-derived.css">
+<link rel="stylesheet" href="/shared/site.css?v=1">
+<link rel="stylesheet" href="/shared/card-nav.css">
+<link rel="stylesheet" href="/shared/site-layout.css">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=6">
+<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=1">
+<script src="/shared/card-nav.js" defer></script>
+</head>
+<body class="fi-body nf-body">
+<!-- site-nav:start -->
+<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agencia/">Agência</a><a href="/contato/">Contato</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a Nó</a><a href="/#como-funciona">Como funciona</a><a href="/#clientes">Nossos clientes</a><a href="/colaboradores-digitais/">Colaboradores digitais</a><a href="/agentes/">Nó Agentes</a><a href="/agentes/auditor/">Auditor de marketing</a><a href="/health/">nó.health</a></div></div><div class="no-card"><b>Agência</b><div><a href="/agencia/#solucoes">Soluções</a><a href="/agencia/#como-funciona">Como funciona</a><a href="/agencia/#organizacao">Organização</a><a href="/agencia/#acompanhamento">Acompanhamento</a><a href="/agencia/#empresas">Empresas</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a><a href="/agencia/#contato">Parceria com agências</a></div></div></div></div></div></nav>
+<!-- site-nav:end -->
+
+<main class="fi-main nf-main" id="conteudo">
+  <header class="nf-topo">
+    <p class="fi-lockup"><span class="fi-lockup-no">nó</span><span class="fi-lockup-sub">.fiscal</span></p>
+    <h1 class="nf-h1">Minha conta</h1>
+  </header>
+
+  <p class="nf-aviso nf-carregando" id="fa-carregando" role="status">Carregando…</p>
+
+  <!-- Entrar com o código no e-mail (o mesmo fiscal-acesso do cadastro) -->
+  <section class="nf-cartao" id="fa-login" hidden aria-labelledby="fa-login-titulo">
+    <p class="nf-passo">Entrar</p>
+    <h2 class="nf-h2" id="fa-login-titulo">Entre com o seu e-mail</h2>
+    <p class="nf-texto">Mandamos um código de 6 dígitos para o e-mail da conta.</p>
+    <form id="fa-form-email" class="nf-form" novalidate>
+      <div class="nf-campo nf-campo--largo">
+        <label for="fa-email">E-mail</label>
+        <input id="fa-email" type="email" autocomplete="email" maxlength="160">
+        <small class="nf-erro" id="fa-email-erro" hidden></small>
+      </div>
+      <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-enviar-codigo">Enviar código</button></div>
+    </form>
+    <form id="fa-form-codigo" class="nf-form" novalidate hidden>
+      <p class="nf-texto nf-campo--largo">Código enviado para <b id="fa-email-mascarado"></b>.</p>
+      <div class="nf-campo">
+        <label for="fa-codigo">Código</label>
+        <input id="fa-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" class="nf-codigo">
+        <small class="nf-erro" id="fa-codigo-erro" hidden></small>
+      </div>
+      <div class="nf-acoes">
+        <button type="submit" class="fi-btn fi-btn--tinta" id="fa-entrar">Entrar</button>
+        <button type="button" class="fi-link-btn" id="fa-reenviar">Pedir um código novo</button>
+        <button type="button" class="fi-link-btn" id="fa-trocar-email">Trocar e-mail</button>
+      </div>
+    </form>
+    <p class="nf-aviso" id="fa-aviso-login" role="alert" hidden></p>
+  </section>
+
+  <!-- Conta -->
+  <div class="nf-secoes" id="fa-painel" hidden>
+    <p class="nf-aviso nf-aviso--info" id="fa-retomar" hidden>A configuração ainda não terminou. <a class="fi-btn fi-btn--tinta" href="/agentes/fiscal/comecar/">Retomar configuração</a></p>
+    <p class="nf-aviso" id="fa-aviso" role="status" hidden></p>
+
+    <section class="nf-cartao" aria-labelledby="fa-empresa-titulo">
+      <p class="nf-passo">Empresa</p>
+      <h2 class="nf-h2" id="fa-empresa-titulo">Empresa</h2>
+      <dl class="nf-dados" id="fa-empresa"></dl>
+    </section>
+
+    <section class="nf-cartao" id="assinatura" aria-labelledby="fa-plano-titulo">
+      <p class="nf-passo">Plano e assinatura</p>
+      <h2 class="nf-h2" id="fa-plano-titulo">Plano <span id="fa-plano-nome"></span></h2>
+      <dl class="nf-dados">
+        <dt>Notas por mês</dt><dd id="fa-plano-notas"></dd>
+        <dt>Assinatura</dt><dd><span class="nf-status" id="fa-status"></span></dd>
+      </dl>
+      <div class="nf-acoes">
+        <button type="button" class="fi-btn fi-btn--borda" id="fa-trocar-plano"></button>
+        <button type="button" class="fi-btn fi-btn--borda" id="fa-abrir-cartao">Trocar cartão</button>
+      </div>
+      <p class="nf-aviso" id="fa-aviso-plano" role="status" hidden></p>
+      <form id="fa-form-cartao" class="nf-form" novalidate hidden>
+        <fieldset class="nf-grupo">
+          <legend>Cartão novo</legend>
+          <div class="nf-campo nf-campo--largo"><label for="fa-cc-numero">Número do cartão</label><input id="fa-cc-numero" inputmode="numeric" autocomplete="cc-number" maxlength="23"><small class="nf-erro" id="fa-cc-numero-erro" hidden></small></div>
+          <div class="nf-campo nf-campo--largo"><label for="fa-cc-nome">Nome impresso no cartão</label><input id="fa-cc-nome" autocomplete="cc-name" maxlength="80"><small class="nf-erro" id="fa-cc-nome-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-cc-validade">Validade (MM/AA)</label><input id="fa-cc-validade" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/AA"><small class="nf-erro" id="fa-cc-validade-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-cc-cvv">CVV</label><input id="fa-cc-cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4"><small class="nf-erro" id="fa-cc-cvv-erro" hidden></small></div>
+        </fieldset>
+        <fieldset class="nf-grupo">
+          <legend>Endereço de cobrança</legend>
+          <div class="nf-campo"><label for="fa-en-cep">CEP</label><input id="fa-en-cep" inputmode="numeric" autocomplete="postal-code" maxlength="9"><small class="nf-erro" id="fa-en-cep-erro" hidden></small></div>
+          <div class="nf-campo nf-campo--largo"><label for="fa-en-rua">Rua</label><input id="fa-en-rua" autocomplete="address-line1" maxlength="120"><small class="nf-erro" id="fa-en-rua-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-en-numero">Número</label><input id="fa-en-numero" maxlength="20"><small class="nf-erro" id="fa-en-numero-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-en-complemento">Complemento (opcional)</label><input id="fa-en-complemento" autocomplete="address-line2" maxlength="60"></div>
+          <div class="nf-campo"><label for="fa-en-bairro">Bairro</label><input id="fa-en-bairro" maxlength="80"><small class="nf-erro" id="fa-en-bairro-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-en-cidade">Cidade</label><input id="fa-en-cidade" autocomplete="address-level2" maxlength="80"><small class="nf-erro" id="fa-en-cidade-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-en-uf">UF</label><select id="fa-en-uf" autocomplete="address-level1"><option value="">UF</option></select><small class="nf-erro" id="fa-en-uf-erro" hidden></small></div>
+        </fieldset>
+        <p class="nf-aviso" id="fa-aviso-cartao" role="alert" hidden></p>
+        <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-salvar-cartao">Salvar cartão</button></div>
+      </form>
+    </section>
+
+    <section class="nf-cartao" id="certificado" aria-labelledby="fa-cert-titulo">
+      <p class="nf-passo">Certificado A1</p>
+      <h2 class="nf-h2" id="fa-cert-titulo">Certificado digital</h2>
+      <dl class="nf-dados">
+        <dt>Titular</dt><dd id="fa-cert-titular"></dd>
+        <dt>Validade</dt><dd id="fa-cert-validade"></dd>
+      </dl>
+      <form id="fa-form-cert" class="nf-form" novalidate>
+        <div class="nf-campo nf-campo--largo"><label for="fa-pfx">Enviar um certificado novo (.pfx ou .p12)</label><input id="fa-pfx" type="file" accept=".pfx,.p12,application/x-pkcs12"><small class="nf-erro" id="fa-pfx-erro" hidden></small></div>
+        <div class="nf-campo"><label for="fa-pfx-senha">Senha do certificado</label><input id="fa-pfx-senha" type="password" autocomplete="off" maxlength="200"><small class="nf-erro" id="fa-pfx-senha-erro" hidden></small></div>
+        <p class="nf-aviso" id="fa-aviso-cert" role="alert" hidden></p>
+        <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--borda" id="fa-enviar-a1">Enviar certificado</button></div>
+      </form>
+    </section>
+
+    <section class="nf-cartao" aria-labelledby="fa-fiscal-titulo">
+      <p class="nf-passo">Dados fiscais</p>
+      <h2 class="nf-h2" id="fa-fiscal-titulo">Dados fiscais</h2>
+      <dl class="nf-dados" id="fa-fiscal"></dl>
+      <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda" id="fa-abrir-fiscal">Alterar dados fiscais</button></div>
+      <form id="fa-form-fiscal" class="nf-form" novalidate hidden>
+        <fieldset class="nf-grupo nf-grupo--coluna nf-seletor" id="fa-seletor">
+          <legend>Código de serviço nacional</legend>
+          <div class="nf-sugestoes"></div>
+          <label class="nf-rotulo-lista" for="fa-busca-codigo">Buscar na lista nacional</label>
+          <input id="fa-busca-codigo" class="nf-busca" autocomplete="off">
+          <div class="nf-resultados" aria-live="polite"></div>
+          <small class="nf-erro" id="fa-codigo-servico-erro" hidden></small>
+        </fieldset>
+        <div class="nf-campo"><label for="fa-percentual">Percentual de tributos do Simples (%)</label><input id="fa-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-percentual-erro" hidden></small></div>
+        <div class="nf-pro" id="fa-pro" hidden>
+          <div class="nf-campo nf-campo--largo"><label for="fa-contador">E-mail do contador (opcional)</label><input id="fa-contador" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-contador-erro" hidden></small></div>
+          <fieldset class="nf-grupo nf-grupo--coluna">
+            <legend>Resumo das notas</legend>
+            <label class="nf-opcao"><input type="radio" name="fa-resumo" value="mensal"><span>Mensal, no dia <select id="fa-resumo-dia-mes" aria-label="Dia do mês"></select></span></label>
+            <label class="nf-opcao"><input type="radio" name="fa-resumo" value="semanal"><span>Semanal, toda <select id="fa-resumo-dia-semana" aria-label="Dia da semana"><option value="1">segunda</option><option value="2">terça</option><option value="3">quarta</option><option value="4">quinta</option><option value="5">sexta</option><option value="6">sábado</option><option value="7">domingo</option></select></span></label>
+            <label class="nf-opcao"><input type="radio" name="fa-resumo" value=""><span>Não quero o resumo</span></label>
+          </fieldset>
+        </div>
+        <p class="nf-aviso" id="fa-aviso-fiscal" role="alert" hidden></p>
+        <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-salvar-fiscal">Salvar dados fiscais</button></div>
+      </form>
+    </section>
+
+    <section class="nf-cartao" aria-labelledby="fa-cancelar-titulo" id="fa-secao-cancelar">
+      <p class="nf-passo">Cancelamento</p>
+      <h2 class="nf-h2" id="fa-cancelar-titulo">Cancelar a assinatura</h2>
+      <p class="nf-texto">Fora do teste, você emite até o fim do mês já pago. Durante o teste, a assinatura termina na hora e nada é cobrado.</p>
+      <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda" id="fa-cancelar">Cancelar assinatura</button></div>
+      <div class="nf-confirmar" id="fa-confirmar-cancelar" hidden>
+        <p id="fa-cancelar-pergunta"></p>
+        <div class="nf-acoes">
+          <button type="button" class="fi-btn nf-btn-perigo" id="fa-cancelar-sim">Confirmar cancelamento</button>
+          <button type="button" class="fi-link-btn" id="fa-cancelar-nao">Voltar</button>
+        </div>
+      </div>
+      <p class="nf-aviso" id="fa-aviso-cancelar" role="status" hidden></p>
+    </section>
+
+    <section class="nf-cartao nf-perigo" aria-labelledby="fa-apagar-titulo">
+      <p class="nf-passo">Apagar</p>
+      <h2 class="nf-h2" id="fa-apagar-titulo">Apagar conta e dados</h2>
+      <p class="nf-texto">Cancela a assinatura na hora e apaga o certificado A1, os modelos de clientes, os números autorizados e os códigos. As notas já emitidas e os eventos fiscais ficam guardados pelo prazo que a legislação exige.</p>
+      <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda" id="fa-apagar">Apagar conta e dados</button></div>
+      <div class="nf-confirmar" id="fa-confirmar-apagar" hidden>
+        <label for="fa-apagar-texto">Para confirmar, digite APAGAR</label>
+        <div class="nf-campo"><input id="fa-apagar-texto" autocomplete="off" maxlength="10"></div>
+        <div class="nf-acoes">
+          <button type="button" class="fi-btn nf-btn-perigo" id="fa-apagar-sim" disabled>Apagar tudo</button>
+          <button type="button" class="fi-link-btn" id="fa-apagar-nao">Voltar</button>
+        </div>
+      </div>
+      <p class="nf-aviso" id="fa-aviso-apagar" role="alert" hidden></p>
+    </section>
+
+    <div class="nf-acoes"><button type="button" class="fi-link-btn" id="fa-sair">Sair desta conta</button></div>
+  </div>
+</main>
+
+<!-- site-footer:start -->
+<footer class="no-site-footer">
+  <div class="ft-brand">
+    <a class="ft-logo" href="/" aria-label="Nó — página inicial"><img src="/brand/lockup/svg/no-tech-stack-branca-ponto-ambar.svg" alt="nó tech stack" width="198" height="27"></a>
+    <div class="ft-txt">IA que arquiteta, integra e opera.</div>
+    <a class="ft-whatsapp" href="https://wa.me/5511939289413?text=Ol%C3%A1%2C%20vim%20pelo%20site%21" target="_blank" rel="noopener noreferrer" aria-label="Falar com a nó pelo WhatsApp no número +55 11 93928-9413">WhatsApp <span aria-hidden="true">↗</span></a>
+  </div>
+  <nav class="ft-nav" aria-label="Mapa do site"><a href="/">Home</a><a href="/agencia/">Agência</a><a href="/health/">nó.health</a><a href="/colaboradores-digitais/">Colaboradores digitais</a><a href="/agentes/">Nó Agentes</a><a href="/sobre/">Sobre a Nó</a><a href="/contato/">Conte sua ideia</a></nav>
+  <div class="ft-legal ft-txt"><div class="ft-legal-links"><a href="/termos/" class="ft-link">Termos de uso</a><span aria-hidden="true"> · </span><a href="/privacidade/" class="ft-link">Privacidade e cookies</a></div><div>© 2026 nó. Todos os direitos reservados.</div></div>
+</footer>
+<!-- site-footer:end -->
+<script src="/agentes/fiscal/config.js"></script>
+<script src="/agentes/fiscal/nofiscal.js?v=2"></script>
+<script src="/agentes/fiscal/conta/conta.js?v=1"></script>
+</body>
+</html>

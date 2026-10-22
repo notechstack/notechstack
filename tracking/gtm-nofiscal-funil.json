@@ -1,0 +1,755 @@
+{
+ "exportFormatVersion": 2,
+ "exportTime": "2026-10-22 18:00:00",
+ "containerVersion": {
+  "accountId": "6348281513",
+  "containerId": "248523885",
+  "variable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "920",
+    "name": "dl.plano",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "plano"
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "921",
+    "name": "dl.cupom",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "cupom"
+     }
+    ]
+   }
+  ],
+  "trigger": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "930",
+    "name": "ce.nofiscal_plano_escolhido (nó.fiscal plano escolhido)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_plano_escolhido"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "931",
+    "name": "ce.nofiscal_cadastro (nó.fiscal conta criada)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_cadastro"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "932",
+    "name": "ce.nofiscal_checkout (nó.fiscal pagamento aberto)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_checkout"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "933",
+    "name": "ce.nofiscal_pagamento_info (nó.fiscal cartão enviado)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_pagamento_info"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "934",
+    "name": "ce.nofiscal_compra (nó.fiscal assinatura cobrada)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_compra"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "935",
+    "name": "ce.nofiscal_teste_iniciado (nó.fiscal assinatura em teste)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_teste_iniciado"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "tag": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "940",
+    "name": "GA4 - add_to_cart (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "add_to_cart"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "value"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.valor}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "currency"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "BRL"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "930"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "941",
+    "name": "GA4 - sign_up (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "sign_up"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "method"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "email"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "931"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "942",
+    "name": "GA4 - begin_checkout (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "begin_checkout"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "value"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.valor}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "currency"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "BRL"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "coupon"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.cupom}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "932"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "943",
+    "name": "GA4 - add_payment_info (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "add_payment_info"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "value"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.valor}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "currency"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "BRL"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "payment_type"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "cartao"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "933"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "944",
+    "name": "GA4 - purchase (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "purchase"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "value"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.valor}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "currency"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "BRL"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "transaction_id"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.transaction_id}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "coupon"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.cupom}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "affiliation"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "nó.fiscal"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "934"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "945",
+    "name": "GA4 - start_trial (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "start_trial"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "value"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.valor}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "currency"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "BRL"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "transaction_id"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.transaction_id}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "935"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT"
+   }
+  ]
+ }
+}

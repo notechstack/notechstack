@@ -5,6 +5,10 @@
     {
       "source": "/",
       "destination": "/lp-narrador/cenas-lp/lp-v8.html"
+    },
+    {
+      "source": "/agentes/fiscal/api/:path*",
+      "destination": "https://app.notechstack.com.br/api/:path*"
     }
   ],
   "headers": [

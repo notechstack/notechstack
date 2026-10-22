@@ -10,13 +10,21 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "skill:01": "node scripts/skill-01.mjs",
-    "seed:exemplos": "node scripts/seed-exemplos.mjs"
+    "seed:exemplos": "node scripts/seed-exemplos.mjs",
+    "spike:interprete": "node scripts/spike-interprete/spike.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
     "@supabase/supabase-js": "2.116.0",
+    "@xmldom/xmldom": "0.8.15",
+    "node-forge": "1.4.0",
+    "pdf-lib": "1.17.1",
+    "pg": "8.23.1",
+    "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-router-dom": "7.18.4"
+    "react-router-dom": "7.18.4",
+    "xml-crypto": "6.4.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -25,6 +33,9 @@
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
     "@types/node": "26.6.0",
+    "@types/node-forge": "1.3.14",
+    "@types/pg": "8.23.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",

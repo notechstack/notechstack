@@ -8,6 +8,9 @@ const pages = {
   '/colaboradores-digitais/': 'colaboradores-digitais/index.html',
   '/agentes/': 'agentes/index.html',
   '/agentes/auditor/': 'agentes/auditor/index.html',
+  '/agentes/fiscal/': 'agentes/fiscal/index.html',
+  '/agentes/fiscal/comecar/': 'agentes/fiscal/comecar/index.html',
+  '/agentes/fiscal/conta/': 'agentes/fiscal/conta/index.html',
   '/health/': 'health/index.html',
   '/sobre/': 'sobre/index.html',
   '/contato/': 'contato/index.html',
@@ -45,7 +48,8 @@ for (const [route, file] of Object.entries(pages)) {
     if (!pattern.test(after)) throw new Error(`Missing ${name} markers: ${file}`);
     after = after.replace(pattern, `<!-- site-${name}:start -->\n${html}\n<!-- site-${name}:end -->`);
   }
-  if (after !== before) {
+  // Line endings do not count: a Windows checkout (core.autocrlf) has CRLF and the blocks above are written with LF.
+  if (after.replace(/\r\n/g, '\n') !== before.replace(/\r\n/g, '\n')) {
     if (process.argv.includes('--check')) { console.error(`Layout out of sync: ${file}`); stale = true; }
     else await writeFile(url, after);
   }
