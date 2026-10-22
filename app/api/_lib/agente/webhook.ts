@@ -7,6 +7,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { errorResponse, json } from '../http.js'
 import { logEvent } from '../log.js'
 import { processarMensagem, type ConversaDeps, type MensagemRecebida } from './conversa.js'
+import { comNonoDigito } from './normalizacao.js'
 
 export type WebhookDeps = {
   verifyToken: string | undefined
@@ -59,9 +60,11 @@ export function mensagensDaNotificacao(corpo: unknown): MensagemRecebida[] {
         }
         const tipo = textoOuNulo(m.type) ?? 'unknown'
         const documento = obj(m.document)
+        // O vínculo número → conta usa o número com o 9; a resposta volta para o endereço exato que a Meta mandou.
         mensagens.push({
           id,
-          de: `+${de}`,
+          de: comNonoDigito(`+${de}`),
+          enderecoRecebido: `+${de}`,
           tipo,
           texto: tipo === 'text' ? textoOuNulo(obj(m.text)?.body) : null,
           arquivo: documento ? { nome: textoOuNulo(documento.filename), mime: textoOuNulo(documento.mime_type) } : null,

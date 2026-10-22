@@ -47,7 +47,12 @@ export async function handleAtivacao(request: Request, deps: RotaAtivacaoDeps): 
       return conflito('ONBOARDING_INCOMPLETO', 'termine o pagamento, o certificado e os dados fiscais antes')
     }
     logEvent('agente.codigo_de_ativacao', { tenant_id: tenantId })
-    return json(201, { codigo: resultado.codigo, whatsapp_url: resultado.whatsappUrl, expira_em: resultado.expiraEm.toISOString() })
+    return json(201, {
+      codigo: resultado.codigo,
+      mensagem: resultado.mensagem,
+      whatsapp_url: resultado.whatsappUrl,
+      expira_em: resultado.expiraEm.toISOString(),
+    })
   } catch (error) {
     logEvent('agente.ativacao_erro', { error_name: error instanceof Error ? error.name : 'unknown' })
     return errorResponse('INTERNAL', 'erro interno')

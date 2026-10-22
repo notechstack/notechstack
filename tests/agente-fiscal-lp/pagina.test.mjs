@@ -40,7 +40,7 @@ test('página responde com título e h1', async () => {
   assert.equal(um(/<title>([\s\S]*?)<\/title>/, html), 'Agente Fiscal: a NFS-e sai numa mensagem de WhatsApp | Nó Agentes');
   const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)];
   assert.equal(h1s.length, 1, 'um só h1');
-  assert.equal(texto(h1s[0][1]), 'A nota fiscal sai numa mensagem');
+  assert.equal(texto(h1s[0][1]), 'Já pensou em emitir sua nota fiscal direto no WhatsApp?');
 });
 
 test('arquivos que a página carrega de agentes/fiscal/ respondem 200', async () => {

@@ -33,7 +33,16 @@ export const CODIGOS = {
     { codigo: '040101', descricao: 'Medicina e biomedicina' },
     { codigo: '040102', descricao: 'Análises clínicas, patologia, eletricidade médica, radioterapia' },
     { codigo: '040601', descricao: 'Enfermagem, inclusive serviços auxiliares' },
-    { codigo: '010101', descricao: 'Análise e desenvolvimento de sistemas' }
+    { codigo: '010101', descricao: 'Análise e desenvolvimento de sistemas' },
+    // Oito itens a mais para a busca resumida (no máximo 6 opções e o total do resto).
+    { codigo: '990001', descricao: 'Serviços de teste 1' },
+    { codigo: '990002', descricao: 'Serviços de teste 2' },
+    { codigo: '990003', descricao: 'Serviços de teste 3' },
+    { codigo: '990004', descricao: 'Serviços de teste 4' },
+    { codigo: '990005', descricao: 'Serviços de teste 5' },
+    { codigo: '990006', descricao: 'Serviços de teste 6' },
+    { codigo: '990007', descricao: 'Serviços de teste 7' },
+    { codigo: '990008', descricao: 'Serviços de teste 8' }
   ]
 };
 export const CNAE = { fonte: 'exemplo de teste', consultado_em: '2026-10-24', cnae: { '8630503': ['040101', '040102'] } };
@@ -61,7 +70,7 @@ export const PADRAO = {
   // Pedido do código: zera as tentativas do e-mail (como o registro novo em fiscal_acesso_codigos).
   'fiscal-acesso': (c, _ch, mem) => { mem.tentativas[c.email] = 0; return r(202, { ok: true }); },
   'fiscal-cadastro:consultar_cnpj': (c) => r(200, { ok: true, cnpj: c.cnpj, razao_social: 'CLINICA AURORA LTDA', municipio: 'São Paulo', uf: 'SP', codigo_municipio_ibge: '3550308', cnae: '8630503', padrao_nacional: true }),
-  'fiscal-cadastro:criar': () => r(201, { ok: true, tenant_id: TENANT, etapa: 'pagamento' }),
+  'fiscal-cadastro:criar': () => r(201, { ok: true, tenant_id: TENANT, etapa: 'pagamento', novo: true }),
   // fiscal-acesso {acao:'verificar'} (Landing do lote A): conta as tentativas; a 5ª errada esgota o código.
   'fiscal-acesso:verificar': (c, _ch, mem) => {
     const erro = (status, codigo, extra = {}) => r(status, { ok: false, motivo: codigo.toLowerCase(), error_code: codigo, mensagem: 'x', ...extra });
@@ -79,7 +88,7 @@ export const PADRAO = {
   'auth:refresh': () => r(200, { access_token: 'at-2', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'rt-2' }),
   'GET assinatura-fiscal': () => r(200, { ok: true, venda_aberta: true, public_key: 'pk_test_abc', aceite_texto: ACEITE, planos: { inicial: { valor_centavos: 4900 }, pro: { valor_centavos: 12900 } } }),
   'pagarme:tokens': () => r(200, { id: 'token_abc123', type: 'card' }),
-  'POST assinatura-fiscal': () => r(200, { ok: true, status: 'pendente', assinatura_id: 'a-1', com_teste: true, trial_ends_at: emDias(7) }),
+  'POST assinatura-fiscal': () => r(200, { ok: true, status: 'pendente', assinatura_id: 'a-1', com_teste: true, trial_ends_at: emDias(7), medicao: { evento: 'StartTrial', event_id: 'nofiscal-trial-a-1', transaction_id: 'a-1', valor: 129, moeda: 'BRL' } }),
   'fiscal-conta:estado': () => r(200, estado()),
   'fiscal-conta:configurar': () => r(200, estado({ onboarding_etapa: 'clientes' })),
   'fiscal-conta:trocar_cartao': () => r(200, { ok: true }),
@@ -90,7 +99,7 @@ export const PADRAO = {
   'app:clientes:buscar_adn': () => r(200, { candidatos: CANDIDATOS }),
   'app:clientes:ler_pdf': () => r(200, { candidato: { ...CANDIDATOS[0], nome: 'Lido do PDF', tomador_documento: '04252011000110', origem: 'importacao_pdf' } }),
   'app:clientes:salvar': (c) => r(201, { salvos: c.modelos.length, ignorados: [] }),
-  'app:ativacao': () => r(201, { codigo: '482913', whatsapp_url: 'https://wa.me/5511900000000?text=ATIVAR%20482913', expira_em: emDias(1) }),
+  'app:ativacao': () => r(201, { codigo: '482913', mensagem: 'Quero ativar o nó.fiscal da CLINICA AURORA LTDA no plano Pro. Código de ativação: 482913', whatsapp_url: 'https://wa.me/5511900000000?text=' + encodeURIComponent('Quero ativar o nó.fiscal da CLINICA AURORA LTDA no plano Pro. Código de ativação: 482913'), expira_em: emDias(1) }),
   'dados:codigos-servico.json': () => r(200, CODIGOS),
   'dados:cnae-servico.json': () => r(200, CNAE)
 };
@@ -241,11 +250,10 @@ export async function abrir(caminho, { rede = superficie(), local = {}, aba = {}
 
 // Etapa 1 preenchida com dados válidos (o CNPJ dispara a consulta).
 export async function preencherEtapa1(p, dados = {}) {
-  const d = { cnpj: '11.222.333/0001-81', empresa: '', responsavel: 'Lucca Teste', cpf: '529.982.247-25', email: 'lucca@exemplo.com', telefone: '(11) 98765-4321', ...dados };
+  const d = { cnpj: '11.222.333/0001-81', empresa: '', responsavel: 'Lucca Teste', email: 'lucca@exemplo.com', telefone: '(11) 98765-4321', ...dados };
   await p.preencher('fc-cnpj', d.cnpj);
   if (d.empresa) await p.preencher('fc-empresa', d.empresa);
   await p.preencher('fc-responsavel', d.responsavel);
-  await p.preencher('fc-cpf', d.cpf);
   await p.preencher('fc-email', d.email);
   await p.preencher('fc-telefone', d.telefone);
 }

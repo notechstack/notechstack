@@ -101,6 +101,34 @@ test("consultar cnpj: fora do ar (rede ou 5xx) responde 503 CONSULTA_INDISPONIVE
   }
 });
 
+// Lucca, 22/10/2026: só cria empresa com o CNPJ confirmado e ATIVO na Receita; fora do ar também bloqueia.
+test("cnpj real e ativo: baixado, inapto, sem situação e consulta fora não criam nada", async () => {
+  const casos = [
+    ["BAIXADA", 422, "CNPJ_INATIVO"],
+    ["INAPTA", 422, "CNPJ_INATIVO"],
+    ["", 503, "CONSULTA_INDISPONIVEL"],
+    ["fora", 503, "CONSULTA_INDISPONIVEL"],
+    ["inexistente", 404, "CNPJ_NAO_ENCONTRADO"],
+  ];
+  for (const [situacao, status, codigo] of casos) {
+    const cnpj = cnpjValido();
+    const telefone = telefoneAleatorio();
+    const u = await criarUsuario(bancos.dono);
+    limpar.push({ userId: u.id, cnpj, telefone });
+    const resposta = situacao === "fora" ? "fora" : situacao === "inexistente" ? undefined : respostaBrasilApi(cnpj, { situacao });
+    const api = brasilApi(resposta === undefined ? {} : { [cnpj]: resposta });
+    const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+    assert.equal(consulta.status, status, situacao);
+    assert.equal(consulta.body.error_code, codigo, situacao);
+    if (codigo === "CNPJ_INATIVO") assert.match(consulta.body.mensagem, new RegExp(situacao.toLowerCase()));
+    const r = await chamar({ acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro" }, { api, userId: u.id });
+    assert.equal(r.status, status, `criar ${situacao}`);
+    assert.equal(r.body.error_code, codigo, `criar ${situacao}`);
+    assert.equal(r.chamadasCriar.length, 0, `criar ${situacao}`);
+    assert.deepEqual(await contar(cnpj, telefone, u.email), { tenants: 0, phones: 0, clients: 0 });
+  }
+});
+
 test("consultar cnpj: sem CNPJ_API_URL usa a BrasilAPI oficial", async () => {
   const cnpj = cnpjValido();
   const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj) });
@@ -275,4 +303,13 @@ test("conflitos no cadastro: CNPJ repetido e WhatsApp de outra empresa respondem
   assert.equal(contaOutro.rowCount, 0);
   const vinculos = await bancos.dono.query("select 1 from public.memberships where user_id = $1", [outro.id]);
   assert.equal(vinculos.rowCount, 0);
+});
+
+test("consultar cnpj: a consulta vai com user-agent próprio (a BrasilAPI dá 403 ao 'node')", async () => {
+  const { consultarCnpj, USER_AGENT } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  let headers;
+  await consultarCnpj(cnpj, { fetch: async (_url, init) => { headers = init.headers; return new Response(JSON.stringify(respostaBrasilApi(cnpj)), { status: 200 }); } });
+  assert.equal(headers["User-Agent"], USER_AGENT);
+  assert.match(USER_AGENT, /^no-fiscal\//);
 });

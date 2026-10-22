@@ -5,6 +5,8 @@
 import type { ConsultaCnpj } from './conversa.js'
 
 export const CNPJ_API = 'https://brasilapi.com.br'
+// A BrasilAPI responde 403 ao user-agent padrão do Node ("node") e 429 sem user-agent (conferido em 22/10/2026).
+export const USER_AGENT = 'no-fiscal/1.0 (+https://www.notechstack.com.br)'
 const TIMEOUT_MS = 5_000
 
 export function consultaCnpjBrasilApi(opcoes: { baseUrl?: string; fetch?: typeof fetch } = {}): ConsultaCnpj {
@@ -16,7 +18,7 @@ export function consultaCnpjBrasilApi(opcoes: { baseUrl?: string; fetch?: typeof
       if (digitos.length !== 14) return null
       try {
         const res = await doFetch(`${raiz}/api/cnpj/v1/${digitos}`, {
-          headers: { accept: 'application/json' },
+          headers: { accept: 'application/json', 'user-agent': USER_AGENT },
           signal: AbortSignal.timeout(TIMEOUT_MS),
         })
         if (!res.ok) return null

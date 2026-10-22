@@ -140,6 +140,16 @@ describe('comandos no WhatsApp', () => {
     expect(c.ia.chamadas).toEqual([])
   })
 
+  // Roteiro do bot (Lucca, 22/10/2026): depois da pergunta, "cancelar" também cancela a assinatura.
+  it('"cancelar" depois da pergunta cancela a assinatura', async () => {
+    const s = await novoTenant()
+    await assinarTenant(admin.db, s.tenant.id, { status: 'paga' })
+    const c = conversa()
+    await c.enviar(s.ownerPhone, 'cancelar assinatura')
+    expect(await c.enviar(s.ownerPhone, 'cancelar')).toMatch(/^Cancelamento agendado\. Você emite até \d{2}\/\d{2}\/\d{4}\.$/)
+    expect((await assinatura(s.tenant.id)).para).not.toBeNull()
+  })
+
   it('cancelar assinatura só com o confirmar seguinte, do dono', async () => {
     const s = await novoTenant()
     await assinarTenant(admin.db, s.tenant.id, { status: 'paga' })

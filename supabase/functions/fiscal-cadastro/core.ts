@@ -4,7 +4,7 @@
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
 import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, padraoNacional, soDigitos } from "../_shared/fiscal/cnpj.ts";
-import { normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
+import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
 export type ArgsCriar = {
   user_id: string;
@@ -41,14 +41,18 @@ function erro(status: number, error_code: string, mensagem: string, h: H): Respo
 
 const MSG_CNPJ_INVALIDO = "CNPJ inválido. Confira os 14 números.";
 const MSG_NAO_ENCONTRADO = "Não encontramos este CNPJ na Receita Federal.";
-const MSG_INDISPONIVEL = "A consulta do CNPJ está fora do ar agora.";
+const MSG_INDISPONIVEL = "Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.";
 const MSG_FORA_DO_PADRAO = "Seu município ainda não emite pelo padrão nacional";
 
+// Nenhum caminho cria empresa sem a Receita confirmar o CNPJ: fora do ar também bloqueia (Lucca, 22/10/2026).
 function respostaConsulta(c: Consulta, h: H): Response | null {
   if (c.ok) return null;
-  return c.motivo === "nao_encontrado"
-    ? erro(404, "CNPJ_NAO_ENCONTRADO", MSG_NAO_ENCONTRADO, h)
-    : erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL, h);
+  if (c.motivo === "nao_encontrado") return erro(404, "CNPJ_NAO_ENCONTRADO", MSG_NAO_ENCONTRADO, h);
+  if (c.motivo === "inativo") {
+    const situacao = c.situacao.toLowerCase();
+    return erro(422, "CNPJ_INATIVO", `Este CNPJ está com situação ${situacao} na Receita Federal. Só empresas ativas podem emitir notas.`, h);
+  }
+  return erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL, h);
 }
 
 async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
@@ -103,7 +107,9 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   if (!cnpjValido(cnpj)) return erro(422, "CNPJ_INVALIDO", MSG_CNPJ_INVALIDO, h);
   const razaoDigitada = texto(b.razao_social, 1, 150);
   const responsavel = texto(b.responsavel, 2, 120);
-  const telefone = typeof b.telefone === "string" ? normalizarTelefone(b.telefone) : null;
+  // Guardado com o nono dígito: é a forma que o WhatsApp do dono vai casar depois (comNonoDigito).
+  const telefoneBruto = typeof b.telefone === "string" ? normalizarTelefone(b.telefone) : null;
+  const telefone = telefoneBruto ? comNonoDigito(telefoneBruto) : null;
   if (!razaoDigitada) return erro(422, "DADOS_INVALIDOS", "Informe o nome da empresa.", h);
   if (!responsavel) return erro(422, "DADOS_INVALIDOS", "Informe o nome do responsável.", h);
   if (!telefone || !telefone.startsWith("+55")) return erro(422, "DADOS_INVALIDOS", "Informe um WhatsApp do Brasil com DDD.", h);
@@ -145,7 +151,8 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     case "criado":
     case "existente":
       log("fiscal_cadastro_criado", { status: res.status, plano });
-      return json(201, { ok: true, tenant_id: res.tenant_id, etapa: res.etapa }, h);
+      // novo: a conta nasceu agora (o site mede o cadastro concluído só uma vez).
+      return json(201, { ok: true, tenant_id: res.tenant_id, etapa: res.etapa, novo: res.status === "criado" }, h);
     case "cnpj_ja_cadastrado":
       return erro(409, "CNPJ_JA_CADASTRADO", "Este CNPJ já tem conta. Entre pela sua conta", h);
     case "telefone_de_outra_empresa":

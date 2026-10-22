@@ -1,7 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsFiscal } from "../_shared/fiscal/cors.ts";
 import { log } from "../_shared/logger.ts";
-import { type Contexto, processarCheckout, responderConfiguracao } from "./core.ts";
+import {
+  type Contexto,
+  type CupomBanco,
+  type Deps,
+  processarCheckout,
+  processarValidarCupom,
+  responderConfiguracao,
+} from "./core.ts";
+import { enviarParaMeta } from "./medicao.ts";
 
 // Só nomes (variaveis-ambiente.txt); os valores ficam com Lucca.
 const NOMES_ENV = [
@@ -16,6 +24,8 @@ const NOMES_ENV = [
   "PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID",
   "FISCAL_VENDA_ABERTA",
   "FISCAL_TRIAL_SALT",
+  // Só em teste: manda a compra para a aba "Testar eventos" do Events Manager.
+  "META_TEST_EVENT_CODE",
 ];
 
 function lerEnv(): Record<string, string | undefined> {
@@ -59,7 +69,8 @@ Deno.serve(async (request) => {
 
   try {
     const body = await request.json().catch(() => null);
-    const resultado = await processarCheckout(body, {
+    const metaToken = Deno.env.get("META_ACCESS_TOKEN") || "";
+    const deps: Deps = {
       env: lerEnv(),
       fetch: (url, init) => fetch(url, init),
       sessao: async () => {
@@ -95,8 +106,33 @@ Deno.serve(async (request) => {
       marcarPago: async (tenantId) => {
         await rpc("fiscal_marcar_pago", { p_tenant_id: tenantId });
       },
+      validarCupom: async (tenantId, codigo, plano) =>
+        (await rpc("fiscal_validar_cupom", { p_tenant_id: tenantId, p_codigo: codigo, p_plano: plano })) as CupomBanco,
+      registrarCortesia: async (tenantId, plano, codigo, aceite) =>
+        (await rpc("fiscal_registrar_cortesia", {
+          p_tenant_id: tenantId,
+          p_plano: plano,
+          p_codigo: codigo,
+          p_aceite_texto: aceite,
+        })) as CupomBanco,
+      usarCupom: async (tenantId, codigo, plano, subscriptionId) =>
+        (await rpc("fiscal_usar_cupom", {
+          p_tenant_id: tenantId,
+          p_codigo: codigo,
+          p_plano: plano,
+          p_subscription_id: subscriptionId,
+        })) as CupomBanco,
       log,
-    });
+      // Meta CAPI da compra: o mesmo segredo de meta-capi e pagarme-webhook-no. Sem ele, nada sai.
+      enviarMeta: metaToken ? (corpo) => enviarParaMeta((url, init) => fetch(url, init), metaToken, corpo) : undefined,
+      cliente: {
+        ip: (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null,
+        ua: request.headers.get("user-agent"),
+      },
+    };
+    // A prévia do cupom (etapa de pagamento) usa a mesma rota, com acao.
+    const acao = body && typeof body === "object" ? (body as Record<string, unknown>).acao : undefined;
+    const resultado = acao === "validar_cupom" ? await processarValidarCupom(body, deps) : await processarCheckout(body, deps);
     return json(resultado.http, resultado.body);
   } catch (error) {
     log("error", "assinatura_fiscal_internal", { error: error instanceof Error ? error.message : "unknown" });

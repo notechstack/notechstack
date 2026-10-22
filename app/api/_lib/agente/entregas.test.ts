@@ -213,7 +213,7 @@ describe('entregas e avisos do agente', () => {
 
     let resposta: EmitirResultado = { kind: 'unavailable', reason: 'HTTP 503' }
     const { client } = sefinDouble({ emitir: () => resposta })
-    const FILA = 'A Sefin está instável; a nota está na fila e eu te aviso quando sair'
+    const FILA = 'A Sefin está instável; a nota está na fila e eu te aviso quando sair.'
     const avisosDeFila = () => a.paraODono(s).filter((m) => m.texto === FILA)
 
     await rodarWorker(servico.db, { sefin: client, tenantId: s.tenant.id, canais: a.canais, now: () => agora })
@@ -298,7 +298,7 @@ describe('entregas e avisos do agente', () => {
     // A 22ª também sai, sem repetir o aviso no mesmo mês.
     const b = agente(agora)
     await b.pedirNota(s)
-    expect(b.paraODono(s).at(-1)?.texto).toBe('Emitindo…')
+    expect(b.paraODono(s).at(-1)?.texto).toBe('Emitindo na Sefin. Em instantes mando a nota aqui e no seu e-mail.')
     await rodarWorker(servico.db, { sefin: client, tenantId: s.tenant.id, canais: b.canais, now: agora })
     expect((await notasDoAgente(admin.db, s.tenant.id)).map((n) => n.status)).toEqual(['issued', 'issued'])
     expect(b.paraODono(s).filter((m) => m.texto.startsWith(LIMITE))).toHaveLength(0)

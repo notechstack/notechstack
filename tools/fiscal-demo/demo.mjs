@@ -29,6 +29,8 @@ const BANCO = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const SUPABASE = 'http://127.0.0.1:54321';
 const NUMERO_AGENTE = '5511900000000';
 const PHONE_NUMBER_ID = '100000000000001';
+// Código de e-mail fixo da demo: fiscal-acesso só o aceita com FISCAL_SITE_URL em localhost.
+export const CODIGO_FIXO_DEMO = '123456';
 
 const rand = (n = 24) => randomBytes(n).toString('hex');
 const falhar = (msg) => { console.error(`\n[demo] ${msg}\n`); process.exit(1); };
@@ -83,7 +85,8 @@ export function variaveisDasFuncoes(s) {
     CNPJ_API_URL: `${host}:${PORTAS.brasilapi}`,
     FISCAL_AMBIENTE_PADRAO: 'producao_restrita',
     FISCAL_ALERTA_EMAIL: 'lucca@demo.local',
-    FISCAL_CODIGO_VALIDADE_S: '3600'
+    FISCAL_CODIGO_VALIDADE_S: '3600',
+    FISCAL_CODIGO_FIXO_DEMO: CODIGO_FIXO_DEMO
   };
 }
 
@@ -162,11 +165,37 @@ async function donoPadrao() {
   } finally { await c.end(); }
 }
 
+/* Cupons da demonstração, só no banco local (migração 20261025090000). NOTESTE100 é cortesia: pula o pagamento. */
+export const CUPONS_DEMO = [
+  { codigo: 'NOTESTE100', tipo: 'percentual', valor: 100, ciclos: null, planos: null, max_usos: 1000, descricao: 'Demonstração: assinatura sem cobrança' },
+  { codigo: 'METADE3', tipo: 'percentual', valor: 50, ciclos: 3, planos: null, max_usos: null, descricao: 'Demonstração: 50% nos 3 primeiros meses' },
+  { codigo: 'MENOS20', tipo: 'valor', valor: 2000, ciclos: null, planos: null, max_usos: null, descricao: 'Demonstração: R$ 20 a menos por mês' },
+  { codigo: 'SOPRO20', tipo: 'percentual', valor: 20, ciclos: null, planos: ['pro'], max_usos: null, descricao: 'Demonstração: 20% só no Pro' }
+];
+
+async function cuponsDaDemo() {
+  const pg = createRequire(resolve(app, 'package.json'))('pg');
+  const c = new pg.Client({ connectionString: BANCO });
+  await c.connect();
+  try {
+    for (const k of CUPONS_DEMO) {
+      await c.query(
+        `insert into nofiscal.fiscal_cupons (codigo, tipo, valor, ciclos, planos, max_usos, descricao)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (codigo) do update set tipo = excluded.tipo, valor = excluded.valor, ciclos = excluded.ciclos,
+           planos = excluded.planos, max_usos = excluded.max_usos, descricao = excluded.descricao, ativo = true, valido_ate = null`,
+        [k.codigo, k.tipo, k.valor, k.ciclos, k.planos, k.max_usos, k.descricao],
+      );
+    }
+  } finally { await c.end(); }
+}
+
 async function principal() {
   if (!(await portaAberta(54321)) || !(await portaAberta(54322))) falhar('o Supabase local não está no ar (API 54321, banco 54322). Rode `supabase start` na raiz do repositório.');
   for (const [nome, porta] of Object.entries(PORTAS)) if (await portaAberta(porta)) falhar(`a porta ${porta} (${nome}) já está em uso. Feche a outra demonstração ou o servidor que está nela.`);
   instalarSeFaltar(app, 'pg');
   instalarSeFaltar(demo, 'tsx');
+  await cuponsDaDemo();
   const anon = anonLocal();
   const s = { cron: rand(), salTeste: rand(), salAcesso: rand(), metaSegredo: rand(), metaVerificacao: rand(), webhookPagarme: rand(12) };
   escreverVars(variaveisDasFuncoes(s));
@@ -178,7 +207,7 @@ async function principal() {
   await iniciarBrasilApi({ porta: PORTAS.brasilapi });
   await iniciarMeta({ porta: PORTAS.meta, webhookUrl: `http://127.0.0.1:${PORTAS.api}/api/whatsapp/webhook`, segredo: s.metaSegredo, phoneNumberId: PHONE_NUMBER_ID, numeroAgente: NUMERO_AGENTE, donoPadrao });
   const configJs = `/* config.js da demonstração local (tools/fiscal-demo), servido no lugar do de produção. */\nwindow.NOFISCAL_CONFIG = ${JSON.stringify({
-    supabaseUrl: urls.site, anonKey: anon, funcoesUrl: `${urls.site}/functions/v1`, apiBase: '/agentes/fiscal/api', whatsappAgente: NUMERO_AGENTE, pagarmeApiUrl: `${urls.pagarme}/core/v5`
+    supabaseUrl: urls.site, anonKey: anon, funcoesUrl: `${urls.site}/functions/v1`, apiBase: '/agentes/fiscal/api', whatsappAgente: NUMERO_AGENTE, pagarmeApiUrl: `${urls.pagarme}/core/v5`, codigoFixoDemo: CODIGO_FIXO_DEMO
   }, null, 2)};\n`;
   await iniciarSite({ porta: PORTAS.site, apiUrl: `http://127.0.0.1:${PORTAS.api}`, supabaseUrl: SUPABASE, configJs, metaUrl: urls.meta, urls });
 
@@ -205,9 +234,11 @@ async function principal() {
   cadastro ........ ${urls.site}/agentes/fiscal/comecar/?plano=pro
   minha conta ..... ${urls.site}/agentes/fiscal/conta/
   API do app ...... http://localhost:${PORTAS.api}/api/
-  e-mails ......... ${urls.resend}   (o código de 6 dígitos aparece aqui)
+  e-mails ......... ${urls.resend}   (o código de 6 dígitos aparece aqui; ou use ${CODIGO_FIXO_DEMO})
   WhatsApp ........ ${urls.meta}/conversa
   Pagar.me ........ ${urls.pagarme}   IA ... ${urls.ia}   BrasilAPI ... http://localhost:${PORTAS.brasilapi}
+  cupons .......... ${CUPONS_DEMO.map((k) => k.codigo).join(', ')}   (NOTESTE100 pula o pagamento)
+  CNPJs de teste .. começando com 777 (os demais consultam a BrasilAPI real)
 Ctrl+C encerra tudo.`);
 }
 

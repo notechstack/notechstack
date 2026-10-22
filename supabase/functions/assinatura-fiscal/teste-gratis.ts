@@ -24,6 +24,12 @@ export function normalizarTelefone(valor: string): string | null {
   return E164.test(e164) ? e164 : null;
 }
 
+/** Celular brasileiro sem o nono dígito → com o 9 (cópia de app/api/_lib/agente/normalizacao.ts, comNonoDigito). */
+export function comNonoDigito(e164: string): string {
+  const m = /^\+55(\d{2})([6-9]\d{7})$/.exec(e164);
+  return m ? `+55${m[1]}9${m[2]}` : e164;
+}
+
 function normalizarDocumento(valor: string, tamanho: 11 | 14): string | null {
   const digitos = valor.replace(/\D/g, "");
   return digitos.length === tamanho ? digitos : null;

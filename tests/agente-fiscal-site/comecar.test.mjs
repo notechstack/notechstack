@@ -8,6 +8,8 @@ import {
 } from './pagina-falsa.mjs';
 
 const r = (status, corpo) => () => ({ status, corpo });
+// Objetos do jsdom vêm de outro realm: compara pelo conteúdo.
+const js = (x) => JSON.parse(JSON.stringify(x));
 const funcoes = (p) => p.rede.chamadas.filter((c) => c.rota && !c.rota.startsWith('dados:'));
 
 test('etapa 1 e plano', async () => {
@@ -15,9 +17,11 @@ test('etapa 1 e plano', async () => {
   assert.equal(pro.etapa(), 1);
   assert.equal(pro.passo(), '1 de 7 · Sua empresa');
   const rotulos = pro.rotulos('fc-etapa-1');
-  for (const campo of ['Nome da empresa', 'CNPJ', 'Responsável', 'CPF do responsável', 'E-mail', 'WhatsApp']) {
+  for (const campo of ['Nome da empresa', 'CNPJ', 'Responsável', 'E-mail', 'WhatsApp']) {
     assert.ok(rotulos.includes(campo), `campo "${campo}" (rótulos: ${rotulos.join(' | ')})`);
   }
+  // Lucca, 22/10/2026: o cadastro não pede CPF (não há consulta oficial gratuita e ele só servia ao teste de 7 dias).
+  assert.ok(!rotulos.some((r) => /CPF/.test(r)), rotulos.join(' | '));
   assert.equal(pro.texto('fc-plano'), 'Plano Pro · R$ 129/mês · 7 dias grátis');
   assert.ok(pro.visivel('fc-plano'));
   assert.deepEqual(funcoes(pro), [], 'abrir sem sessão não chama nada');
@@ -36,14 +40,19 @@ test('cnpj preenche a empresa', async () => {
   assert.deepEqual(consulta[0].corpo, { acao: 'consultar_cnpj', cnpj: CNPJ });
   assert.equal(p.$('fc-empresa').value, 'CLINICA AURORA LTDA');
 
-  // 503: a página deixa seguir com a razão social digitada.
-  const rede = superficie({ 'fiscal-cadastro:consultar_cnpj': r(503, { ok: false, error_code: 'CONSULTA_INDISPONIVEL', mensagem: 'fora do ar' }) });
-  const q = await abrir('/agentes/fiscal/comecar/', { rede });
-  await preencherEtapa1(q, { empresa: 'Minha Empresa Digitada' });
-  assert.equal(q.$('fc-empresa').value, 'Minha Empresa Digitada');
-  await q.enviar('fc-form-1');
-  assert.equal(rede.de('fiscal-acesso').length, 1, 'segue para o código');
-  assert.equal(q.etapa(), 2);
+  // 503 e CNPJ inativo: sem a Receita confirmar o CNPJ ativo, a página não segue (Lucca, 22/10/2026).
+  for (const [status, corpo] of [
+    [503, { ok: false, error_code: 'CONSULTA_INDISPONIVEL', mensagem: 'fora do ar' }],
+    [422, { ok: false, error_code: 'CNPJ_INATIVO', mensagem: 'Este CNPJ está com situação baixada na Receita Federal.' }],
+  ]) {
+    const rede = superficie({ 'fiscal-cadastro:consultar_cnpj': r(status, corpo) });
+    const q = await abrir('/agentes/fiscal/comecar/', { rede });
+    await preencherEtapa1(q, { empresa: 'Minha Empresa Digitada' });
+    await q.enviar('fc-form-1');
+    assert.equal(rede.de('fiscal-acesso').length, 0, `${corpo.error_code}: não pede código`);
+    assert.equal(q.etapa(), 1);
+    assert.ok(q.visivel('fc-cnpj-erro'), corpo.error_code);
+  }
 });
 
 test('município bloqueia', async () => {
@@ -58,21 +67,13 @@ test('município bloqueia', async () => {
   assert.match(p.texto('fc-aviso-1'), /Seu município ainda não emite pelo padrão nacional/);
 });
 
-test('cpf inválido', async () => {
-  const p = await abrir('/agentes/fiscal/comecar/');
-  await preencherEtapa1(p, { cpf: '529.982.247-26' });
-  const antes = p.rede.chamadas.length;
-  await p.enviar('fc-form-1');
-  assert.equal(p.texto('fc-cpf-erro'), 'CPF inválido');
-  assert.ok(p.visivel('fc-cpf-erro'));
-  assert.equal(p.rede.chamadas.length, antes, 'nenhuma chamada depois de enviar');
-  assert.equal(p.etapa(), 1);
-  // Também sem CNPJ digitado: nenhuma chamada.
+test('etapa 1 incompleta não chama nada', async () => {
   const q = await abrir('/agentes/fiscal/comecar/');
-  await q.preencher('fc-cpf', '111.111.111-11');
+  await q.preencher('fc-responsavel', 'Lucca Teste');
   await q.enviar('fc-form-1');
-  assert.equal(q.texto('fc-cpf-erro'), 'CPF inválido');
+  assert.ok(q.visivel('fc-cnpj-erro'));
   assert.deepEqual(q.rede.chamadas, []);
+  assert.equal(q.etapa(), 1);
 });
 
 test('código incorreto', async () => {
@@ -175,7 +176,6 @@ test('venda fechada', async () => {
   assert.equal(p.texto(botao), 'Vendas abrem em breve');
   await preencherCartao(p);
   await p.marcar('fc-aceite');
-  await p.preencher('fc-cpf-pagamento', CPF);
   await p.enviar('fc-form-3');
   assert.equal(p.rede.de('pagarme:tokens').length, 0);
   assert.equal(p.rede.de('POST assinatura-fiscal').length, 0);
@@ -187,7 +187,6 @@ test('cartão só no pagar.me', async () => {
   assert.equal(p.etapa(), 3);
   assert.equal(p.texto('fc-pagar'), 'Começar 7 dias grátis');
   assert.equal(p.texto('fc-aceite-texto'), ACEITE);
-  assert.equal(p.visivel('fc-cpf-pagamento-bloco'), false, 'o CPF vem da etapa 1');
   await preencherCartao(p);
   await p.marcar('fc-aceite');
   await p.enviar('fc-form-3');
@@ -199,9 +198,10 @@ test('cartão só no pagar.me', async () => {
 
   const [pag] = p.rede.de('POST assinatura-fiscal');
   assert.ok(pag, 'POST assinatura-fiscal');
-  assert.deepEqual(Object.keys(pag.corpo).sort(), ['aceite_texto', 'card_token', 'cpf', 'endereco', 'plano', 'termos_aceite']);
+  assert.deepEqual(Object.keys(pag.corpo).sort(), ['aceite_texto', 'card_token', 'endereco', 'medicao', 'plano', 'termos_aceite']);
+  // Sem escolha no aviso de cookies: nada de fbp/fbc/página para a CAPI.
+  assert.deepEqual(pag.corpo.medicao, { consent: 'denied' });
   assert.equal(pag.corpo.card_token, 'token_abc123');
-  assert.equal(pag.corpo.cpf, CPF);
   assert.equal(pag.corpo.plano, 'pro');
   assert.equal(pag.corpo.termos_aceite, true);
   assert.equal(pag.corpo.aceite_texto, ACEITE);
@@ -215,6 +215,78 @@ test('cartão só no pagar.me', async () => {
   assert.equal(p.etapa(), 4);
   assert.equal(p.passo(), '4 de 7 · Certificado');
   assert.equal(p.$('fc-cc-numero').value, '', 'o número do cartão sai da tela');
+});
+
+// Lucca, 22/10/2026: eventos de compra do funil, do cadastro à assinatura (agentes/fiscal/medicao.js).
+test('funil de compra: dataLayer e Pixel com o mesmo event_id do checkout', async () => {
+  const COMPRA = { evento: 'Purchase', event_id: 'nofiscal-purchase-a-9', transaction_id: 'a-9', valor: 129, moeda: 'BRL' };
+  const rede = superficie({ 'POST assinatura-fiscal': r(200, { ok: true, status: 'pendente', assinatura_id: 'a-9', com_teste: false, medicao: COMPRA }) });
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro&fbclid=IwAR0abc_DEF-123', { rede, local: { no_fiscal_consent: 'granted' } });
+  const fbq = [];
+  p.window.fbq = (...args) => fbq.push(args);
+  p.window.document.cookie = '_fbp=fb.1.1761140000000.1234567890';
+  assert.ok(!p.visivel('fi-cookies'), 'com escolha salva, o aviso não abre');
+
+  await ateEtapa3(p);
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  await p.esvaziar(60);
+
+  const funil = p.window.dataLayer.filter((e) => e && typeof e.event === 'string' && e.event.startsWith('nofiscal_'));
+  assert.deepEqual(js(funil.map((e) => e.event)), ['nofiscal_cadastro_inicio', 'nofiscal_cadastro', 'nofiscal_checkout', 'nofiscal_pagamento_info', 'nofiscal_compra']);
+  const porNome = Object.fromEntries(funil.map((e) => [e.event, e]));
+  assert.deepEqual(
+    { plano: porNome.nofiscal_checkout.plano, valor: porNome.nofiscal_checkout.valor, moeda: porNome.nofiscal_checkout.moeda },
+    { plano: 'pro', valor: 129, moeda: 'BRL' },
+  );
+  assert.equal(porNome.nofiscal_compra.transaction_id, 'a-9');
+  assert.equal(porNome.nofiscal_compra.valor, 129);
+  assert.equal(porNome.nofiscal_compra.event_id, COMPRA.event_id, 'mesmo id da CAPI no servidor');
+
+  const meta = fbq.filter((a) => a[0] === 'track').map((a) => a[1]);
+  assert.deepEqual(js(meta), ['CompleteRegistration', 'InitiateCheckout', 'AddPaymentInfo', 'Purchase']);
+  const compra = fbq.find((a) => a[1] === 'Purchase');
+  assert.deepEqual(js(compra[2]), { value: 129, currency: 'BRL' });
+  assert.deepEqual(js(compra[3]), { eventID: COMPRA.event_id });
+  // O dataLayer e o Pixel de cada passo dividem o event_id.
+  const checkout = fbq.find((a) => a[1] === 'InitiateCheckout');
+  assert.equal(checkout[3].eventID, porNome.nofiscal_checkout.event_id);
+
+  // O servidor recebe o consentimento e os cookies da Meta para a CAPI.
+  const [pag] = rede.de('POST assinatura-fiscal');
+  assert.equal(pag.corpo.medicao.consent, 'granted');
+  assert.equal(pag.corpo.medicao.fbp, 'fb.1.1761140000000.1234567890');
+  assert.match(pag.corpo.medicao.fbc, /^fb\.1\.\d{13}\.IwAR0abc_DEF-123$/);
+  assert.match(pag.corpo.medicao.page_url, /\/agentes\/fiscal\/comecar\//);
+
+  // Recarregar a página não conta a compra de novo.
+  assert.equal(p.window.noFiscalMedicao.compra(COMPRA, 'pro'), null);
+});
+
+test('funil sem consentimento: dataLayer sim, Pixel não; recusa medida', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=inicial', {
+    rede: superficie({ 'POST assinatura-fiscal': r(402, { ok: false, error_code: 'PAGAMENTO_RECUSADO', mensagem: 'x' }) })
+  });
+  const fbq = [];
+  p.window.fbq = (...args) => fbq.push(args);
+  assert.ok(p.visivel('fi-cookies'), 'sem escolha, o aviso de cookies abre');
+  await ateEtapa3(p);
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  const eventos = p.window.dataLayer.filter((e) => e && typeof e.event === 'string').map((e) => e.event);
+  assert.ok(eventos.includes('nofiscal_checkout'));
+  assert.ok(eventos.includes('nofiscal_pagamento_recusado'));
+  assert.ok(!eventos.includes('nofiscal_compra'));
+  assert.equal(fbq.filter((a) => a[0] === 'track').length, 0, 'sem consentimento, nada no Pixel');
+
+  // "Permitir" no aviso grava a escolha e atualiza o modo de consentimento do Google.
+  await p.clicar('fi-consent-grant');
+  assert.equal(p.window.localStorage.getItem('no_fiscal_consent'), 'granted');
+  assert.ok(!p.visivel('fi-cookies'));
+  const update = p.window.dataLayer.filter((e) => e && e[0] === 'consent' && e[1] === 'update').at(-1);
+  assert.equal(update[2].ad_storage, 'granted');
 });
 
 test('aviso de reteste', async () => {
@@ -248,6 +320,12 @@ test('cartão recusado', async () => {
 test('certificado na etapa 4', async () => {
   const p = await abrirNaEtapa('certificado');
   assert.equal(p.etapa(), 4);
+  // Lucca, 22/10/2026: explicação recolhida de o que é o A1 e como conseguir, fechada por padrão.
+  const explica = p.$('fc-a1-explica');
+  assert.equal(explica.tagName, 'DETAILS');
+  assert.equal(explica.open, false);
+  assert.match(p.texto(explica), /Pergunte ao seu contador/);
+  assert.match(p.texto(explica), /A3.*não serve/);
   await p.arquivos('fc-pfx', [['empresa.pfx', new Uint8Array([48, 130, 1, 2]), 'application/x-pkcs12']]);
   await p.preencher('fc-pfx-senha', 'segredo');
   await p.enviar('fc-form-4');
@@ -258,20 +336,41 @@ test('certificado na etapa 4', async () => {
   assert.equal(env.corpo.tenant_id, TENANT);
   assert.equal(env.corpo.senha, 'segredo');
   assert.equal(env.corpo.pfx.name, 'empresa.pfx');
-  assert.equal(p.texto('fc-aviso-4'), 'Certificado de CLINICA AURORA LTDA válido até 31/03/2027');
+  // Lucca, 22/10/2026: carregamento por cima da página e, aprovado, avança sozinho para os dados fiscais.
+  const carregando = p.window.document.getElementById('nf-carregando-global');
+  assert.ok(carregando && !carregando.hidden, 'círculo de carregamento enquanto confere');
+  await depoisDoCarregamento(p);
+  assert.ok(carregando.hidden, 'o carregamento some');
+  assert.equal(p.etapa(), 5, 'aprovado avança direto');
+  assert.equal(p.texto('fc-cert-ok'), 'Certificado de CLINICA AURORA LTDA aceito, válido até 31/03/2027.');
   assert.equal(p.$('fc-pfx-senha').value, '', 'a senha sai da tela');
-  await p.clicar('fc-continuar-4');
-  assert.equal(p.etapa(), 5);
 
   for (const [codigo, msg] of [['CERT_SENHA_INVALIDA', 'Senha incorreta'], ['CERT_VENCIDO', 'Certificado vencido'], ['CERT_CNPJ_DIFERENTE', 'Este certificado é de outro CNPJ']]) {
     const q = await abrirNaEtapa('certificado', { respostas: { 'app:certificate': r(422, { error: { code: codigo, message: 'x' } }) } });
     await q.arquivos('fc-pfx', [['empresa.pfx', new Uint8Array([1, 2, 3]), 'application/x-pkcs12']]);
     await q.preencher('fc-pfx-senha', 'errada');
     await q.enviar('fc-form-4');
+    await depoisDoCarregamento(q);
     assert.equal(q.texto('fc-aviso-4'), msg, codigo);
     assert.equal(q.etapa(), 4, codigo);
+    // Recusado: pop-up com o motivo, que fecha no botão.
+    const doc = q.window.document;
+    const popup = doc.querySelector('.nf-popup');
+    assert.ok(popup, `${codigo}: pop-up`);
+    assert.equal(popup.getAttribute('role'), 'alertdialog');
+    assert.equal(popup.querySelector('h2').textContent, 'Não deu para usar este certificado');
+    assert.equal(popup.querySelector('p').textContent, msg);
+    popup.querySelector('button').click();
+    await q.esvaziar(10);
+    assert.equal(doc.querySelector('.nf-popup'), null, `${codigo}: o pop-up fecha`);
   }
 });
+
+// O carregamento fica no mínimo 700 ms na tela (comecar.js, CARREGAMENTO_MINIMO_MS).
+async function depoisDoCarregamento(p) {
+  await new Promise((ok) => setTimeout(ok, 800));
+  await p.esvaziar(60);
+}
 
 test('sugestões de código', async () => {
   const p = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial' } });
@@ -290,10 +389,21 @@ test('sugestões de código', async () => {
   assert.deepEqual(achados, ['040601'], 'busca por texto na lista nacional');
   await p.preencher('fc-busca-codigo', 'analises clinicas');
   assert.deepEqual([...p.$('fc-seletor').querySelectorAll('.nf-resultados input')].map((i) => i.value), ['040102'], 'sem diferenciar acento');
+  // Busca resumida (Lucca, 22/10/2026): nada com 1 letra, no máximo 6 opções e o total do resto.
+  await p.preencher('fc-busca-codigo', 'a');
+  assert.equal(p.$('fc-seletor').querySelectorAll('.nf-resultados input').length, 0);
+  assert.match(p.texto(p.$('fc-seletor').querySelector('.nf-resultados')), /pelo menos 3 letras ou 2 números/);
+  await p.preencher('fc-busca-codigo', 'servi');
+  assert.equal(p.$('fc-seletor').querySelectorAll('.nf-resultados input').length, 6, 'no máximo 6 opções');
+  assert.match(p.texto(p.$('fc-seletor').querySelector('.nf-resultados')), /Mais \d+ resultados\. Escreva mais para refinar\./);
+
   await p.preencher('fc-busca-codigo', 'enfermagem');
   const radio = p.$('fc-seletor').querySelector('.nf-resultados input[value="040601"]');
   radio.checked = true;
   radio.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  await p.esvaziar(10);
+  assert.equal(p.$('fc-seletor').querySelectorAll('.nf-resultados input').length, 0, 'escolher fecha a caixa');
+  assert.match(p.texto(p.$('fc-seletor').querySelector('.nf-escolhido')), /^Escolhido: 04\.06\.01/);
   await p.preencher('fc-percentual', '6,5');
   await p.enviar('fc-form-5');
   const [conf] = p.rede.de('fiscal-conta:configurar');
@@ -472,9 +582,54 @@ test('concluir no whatsapp', async () => {
   const botao = p.$('fc-whatsapp');
   assert.ok(p.visivel(botao));
   assert.equal(p.texto(botao), 'Concluir no WhatsApp');
-  assert.equal(botao.getAttribute('href'), 'https://wa.me/5511900000000?text=ATIVAR%20482913');
-  assert.match(p.texto('fc-ativar-texto'), /ATIVAR 482913/);
-  assert.match(p.texto('fc-ativar-texto'), /\(11\) 9••••-4321/);
+  const mensagem = 'Quero ativar o nó.fiscal da CLINICA AURORA LTDA no plano Pro. Código de ativação: 482913';
+  assert.equal(botao.getAttribute('href'), 'https://wa.me/5511900000000?text=' + encodeURIComponent(mensagem));
+  // Lucca, 22/10/2026: o número cadastrado inteiro e a mensagem legível, com empresa, plano e código.
+  assert.ok(p.visivel('fc-ativacao'));
+  assert.equal(p.texto('fc-ativar-numero'), '(11) 98765-4321');
+  assert.equal(p.texto('fc-ativar-mensagem'), mensagem);
+});
+
+// Lucca, 22/10/2026: clicar na trilha reabre uma etapa já alcançada. Depois do pagamento, da 4 em diante;
+// empresa, código e pagamento ficam travados (mudam em Minha conta).
+test('trilha volta às etapas já alcançadas', async () => {
+  const trilha = (p) => [...p.$('fc-trilha').querySelectorAll('li')].map((li) => ({
+    classe: li.className.trim(), aberta: !li.querySelector('button').disabled
+  }));
+  const certificado = { subject: 'CN=CLINICA AURORA LTDA:11222333000181', not_after: '2027-03-31T23:59:59.000Z' };
+  const p = await abrirNaEtapa('ativacao', { estadoExtra: { certificado, fiscal: { codigo_servico_nacional: '040101', p_tot_trib_sn: 6, contador_email: null, resumo: null } } });
+  assert.equal(p.etapa(), 7);
+  assert.deepEqual(trilha(p).map((x) => x.aberta), [false, false, false, true, true, true, false]);
+  assert.match(p.$('fc-trilha').querySelector('[data-etapa="2"] button').title, /Minha conta/);
+
+  await p.clicar(p.$('fc-trilha').querySelector('[data-etapa="5"] button'));
+  assert.equal(p.etapa(), 5);
+  assert.equal(p.$('fc-percentual').value, '6', 'os dados fiscais voltam preenchidos');
+  assert.deepEqual(trilha(p).map((x) => x.classe), ['is-feita', 'is-feita', 'is-feita', 'is-feita is-aberta', 'is-atual', 'is-feita is-aberta', 'is-aberta']);
+  // Etapa travada não reage ao clique.
+  await p.clicar(p.$('fc-trilha').querySelector('[data-etapa="3"] button'));
+  assert.equal(p.etapa(), 5);
+
+  // De volta ao certificado: segue com "Continuar" e dá para trocar o arquivo.
+  await p.clicar(p.$('fc-trilha').querySelector('[data-etapa="4"] button'));
+  assert.equal(p.etapa(), 4);
+  assert.ok(p.visivel('fc-continuar-4'));
+  assert.equal(p.texto('fc-enviar-a1'), 'Enviar outro certificado');
+  assert.ok(p.visivel('fc-enviar-a1'));
+
+  await p.clicar(p.$('fc-trilha').querySelector('[data-etapa="7"] button'));
+  assert.equal(p.etapa(), 7);
+  assert.equal(p.rede.de('app:ativacao').length, 1, 'voltar à 7 não pede outro código');
+
+  // Antes de a conta existir, a etapa do código deixa voltar à 1 para corrigir os dados.
+  const q = await abrir('/agentes/fiscal/comecar/');
+  await preencherEtapa1(q);
+  await q.enviar('fc-form-1');
+  assert.equal(q.etapa(), 2);
+  assert.deepEqual(trilha(q).map((x) => x.aberta), [true, false, false, false, false, false, false]);
+  await q.clicar(q.$('fc-trilha').querySelector('[data-etapa="1"] button'));
+  assert.equal(q.etapa(), 1);
+  assert.equal(q.$('fc-email').value, 'lucca@exemplo.com');
 });
 
 test('retomada abre na etapa do servidor', async () => {

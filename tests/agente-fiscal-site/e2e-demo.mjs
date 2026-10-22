@@ -100,7 +100,6 @@ async function etapas(page, dados) {
   await page.fill('#fc-cnpj', dados.cnpj);
   await page.waitForFunction(() => document.getElementById('fc-empresa').value.length > 0, null, { timeout: 20000 });
   await page.fill('#fc-responsavel', 'Pessoa E2E');
-  await page.fill('#fc-cpf', dados.cpf);
   await page.fill('#fc-email', dados.email);
   await page.fill('#fc-telefone', dados.telefone);
   const pedido = new Date().toISOString();
@@ -123,14 +122,16 @@ async function etapas(page, dados) {
   await page.setInputFiles('#fc-pfx', pfx);
   await page.fill('#fc-pfx-senha', 'senha-e2e');
   await page.click('#fc-enviar-a1');
-  await page.locator('#fc-aviso-4').filter({ hasText: 'Certificado de EMPRESA E2E válido até' }).waitFor({ timeout: 30000 });
-  await page.click('#fc-continuar-4');
+  // Aprovado, a página avança sozinha para os dados fiscais (Lucca, 22/10/2026).
   await etapaVisivel(page, 5);
+  await page.locator('#fc-cert-ok').filter({ hasText: 'Certificado de EMPRESA E2E aceito' }).waitFor({ timeout: 30000 });
   const sugestao = page.locator('#fc-seletor .nf-sugestoes input[type=radio]').first();
   if (await sugestao.count()) await sugestao.check();
   else {
     await page.fill('#fc-busca-codigo', 'medicina');
-    await page.locator('#fc-seletor .nf-resultados input[type=radio]').first().check();
+    // Escolher fecha a caixa da busca (Lucca, 22/10/2026): clica e confere o código escolhido.
+    await page.locator('#fc-seletor .nf-resultados input[type=radio]').first().click();
+    await page.locator('#fc-seletor .nf-escolhido').waitFor();
   }
   await page.fill('#fc-percentual', '6');
   await page.click('#fc-salvar-fiscal');
@@ -154,7 +155,7 @@ async function etapas(page, dados) {
   const botao = page.locator('#fc-whatsapp');
   await botao.waitFor({ state: 'visible', timeout: 30000 });
   const href = await botao.getAttribute('href');
-  if (!/^http:\/\/localhost:3004\/conversa\?numero=\d+&text=ATIVAR%20\d{6}$/.test(href)) throw new Error(`botão do WhatsApp aponta para ${href}`);
+  if (!/^http:\/\/localhost:3004\/conversa\?numero=\d+&text=Quero%20ativar%20.+C%C3%B3digo%20de%20ativa%C3%A7%C3%A3o%3A%20\d{6}$/.test(href)) throw new Error(`botão do WhatsApp aponta para ${href}`);
   log(`"Concluir no WhatsApp" → ${href}`);
   await page.screenshot({ path: join(capturas, `etapa-7${sufixo}.png`), fullPage: true });
   return botao;
@@ -165,7 +166,7 @@ async function whatsapp(context, botao, dados) {
   await conversa.waitForLoadState();
   await conversa.fill('#de', dados.telefone);
   const texto = await conversa.inputValue('#texto');
-  if (!/^ATIVAR \d{6}$/.test(texto)) throw new Error(`texto pronto no dublê: ${texto}`);
+  if (!/^Quero ativar o nó\.fiscal da .+ no plano (Inicial|Pro)\. Código de ativação: \d{6}$/.test(texto)) throw new Error(`texto pronto no dublê: ${texto}`);
   const agente = conversa.locator('#conversa [data-de="agente"]');
   let vistos = 0;
   async function esperar(re, timeout = 30000) {
@@ -210,7 +211,7 @@ async function principal() {
     const context = await navegador.newContext({ viewport: celular ? { width: 390, height: 844 } : { width: 1280, height: 900 } });
     const page = await context.newPage();
     page.on('pageerror', (e) => log(`erro na página: ${e.message}`));
-    const raiz = '1' + String(randomInt(10 ** 9)).padStart(9, '0');
+    const raiz = '7771' + String(randomInt(10 ** 6)).padStart(6, '0'); // 777…: CNPJ de teste da demo (dubles/brasilapi.mjs)
     const dados = { cnpj: completar((raiz + '0001').slice(0, 12)), cpf: cpf(), email: `e2e+${Date.now()}@exemplo.com`, telefone: '+55119' + String(randomInt(10 ** 8)).padStart(8, '0') };
     log(`CNPJ ${dados.cnpj} · e-mail ${dados.email} · WhatsApp ${dados.telefone}`);
     const botao = await etapas(page, dados);

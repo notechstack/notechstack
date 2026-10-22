@@ -72,9 +72,15 @@ function invalido(campo: string, mensagem: string): Resultado {
   return erro(422, "DADOS_FISCAIS_INVALIDOS", mensagem, { campo });
 }
 
+/** Assinatura de cortesia (cupom de 100%, migração 20261025090000): não existe no Pagar.me. */
+export function ehCortesia(subscriptionId: string | null | undefined): boolean {
+  return typeof subscriptionId === "string" && subscriptionId.startsWith("cortesia_");
+}
+
 /** Estado para a página (contrato E → B): sem ids do Pagar.me nem campos internos. */
 export function estadoPublico(e: EstadoBanco): Record<string, unknown> {
   const a = e.assinatura;
+  const cortesia = Boolean(a && ehCortesia(a.pagarme_subscription_id));
   return {
     ok: true,
     tenant_id: e.tenant_id,
@@ -86,7 +92,8 @@ export function estadoPublico(e: EstadoBanco): Record<string, unknown> {
         status: a.status,
         com_teste: a.com_teste,
         trial_ends_at: a.trial_ends_at,
-        periodo_fim: a.periodo_fim,
+        periodo_fim: cortesia ? null : a.periodo_fim,
+        cortesia,
         cancelamento_agendado_para: a.cancelamento_agendado_para,
       }
       : null,
@@ -257,6 +264,36 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     if (!r.ok) return resultadoDoBanco(r);
     log("info", "fiscal_conta_configurada", { tenant_id: estado.tenant_id, resumo: v.config.temResumo, contador: v.config.temContador });
     return await estadoAtual(userId, deps);
+  }
+
+  // Cortesia: nada no Pagar.me. O banco cancela na hora (nofiscal.agendar_cancelamento_com_fim).
+  const ativa = estado.assinatura && estado.assinatura.status !== "cancelada" ? estado.assinatura : null;
+  if (ativa && ehCortesia(ativa.pagarme_subscription_id)) {
+    if (acao === "apagar_conta") {
+      const r = await deps.apagarConta(userId);
+      if (!r.ok) return resultadoDoBanco(r);
+      log("info", "fiscal_conta_apagada", { tenant_id: estado.tenant_id, cortesia: true });
+      return { http: 200, body: { ok: true } };
+    }
+    if (acao === "trocar_cartao") {
+      return erro(409, "CORTESIA_SEM_CARTAO", "Sua assinatura é cortesia: não há cartão cadastrado.");
+    }
+    if (acao === "trocar_plano") {
+      const plano = b.plano;
+      if (plano !== "inicial" && plano !== "pro") return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
+      if (plano === estado.plano) return { http: 200, body: estadoPublico(estado) };
+      const banco = await deps.trocarPlano(userId, plano);
+      if (!banco.ok) return resultadoDoBanco(banco);
+      log("info", "fiscal_conta_plano_trocado", { tenant_id: estado.tenant_id, plano, cortesia: true });
+      return await estadoAtual(userId, deps);
+    }
+    const cancelada = await deps.agendarCancelamento(userId, null);
+    if (cancelada.status !== "agendado") return erro(409, "SEM_ASSINATURA", "Esta empresa não tem assinatura ativa.");
+    log("info", "fiscal_conta_cortesia_cancelada", { tenant_id: estado.tenant_id });
+    return {
+      http: 200,
+      body: { ok: true, cancelada_agora: true, cancelamento_agendado_para: cancelada.cancelamento_agendado_para },
+    };
   }
 
   // Daqui para baixo, o Pagar.me.

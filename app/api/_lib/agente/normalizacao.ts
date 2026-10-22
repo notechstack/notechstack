@@ -20,6 +20,15 @@ export function normalizarTelefone(valor: string): string | null {
   return E164.test(e164) ? e164 : null
 }
 
+/**
+ * Celular brasileiro sem o nono dígito, como o WhatsApp manda alguns números (o `wa_id` de contas antigas:
+ * +55 11 8765-4321) → com o 9 (+55 11 98765-4321), a forma guardada no cadastro. Fixo (começa com 2 a 5) não muda.
+ */
+export function comNonoDigito(e164: string): string {
+  const m = /^\+55(\d{2})([6-9]\d{7})$/.exec(e164)
+  return m ? `+55${m[1]}9${m[2]}` : e164
+}
+
 export function normalizarDocumento(valor: string, tamanho: 11 | 14): string | null {
   const digitos = valor.replace(/\D/g, '')
   return digitos.length === tamanho ? digitos : null

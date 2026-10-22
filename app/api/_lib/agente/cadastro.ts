@@ -8,7 +8,7 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Queryable } from '../db.js'
 import type { EnviaEmail, EnviaWhatsApp } from './canais.js'
-import { normalizarEmail, normalizarTelefone } from './normalizacao.js'
+import { comNonoDigito, normalizarEmail, normalizarTelefone } from './normalizacao.js'
 
 export const CODIGO_VALIDADE_MINUTOS = 10
 export const CODIGO_MAX_ERROS = 5
@@ -300,7 +300,8 @@ export async function revogarNumero(
 
 /** Número que pode emitir agora: verificado e não revogado (`nofiscal.emitting_phone`). */
 export async function numeroPodeEmitir(db: Queryable, telefone: string): Promise<{ phoneId: string; tenantId: string } | null> {
-  const e164 = normalizarTelefone(telefone)
+  const normalizado = normalizarTelefone(telefone)
+  const e164 = normalizado ? comNonoDigito(normalizado) : null
   if (!e164) return null
   const { rows } = await db.query<{ phone_id: string; tenant_id: string }>(
     'select phone_id, tenant_id from nofiscal.emitting_phone($1)',

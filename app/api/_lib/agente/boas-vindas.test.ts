@@ -16,7 +16,7 @@ import {
   type SelfServiceTenant,
 } from '../../_tests/agente-fixtures.js'
 import { openTestDb } from '../../_tests/fixtures.js'
-import { gerarCodigoDeAtivacao } from './ativacao.js'
+import { gerarCodigoDeAtivacao, mensagemDeAtivacao } from './ativacao.js'
 import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import { processarMensagem, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
@@ -33,7 +33,7 @@ const catalogo: CatalogoDeServicos = {
   },
 }
 const RAZAO = 'EMPRESA BOAS VINDAS LTDA'
-const PERGUNTA_1 = `Sua empresa: ${RAZAO}, serviço 010701 (${DESCRICAO}), 0 clientes importados. Está tudo certo?`
+const PERGUNTA_1 = `Sua empresa: ${RAZAO}, serviço 01.07.01 (${DESCRICAO}), 0 clientes importados. Está tudo certo?`
 
 beforeAll(async () => {
   await allowTestUserToAssume(admin.db, 'nofiscal_service')
@@ -115,7 +115,8 @@ async function contagens(tenantId: string) {
 /** Tenant ativado pelo `ATIVAR` e já na etapa pedida, pelo caminho real da conversa. */
 async function ateAEtapa(etapa: 'boas_vindas_conferir' | 'boas_vindas_cliente', c = conversa()) {
   const s = await novoTenant()
-  await c.enviar(s.ownerPhone, `ATIVAR ${await codigoPara(s)}`)
+  // A mensagem que a página põe pronta no WhatsApp (Lucca, 22/10/2026), com empresa e plano antes do código.
+  await c.enviar(s.ownerPhone, mensagemDeAtivacao('EMPRESA TESTE LTDA', 'pro', await codigoPara(s)))
   if (etapa === 'boas_vindas_cliente') await c.enviar(s.ownerPhone, 'sim')
   expect((await estadoDe(s)).etapa).toBe(etapa)
   return s
@@ -229,7 +230,7 @@ describe('boas-vindas', () => {
     }
     await criarModelo(admin.db, s.tenant.id, { nome: 'Da nota', documento: '52998224725', nomeTomador: 'Da nota' })
     const pergunta = await c.enviar(s.ownerPhone, `ATIVAR ${await codigoPara(s)}`)
-    expect(pergunta).toBe(`Sua empresa: ${RAZAO}, serviço 010701 (${DESCRICAO}), 2 clientes importados. Está tudo certo?`)
+    expect(pergunta).toBe(`Sua empresa: ${RAZAO}, serviço 01.07.01 (${DESCRICAO}), 2 clientes importados. Está tudo certo?`)
 
     // "não" manda o link da conta e fica na mesma pergunta; "pronto" repete a pergunta.
     const nao = await c.enviar(s.ownerPhone, 'não')
@@ -256,8 +257,8 @@ describe('boas-vindas', () => {
     const cartao = await c.enviar(comModelo.ownerPhone, 'Prontia')
     expect(cartao).toContain('Tomador: Prontia Saúde')
     expect(cartao).toContain('CPF: 529.982.247-25')
-    expect(cartao).toContain('Serviço: 010701')
-    expect(cartao).toContain('Descrição: Consultoria em saúde')
+    expect(cartao).toContain('Serviço: 01.07.01')
+    expect(cartao).toContain('Descrição na nota: Consultoria em saúde')
     expect(cartao).toContain('E-mail: financeiro@prontia.test')
     expect(cartao.trim().endsWith('Está certo?')).toBe(true)
     expect(await c.enviar(comModelo.ownerPhone, 'sim')).toContain('Me diga uma nota que você emitiria, como se fosse de verdade')
@@ -269,7 +270,7 @@ describe('boas-vindas', () => {
     expect(pedido).toMatch(/CPF ou CNPJ/)
     expect(pedido).toMatch(/e-mail/)
     expect(await c.enviar(semModelo.ownerPhone, '11.444.777/0001-61')).toContain('Falta o e-mail')
-    expect(await c.enviar(semModelo.ownerPhone, 'contato@aurora.test')).toBe('Salvar Clínica Aurora como modelo? Responda sim ou não.')
+    expect(await c.enviar(semModelo.ownerPhone, 'contato@aurora.test')).toBe('Quer que eu guarde Clínica Aurora para as próximas notas? Responda sim ou não.')
     const salvo = await c.enviar(semModelo.ownerPhone, 'sim')
     expect(salvo).toContain('Modelo Clínica Aurora salvo.')
     expect(salvo).toContain('Me diga uma nota que você emitiria')
@@ -323,7 +324,7 @@ describe('boas-vindas', () => {
     const depois = c.canais.whatsapps.length
     await c.enviar(s.ownerPhone, 'confirmar')
     const respostas = c.canais.whatsapps.slice(depois).map((m) => m.texto)
-    expect(respostas[0]).toBe('Isso foi só um exemplo. Para emitir de verdade, mande o pedido de novo')
+    expect(respostas[0]).toBe('Isso foi só um exemplo. Para emitir de verdade, mande o pedido de novo.')
     expect(await contagens(s.tenant.id)).toEqual(antes)
   })
 

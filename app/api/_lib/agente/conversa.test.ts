@@ -26,8 +26,10 @@ import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb, sefinDouble } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
-import { expirarPedidos, processarMensagem, type ConversaDeps } from './conversa.js'
+import { ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
+import { comNonoDigito } from './normalizacao.js'
+import { mensagensDaNotificacao } from './webhook.js'
 
 const admin = openTestDb()
 const servico = openRoleDb('nofiscal_service')
@@ -138,7 +140,7 @@ describe('conversa no WhatsApp', () => {
     const resposta = c.ultimaPara(s.ownerPhone)
     expect(resposta).toContain('Seu pagamento não foi aprovado. Atualize o cartão para continuar emitindo')
     expect(resposta).toContain(LINKS_DE_TESTE.assinatura)
-    expect(resposta).not.toContain('Confirma?')
+    expect(resposta).not.toContain('Posso emitir?')
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(0)
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
@@ -154,12 +156,47 @@ describe('conversa no WhatsApp', () => {
     const u = await cenario()
     await criarModelo(admin.db, u.tenant.id, PRONTIA_CNPJ)
     await c.enviar(u.ownerPhone, PEDIDO_PRONTIA)
-    expect(c.ultimaPara(u.ownerPhone)).toContain('Confirma?')
+    expect(c.ultimaPara(u.ownerPhone)).toContain('Posso emitir?')
     await admin.db.query(`update nofiscal.fiscal_subscriptions set status = 'recusada' where tenant_id = $1`, [u.tenant.id])
     await c.enviar(u.ownerPhone, 'confirmar')
     expect(c.ultimaPara(u.ownerPhone)).toContain('Seu pagamento não foi aprovado')
     expect(await notasDoAgente(admin.db, u.tenant.id)).toHaveLength(0)
     expect((await pedidosDo(admin.db, u.tenant.id))[0].status).not.toBe('confirmed')
+  })
+
+  // Lucca, 22/10/2026: o número fica preso à conta desde a ativação; não há login no WhatsApp nem prazo. O WhatsApp
+  // pode mandar o celular sem o nono dígito (wa_id antigo): o bot casa com o 9 e responde no endereço que chegou.
+  it('o número do dono é reconhecido 15 dias depois, mesmo sem o nono dígito', async () => {
+    const s = await cenario()
+    const comNove = `+551198${String(Date.now()).slice(-7)}`
+    const semNove = comNove.replace(/^\+55119/, '+5511')
+    await admin.db.query('update nofiscal.fiscal_phones set phone_e164 = $2 where phone_e164 = $1', [s.ownerPhone, comNove])
+    await admin.db.query('update nofiscal.fiscal_accounts set phone_e164 = $2 where phone_e164 = $1', [s.ownerPhone, comNove])
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa(ROTEIRO_PRONTIA)
+    c.avancar(15 * 24 * 3600_000)
+
+    // A mensagem passa pelo leitor do webhook, como chega da Meta.
+    const daMeta = (texto: string) =>
+      mensagensDaNotificacao({
+        object: 'whatsapp_business_account',
+        entry: [{ changes: [{ value: { messages: [{ id: `wamid.nove-${randomUUID()}`, from: semNove.slice(1), type: 'text', text: { body: texto } }] } }] }],
+      })[0]
+    const pedido = daMeta(PEDIDO_PRONTIA)
+    expect(pedido).toMatchObject({ de: comNove, enderecoRecebido: semNove })
+    await processarMensagem(c.deps, pedido)
+    expect(c.ultimaPara(semNove)).toContain('Posso emitir?')
+    expect(c.respostasPara(comNove)).toEqual([])
+    await processarMensagem(c.deps, daMeta('confirmar'))
+    expect(c.ultimaPara(semNove)).toBe(TEXTOS.emitindo)
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(1)
+  })
+
+  it('nono dígito: só celular sem o 9 ganha o 9', () => {
+    expect(comNonoDigito('+551187654321')).toBe('+5511987654321')
+    expect(comNonoDigito('+5511987654321')).toBe('+5511987654321')
+    expect(comNonoDigito('+551132654321')).toBe('+551132654321')
+    expect(comNonoDigito('+12025550123')).toBe('+12025550123')
   })
 
   it('resumo antes de emitir', async () => {
@@ -171,20 +208,73 @@ describe('conversa no WhatsApp', () => {
     const resumo = c.ultimaPara(s.ownerPhone)
     expect(resumo).toContain('Prontia Saúde')
     expect(resumo).toContain('12.345.678/0001-95')
-    expect(resumo).toContain('010701')
+    expect(resumo).toContain('01.07.01')
     expect(resumo).toContain('Consultoria em saúde')
     expect(resumo).toContain('R$ 10,00')
-    expect(resumo).toContain('Confirma?')
+    expect(resumo).toContain('Posso emitir?')
 
     const pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0]).toMatchObject({ kind: 'emitir', status: 'awaiting_confirmation', invoice_id: null })
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
-    // "corrigir" descarta o pedido sem nota.
-    await c.enviar(s.ownerPhone, 'corrigir')
+    // "descartar" desiste do pedido sem nota ("corrigir" agora mantém o pedido: teste abaixo).
+    await c.enviar(s.ownerPhone, 'descartar')
     expect((await pedidosDo(admin.db, s.tenant.id))[0].status).toBe('rejected_by_user')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.descartado)
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
+  })
+
+  // Roteiro do bot (Lucca, 22/10/2026): "corrigir" pergunta o que muda e mantém o resto do pedido.
+  it('corrigir troca o valor e mantém o pedido', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa({ ...ROTEIRO_PRONTIA, 'valor 400 reais': { valor: '400.00', intencao: 'outro' }, hmm: { intencao: 'outro' } })
+
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    await c.enviar(s.ownerPhone, 'corrigir')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.oQueMuda)
+    const [aberto] = await pedidosDo(admin.db, s.tenant.id)
+    expect(aberto.status).toBe('awaiting_confirmation')
+
+    await c.enviar(s.ownerPhone, 'hmm')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.naoEntendiACorrecao)
+
+    await c.enviar(s.ownerPhone, 'valor 400 reais')
+    const resumo = c.ultimaPara(s.ownerPhone)
+    expect(resumo).toContain('R$ 400,00')
+    expect(resumo).toContain('Prontia Saúde')
+    expect(resumo).toContain('Posso emitir?')
+    const pedidos = await pedidosDo(admin.db, s.tenant.id)
+    expect(pedidos).toHaveLength(1)
+
+    await c.enviar(s.ownerPhone, 'confirmar')
+    const [nota] = await notasDoAgente(admin.db, s.tenant.id)
+    expect(nota).toBeTruthy()
+    expect(nota.payload).toMatchObject({ valor: '400.00' })
+  })
+
+  it('corrigir troca o cliente: o pedido antigo sai e o novo nasce com o mesmo valor', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa({ ...ROTEIRO_PRONTIA, 'é pra Clínica Aurora': { tomador: 'Clínica Aurora', intencao: 'outro' } })
+
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    await c.enviar(s.ownerPhone, 'corrigir')
+    await c.enviar(s.ownerPhone, 'é pra Clínica Aurora')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('É a primeira nota para Clínica Aurora. Me mande o CPF ou CNPJ e o e-mail de Clínica Aurora.')
+    const pedidos = await pedidosDo(admin.db, s.tenant.id)
+    expect(pedidos.map((p) => p.status).sort()).toEqual(['awaiting_confirmation', 'rejected_by_user'])
+  })
+
+  it('"cancelar" no resumo da nota desiste do pedido', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa(ROTEIRO_PRONTIA)
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    await c.enviar(s.ownerPhone, 'cancelar')
+    expect((await pedidosDo(admin.db, s.tenant.id))[0].status).toBe('rejected_by_user')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.descartado)
   })
 
   it('confirmar chama o motor', async () => {
@@ -194,7 +284,7 @@ describe('conversa no WhatsApp', () => {
 
     await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
     await c.enviar(s.ownerPhone, 'confirmar')
-    expect(c.ultimaPara(s.ownerPhone)).toBe('Emitindo…')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Emitindo na Sefin. Em instantes mando a nota aqui e no seu e-mail.')
 
     const [pedido] = await pedidosDo(admin.db, s.tenant.id)
     expect(pedido.status).toBe('confirmed')
@@ -229,20 +319,20 @@ describe('conversa no WhatsApp', () => {
     const pergunta = c.ultimaPara(s.ownerPhone)
     expect(pergunta).toContain('CPF ou CNPJ')
     expect(pergunta).toContain('e-mail')
-    expect(pergunta).not.toContain('Confirma?')
+    expect(pergunta).not.toContain('Posso emitir?')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     // Só o e-mail ainda não basta.
     await c.enviar(s.ownerPhone, 'contato@clinicanova.test')
     expect(c.ultimaPara(s.ownerPhone)).toContain('CPF ou CNPJ')
-    expect(c.ultimaPara(s.ownerPhone)).not.toContain('Confirma?')
+    expect(c.ultimaPara(s.ownerPhone)).not.toContain('Posso emitir?')
 
     await c.enviar(s.ownerPhone, '529.982.247-25')
     const resumo = c.ultimaPara(s.ownerPhone)
     expect(resumo).toContain('Clínica Nova')
     expect(resumo).toContain('529.982.247-25')
     expect(resumo).toContain('R$ 150,00')
-    expect(resumo).toContain('Confirma?')
+    expect(resumo).toContain('Posso emitir?')
 
     // CNPJ: o nome vem dos dados públicos.
     await c.enviar(s.ownerPhone, 'nota pra Hospital Alfa, 80 reais')
@@ -251,7 +341,7 @@ describe('conversa no WhatsApp', () => {
     const resumoCnpj = c.ultimaPara(s.ownerPhone)
     expect(resumoCnpj).toContain('HOSPITAL ALFA LTDA')
     expect(resumoCnpj).toContain('11.444.777/0001-61')
-    expect(resumoCnpj).toContain('Confirma?')
+    expect(resumoCnpj).toContain('Posso emitir?')
 
     // Documento e e-mail não passam pela IA.
     expect(c.ia.chamadas).toEqual(['nota pra Clínica Nova, 150 reais', 'nota pra Hospital Alfa, 80 reais'])
@@ -282,7 +372,7 @@ describe('conversa no WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'nota pra Prontia, dez mil reais e uns trocados')
     expect(c.ultimaPara(s.ownerPhone)).toMatch(/^Qual é o valor da nota\?/)
 
-    for (const resposta of c.respostasPara(s.ownerPhone)) expect(resposta).not.toContain('Confirma?')
+    for (const resposta of c.respostasPara(s.ownerPhone)) expect(resposta).not.toContain('Posso emitir?')
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(0)
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
   })
@@ -298,7 +388,7 @@ describe('conversa no WhatsApp', () => {
 
     c.avancar(24 * HORA + 1000)
     await c.enviar(s.ownerPhone, 'confirmar')
-    expect(c.ultimaPara(s.ownerPhone)).toBe('Esse pedido expirou. Me mande de novo')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Esse pedido expirou. Me mande o pedido de novo.')
     expect((await pedidosDo(admin.db, s.tenant.id))[0].status).toBe('expired')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
@@ -309,7 +399,7 @@ describe('conversa no WhatsApp', () => {
     expect(await expirarPedidos(servico.db, c.agora(), { tenantIds: [s.tenant.id] })).toBe(1)
     expect((await pedidosDo(admin.db, s.tenant.id))[1].status).toBe('expired')
     await c.enviar(s.ownerPhone, 'confirmar')
-    expect(c.ultimaPara(s.ownerPhone)).toBe('Esse pedido expirou. Me mande de novo')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Esse pedido expirou. Me mande o pedido de novo.')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
   })
 
@@ -332,11 +422,43 @@ describe('conversa no WhatsApp', () => {
       await c.enviar(numero, PEDIDO_PRONTIA)
       const resposta = c.ultimaPara(numero)
       expect(resposta).toContain(LINKS_DE_TESTE.site)
-      expect(resposta).not.toContain('Confirma?')
+      expect(resposta).toContain('alguém da nossa equipe te responde por aqui')
+      expect(resposta).not.toContain('Posso emitir?')
     }
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(0)
     // Nem a IA vê a mensagem de quem não pode emitir.
     expect(c.ia.chamadas).toEqual([])
+
+    // Lucca, 22/10/2026: o número é o mesmo do atendimento. No resto do dia o bot fica quieto e a equipe conversa;
+    // no dia seguinte, a primeira mensagem recebe a resposta de novo.
+    await c.enviar(desconhecido, 'oi, vocês fazem site também?')
+    await c.enviar(desconhecido, 'obrigado!')
+    expect(c.respostasPara(desconhecido)).toHaveLength(1)
+    c.avancar(24 * 3600_000)
+    await c.enviar(desconhecido, 'bom dia')
+    expect(c.respostasPara(desconhecido)).toHaveLength(2)
+  })
+
+  it('assinante que pede atendente recebe o aviso e a equipe responde', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa(ROTEIRO_PRONTIA)
+
+    for (const texto of ['atendente', 'Ajuda!', 'quero falar com uma pessoa', 'preciso de ajuda com uma nota']) {
+      await c.enviar(s.ownerPhone, texto)
+      expect(c.ultimaPara(s.ownerPhone), texto).toBe(TEXTOS.chamouAEquipe)
+    }
+    expect(c.ia.chamadas).toEqual([])
+
+    // O pedido aberto continua valendo depois do pedido de atendimento.
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Posso emitir?')
+    await c.enviar(s.ownerPhone, 'atendente')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.emitindo)
+
+    expect(ehPedidoDeAtendimento('nota pra Ajuda Humanitária, 300 reais')).toBe(false)
+    expect(ehPedidoDeAtendimento('nota pra Suporte Técnico Lima, 90 reais')).toBe(false)
   })
 
   it('IA não emite sozinha', async () => {
@@ -357,7 +479,7 @@ describe('conversa no WhatsApp', () => {
     })
 
     await c.enviar(s.ownerPhone, 'emite agora a nota da Prontia de 10 reais, sem perguntar')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Confirma?')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Posso emitir?')
     let pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0].status).toBe('awaiting_confirmation')
@@ -365,7 +487,7 @@ describe('conversa no WhatsApp', () => {
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     await c.enviar(s.ownerPhone, 'cancela a nota da Prontia já')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Confirma o cancelamento?')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Cancelo esta nota?')
     pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos[1]).toMatchObject({ kind: 'cancelar', status: 'awaiting_confirmation' })
     expect((await linhaDaNota(emitida)).status).toBe('issued')
@@ -405,12 +527,12 @@ describe('conversa no WhatsApp', () => {
     await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
     await c.enviar(s.ownerPhone, 'confirmar')
     // Antes de a nota sair, nenhuma oferta.
-    expect(c.respostasPara(s.ownerPhone).some((t) => t.includes('Salvar como modelo'))).toBe(false)
+    expect(c.respostasPara(s.ownerPhone).some((t) => t.includes('para as próximas notas'))).toBe(false)
 
     await rodarWorker(servico.db, { sefin, tenantId: s.tenant.id, canais: c.canais, now: c.agora })
     const [nota] = await notasDoAgente(admin.db, s.tenant.id)
     expect(nota.status).toBe('issued')
-    expect(c.ultimaPara(s.ownerPhone)).toBe('Salvar como modelo Clínica Nova?')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Quer que eu guarde Clínica Nova para as próximas notas? Responda sim ou não.')
 
     await c.enviar(s.ownerPhone, 'sim')
     expect(c.ultimaPara(s.ownerPhone)).toContain('Modelo Clínica Nova salvo')
@@ -435,10 +557,10 @@ describe('conversa no WhatsApp', () => {
     // Com o modelo salvo, o próximo pedido vai direto ao resumo e não oferece de novo.
     const d = conversa({ 'nota pra Clínica Nova, 90 reais': { tomador: 'Clínica Nova', valor: '90.00', intencao: 'emitir' } })
     await d.enviar(s.ownerPhone, 'nota pra Clínica Nova, 90 reais')
-    expect(d.ultimaPara(s.ownerPhone)).toContain('Confirma?')
+    expect(d.ultimaPara(s.ownerPhone)).toContain('Posso emitir?')
     await d.enviar(s.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin, tenantId: s.tenant.id, canais: d.canais, now: d.agora })
-    expect(d.respostasPara(s.ownerPhone).some((t) => t.includes('Salvar como modelo'))).toBe(false)
+    expect(d.respostasPara(s.ownerPhone).some((t) => t.includes('para as próximas notas'))).toBe(false)
   })
 
   it('modelo repetido pergunta', async () => {
@@ -457,7 +579,7 @@ describe('conversa no WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin, tenantId: s.tenant.id, canais: c.canais, now: c.agora })
     const [nota] = await notasDoAgente(admin.db, s.tenant.id)
-    expect(c.ultimaPara(s.ownerPhone)).toBe('Salvar como modelo prontia?')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Quer que eu guarde prontia para as próximas notas? Responda sim ou não.')
 
     await c.enviar(s.ownerPhone, 'sim')
     const pergunta = c.ultimaPara(s.ownerPhone)
@@ -498,6 +620,24 @@ describe('conversa no WhatsApp', () => {
     expect(rows).toEqual([{ id: original.id, tomador_documento: '12345678000195' }])
   })
 
+  // Roteiro do bot (Lucca, 22/10/2026): na confirmação de cancelamento, "cancelar" cancela e "manter" mantém.
+  it('"cancelar" confirma o cancelamento e "manter" mantém a nota', async () => {
+    const s = await cenario({ plan: 'pro' })
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CPF)
+    const agora = new Date()
+    const nota = await notaEmitida(s, { numero: 8, valor: '42.90', emitidaEm: agora })
+    const c = conversa({ 'cancela a nota da Prontia de hoje': { tomador: 'Prontia', intencao: 'cancelar' } })
+
+    await c.enviar(s.ownerPhone, 'cancela a nota da Prontia de hoje')
+    await c.enviar(s.ownerPhone, 'manter')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.cancelamentoDesistido)
+    expect((await linhaDaNota(nota)).status).toBe('issued')
+
+    await c.enviar(s.ownerPhone, 'cancela a nota da Prontia de hoje')
+    await c.enviar(s.ownerPhone, 'cancelar')
+    expect((await linhaDaNota(nota)).status).toBe('cancel_requested')
+  })
+
   it('cancelamento confirmado', async () => {
     const s = await cenario({ plan: 'pro' })
     await criarModelo(admin.db, s.tenant.id, PRONTIA_CPF)
@@ -511,7 +651,7 @@ describe('conversa no WhatsApp', () => {
     expect(pergunta).toContain('Prontia Saúde')
     expect(pergunta).toContain('R$ 42,90')
     expect(pergunta).toContain(dataLocal(agora))
-    expect(pergunta).toContain('Confirma o cancelamento?')
+    expect(pergunta).toContain('Cancelo esta nota?')
     expect((await linhaDaNota(nota)).status).toBe('issued')
 
     await c.enviar(s.ownerPhone, 'confirmar')
@@ -560,7 +700,7 @@ describe('conversa no WhatsApp', () => {
     const lista = c.ultimaPara(s.ownerPhone)
     for (const n of ['11', '12', '13']) expect(lista).toContain(`nº ${n}`)
     expect(lista).not.toContain('nº 10')
-    expect(lista).not.toContain('Confirma o cancelamento?')
+    expect(lista).not.toContain('Cancelo esta nota?')
     expect(lista).toMatch(/número/)
 
     // "confirmar" antes de escolher não cancela nada.
@@ -571,7 +711,7 @@ describe('conversa no WhatsApp', () => {
     const pergunta = c.ultimaPara(s.ownerPhone)
     expect(pergunta).toContain('12')
     expect(pergunta).toContain('R$ 12,00')
-    expect(pergunta).toContain('Confirma o cancelamento?')
+    expect(pergunta).toContain('Cancelo esta nota?')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect((await linhaDaNota(n12)).status).toBe('cancel_requested')
     for (const id of [ontem, n11, n13]) expect((await linhaDaNota(id)).status).toBe('issued')
@@ -667,7 +807,7 @@ describe('conversa no WhatsApp', () => {
     const d = conversa({ 'nota pra Clínica Nova, 150 reais': { tomador: 'Clínica Nova', valor: '150.00', intencao: 'emitir' } }, {}, { entrada: 200, saida: 40 })
     await d.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais') // 2
     await d.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test') // 4
-    await d.enviar(s.ownerPhone, 'corrigir') // 6
+    await d.enviar(s.ownerPhone, 'descartar') // 6
     const segundo = (await pedidosDo(admin.db, s.tenant.id))[1]
     expect(segundo).toMatchObject({ status: 'rejected_by_user', message_count: 6, ai_input_tokens: 200, ai_output_tokens: 40 })
   })

@@ -10,6 +10,7 @@ export const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const ler = (rel) => readFileSync(resolve(repo, rel), 'utf8');
 export const HTML = ler('agentes/fiscal/index.html');
 export const JS = ler('agentes/fiscal/fiscal.js');
+export const MEDICAO = ler('agentes/fiscal/medicao.js');
 
 export const PRONTIA = 'quero emitir uma nota pra Prontia Saúde no valor de 10 reais, use os modelos da Prontia';
 
@@ -53,6 +54,8 @@ function buscar(el, sel) {
       return b;
     });
   }
+  // O ciclo "Simples assim" é só visual (conferido no navegador): aqui ele fica sem passos e não roda.
+  if (sel === '.fi-roda-no') return [];
   const m = /^\.([\w-]+) li$/.exec(sel);
   if (m) {
     const bloco = new RegExp(`<(\\w+)[^>]*class="[^"]*\\b${m[1]}\\b[^"]*"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
@@ -124,6 +127,7 @@ export function abrirPagina({ armazenamento = new Map() } = {}) {
   ctx.self = ctx;
   vm.createContext(ctx);
   for (const s of scriptsInline()) vm.runInContext(s, ctx);
+  vm.runInContext(MEDICAO, ctx);
   vm.runInContext(JS, ctx);
 
   const el = (id) => document.getElementById(id);

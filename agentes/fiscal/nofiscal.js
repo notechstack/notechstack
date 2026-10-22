@@ -86,6 +86,13 @@
     if (d.length < 10) return v || '';
     return '(' + d.slice(0, 2) + ') ' + d.slice(2, 3) + '••••-' + d.slice(-4);
   }
+  /* +5511977776655 → (11) 97777-6655: o número inteiro, para a própria pessoa conferir. */
+  function formatarTelefone(v) {
+    var d = digitos(v);
+    if (d.slice(0, 2) === '55' && d.length >= 12) d = d.slice(2);
+    if (d.length < 10) return v || '';
+    return '(' + d.slice(0, 2) + ') ' + d.slice(2, d.length - 4) + '-' + d.slice(-4);
+  }
   function partesData(iso) {
     var dt = new Date(iso);
     if (isNaN(dt.getTime())) return null;
@@ -199,6 +206,13 @@
     gravar: function (d) { if (aba) gravarJson(aba, CHAVE_CADASTRO, d); },
     limpar: function () { if (aba) gravarJson(aba, CHAVE_CADASTRO, null); }
   };
+  /* Texto avulso guardado só nesta aba (ex.: o cupom digitado). */
+  var abaTexto = {
+    ler: function (chave) { try { return aba ? aba.getItem(chave) : null; } catch (e) { return null; } },
+    gravar: function (chave, valor) { try { if (aba) aba.setItem(chave, String(valor)); } catch (e) { /* sem armazenamento */ } },
+    apagar: function (chave) { try { if (aba) aba.removeItem(chave); } catch (e) { /* sem armazenamento */ } }
+  };
+  function nomePlano(codigo) { return (PLANOS[codigo] || PLANOS.inicial).nome; }
 
   /* ---------- chamadas ---------- */
   function resposta(status, dados) {
@@ -329,11 +343,15 @@
 
   /* Seletor do código de serviço: sugestões do CNAE + busca na lista nacional. `raiz` é o contêiner com
      .nf-sugestoes, input.nf-busca e .nf-resultados; devolve {valor()}. */
+  /* Busca resumida (Lucca, 22/10/2026): só a partir de 3 letras ou 2 números, no máximo MOSTRADOS opções numa
+     caixa com rolagem, e o total quando há mais. Escolher fecha a caixa e mostra o código escolhido. */
+  var MOSTRADOS = 6;
   function seletorCodigo(raiz, opcoes) {
     opcoes = opcoes || {};
     var sugestoesEl = raiz.querySelector('.nf-sugestoes');
     var busca = raiz.querySelector('.nf-busca');
     var resultados = raiz.querySelector('.nf-resultados');
+    var escolhidoEl = raiz.querySelector('.nf-escolhido');
     var escolhido = opcoes.atual ? digitos(opcoes.atual) : '';
     var nome = 'nf-codigo-' + (raiz.id || 'x');
     var lista = [];
@@ -342,18 +360,37 @@
         '<span><b>' + esc(formatarCodigo(it.codigo)) + '</b> ' + esc(it.descricao || '') + '</span></label>';
     }
     function descricao(c) { for (var i = 0; i < lista.length; i++) if (lista[i].codigo === c) return lista[i].descricao; return ''; }
+    function mostrarEscolhido() {
+      if (!escolhidoEl) return;
+      escolhidoEl.innerHTML = escolhido
+        ? 'Escolhido: <b>' + esc(formatarCodigo(escolhido)) + '</b> ' + esc(descricao(escolhido) || '') : '';
+      escolhidoEl.hidden = !escolhido;
+    }
     raiz.addEventListener('change', function (ev) {
       var t = ev.target;
-      if (t && t.name === nome) escolhido = t.value;
+      if (!t || t.name !== nome) return;
+      escolhido = t.value;
+      mostrarEscolhido();
+      // Escolheu na busca: a caixa fecha e o campo limpa.
+      if (resultados.contains && resultados.contains(t)) { busca.value = ''; resultados.innerHTML = ''; }
     });
     busca.addEventListener('input', function () {
       var termo = busca.value;
-      var achados = buscarCodigos(lista, termo, 20);
-      var d = digitos(termo);
-      if (!achados.length && d.length === 6 && !lista.length) achados = [{ codigo: d, descricao: 'código digitado' }];
-      resultados.innerHTML = achados.length
-        ? achados.map(function (it) { return opcao(it, it.codigo === escolhido); }).join('')
-        : (texto(termo) ? '<p class="nf-vazio">' + (lista.length ? 'Nada encontrado na lista nacional.' : 'Digite o código de 6 dígitos.') + '</p>' : '');
+      var t = texto(termo), d = digitos(termo);
+      if (!t) { resultados.innerHTML = ''; return; }
+      if (lista.length && semAcento(t).replace(/[^a-z]/g, '').length < 3 && d.length < 2) {
+        resultados.innerHTML = '<p class="nf-vazio">Digite pelo menos 3 letras ou 2 números do código.</p>';
+        return;
+      }
+      var todos = buscarCodigos(lista, termo, lista.length || 20);
+      if (!todos.length && d.length === 6 && !lista.length) todos = [{ codigo: d, descricao: 'código digitado' }];
+      if (!todos.length) {
+        resultados.innerHTML = '<p class="nf-vazio">' + (lista.length ? 'Nada encontrado na lista nacional.' : 'Digite o código de 6 dígitos.') + '</p>';
+        return;
+      }
+      var resto = todos.length - MOSTRADOS;
+      resultados.innerHTML = todos.slice(0, MOSTRADOS).map(function (it) { return opcao(it, it.codigo === escolhido); }).join('') +
+        (resto > 0 ? '<p class="nf-mais">Mais ' + resto + (resto === 1 ? ' resultado' : ' resultados') + '. Escreva mais para refinar.</p>' : '');
     });
     var pronto = Promise.all([codigosServico(), sugestoesCnae(opcoes.cnae)]).then(function (r) {
       lista = r[0];
@@ -363,7 +400,8 @@
         ? '<p class="nf-rotulo-lista">Sugeridos para a sua atividade</p>' +
           sugeridos.map(function (c) { return opcao({ codigo: c, descricao: descricao(c) }, c === escolhido); }).join('')
         : '';
-      busca.placeholder = lista.length ? 'Palavra ou código' : 'Código de 6 dígitos';
+      busca.placeholder = lista.length ? 'Ex.: consultoria, 01.07' : 'Código de 6 dígitos';
+      mostrarEscolhido();
     });
     return { pronto: pronto, valor: function () { return escolhido; } };
   }
@@ -371,6 +409,47 @@
   /* ---------- tela ---------- */
   function $(id) { return document.getElementById(id); }
   /* Botão com indicador durante a chamada (Unresolved 12 da tarefa). */
+  /* Carregamento por cima da página (círculo girando + texto). */
+  function carregando(ligar, rotulo) {
+    var el = document.getElementById('nf-carregando-global');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'nf-carregando-global';
+      el.className = 'nf-carregando';
+      el.setAttribute('role', 'status');
+      el.innerHTML = '<span class="nf-roda" aria-hidden="true"></span><p></p>';
+      document.body.appendChild(el);
+    }
+    el.querySelector('p').textContent = rotulo || 'Carregando…';
+    el.hidden = !ligar;
+  }
+  /* Pop-up de aviso (erro): título, texto e um botão; resolve quando fecha. */
+  function popup(titulo, mensagem, rotuloBotao) {
+    return new Promise(function (resolver) {
+      var antes = document.activeElement;
+      var fundo = document.createElement('div');
+      fundo.className = 'nf-popup-fundo';
+      fundo.innerHTML = '<div class="nf-popup" role="alertdialog" aria-modal="true" aria-labelledby="nf-popup-titulo" aria-describedby="nf-popup-texto">' +
+        '<span class="nf-popup-icone" aria-hidden="true">!</span><h2 id="nf-popup-titulo"></h2><p id="nf-popup-texto"></p>' +
+        '<button type="button" class="fi-btn fi-btn--tinta"></button></div>';
+      fundo.querySelector('h2').textContent = titulo;
+      fundo.querySelector('p').textContent = mensagem;
+      var botao = fundo.querySelector('button');
+      botao.textContent = rotuloBotao || 'Entendi';
+      function fechar() {
+        document.removeEventListener('keydown', tecla);
+        if (fundo.parentNode) fundo.parentNode.removeChild(fundo);
+        if (antes && typeof antes.focus === 'function') { try { antes.focus(); } catch (e) { /* foco opcional */ } }
+        resolver();
+      }
+      function tecla(ev) { if (ev.key === 'Escape') fechar(); }
+      botao.addEventListener('click', fechar);
+      document.addEventListener('keydown', tecla);
+      document.body.appendChild(fundo);
+      try { botao.focus(); } catch (e) { /* foco opcional */ }
+    });
+  }
+
   function ocupado(botao, sim, rotulo) {
     if (!botao) return;
     if (sim) {
@@ -405,10 +484,11 @@
     dataBR: dataBR, diaMes: diaMes, horaBR: horaBR, reais: reais, rotuloPlano: rotuloPlano, planoDaUrl: planoDaUrl,
     titular: titular, percentual: percentual, validarCartao: validarCartao, enderecoDoCartao: enderecoDoCartao,
     formatarCodigo: formatarCodigo, buscarCodigos: buscarCodigos,
-    sessao: sessao, cadastro: cadastro,
+    sessao: sessao, cadastro: cadastro, aba: abaTexto, nomePlano: nomePlano,
     funcao: funcao, app: app, pedirCodigo: pedirCodigo, verificarCodigo: verificarCodigo, erroDoCodigo: erroDoCodigo, tokenizarCartao: tokenizarCartao,
     seletorCodigo: seletorCodigo,
-    $: $, ocupado: ocupado, aviso: aviso, erroCampo: erroCampo,
+    $: $, ocupado: ocupado, aviso: aviso, erroCampo: erroCampo, carregando: carregando, popup: popup,
+    formatarTelefone: formatarTelefone,
     navegar: function (url) { location.assign(url); }
   };
 })();

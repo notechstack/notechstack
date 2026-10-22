@@ -16,6 +16,7 @@ import {
   resolverModelo,
   responder,
   textoDoResumo,
+  formatarCodigoServico,
   TEXTOS,
   type Contexto,
   type Modelo,
@@ -28,7 +29,7 @@ export const TEXTOS_BOAS_VINDAS = {
   paraQuem: 'Para quem você mais emite?',
   ensaio: 'Me diga uma nota que você emitiria, como se fosse de verdade',
   exemplo: 'EXEMPLO — não será emitida',
-  soExemplo: 'Isso foi só um exemplo. Para emitir de verdade, mande o pedido de novo',
+  soExemplo: 'Isso foi só um exemplo. Para emitir de verdade, mande o pedido de novo.',
   descartado: 'Ok, descartei o exemplo.',
   estaCerto: 'Está certo?',
 } as const
@@ -91,7 +92,7 @@ export async function perguntaDeConferencia(db: Queryable, tenantId: string, cat
   const t = rows[0]
   const n = Number(t?.importados ?? 0)
   const descricao = t?.codigo && catalogo ? await catalogo.descricao(t.codigo).catch(() => null) : null
-  const servico = t?.codigo ? `serviço ${t.codigo}${descricao ? ` (${descricao})` : ''}` : 'serviço ainda não escolhido'
+  const servico = t?.codigo ? `serviço ${formatarCodigoServico(t.codigo)}${descricao ? ` (${descricao})` : ''}` : 'serviço ainda não escolhido'
   return `Sua empresa: ${t?.razao_social ?? ''}, ${servico}, ${n} ${n === 1 ? 'cliente importado' : 'clientes importados'}. Está tudo certo?`
 }
 
@@ -102,20 +103,21 @@ export function pareceUmPedido(texto: string): boolean {
   return /\d/.test(t) && (/\b(reais|real)\b/.test(t) || /r\$/.test(t) || /\d,\d{1,2}\b/.test(t))
 }
 
-function cartaoDoModelo(m: Modelo): string {
+async function cartaoDoModelo(m: Modelo, catalogo?: CatalogoDeServicos): Promise<string> {
+  const nomeDoServico = catalogo ? await catalogo.descricao(m.codigo_servico_nacional).catch(() => null) : null
   return [
     `Achei o modelo ${m.nome}:`,
     `Tomador: ${m.tomador_nome}`,
     `${tipoDoDocumento(m.tomador_documento).toUpperCase()}: ${formatarDocumento(m.tomador_documento)}`,
-    `Serviço: ${m.codigo_servico_nacional}`,
-    `Descrição: ${m.descricao}`,
+    `Serviço: ${formatarCodigoServico(m.codigo_servico_nacional)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
+    `Descrição na nota: ${m.descricao}`,
     `E-mail: ${m.tomador_email ?? '-'}`,
     TEXTOS_BOAS_VINDAS.estaCerto,
   ].join('\n')
 }
 
 const pedirDados = (nome: string) => `Ainda não tenho ${nome} cadastrado. Me mande o CPF ou CNPJ e o e-mail de ${nome}.`
-const perguntaDeSalvar = (nome: string) => `Salvar ${nome} como modelo? Responda sim ou não.`
+const perguntaDeSalvar = (nome: string) => `Quer que eu guarde ${nome} para as próximas notas? Responda sim ou não.`
 
 async function lerModelo(db: Queryable, tenantId: string, id: string | undefined): Promise<Modelo | null> {
   if (!id) return null
@@ -134,7 +136,7 @@ async function perguntaPendente(ctx: Contexto, etapa: string, estado: Estado): P
   switch (estado.passo ?? 'nome') {
     case 'conferir_modelo': {
       const modelo = await lerModelo(ctx.deps.db, ctx.tenantId, estado.modelo_id)
-      return modelo ? cartaoDoModelo(modelo) : TEXTOS_BOAS_VINDAS.paraQuem
+      return modelo ? await cartaoDoModelo(modelo, ctx.deps.catalogo) : TEXTOS_BOAS_VINDAS.paraQuem
     }
     case 'dados':
       return pedirDados(estado.nome ?? 'o cliente')
@@ -275,7 +277,7 @@ async function clienteFrequente(ctx: Contexto, texto: string, estado: Estado): P
   }
   if (modelo) {
     await gravar(db, ctx.tenantId, 'boas_vindas_cliente', { passo: 'conferir_modelo', modelo_id: modelo.id }, ctx.agora)
-    await responder(ctx, cartaoDoModelo(modelo))
+    await responder(ctx, await cartaoDoModelo(modelo, ctx.deps.catalogo))
     return
   }
   await gravar(db, ctx.tenantId, 'boas_vindas_cliente', { passo: 'dados', nome }, ctx.agora)
@@ -349,12 +351,15 @@ async function ensaio(ctx: Contexto, texto: string, estado: Estado): Promise<voi
 
 async function resumoDoEnsaio(ctx: Contexto, parsed: Parsed, estado: Estado): Promise<string> {
   const valor = parsed.valor as string
+  // O serviço por extenso, como no resumo de verdade (Roteiro do bot, 22/10/2026).
+  const nomeDoServico = async (codigo: string) => (ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(codigo).catch(() => null) : null)
   const modelo = await resolverModelo(ctx.deps.db, ctx.tenantId, parsed)
   if (modelo && !('ambiguos' in modelo)) {
     return textoDoResumo(
       { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email },
       { codigo: modelo.codigo_servico_nacional, descricao: modelo.descricao },
       valor,
+      await nomeDoServico(modelo.codigo_servico_nacional),
     )
   }
   const { rows } = await ctx.deps.db.query<{ codigo: string | null }>(
@@ -365,8 +370,9 @@ async function resumoDoEnsaio(ctx: Contexto, parsed: Parsed, estado: Estado): Pr
   const nome = parsed.tomador ?? parsed.modelo ?? 'o tomador'
   const ehOFrequente = estado.frequente && nome.toLowerCase().startsWith(estado.frequente.toLowerCase())
   const documento = parsed.documento ?? (ehOFrequente ? estado.frequente_documento : undefined)
-  if (documento) return textoDoResumo({ documento, nome, email: null }, servico, valor)
-  return textoDoResumo({ documento: '', nome, email: null }, servico, valor).replace(
+  const nomeServico = await nomeDoServico(servico.codigo)
+  if (documento) return textoDoResumo({ documento, nome, email: null }, servico, valor, nomeServico)
+  return textoDoResumo({ documento: '', nome, email: null }, servico, valor, nomeServico).replace(
     /^CPF: .*$/m,
     'CPF/CNPJ: eu pediria antes de emitir',
   )

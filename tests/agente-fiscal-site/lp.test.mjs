@@ -16,15 +16,23 @@ test('lp leva ao cadastro', () => {
     const c = cartoes.find((x) => x.dataset.plano === plano);
     assert.ok(c, `cartão ${nome}`);
     const a = acoes(c);
-    assert.deepEqual(a, [{ rotulo: 'Testar 7 dias grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
+    // Lucca, 22/10/2026: o teste de 7 dias deu lugar às 5 primeiras emissões grátis.
+    assert.deepEqual(a, [{ rotulo: 'Começar com 5 notas grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
   }
-  const escritorio = cartoes.find((x) => x.dataset.plano === 'custom');
-  assert.match(txt(escritorio.querySelector('h3')), /^Escritório/);
-  const [link] = acoes(escritorio);
-  const u = new URL(link.href);
-  assert.equal(u.origin + u.pathname, 'https://wa.me/5511939289413');
-  assert.equal(u.searchParams.get('text'), 'Olá! Quero o plano sob medida do nó.fiscal para a minha empresa');
-  assert.ok(link.href.startsWith('https://wa.me/5511939289413?text='));
+  // Escritório (mais de 100 notas no próprio negócio) e Agência (vários CNPJs) vão ao WhatsApp comercial.
+  for (const [plano, nome, texto] of [
+    ['escritorio', 'Escritório', 'Olá! Quero o plano Escritório do nó.fiscal: emito mais de 100 notas por mês.'],
+    ['agencia', 'Agência', 'Olá! Sou de uma agência e quero integrar o nó.fiscal ao sistema dos meus clientes.']
+  ]) {
+    const c = cartoes.find((x) => x.dataset.plano === plano);
+    assert.ok(c, `cartão ${nome}`);
+    assert.match(txt(c.querySelector('h3')), new RegExp('^' + nome));
+    const [link] = acoes(c);
+    assert.equal(link.rotulo, 'Falar com a Nó');
+    const u = new URL(link.href);
+    assert.equal(u.origin + u.pathname, 'https://wa.me/5511939289413');
+    assert.equal(u.searchParams.get('text'), texto);
+  }
 
   const html = ler('agentes/fiscal/index.html');
   assert.doesNotMatch(html, /Assinatura\s+em\s+breve/i, 'o HTML não tem "Assinatura em breve"');

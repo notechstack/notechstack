@@ -57,7 +57,7 @@ export type EntregasDeps = {
   now?: () => Date
 }
 
-export const AVISO_DE_FILA = 'A Sefin está instável; a nota está na fila e eu te aviso quando sair'
+export const AVISO_DE_FILA = 'A Sefin está instável; a nota está na fila e eu te aviso quando sair.'
 export const AVISO_DE_LIMITE = 'Você passou do limite do seu plano este mês'
 
 type Canais = { whatsapp: EnviaWhatsApp; email: EnviaEmail; links: Links; agora: Date }
@@ -184,7 +184,10 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
         pedido.id,
         canais.agora,
       ])
-      await canais.whatsapp.enviarTexto(pedido.phone, `Salvar como modelo ${pedido.conversa.modelo_nome}?`)
+      await canais.whatsapp.enviarTexto(
+        pedido.phone,
+        `Quer que eu guarde ${pedido.conversa.modelo_nome} para as próximas notas? Responda sim ou não.`,
+      )
       await contarMensagens(deps.db, pedido.id, 1)
     }
     await avisarLimite(deps, canais, nota)

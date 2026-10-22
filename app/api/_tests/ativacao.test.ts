@@ -36,7 +36,7 @@ const URL_ROTA = 'https://app.notechstack.com.br/api/v1/onboarding/ativacao'
 const admin = openTestDb()
 const tenants: SelfServiceTenant[] = []
 
-type Corpo = { codigo?: string; whatsapp_url?: string; expira_em?: string; error?: { code: string; message: string } }
+type Corpo = { codigo?: string; mensagem?: string; whatsapp_url?: string; expira_em?: string; error?: { code: string; message: string } }
 
 function ativacao(userId: string | null, corpo: unknown): Promise<Response> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
@@ -82,7 +82,10 @@ describe('ativação do WhatsApp pela página (C25)', () => {
     expect(res.status).toBe(201)
     const corpo = (await res.json()) as Corpo
     expect(corpo.codigo).toMatch(/^\d{6}$/)
-    expect(corpo.whatsapp_url).toBe(`https://wa.me/5511900000001?text=ATIVAR%20${corpo.codigo}`)
+    // Mensagem legível com empresa e plano (Lucca, 22/10/2026); o código continua no fim.
+    expect(corpo.mensagem).toMatch(/^Quero ativar o nó\.fiscal da .+ no plano (Inicial|Pro)\. Código de ativação: \d{6}$/)
+    expect(corpo.mensagem?.endsWith(`Código de ativação: ${corpo.codigo}`)).toBe(true)
+    expect(corpo.whatsapp_url).toBe(`https://wa.me/5511900000001?text=${encodeURIComponent(corpo.mensagem as string)}`)
 
     // Vale 24 horas, e o banco guarda só o hash.
     const expira = new Date(corpo.expira_em as string).getTime()
@@ -131,16 +134,18 @@ describe('ativação do WhatsApp pela página (C25)', () => {
     expect(await codigosDe(s.ownerUserId)).toHaveLength(0)
   })
 
-  it('sem o número do agente não cria código', async () => {
+  // Lucca, 22/10/2026: o número oficial da Nó (+55 11 93928-9413) é o do agente; sem a variável, vale ele.
+  it('sem WHATSAPP_NUMERO_AGENTE, o link usa o número oficial da Nó', async () => {
     const s = await novoTenant()
     const numero = process.env.WHATSAPP_NUMERO_AGENTE
     delete process.env.WHATSAPP_NUMERO_AGENTE
     try {
       const res = await ativacao(s.ownerUserId, { tenant_id: s.tenant.id })
-      expect(res.status).toBe(500)
+      expect(res.status).toBe(201)
+      const corpo = (await res.json()) as Corpo
+      expect(corpo.whatsapp_url?.startsWith('https://wa.me/5511939289413?text=')).toBe(true)
     } finally {
       process.env.WHATSAPP_NUMERO_AGENTE = numero
     }
-    expect(await codigosDe(s.ownerUserId)).toHaveLength(0)
   })
 })

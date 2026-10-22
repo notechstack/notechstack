@@ -1,7 +1,6 @@
-/* nó.fiscal: LP do agente fiscal. Estrutura própria (hero centralizado + bloco fluido com o simulador, planos
-   em cartões brancos, nuvem de pedaços de interface, frase grande com o mascote, módulos painel+card, FAQ e selos).
-   Só tokens da marca (tokens.css / brand-derived.css); color-mix só com tokens. Nav e footer são os padrão do site. */
-
+/* nó.fiscal: LP do agente fiscal. Hero centralizado + bloco fluido com o simulador, passo a passo do pedido à
+   nota, planos em cartões brancos e FAQ. Só tokens da marca (tokens.css / brand-derived.css); color-mix só com
+   tokens. Nav e footer são os padrão do site; a nav ganha fundo tinta nas páginas do nó.fiscal. */
 .fi-body{
   --fi-texto:var(--no-tinta);
   --fi-texto-sec:var(--no-cinza);
@@ -25,11 +24,19 @@
 .fi-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .fi-body .no-site-footer{position:relative;z-index:1}
 
+/* navbar do site em tinta nas páginas do nó.fiscal (o HTML é o compartilhado; só a cor muda aqui) */
+.fi-body .no-card-nav{background:var(--no-tinta);border-color:var(--no-tinta);color:var(--no-osso)}
+.fi-body .no-card-brand img{content:url(/brand/logo/svg/no-branca-ponto-ambar.svg)}
+.fi-body .no-card-toggle{color:var(--no-osso)}
+.fi-body .no-card-toplinks a{color:var(--no-osso)}
+.fi-body .no-card-toplinks a:hover,.fi-body .no-card-toplinks a[aria-current=page]{background:var(--no-tinta-alt2)}
+.fi-body .no-card-toplinks a:last-child{background:var(--no-ambar);color:var(--no-tinta)}
+
 /* ── tipografia ── */
 .fi-lockup{display:inline-flex;align-items:baseline;margin:0 0 18px;font:400 clamp(22px,2.6vw,28px)/1 var(--font-core,'Sora',sans-serif);letter-spacing:-.02em}
 .fi-lockup-no{font-weight:800}
-.fi-lockup-sub{color:var(--fi-acento-texto)}
-.fi-hero h1{margin:0 auto 18px;max-width:14ch;font-weight:800;font-size:clamp(40px,7.4vw,86px);line-height:1;letter-spacing:-.035em;text-wrap:balance}
+.fi-lockup-sub{font-weight:600;color:var(--no-ambar)}   /* o âmbar da paleta, como o ponto do logo (pedido de Lucca, 22/10) */
+.fi-hero h1{margin:0 auto 18px;max-width:18ch;font-weight:800;font-size:clamp(36px,6.2vw,74px);line-height:1;letter-spacing:-.035em;text-wrap:balance}
 .fi-sub{margin:0 auto;max-width:62ch;font-size:clamp(16px,1.6vw,19px);line-height:1.55;color:var(--fi-texto-sec);text-wrap:pretty}
 .fi-sub--centro{text-align:center}
 .fi-h2{margin:0 0 16px;font-weight:800;font-size:clamp(32px,5.2vw,64px);line-height:1.02;letter-spacing:-.03em;text-align:center;text-wrap:balance}
@@ -86,13 +93,8 @@
 .fi-chip{display:inline-flex;align-items:center;gap:8px;appearance:none;padding:10px 16px 10px 12px;border-radius:999px;border:0;background:color-mix(in srgb, var(--fi-branco) 82%, transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--fi-texto);font:600 13.5px/1.2 var(--font-core,'Sora',sans-serif);box-shadow:var(--no-shadow-sm);cursor:pointer;transition:transform .2s ease,background-color .2s ease}
 .fi-chip:hover{transform:translateY(-2px);background:var(--fi-branco)}
 .fi-chip:focus-visible{outline:3px solid var(--fi-texto);outline-offset:2px}
-.fi-chip-icone{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center}
-.fi-chip-icone--wa{background:var(--no-verde)}
-.fi-chip-icone--wa::after{content:'';width:9px;height:9px;border-radius:50%;border:2px solid var(--fi-branco);box-sizing:border-box}
-.fi-chip-icone--doc{background:var(--fi-texto)}
-.fi-chip-icone--doc::after{content:'';width:7px;height:9px;border-radius:1px;border:1.5px solid var(--fi-fundo);border-top-right-radius:3px;box-sizing:border-box}
-.fi-chip-icone--x{background:var(--no-vermelho)}
-.fi-chip-icone--x::after{content:'×';color:var(--fi-branco);font:700 13px/1 var(--font-core,'Sora',sans-serif)}
+.fi-chip-icone{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--fi-texto);color:var(--fi-acento)}
+.fi-chip-icone svg{width:14px;height:14px;display:block}
 /* conversa dentro do bloco fluido: aparece com a primeira mensagem */
 .fi-chat{display:flex;flex-direction:column;gap:10px;width:min(680px,100%);max-height:min(400px,50vh);padding:16px;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;border-radius:var(--fi-raio-lg);background:color-mix(in srgb, var(--fi-branco) 72%, transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--no-shadow-sm);animation:fi-chat-in .45s cubic-bezier(.22,1,.36,1)}
 .fi-chat[hidden]{display:none}
@@ -148,13 +150,6 @@
 @keyframes fi-entrega{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 .fi-msg--limite{border:1px solid var(--fi-acento);background:var(--fi-acento-tint)}
 
-/* linha "construído sobre": como a faixa de investidores/imprensa da referência */
-.fi-stack{display:flex;flex-direction:column;gap:12px;margin-top:clamp(28px,4vw,44px);padding-top:22px;border-top:1px solid var(--fi-borda);text-align:left}
-@media(min-width:900px){.fi-stack{flex-direction:row;align-items:center;justify-content:space-between;gap:24px}}
-.fi-stack-titulo{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600}
-.fi-stack-titulo svg{width:18px;height:18px;color:var(--fi-acento-texto)}
-.fi-stack-lista{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px 18px;font:600 13px/1.4 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.02em;color:var(--fi-texto-sec)}
-
 /* ── Planos ── */
 .fi-planos{margin:clamp(32px,4vw,48px) 0 0;padding:0;list-style:none;display:grid;gap:16px;grid-template-columns:1fr}
 @media(min-width:700px){.fi-planos{grid-template-columns:1fr 1fr}}
@@ -168,94 +163,83 @@
 .fi-plano-icone svg{width:26px;height:26px}
 .fi-plano h3{display:flex;flex-direction:column;gap:3px;margin:0;font-size:20px;line-height:1.2;letter-spacing:-.01em}
 .fi-plano h3 small{font-size:14px;font-weight:400;color:var(--fi-texto-sec)}
-.fi-plano-pill{display:inline-block;margin-top:4px;padding:5px 11px;border-radius:999px;border:1px solid var(--fi-texto);font:600 11.5px/1.2 var(--font-core,'Sora',sans-serif)}
-.fi-plano-preco{margin:2px 0 6px;font-weight:800;font-size:clamp(38px,3.4vw,46px);line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
-.fi-plano-preco--texto{font-size:clamp(28px,2.4vw,32px)}
-.fi-plano .fi-btn{width:100%;margin-top:6px}
-.fi-plano-inclui{display:inline-flex;align-items:center;gap:6px;width:100%;justify-content:center;margin-top:8px;padding:8px 12px;border-radius:999px;background:var(--fi-fundo-alt);font:600 11.5px/1.3 var(--font-core,'Sora',sans-serif)}
-.fi-plano-inclui::before{content:'';width:12px;height:12px;border-radius:50%;border:1.5px solid var(--fi-texto);box-sizing:border-box;flex:none}
-.fi-plano-itens{margin:8px 0 0;padding:0 0 0 18px;font-size:13.5px;line-height:1.5;color:var(--fi-texto)}
-.fi-plano-itens li{margin:0 0 5px;text-wrap:pretty}
-.fi-plano-itens li::marker{color:var(--fi-acento-texto)}
+.fi-plano-preco{margin:8px 0 0;font-weight:800;font-size:clamp(38px,3.4vw,46px);line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.fi-plano-preco span{margin-left:4px;font-size:15px;font-weight:500;letter-spacing:0;color:var(--fi-texto-sec)}
+.fi-plano-preco--texto{font-size:clamp(30px,2.6vw,36px)}
+.fi-plano-franquia{margin:0;font:500 13px/1.4 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-texto-sec)}
+.fi-plano-franquia b{font-weight:700;color:var(--fi-texto)}
+.fi-plano .fi-btn{width:100%;margin-top:10px}
+.fi-plano-itens{width:100%;margin:12px 0 0;padding:16px 0 0;list-style:none;border-top:1px solid var(--fi-borda);display:grid;gap:10px;font-size:14px;line-height:1.45;color:var(--fi-texto)}
+.fi-plano-itens li{position:relative;padding-left:28px;text-wrap:pretty}
+.fi-plano-itens li::before{content:'';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--fi-acento-tint)}
+.fi-plano-itens li::after{content:'';position:absolute;left:6.5px;top:4.5px;width:4px;height:8px;border:solid var(--fi-acento-texto);border-width:0 2px 2px 0;transform:rotate(45deg)}
 .fi-planos-nota{margin:18px 0 0;text-align:center;font-size:12.5px;line-height:1.5;color:var(--fi-texto-sec)}
-.fi-nuvem-titulo{margin:clamp(40px,6vw,64px) 0 16px;text-align:center;font-weight:700;font-size:15px}
-.fi-nuvem{margin:0 auto;padding:0;list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:1000px}
-.fi-nuvem li{padding:11px 16px;border-radius:999px;background:var(--fi-branco);box-shadow:var(--no-shadow-sm);font:600 13.5px/1.2 var(--font-core,'Sora',sans-serif);transition:transform .2s ease,background-color .2s ease}
-.fi-nuvem li:hover{transform:translateY(-2px);background:var(--fi-acento-tint)}
 
-/* ── Simples assim: nuvem de pedaços de interface, cada um flutuando num ritmo ── */
-.fi-bento{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:14px 12px;max-width:980px;margin:clamp(32px,5vw,56px) auto 0}
-.fi-peca{display:inline-flex;align-items:center;gap:10px;padding:16px 22px;border-radius:999px;background:var(--fi-branco);box-shadow:var(--no-shadow-card);font:600 clamp(15px,1.5vw,19px)/1.2 var(--font-core,'Sora',sans-serif);color:var(--fi-texto);animation:fi-flutua 6s ease-in-out infinite}
-.fi-peca:nth-child(2n){animation-duration:7.2s;animation-delay:-1.3s}
-.fi-peca:nth-child(3n){animation-duration:8.1s;animation-delay:-2.6s}
-.fi-peca:nth-child(5n){animation-duration:6.6s;animation-delay:-3.9s}
-.fi-peca b{color:var(--fi-ok)}
-.fi-peca--pessoa{background:var(--fi-acento);color:var(--fi-texto)}
-.fi-peca--tinta{background:var(--fi-texto);color:var(--fi-fundo)}
-.fi-peca--mono{font-family:var(--font-mono,'JetBrains Mono',monospace);font-weight:700;letter-spacing:-.02em}
-.fi-peca--anel{gap:12px;padding:12px 22px 12px 14px;color:var(--fi-acento-texto)}
-.fi-peca--anel svg{width:40px;height:40px;flex:none}
-.fi-peca--anel span{color:var(--fi-texto)}.fi-peca--anel span b{color:var(--fi-texto);font-weight:800}
-.fi-peca-wa{width:30px;height:30px;border-radius:50%;background:var(--no-verde);position:relative;flex:none}
-.fi-peca-wa::after{content:'';position:absolute;inset:9px;border-radius:50%;border:2.5px solid var(--fi-branco);box-sizing:border-box}
-.fi-peca-ponto{width:12px;height:12px;border-radius:50%;background:var(--fi-ok);box-shadow:0 0 0 4px var(--no-verde-tint);flex:none}
-.fi-peca-doc{width:16px;height:20px;border-radius:3px;border:2px solid var(--fi-texto);border-top-right-radius:6px;box-sizing:border-box;flex:none}
-.fi-peca-lock{width:16px;height:14px;border-radius:3px;background:var(--fi-texto);position:relative;margin-top:6px;flex:none}
-.fi-peca-lock::before{content:'';position:absolute;left:3px;top:-7px;width:10px;height:10px;border:2px solid var(--fi-texto);border-bottom:0;border-radius:6px 6px 0 0;box-sizing:border-box}
-.fi-peca-mail{width:20px;height:14px;border-radius:3px;border:2px solid var(--fi-texto);position:relative;box-sizing:border-box;flex:none}
-.fi-peca-mail::after{content:'';position:absolute;left:2px;right:2px;top:1px;height:5px;border:solid var(--fi-texto);border-width:0 0 2px 0;transform:skewY(0);clip-path:polygon(0 0,50% 100%,100% 0)}
-@keyframes fi-flutua{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+/* ── Simples assim: ciclo em círculo (360°). Seis nós no anel; o arco âmbar carrega sem parar do topo até fechar a
+   volta (o fiscal.js desenha o stroke-dasharray) e cada nó acende quando o arco chega nele; o centro abre os detalhes. ── */
+.fi-roda{display:flex;flex-direction:column;align-items:center;margin-top:clamp(36px,5vw,56px)}
+.fi-roda-palco{--tam:min(calc(100vw - 48px),360px);--no:46px;position:relative;width:var(--tam);height:var(--tam);margin:8px 0 26px}
+@media(min-width:760px){.fi-roda-palco{--tam:580px;--no:64px;margin:20px 0 40px}}
+.fi-roda-anel{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.fi-roda-trilho{fill:none;stroke:var(--fi-borda);stroke-width:.9}
+/* setas no meio de cada trecho do anel: o sentido do ciclo (horário) */
+.fi-roda-setas i{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border:solid var(--no-cinza-claro);border-width:2px 2px 0 0;transform:rotate(calc(var(--k) * 60deg + 30deg)) translateY(calc(var(--tam) * -.42)) rotate(45deg)}
+.fi-roda-arco{fill:none;stroke:var(--fi-acento);stroke-width:1.1;stroke-linecap:round;stroke-dasharray:0 360;transform-origin:50px 50px;transform:rotate(-90deg)}
+/* nós no anel: cada um girado k × 60° a partir do topo */
+.fi-roda-no{--ang:calc(var(--k) * 60deg);position:absolute;left:50%;top:50%;z-index:2;width:var(--no);height:var(--no);margin:calc(var(--no) / -2) 0 0 calc(var(--no) / -2);padding:0;border:0;border-radius:50%;background:none;cursor:pointer;transform:rotate(var(--ang)) translateY(calc(var(--tam) * -.42)) rotate(calc(var(--ang) * -1))}
+.fi-roda-no:focus-visible{outline:3px solid var(--fi-acento);outline-offset:4px}
+.fi-roda-icone{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--fi-branco);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-card);color:var(--fi-acento-texto);transition:transform .5s cubic-bezier(.22,1,.36,1),background-color .4s ease,border-color .4s ease,color .4s ease}
+.fi-roda-icone svg{width:44%;height:44%}
+.fi-roda-no:hover .fi-roda-icone{transform:scale(1.06)}
+.fi-roda-no.is-ativo .fi-roda-icone{background:var(--fi-acento);border-color:var(--fi-acento);color:var(--fi-texto);transform:scale(1.2)}
+/* WhatsApp e Gmail ficam com as cores da própria marca; aceso, o nó ganha o anel âmbar */
+.fi-roda-no--marca .fi-roda-icone svg{width:50%;height:50%}
+.fi-roda-no--marca.is-ativo .fi-roda-icone{background:var(--fi-branco);border-color:var(--fi-acento);box-shadow:0 0 0 4px var(--fi-acento),var(--no-shadow-card)}
+.fi-roda-rotulo{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media(min-width:760px){
+  .fi-roda-rotulo{position:absolute;left:50%;top:calc(100% + 12px);width:max-content;max-width:140px;height:auto;overflow:visible;clip:auto;white-space:normal;transform:translateX(-50%);text-align:center;font:600 13.5px/1.25 var(--font-core,'Sora',sans-serif);color:var(--fi-texto-sec);transition:color .4s ease}
+  .fi-roda-no:nth-of-type(1) .fi-roda-rotulo{top:auto;bottom:calc(100% + 12px)}
+  .fi-roda-no:nth-of-type(2) .fi-roda-rotulo,.fi-roda-no:nth-of-type(3) .fi-roda-rotulo{left:calc(100% + 14px);top:50%;transform:translateY(-50%);text-align:left}
+  .fi-roda-no:nth-of-type(5) .fi-roda-rotulo,.fi-roda-no:nth-of-type(6) .fi-roda-rotulo{left:auto;right:calc(100% + 14px);top:50%;transform:translateY(-50%);text-align:right}
+  .fi-roda-no.is-ativo .fi-roda-rotulo{color:var(--fi-texto)}
+}
+/* centro: disco tinta com os detalhes do passo da vez */
+.fi-roda-centro{position:absolute;left:50%;top:50%;display:grid;place-items:center;width:calc(var(--tam) * .84 - var(--no) - 30px);aspect-ratio:1;border-radius:50%;background:var(--fi-texto);color:var(--fi-fundo);box-shadow:var(--no-shadow-lg);transform:translate(-50%,-50%)}
+.fi-roda-det{grid-area:1/1;display:flex;flex-direction:column;align-items:center;gap:6px;width:80%;text-align:center;opacity:0;visibility:hidden;transform:scale(.9);transition:opacity .3s ease,transform .45s cubic-bezier(.22,1,.36,1),visibility 0s linear .45s}
+.fi-roda-det.is-ativo{opacity:1;visibility:visible;transform:none;transition-delay:.18s,.18s,0s}
+.fi-roda-n{font:600 11px/1 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.1em;color:var(--fi-acento)}
+.fi-roda-det h3{margin:0;font-size:17px;line-height:1.2;letter-spacing:-.01em}
+.fi-roda-det p{margin:0;font-size:12.5px;line-height:1.45;color:var(--no-cinza-claro);text-wrap:pretty}
+.fi-roda .fi-passo-visual{display:none}
+@media(min-width:760px){
+  .fi-roda-det{width:72%;gap:8px}
+  .fi-roda-det h3{font-size:22px}
+  .fi-roda-det p{font-size:14px}
+  .fi-roda .fi-passo-visual{display:flex;justify-content:center;margin:8px 0 0}
+  .fi-roda .fi-cv-lista{display:grid;justify-items:start}
+}
 
-/* ── Frase grande com o mascote no meio ── */
-.fi-frase{display:grid;grid-template-columns:1fr;gap:18px;align-items:center;text-align:center}
-@media(min-width:900px){.fi-frase{grid-template-columns:1fr minmax(300px,380px) 1fr;gap:28px;text-align:left}.fi-frase-txt--a{text-align:right}}
-.fi-frase-txt{margin:0;font-weight:800;font-size:clamp(34px,4.6vw,58px);line-height:1.02;letter-spacing:-.03em;text-wrap:balance}
-.fi-frase-fig{margin:0;border-radius:var(--fi-raio-xl);overflow:hidden;aspect-ratio:3/4;background:var(--fi-fundo-alt)}
-.fi-frase-fig img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 20%}
-@media(max-width:899px){.fi-frase-fig{max-width:320px;margin:0 auto}}
+/* pedacinhos animados de cada passo (entram quando o passo abre) */
+.fi-cv-balao{display:inline-block;padding:10px 14px;border-radius:16px 16px 6px 16px;background:var(--fi-acento);color:var(--fi-texto);font-weight:600;font-size:14.5px;line-height:1.35}
+.fi-cv-lista{padding:0;list-style:none;display:grid;gap:8px}
+.fi-cv-lista li{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.35;color:var(--fi-fundo)}
+.fi-cv-lista li::before{content:'';flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--fi-acento);background:radial-gradient(circle, var(--fi-acento) 0 3px, transparent 3.5px);box-sizing:border-box}
+.fi-cv-resumo{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.fi-cv-resumo span{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb, var(--fi-fundo) 10%, transparent);font-weight:600;font-size:14px}
+.fi-cv-resumo small{font:500 10px/1.2 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--no-cinza-claro)}
+.fi-cv-botao{padding:11px 18px;border-radius:999px;background:var(--fi-acento);color:var(--fi-texto);font-weight:700;font-size:14px}
+.fi-cv-arquivos{display:flex;flex-wrap:wrap;gap:8px}
+.fi-cv-arquivos span{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:color-mix(in srgb, var(--fi-fundo) 10%, transparent);font:600 13px/1.2 var(--font-mono,'JetBrains Mono',monospace)}
+.fi-cv-arquivos span::before{content:'';width:11px;height:14px;border-radius:2px;border:2px solid var(--fi-acento);border-top-right-radius:5px;box-sizing:border-box}
+.fi-roda-det.is-ativo .fi-cv-balao,.fi-roda-det.is-ativo .fi-cv-lista li,.fi-roda-det.is-ativo .fi-cv-resumo>*,.fi-roda-det.is-ativo .fi-cv-arquivos span{animation:fi-cv-entra .5s cubic-bezier(.22,1,.36,1) both}
+.fi-roda-det.is-ativo :is(.fi-cv-lista li,.fi-cv-resumo>*,.fi-cv-arquivos span):nth-child(1){animation-delay:.35s}
+.fi-roda-det.is-ativo :is(.fi-cv-lista li,.fi-cv-resumo>*,.fi-cv-arquivos span):nth-child(2){animation-delay:.85s}
+.fi-roda-det.is-ativo :is(.fi-cv-lista li,.fi-cv-resumo>*,.fi-cv-arquivos span):nth-child(3){animation-delay:1.35s}
+.fi-roda-det.is-ativo .fi-cv-balao{animation-delay:.3s}
+.fi-roda-det.is-ativo .fi-cv-botao{animation:fi-cv-entra .5s cubic-bezier(.22,1,.36,1) 1.35s both,fi-cv-pulsa 1.1s ease-in-out 2s 2}
+@keyframes fi-cv-entra{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes fi-cv-pulsa{50%{box-shadow:0 0 0 7px color-mix(in srgb, var(--fi-acento) 30%, transparent)}}
 
-/* ── Módulos: painel fluido (CSS) + card branco, alternando o lado ── */
-.fi-modulos{display:flex;flex-direction:column;gap:clamp(24px,4vw,40px)}
-.fi-mod{display:grid;grid-template-columns:1fr;gap:16px}
-@media(min-width:860px){.fi-mod{grid-template-columns:1fr 1fr;gap:24px}.fi-mod--inv .fi-mod-visual{order:2}}
-.fi-mod-visual{position:relative;min-height:320px;border-radius:var(--fi-raio-xl);overflow:hidden;isolation:isolate}
-@media(min-width:860px){.fi-mod-visual{min-height:460px}}
-/* o fluido em CSS: três manchas grandes desfocadas que giram devagar; cada variante troca a mistura das cores */
-.fi-fluido{background:color-mix(in srgb, var(--fi-acento-claro) 55%, var(--fi-fundo))}
-.fi-fluido::before,.fi-fluido::after{content:'';position:absolute;inset:-30%;z-index:-1;filter:blur(34px);will-change:transform}
-.fi-fluido::before{background:
-  radial-gradient(38% 44% at 30% 35%, var(--fi-acento) 0, transparent 70%),
-  radial-gradient(32% 38% at 75% 25%, var(--no-vermelho-claro) 0, transparent 70%),
-  radial-gradient(44% 44% at 60% 80%, var(--fi-acento) 0, transparent 70%);
-  animation:fi-gira-lento 26s linear infinite}
-.fi-fluido::after{background:
-  radial-gradient(30% 30% at 70% 70%, var(--no-azul-claro) 0, transparent 70%),
-  radial-gradient(28% 30% at 25% 75%, var(--fi-fundo) 0, transparent 70%);
-  opacity:.7;animation:fi-gira-lento 34s linear infinite reverse}
-.fi-fluido--b::before{background:
-  radial-gradient(38% 40% at 70% 30%, var(--fi-acento) 0, transparent 70%),
-  radial-gradient(30% 35% at 25% 70%, var(--no-verde-claro) 0, transparent 70%),
-  radial-gradient(40% 40% at 50% 50%, var(--fi-acento-claro) 0, transparent 70%)}
-.fi-fluido--c::before{background:
-  radial-gradient(38% 40% at 30% 70%, var(--no-vermelho-claro) 0, transparent 70%),
-  radial-gradient(34% 34% at 70% 30%, var(--fi-acento) 0, transparent 70%),
-  radial-gradient(40% 40% at 55% 60%, var(--fi-acento-claro) 0, transparent 70%)}
-.fi-fluido--d::before{background:
-  radial-gradient(36% 40% at 60% 25%, var(--no-azul-claro) 0, transparent 70%),
-  radial-gradient(34% 34% at 30% 65%, var(--fi-acento) 0, transparent 70%),
-  radial-gradient(40% 40% at 70% 75%, var(--fi-acento-claro) 0, transparent 70%)}
-@keyframes fi-gira-lento{to{transform:rotate(360deg)}}
-.fi-notif{position:absolute;left:clamp(16px,4vw,40px);right:clamp(16px,4vw,40px);bottom:clamp(16px,4vw,40px);display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border-radius:22px;background:var(--fi-branco);box-shadow:var(--no-shadow-lg);text-align:left}
-.fi-notif-avatar{flex:none;width:52px;height:52px;display:grid;place-items:center;border-radius:14px;background:var(--fi-texto)}
-.fi-notif-avatar img{width:28px;height:auto;display:block}
-.fi-notif b{display:block;font-size:15px;margin-bottom:2px}
-.fi-notif p{margin:0;font-size:14.5px;line-height:1.45;color:var(--fi-texto)}
-.fi-mod-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;padding:clamp(28px,4vw,48px);border-radius:var(--fi-raio-xl);background:var(--fi-branco);box-shadow:var(--no-shadow-card)}
-.fi-mod-icone{width:72px;height:72px;display:grid;place-items:center;border-radius:50%;background:var(--fi-fundo);border:1px solid var(--fi-borda);color:var(--fi-acento-texto);margin-bottom:8px}
-.fi-mod-icone svg{width:32px;height:32px}
-.fi-mod-card h3{margin:0;font-weight:800;font-size:clamp(26px,3vw,40px);line-height:1.06;letter-spacing:-.03em;text-wrap:balance}
-.fi-mod-card p{margin:0;font-size:clamp(15px,1.4vw,17px);line-height:1.6;color:var(--fi-texto-sec);text-wrap:pretty}
-.fi-mod-card .fi-btn{margin-top:6px}
 
 /* ── FAQ ── */
 .fi-faq-grid{display:grid;grid-template-columns:1fr;gap:24px}
@@ -271,44 +255,33 @@
 .fi-faq details p{margin:0;padding:0 56px 22px 0;font-size:15.5px;line-height:1.6;color:var(--fi-texto-sec)}
 .fi-faq details p a{color:var(--fi-texto);font-weight:600}
 
-/* ── Selos de confiança ── */
-.fi-selos ul{margin:0;padding:0;list-style:none;display:grid;gap:12px;grid-template-columns:1fr}
-@media(min-width:640px){.fi-selos ul{grid-template-columns:repeat(2,1fr)}}
-@media(min-width:1000px){.fi-selos ul{grid-template-columns:repeat(5,1fr)}}
-.fi-selos li{display:flex;flex-direction:column;gap:6px;padding:22px;border-radius:22px;background:var(--fi-branco);box-shadow:var(--no-shadow-card)}
-.fi-selos b{display:inline-flex;align-items:center;gap:8px;font-size:15px}
-.fi-selos b::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--fi-acento)}
-.fi-selos span{font-size:13px;line-height:1.45;color:var(--fi-texto-sec)}
-
 /* ── Entrada por rolagem: cada bloco sobe e aparece; filhos diretos escalonam ── */
 .fi-reveal{opacity:1}
 .js .fi-reveal:not(.is-in){opacity:0;transform:translateY(22px)}
 .js .fi-reveal{transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
-.js .fi-planos.fi-reveal>li,.js .fi-nuvem.fi-reveal>li,.js .fi-bento.fi-reveal>span,.js .fi-selos.fi-reveal li{transition:opacity .6s cubic-bezier(.22,1,.36,1),transform .6s cubic-bezier(.22,1,.36,1);transition-delay:calc(var(--i,0) * 60ms)}
-.js .fi-planos.fi-reveal:not(.is-in)>li,.js .fi-nuvem.fi-reveal:not(.is-in)>li,.js .fi-bento.fi-reveal:not(.is-in)>span,.js .fi-selos.fi-reveal:not(.is-in) li{opacity:0;transform:translateY(18px)}
-.js .fi-bento.fi-reveal:not(.is-in)>span{animation:none}
+.js .fi-planos.fi-reveal>li{transition:opacity .6s cubic-bezier(.22,1,.36,1),transform .6s cubic-bezier(.22,1,.36,1);transition-delay:calc(var(--i,0) * 60ms)}
+.js .fi-planos.fi-reveal:not(.is-in)>li{opacity:0;transform:translateY(18px)}
 
 /* ── Pop-up de cookies: folha inferior no celular, card no canto no desktop; não bloqueia a página ── */
-.fi-cookies{position:fixed;left:0;right:0;bottom:0;z-index:1050;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb, var(--no-osso) 94%, transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-top:1px solid var(--no-borda);box-shadow:var(--no-shadow-lg);font-family:var(--font-core,'Sora',sans-serif);color:var(--no-tinta)}
+.fi-cookies{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:1050;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 14px;border:1px solid var(--no-borda);border-radius:16px;background:var(--no-osso);box-shadow:var(--no-shadow-lg);font-family:var(--font-core,'Sora',sans-serif);color:var(--no-tinta)}
 .fi-cookies[hidden]{display:none}
-.fi-cookies-titulo{margin:0 0 4px;font-size:15px;line-height:1.25;font-weight:700}
-.fi-cookies-desc{margin:0 0 10px;font-size:13px;line-height:1.45;color:var(--no-cinza)}
+.fi-cookies-titulo{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.fi-cookies-desc{flex:1 1 200px;margin:0;font-size:13px;line-height:1.4;color:var(--no-cinza)}
 .fi-cookies-desc a{color:var(--no-tinta);font-weight:600}
-.fi-cookies-botoes{display:flex;gap:8px;flex-wrap:wrap}
-.fi-cookies-botoes .fi-btn{flex:1 1 auto;min-height:42px;padding:9px 16px;font-size:14px}
-@media(min-width:700px){
-  .fi-cookies{left:auto;right:20px;bottom:20px;width:380px;padding:20px 22px;border:1px solid var(--no-borda);border-radius:20px}
-  .fi-cookies-titulo{font-size:17px;margin-bottom:6px}.fi-cookies-desc{font-size:14px;margin-bottom:14px}.fi-cookies-botoes .fi-btn{flex:0 1 auto;min-height:44px}
-}
+.fi-cookies-botoes{display:flex;gap:6px}
+.fi-cookies-botoes .fi-btn{min-height:38px;padding:7px 14px;font-size:13px}
+@media(min-width:700px){.fi-cookies{left:auto;right:20px;bottom:20px;width:440px}}
 
 /* âncoras com a nav flutuante por cima */
-#simulador,#planos,#faq{scroll-margin-top:110px}
+#simulador,#como-funciona,#planos,#faq{scroll-margin-top:110px}
 
 @media(prefers-reduced-motion:reduce){
-  .fi-msg,.fi-carimbo,.fi-entregas li,.fi-progresso li.is-feito i,.fi-chat,.fi-peca,.fi-fluido::before,.fi-fluido::after{animation:none!important;opacity:1!important;transform:none!important}
+  .fi-msg,.fi-carimbo,.fi-entregas li,.fi-progresso li.is-feito i,.fi-chat{animation:none!important;opacity:1!important;transform:none!important}
   .fi-carimbo{transform:rotate(-8deg)!important}
   .fi-progresso li.is-ativo i{animation:none!important;border-top-color:var(--fi-acento)}
   .js .fi-reveal,.js .fi-reveal>*{opacity:1!important;transform:none!important;transition:none!important}
   .fi-chat{scroll-behavior:auto}
-  .fi-btn:hover,.fi-plano:hover,.fi-chip:hover,.fi-nuvem li:hover{transform:none}
+  .fi-roda-det,.fi-roda-icone{transition:none!important}
+  .fi-roda *{animation:none!important}
+  .fi-btn:hover,.fi-plano:hover,.fi-chip:hover{transform:none}
 }

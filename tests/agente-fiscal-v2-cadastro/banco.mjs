@@ -122,6 +122,12 @@ export function funcoesDoBanco(servico) {
         l.tenant_id, l.plano, l.com_teste, l.trial_ends_at, l.customer_id, l.subscription_id, l.status, l.aceite_texto,
       ]),
     marcarPago: async (tenantId) => { await um("select public.fiscal_marcar_pago($1) as r", [tenantId]); },
+    validarCupom: (tenantId, codigo, plano) =>
+      um("select public.fiscal_validar_cupom($1, $2, $3) as r", [tenantId, codigo, plano]),
+    registrarCortesia: (tenantId, plano, codigo, aceite) =>
+      um("select public.fiscal_registrar_cortesia($1, $2, $3, $4) as r", [tenantId, plano, codigo, aceite]),
+    usarCupom: (tenantId, codigo, plano, subscriptionId) =>
+      um("select public.fiscal_usar_cupom($1, $2, $3, $4) as r", [tenantId, codigo, plano, subscriptionId]),
   };
 }
 
@@ -140,7 +146,7 @@ export function brasilApi(mapa) {
   return { fetch, chamadas };
 }
 
-export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO", uf = "SP", cnae = 6201501 } = {}) {
+export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO", uf = "SP", cnae = 6201501, situacao = "ATIVA" } = {}) {
   return {
     cnpj,
     razao_social: `EMPRESA TESTE ${cnpj} LTDA`,
@@ -151,5 +157,6 @@ export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO
     codigo_municipio_ibge: ibge,
     cnae_fiscal: cnae,
     cnae_fiscal_descricao: "Desenvolvimento de programas de computador sob encomenda",
+    descricao_situacao_cadastral: situacao,
   };
 }

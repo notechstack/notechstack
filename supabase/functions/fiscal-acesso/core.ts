@@ -11,6 +11,8 @@
 //   - O código é conferido aqui (hash gravado no envio) antes do GoTrue: vencido, incorreto (5 tentativas)
 //     e esgotado são decididos do lado servidor; na 5ª errada o código é descartado no GoTrue.
 //   - Certo: a sessão vem do POST /auth/v1/verify {type:'email'} do GoTrue.
+// Código fixo da demonstração (FISCAL_CODIGO_FIXO_DEMO): só vale com FISCAL_SITE_URL em localhost, para percorrer
+//   o cadastro com e-mail de teste. Gera um código novo no GoTrue e o confere na hora; nunca roda em produção.
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
 import { emailCodigo, type Email } from "../_shared/fiscal/email.ts";
@@ -62,6 +64,14 @@ function falha(status: number, motivo: string, h: H, extra: Record<string, unkno
 function validade(env: AcessoDeps["env"]): number {
   const n = Number(env("FISCAL_CODIGO_VALIDADE_S"));
   return Number.isInteger(n) && n > 0 ? n : VALIDADE_PADRAO_S;
+}
+
+/** Código fixo da demo, ou null. Exige o site em localhost: em produção a variável sozinha não liga nada. */
+export function codigoFixoDaDemo(env: AcessoDeps["env"]): string | null {
+  const codigo = (env("FISCAL_CODIGO_FIXO_DEMO") || "").trim();
+  const site = (env("FISCAL_SITE_URL") || "").trim();
+  if (!/^\d{6}$/.test(codigo)) return null;
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(site) ? codigo : null;
 }
 
 export async function hashDoCodigo(sal: string, email: string, codigo: string): Promise<string> {
@@ -136,6 +146,25 @@ async function verificar(
 ): Promise<Response> {
   const codigo = typeof bruto === "string" ? bruto.trim() : "";
   if (!/^\d{6}$/.test(codigo)) return falha(400, "codigo_invalido", h);
+
+  if (codigo === codigoFixoDaDemo(deps.env)) {
+    let v: VerificacaoGoTrue;
+    try {
+      v = await deps.verificarNoGoTrue(email, await deps.gerarCodigo(email));
+    } catch {
+      log("fiscal_acesso_gotrue_indisponivel");
+      return falha(503, "indisponivel", h);
+    }
+    if (!v.ok) return falha(422, "codigo_vencido", h);
+    try {
+      await deps.consumir(chaveEmail);
+    } catch {
+      log("fiscal_acesso_consumo_falhou");
+    }
+    log("fiscal_acesso_codigo_fixo_demo");
+    const { access_token, refresh_token, expires_at } = v.sessao;
+    return json(200, { ok: true, access_token, refresh_token, expires_at }, h);
+  }
 
   let c: Conferencia;
   try {

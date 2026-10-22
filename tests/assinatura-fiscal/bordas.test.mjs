@@ -87,12 +87,20 @@ test("sessão, empresa, assinatura existente e plano indisponível param antes d
 });
 
 test("dados do cartão, CPF e plano inválidos → 400 sem chamar ninguém", async () => {
-  for (const extra of [{ card: {} }, { number: "4111" }, { cvv: "1" }, { cpf: "123" }, { cpf: undefined }, { plano: "mensal" }, { card_token: "x" }, { endereco: null }]) {
+  for (const extra of [{ card: {} }, { number: "4111" }, { cvv: "1" }, { cpf: "123" }, { plano: "mensal" }, { card_token: "x" }, { endereco: null }]) {
     const { deps, c } = dubles();
     const r = await processarCheckout({ ...PEDIDO, ...extra }, deps);
     assert.equal(r.http, 400, JSON.stringify(extra));
     assert.equal(c.fetch.length + c.reivindicar.length, 0);
   }
+});
+
+// Lucca, 22/10/2026: o cadastro não pede mais CPF; sem ele, o reteste fica com CNPJ, e-mail e telefone.
+test("sem CPF o checkout segue, e o reteste usa só CNPJ, e-mail e telefone", async () => {
+  const { deps, c } = dubles();
+  const r = await processarCheckout({ ...PEDIDO, cpf: undefined }, deps);
+  assert.equal(r.http, 200, JSON.stringify(r.body));
+  assert.deepEqual(Object.keys(c.reivindicar[0]).sort(), ["cnpj", "email", "phone"]);
 });
 
 test("cliente do Pagar.me é a empresa do contexto, nunca o corpo", async () => {

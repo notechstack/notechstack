@@ -1,6 +1,6 @@
 // Ativação do WhatsApp do dono pelo código que ele mesmo manda (critérios 25 a 28; Landing v2,
 // lote C - rota de ativação e ativação pelo WhatsApp). O código nasce na página (etapa 7) e
-// chega ao agente como `ATIVAR <código>` vindo do número cadastrado; a resposta ao modelo de
+// chega ao agente na mensagem de ativação (código no fim; também `ATIVAR <código>`) vinda do número cadastrado; a resposta ao modelo de
 // reserva (28) também ativa. Ativar = número verificado na conta e no `fiscal_phones` do dono,
 // código consumido e as boas-vindas começando.
 import { randomUUID } from 'node:crypto'
@@ -16,6 +16,22 @@ import { perguntaDeConferencia } from './boas-vindas.js'
 export const ATIVACAO_VALIDADE_MS = 24 * 3600_000
 export const PROPOSITO_ATIVACAO = 'whatsapp_activation'
 const ATIVAR = /^ATIVAR\s+(\d{6})$/i
+// Mensagem legível (Lucca, 22/10/2026): "Quero ativar o nó.fiscal da <empresa> no plano <plano>. Código de ativação:
+// 123456". O código continua sendo a chave; empresa e plano são só para a pessoa (e quem lê a conversa) entender.
+const CODIGO_NA_FRASE = /c[oó]digo\s+de\s+ativa[cç][aã]o\s*:?\s*(\d{6})\b/i
+const NOMES_DOS_PLANOS: Record<string, string> = { inicial: 'Inicial', pro: 'Pro' }
+
+/** Texto que vai pronto no link do WhatsApp. */
+export function mensagemDeAtivacao(razaoSocial: string, plano: string, codigo: string): string {
+  const empresa = razaoSocial.replace(/\s+/g, ' ').trim()
+  return `Quero ativar o nó.fiscal da ${empresa} no plano ${NOMES_DOS_PLANOS[plano] ?? 'Inicial'}. Código de ativação: ${codigo}`
+}
+
+/** O código de 6 dígitos de uma mensagem de ativação (a nova, a antiga `ATIVAR 123456`), ou null. */
+export function codigoDaMensagem(texto: string): string | null {
+  const t = texto.trim()
+  return (ATIVAR.exec(t) ?? CODIGO_NA_FRASE.exec(t))?.[1] ?? null
+}
 
 /** Etapas do site em que ainda não se gera o código (Landing, lote C - rota de ativação). */
 export const ETAPAS_ANTES_DA_ATIVACAO = ['pagamento', 'certificado', 'dados_fiscais'] as const
@@ -27,7 +43,7 @@ export const chaveDaReserva = (tenantId: string) => `boas-vindas:${tenantId}`
 // Rota: gerar o código.
 
 export type ResultadoDoCodigo =
-  | { ok: true; codigo: string; whatsappUrl: string; expiraEm: Date }
+  | { ok: true; codigo: string; mensagem: string; whatsappUrl: string; expiraEm: Date }
   | { ok: false; erro: 'FORBIDDEN' | 'JA_ATIVADO' | 'ONBOARDING_INCOMPLETO' | 'SEM_NUMERO_DO_AGENTE' }
 
 export async function gerarCodigoDeAtivacao(
@@ -35,8 +51,8 @@ export async function gerarCodigoDeAtivacao(
   entrada: { userId: string; tenantId: string },
 ): Promise<ResultadoDoCodigo> {
   const agora = (deps.now ?? (() => new Date()))()
-  const { rows } = await deps.db.query<{ phone_verified_at: Date | null; onboarding_etapa: string }>(
-    `select a.phone_verified_at, t.onboarding_etapa
+  const { rows } = await deps.db.query<{ phone_verified_at: Date | null; onboarding_etapa: string; razao_social: string; plan: string }>(
+    `select a.phone_verified_at, t.onboarding_etapa, t.razao_social, t.plan
        from nofiscal.fiscal_accounts a
        join nofiscal.fiscal_tenants t on t.client_id = a.client_id
       where a.user_id = $1 and t.id = $2 and a.email_verified_at is not null`,
@@ -72,7 +88,8 @@ export async function gerarCodigoDeAtivacao(
       [entrada.tenantId, agora],
     )
   })
-  return { ok: true, codigo, whatsappUrl: `https://wa.me/${numero}?text=ATIVAR%20${codigo}`, expiraEm }
+  const mensagem = mensagemDeAtivacao(dono.razao_social, dono.plan, codigo)
+  return { ok: true, codigo, mensagem, whatsappUrl: `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, expiraEm }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -107,9 +124,9 @@ type Pendente = { id: string; code_hash: string; user_id: string; phone_e164: st
  */
 export async function tratarAtivacao(deps: AtivacaoDeps, msg: MensagemRecebida): Promise<boolean> {
   const texto = msg.tipo === 'text' ? (msg.texto ?? '').trim() : ''
-  const pedido = ATIVAR.exec(texto)
-  if (pedido) {
-    await ativarPeloCodigo(deps, msg.de, pedido[1])
+  const codigo = codigoDaMensagem(texto)
+  if (codigo) {
+    await ativarPeloCodigo(deps, msg.de, codigo)
     return true
   }
   // Critério 28: resposta ao modelo de reserva, de qualquer tipo, vinda do número cadastrado.

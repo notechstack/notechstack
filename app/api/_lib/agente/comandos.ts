@@ -4,7 +4,7 @@
 // função, numa transação desfeita, para o app não repetir a regra do fim do período pago.
 import type { Queryable } from '../db.js'
 import { logEvent } from '../log.js'
-import { ehConfirmar, ehNao, responder, semAcento, type Contexto } from './conversa.js'
+import { ehConfirmar, ehNao, limpa, responder, semAcento, type Contexto } from './conversa.js'
 import { emailNoTexto } from './documentos.js'
 import { dataBr } from './tempo.js'
 
@@ -116,7 +116,8 @@ export async function tratarComando(ctx: Contexto, texto: string): Promise<boole
   if (estado.comando) {
     await gravarComando(db, ctx.tenantId, null, ctx.agora)
     if (estado.comando.tipo === 'cancelar_assinatura') {
-      if (ehConfirmar(texto)) {
+      // "cancelar" aqui é cancelar a assinatura, não desistir (Lucca, 22/10/2026).
+      if (ehConfirmar(texto) || /^(cancelar|cancela|pode cancelar)$/.test(limpa(texto))) {
         await cancelarAssinatura(ctx)
         return true
       }

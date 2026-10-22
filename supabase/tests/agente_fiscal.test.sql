@@ -573,7 +573,7 @@ reset role;
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  16, 'nofiscal tem as 5 tabelas do motor e as 11 do agente (a 11ª é a cota de PDFs da v2, lote D)');
+  18, 'nofiscal tem as 5 tabelas do motor e as 13 do agente (cota de PDFs da v2, lote D; cupons e usos de cupom, 20261025090000)');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)

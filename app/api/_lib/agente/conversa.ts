@@ -25,13 +25,17 @@ import { desmarcar, marcarUmaVez } from './uma-vez.js'
 export const VALIDADE_DO_PEDIDO_MS = 24 * 3600_000
 export const MAX_CANDIDATAS = 5
 export const DESCRICAO_PADRAO = 'Prestação de serviços'
-export const WHATSAPP_COMERCIAL = 'https://wa.me/5511939289413'
+/** Número oficial da Nó (Lucca, 22/10/2026): o dos Nós Agentes, dos disparos agendados e do atendimento. */
+export const NUMERO_OFICIAL_DA_NO = '5511939289413'
+export const WHATSAPP_COMERCIAL = `https://wa.me/${NUMERO_OFICIAL_DA_NO}`
 
 export type MensagemRecebida = {
   /** `messages[].id` da Meta. */
   id: string
-  /** Remetente em E.164. */
+  /** Remetente em E.164, com o nono dígito (`comNonoDigito`): é por ele que o número acha a conta. */
   de: string
+  /** O remetente exatamente como a Meta mandou (pode vir sem o 9); as respostas saem para ele. */
+  enderecoRecebido?: string
   /** `messages[].type`: `text`, `document`, `image`… */
   tipo: string
   texto: string | null
@@ -54,25 +58,35 @@ export type ConversaDeps = {
   now?: () => Date
 }
 
+// Textos revistos no "Roteiro do bot nó.fiscal" (Lucca, 22/10/2026): exemplo da LP (Studio Lima), confirmação
+// que diz o que acontece e pontuação completa.
+export const EXEMPLO_DE_PEDIDO = 'nota pra Studio Lima, 350 reais'
 export const TEXTOS = {
-  emitindo: 'Emitindo…',
-  expirou: 'Esse pedido expirou. Me mande de novo',
-  semPedido: 'Não há pedido aguardando confirmação. Me mande o pedido da nota, por exemplo: nota pra Prontia, 10 reais.',
-  descartado: 'Pedido descartado. Me mande de novo com a correção.',
-  faltaValor: 'Qual é o valor da nota? Me mande o tomador e o valor juntos, por exemplo: nota pra Prontia, 10 reais.',
-  faltaTomador: 'Para quem é a nota? Me mande o tomador e o valor juntos, por exemplo: nota pra Prontia, 10 reais.',
-  faltaTudo: 'Para quem é a nota e qual é o valor? Por exemplo: nota pra Prontia, 10 reais.',
-  ajuda: 'Eu emito e cancelo notas fiscais. Por exemplo: "nota pra Prontia, 10 reais" ou "cancela a nota da Prontia de hoje".',
+  emitindo: 'Emitindo na Sefin. Em instantes mando a nota aqui e no seu e-mail.',
+  expirou: 'Esse pedido expirou. Me mande o pedido de novo.',
+  semPedido: `Não há pedido aguardando confirmação. Me mande o pedido da nota, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
+  descartado: 'Ok, descartei esse pedido. Quando quiser, é só mandar outro.',
+  oQueMuda: 'O que muda? Me mande o cliente ou o valor certo, por exemplo: valor 400 reais. Para desistir da nota, responda *descartar*.',
+  naoEntendiACorrecao:
+    'Não entendi o que muda. Me mande o cliente ou o valor certo, responda *confirmar* para emitir como está ou *descartar* para desistir.',
+  cancelamentoDesistido: 'Ok, nenhuma nota foi cancelada.',
+  faltaValor: `Qual é o valor da nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
+  faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
+  faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
+  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
+  chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
-  soTexto: 'Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: nota pra Prontia, 10 reais.',
+  soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   escolherAntes: 'Antes, me diga o número da nota que você quer cancelar.',
   numeroConfirmado: 'Número confirmado. Você já pode pedir notas por aqui.',
   codigoRecusado: 'Esse código não vale (errado ou vencido). Peça um novo ao dono da conta no site da Nó.',
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
 } as const
 
-const naoAutorizado = (links: Links) =>
-  `Este número não está autorizado a emitir notas pela Nó. Crie sua conta e faça uma simulação no site: ${links.site}`
+// O número do agente é o mesmo do atendimento (Lucca, 22/10/2026): quem não tem conta recebe esta resposta uma vez
+// por dia e, no resto do dia, o bot fica quieto para a equipe conversar pelo WhatsApp Business no mesmo número.
+const recebidoPelaEquipe = (links: Links) =>
+  `Oi! Aqui é a Nó. Recebi sua mensagem e alguém da nossa equipe te responde por aqui. Se você quer emitir notas fiscais pelo WhatsApp, crie sua conta no site: ${links.site}`
 
 const recusaDeCertificado = (links: Links) =>
   `Por segurança, eu não recebo certificado pelo WhatsApp e não guardei o arquivo. Apague a mensagem com o arquivo e envie o certificado A1 na página segura: ${links.certificado}`
@@ -109,7 +123,26 @@ export const limpa = (texto: string) => semAcento(texto).replace(/[.!?\s]+$/g, '
 
 export const ehConfirmar = (texto: string) => /^(confirmar|confirmo|confirma|confirmado|confirmada)$/.test(limpa(texto))
 export const ehSim = (texto: string) => /^(sim|s|pode|pode salvar|salvar|salva|quero|pode substituir|substituir|substitui)$/.test(limpa(texto))
-export const ehNao = (texto: string) => /^(nao|n|corrigir|corrige|cancelar|desistir|deixa|deixa pra la)$/.test(limpa(texto))
+// "cancelar" não é "não" (Lucca, 22/10/2026): na confirmação de cancelamento ele confirma, e no resumo da nota ele
+// desiste dela. Cada etapa lê com a lista certa abaixo.
+export const ehNao = (texto: string) => /^(nao|n|corrigir|corrige|desistir|deixa|deixa pra la)$/.test(limpa(texto))
+/** No resumo da nota: quer mudar algo, sem perder o pedido. */
+export const ehCorrigir = (texto: string) => /^(corrigir|corrige|nao|n|errado|ta errado|esta errado|mudar|alterar)$/.test(limpa(texto))
+/** Desiste do pedido aberto (nota ou cancelamento). */
+export const ehDesistir = (texto: string) => /^(descartar|descarta|desistir|desisto|cancelar|cancela|deixa|deixa pra la|esquece)$/.test(limpa(texto))
+/** Na confirmação de cancelamento de nota: cancelar a nota. */
+export const ehConfirmarCancelamento = (texto: string) =>
+  ehConfirmar(texto) || /^(cancelar|cancela|pode cancelar|sim|s)$/.test(limpa(texto))
+/** Na confirmação de cancelamento de nota: manter a nota. */
+export const ehManterNota = (texto: string) => /^(nao|n|manter|mantem|mantenha|deixa|deixa pra la|desistir|desisto)$/.test(limpa(texto))
+/** Pede uma pessoa da equipe (Lucca, 22/10/2026: quem pede ajuda é atendido pela equipe no mesmo número). */
+export const ehPedidoDeAtendimento = (texto: string) => {
+  const t = limpa(texto)
+  return (
+    /^(ajuda|socorro|help|suporte|atendente|atendimento|humano)$/.test(t) ||
+    /\b(atendente|atendimento humano|preciso de ajuda|quero ajuda|pode me ajudar|falar com (um |uma |o |a )?(atendente|humano|pessoa|alguem|equipe|suporte|voces))\b/.test(t)
+  )
+}
 
 function ehCertificado(arquivo: MensagemRecebida['arquivo']): boolean {
   const nome = semAcento(arquivo?.nome ?? '')
@@ -127,6 +160,8 @@ type Conversa = {
   modelo_id?: string | null
   modelo_nome?: string
   candidatas?: { id: string; numero: string }[]
+  /** Depois de "corrigir": o resumo continua valendo e a próxima mensagem diz o que muda. */
+  corrigindo?: boolean
 }
 
 type Pedido = {
@@ -241,16 +276,28 @@ async function bloqueioDaEmissao(db: Queryable, tenantId: string): Promise<strin
 // ---------------------------------------------------------------------------------------
 // Textos montados.
 
-export function textoDoResumo(tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string): string {
+/** `040101` → `04.01.01`, como na lista nacional. */
+export const formatarCodigoServico = (codigo: string) => (/^\d{6}$/.test(codigo) ? codigo.replace(/^(\d{2})(\d{2})(\d{2})$/, '$1.$2.$3') : codigo)
+
+export const PERGUNTA_DE_EMISSAO = 'Posso emitir? Responda *confirmar* para emitir ou *corrigir* para mudar algo.'
+
+/** `nomeDoServico` = a descrição do código na lista nacional (catálogo), quando há. */
+export function textoDoResumo(tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string, nomeDoServico?: string | null): string {
   return [
     'Resumo da nota:',
     `Tomador: ${tomador.nome}`,
     `${tipoDoDocumento(tomador.documento).toUpperCase()}: ${formatarDocumento(tomador.documento)}`,
-    `Serviço: ${servico.codigo}`,
-    `Descrição: ${servico.descricao}`,
+    `Serviço: ${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
+    `Descrição na nota: ${servico.descricao}`,
     `Valor: ${formatarReais(valor)}`,
-    'Confirma? Responda "confirmar" para emitir ou "corrigir" para descartar.',
+    PERGUNTA_DE_EMISSAO,
   ].join('\n')
+}
+
+/** O resumo com a descrição do código buscada no catálogo (sem catálogo, só o código). */
+async function resumo(ctx: Contexto, tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string): Promise<string> {
+  const nome = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(servico.codigo).catch(() => null) : null
+  return textoDoResumo(tomador, servico, valor, nome)
 }
 
 type Candidata = { id: string; numero: string; nome: string; valor: string | null; emitidaEm: Date }
@@ -264,7 +311,7 @@ const perguntaDeCancelamento = (c: Candidata) =>
     `Tomador: ${c.nome}`,
     `Valor: ${c.valor ? formatarReais(c.valor) : '-'}`,
     `Emitida em: ${dataBr(c.emitidaEm)}`,
-    'Confirma o cancelamento? Responda "confirmar" para cancelar ou "não" para manter a nota.',
+    'Cancelo esta nota? Responda *confirmar* para cancelar ou *manter* para deixar como está.',
   ].join('\n')
 
 // ---------------------------------------------------------------------------------------
@@ -286,8 +333,20 @@ export async function processarMensagem(deps: ConversaDeps, msg: MensagemRecebid
   return { duplicada: false }
 }
 
+/** Respostas a `msg.de` saem para o endereço que a Meta mandou (o número sem o 9, quando veio assim). */
+function noEnderecoRecebido(whatsapp: EnviaWhatsApp, msg: MensagemRecebida): EnviaWhatsApp {
+  const original = msg.enderecoRecebido
+  if (!original || original === msg.de) return whatsapp
+  const para = (destino: string) => (destino === msg.de ? original : destino)
+  return {
+    enviarTexto: (destino, texto) => whatsapp.enviarTexto(para(destino), texto),
+    enviarDocumento: (destino, anexo, legenda) => whatsapp.enviarDocumento(para(destino), anexo, legenda),
+    enviarModelo: (destino, nome, parametros) => whatsapp.enviarModelo(para(destino), nome, parametros),
+  }
+}
+
 async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> {
-  const whatsapp = whatsappComRetentativa(deps.whatsapp)
+  const whatsapp = whatsappComRetentativa(noEnderecoRecebido(deps.whatsapp, msg))
   const links = deps.links ?? linksDoSite()
   const agora = (deps.now ?? (() => new Date()))()
   const fora = { whatsapp, para: msg.de }
@@ -307,7 +366,7 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
 
   const numero = await numeroPodeEmitir(deps.db, msg.de)
   if (!numero) {
-    await numeroSemPermissao(deps, msg, links, fora)
+    await numeroSemPermissao(deps, msg, links, fora, agora)
     return
   }
   if (msg.tipo !== 'text' || !msg.texto?.trim()) {
@@ -327,6 +386,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     enviadas: 0,
   }
   const texto = msg.texto.trim()
+  // Pedido de uma pessoa: a equipe responde no mesmo número; o pedido de nota aberto, se houver, continua valendo.
+  if (ehPedidoDeAtendimento(texto)) {
+    logEvent('agente.atendimento_humano', { message_id: msg.id, tenant_id: ctx.tenantId, origem: 'assinante' })
+    await responder(ctx, TEXTOS.chamouAEquipe)
+    return
+  }
   // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
   if (await tratarComando(ctx, texto)) return
   if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido') {
@@ -352,12 +417,13 @@ async function etapaDoOnboarding(db: Queryable, tenantId: string): Promise<strin
   return rows[0]?.etapa ?? 'concluido'
 }
 
-/** Critério 21, e a confirmação de número autorizado pelo próprio WhatsApp (critério 4). */
+/** Critério 21 (com o repasse à equipe), e a confirmação de número autorizado pelo próprio WhatsApp (critério 4). */
 async function numeroSemPermissao(
   deps: ConversaDeps,
   msg: MensagemRecebida,
   links: Links,
   fora: Pick<Contexto, 'whatsapp' | 'para'>,
+  agora: Date,
 ): Promise<void> {
   const codigo = msg.tipo === 'text' ? msg.texto?.trim() ?? '' : ''
   if (/^\d{6}$/.test(codigo)) {
@@ -381,7 +447,9 @@ async function numeroSemPermissao(
     }
   }
   logEvent('agente.numero_nao_autorizado', { message_id: msg.id })
-  await responder(fora, naoAutorizado(links))
+  if (!(await marcarUmaVez(deps.db, `atendimento:${msg.de}:${diaLocal(agora)}`))) return
+  logEvent('agente.atendimento_humano', { message_id: msg.id, origem: 'sem_conta' })
+  await responder(fora, recebidoPelaEquipe(links))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -401,20 +469,40 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
   switch (pedido.etapa) {
     case 'confirmar':
       if (pedido.status !== 'awaiting_confirmation') return false
+      if (pedido.kind === 'cancelar') {
+        if (ehConfirmarCancelamento(texto)) {
+          ctx.pedidoId = pedido.id
+          await confirmar(ctx, pedido)
+          return true
+        }
+        if (ehManterNota(texto)) {
+          await descartar(ctx, pedido, TEXTOS.cancelamentoDesistido)
+          return true
+        }
+        return false
+      }
       if (ehConfirmar(texto)) {
         ctx.pedidoId = pedido.id
         await confirmar(ctx, pedido)
         return true
       }
-      if (ehNao(texto)) {
+      if (ehDesistir(texto)) {
         await descartar(ctx, pedido)
         return true
       }
+      // "corrigir" mantém o pedido e pergunta o que muda (Lucca, 22/10/2026).
+      if (ehCorrigir(texto)) {
+        ctx.pedidoId = pedido.id
+        await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', { ...pedido.conversa, corrigindo: true }, ctx.agora)
+        await responder(ctx, TEXTOS.oQueMuda)
+        return true
+      }
+      if (pedido.conversa.corrigindo) return corrigirPedido(ctx, pedido, texto)
       return false
 
     case 'dados_tomador':
       if (pedido.status !== 'awaiting_confirmation') return false
-      if (ehNao(texto)) {
+      if (ehNao(texto) || ehDesistir(texto)) {
         await descartar(ctx, pedido)
         return true
       }
@@ -422,8 +510,8 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
 
     case 'escolher_nota':
       if (pedido.status !== 'awaiting_confirmation') return false
-      if (ehNao(texto)) {
-        await descartar(ctx, pedido)
+      if (ehManterNota(texto) || ehDesistir(texto)) {
+        await descartar(ctx, pedido, TEXTOS.cancelamentoDesistido)
         return true
       }
       if (ehConfirmar(texto)) {
@@ -463,14 +551,62 @@ async function expirarPedido(db: Queryable, id: string, agora: Date): Promise<vo
   )
 }
 
-async function descartar(ctx: Contexto, pedido: Pedido): Promise<void> {
+async function descartar(ctx: Contexto, pedido: Pedido, texto: string = TEXTOS.descartado): Promise<void> {
   ctx.pedidoId = pedido.id
   await ctx.deps.db.query(
     `update nofiscal.fiscal_requests set status = 'rejected_by_user', etapa = null, updated_at = $2
       where id = $1 and status = 'awaiting_confirmation'`,
     [pedido.id, ctx.agora],
   )
-  await responder(ctx, TEXTOS.descartado)
+  await responder(ctx, texto)
+}
+
+/**
+ * A mensagem depois de "corrigir": a IA lê cliente e valor. Valor novo → o mesmo pedido com o valor trocado e o
+ * resumo de novo. Cliente novo → este pedido sai e um novo nasce com o cliente novo e o valor (novo ou o de antes).
+ */
+async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
+  ctx.pedidoId = pedido.id
+  let parsed: Parsed
+  let tokens: { entrada: number; saida: number }
+  try {
+    const resultado = await ctx.deps.interprete.interpretar(texto)
+    parsed = validarParsed(resultado.parsed)
+    tokens = {
+      entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
+      saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
+    }
+  } catch (error) {
+    logEvent('agente.interprete_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+    await responder(ctx, TEXTOS.naoEntendi)
+    return true
+  }
+  const atual = pedido.conversa
+  const nomeAtual = (atual.tomador?.nome ?? '').toLowerCase()
+  const outroCliente = Boolean(
+    (parsed.tomador && parsed.tomador.toLowerCase() !== nomeAtual && parsed.tomador.toLowerCase() !== (atual.modelo_nome ?? '').toLowerCase()) ||
+      (parsed.documento && parsed.documento !== atual.tomador?.documento),
+  )
+  if (outroCliente) {
+    await ctx.deps.db.query(
+      `update nofiscal.fiscal_requests set status = 'rejected_by_user', etapa = null, updated_at = $2
+        where id = $1 and status = 'awaiting_confirmation'`,
+      [pedido.id, ctx.agora],
+    )
+    logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'cliente' })
+    ctx.pedidoId = null
+    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null }, tokens)
+    return true
+  }
+  if (parsed.valor && atual.tomador && atual.servico) {
+    const conversa: Conversa = { ...atual, valor: parsed.valor, corrigindo: false }
+    await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
+    logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'valor' })
+    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, atual.servico, parsed.valor))
+    return true
+  }
+  await responder(ctx, TEXTOS.naoEntendiACorrecao)
+  return true
 }
 
 /** "confirmar" sem etapa aberta: pedido vencido (C19) ou nada a confirmar. */
@@ -580,7 +716,7 @@ async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): P
     if (razao) tomador.nome = razao.trim().slice(0, 150)
   }
   await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-  await responder(ctx, textoDoResumo(tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string))
+  await responder(ctx, await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string))
   return true
 }
 
@@ -716,7 +852,12 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
     await responder(ctx, TEXTOS.ajuda)
     return
   }
+  await pedidoDeEmissao(ctx, parsed, tokens)
+}
 
+/** Do pedido já interpretado ao resumo (ou às perguntas que faltam). */
+async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada: number; saida: number }): Promise<void> {
+  const semPedido = () => logEvent('agente.ia_sem_pedido', { tokens_entrada: tokens.entrada, tokens_saida: tokens.saida, intencao: parsed.intencao })
   const bloqueio = await bloqueioDaEmissao(ctx.deps.db, ctx.tenantId)
   if (bloqueio) {
     semPedido()
@@ -742,7 +883,7 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
     const tomador: TomadorDoPedido = { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email }
     const servico: ServicoDoPedido = { codigo: modelo.codigo_servico_nacional, descricao: modelo.descricao }
     await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa: { tomador, servico, valor, modelo_id: modelo.id } })
-    await responder(ctx, textoDoResumo(tomador, servico, valor))
+    await responder(ctx, await resumo(ctx, tomador, servico, valor))
     return
   }
 
@@ -762,8 +903,8 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   await responder(
     ctx,
     parsed.documento
-      ? `É a primeira nota para ${nome}. Me mande o e-mail do tomador.`
-      : `É a primeira nota para ${nome}. Me mande o CPF ou CNPJ e o e-mail do tomador.`,
+      ? `É a primeira nota para ${nome}. Me mande o e-mail de ${nome}.`
+      : `É a primeira nota para ${nome}. Me mande o CPF ou CNPJ e o e-mail de ${nome}.`,
   )
 }
 

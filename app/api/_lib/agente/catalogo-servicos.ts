@@ -26,7 +26,8 @@ export function catalogoDoSite(opcoes: { site: string; fetch?: typeof fetch; now
       const itens = new Map<string, string>()
       for (const item of Array.isArray(corpo.itens) ? corpo.itens : []) {
         const { codigo, descricao } = (item ?? {}) as { codigo?: unknown; descricao?: unknown }
-        if (typeof codigo === 'string' && typeof descricao === 'string') itens.set(codigo, descricao.trim())
+        // Sem o ponto final da lista oficial ("Medicina."): a descrição entra no meio das frases do bot.
+        if (typeof codigo === 'string' && typeof descricao === 'string') itens.set(codigo, descricao.trim().replace(/\.+$/, ''))
       }
       cache = { em: agora(), itens }
       return itens

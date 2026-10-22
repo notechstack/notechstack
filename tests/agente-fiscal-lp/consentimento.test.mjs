@@ -40,3 +40,17 @@ test('consentimento padrão negado e escolha gravada', () => {
   assert.ok(todos(consent(r2, 'default')[0], 'denied'));
   assert.equal(r2.el('fi-cookies').hidden, true, 'a recusa foi gravada');
 });
+
+// Lucca, 22/10/2026: funil de compra (agentes/fiscal/medicao.js). A LP mede a visita; o Pixel só com a medição permitida.
+test('funil: a LP mede a visita e a escolha de plano', () => {
+  const p = abrirPagina();
+  const eventos = () => p.dataLayer().filter((e) => e && typeof e.event === 'string').map((e) => e.event);
+  assert.ok(eventos().includes('nofiscal_view_content'), eventos().join(', '));
+  const id = p.ctx.noFiscalMedicao.planoEscolhido('pro', 'planos');
+  const escolha = p.dataLayer().find((e) => e && e.event === 'nofiscal_plano_escolhido');
+  assert.equal(escolha.event_id, id);
+  assert.equal(escolha.plano, 'pro');
+  assert.equal(escolha.valor, 129);
+  assert.equal(escolha.moeda, 'BRL');
+  assert.equal(p.ctx.noFiscalMedicao.paraServidor().consent, 'denied');
+});

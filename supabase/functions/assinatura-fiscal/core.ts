@@ -6,6 +6,7 @@
 // O banco é alcançado só pelas quatro funções public.fiscal_* do lote A (deps).
 
 import { hashesDoTeste, normalizarTelefone } from "./teste-gratis.ts";
+import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao } from "./medicao.ts";
 
 export type CodigoPlano = "inicial" | "pro";
 export type CodigoPlanoPagarme = CodigoPlano | "inicial_sem_teste" | "pro_sem_teste";
@@ -136,7 +137,8 @@ export type Endereco = {
 
 export type Pedido = {
   plano: CodigoPlano;
-  cpf: string;
+  /** Opcional desde 22/10/2026: o cadastro não pede mais o CPF (Lucca); quando vem, entra no bloqueio de reteste. */
+  cpf?: string;
   card_token: string;
   endereco: Endereco;
   aceite_texto: string;
@@ -165,6 +167,20 @@ export type LinhaAssinatura = {
   aceite_texto: string;
 };
 
+/** O que public.fiscal_validar_cupom / fiscal_registrar_cortesia / fiscal_usar_cupom devolvem. */
+export type CupomBanco = {
+  ok: boolean;
+  motivo?: string;
+  codigo?: string;
+  descricao?: string | null;
+  tipo?: "percentual" | "valor";
+  valor?: number;
+  cortesia?: boolean;
+  ciclos?: number | null;
+  id?: string;
+  status?: string;
+};
+
 export type Deps = {
   env: Record<string, string | undefined>;
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -175,8 +191,16 @@ export type Deps = {
   registrar: (linha: LinhaAssinatura) => Promise<{ id: string; status: string }>;
   /** Fluxo v2: grava pago_em e passa onboarding_etapa a 'certificado' depois do registro. */
   marcarPago?: (tenantId: string) => Promise<void>;
+  /** Cupons (migração 20261025090000). */
+  validarCupom?: (tenantId: string, codigo: string, plano: CodigoPlano) => Promise<CupomBanco>;
+  registrarCortesia?: (tenantId: string, plano: CodigoPlano, codigo: string, aceite: string) => Promise<CupomBanco>;
+  usarCupom?: (tenantId: string, codigo: string, plano: CodigoPlano, subscriptionId: string) => Promise<CupomBanco>;
   agora?: () => Date;
   log?: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void;
+  /** Meta CAPI da compra (medicao.ts); ausente sem META_ACCESS_TOKEN. Devolve o resumo para o log. */
+  enviarMeta?: (corpo: Record<string, unknown>) => Promise<string>;
+  /** IP e user agent de quem assinou, só para a CAPI com consentimento. */
+  cliente?: ClienteHttp;
 };
 
 export type Resultado = { http: number; body: Record<string, unknown> };
@@ -231,7 +255,7 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
   if (plano !== "inicial" && plano !== "pro") return invalido("Escolha um dos planos: Inicial ou Pro.");
 
   const cpf = typeof b.cpf === "string" ? b.cpf.replace(/\D/g, "") : "";
-  if (cpf.length !== 11) return invalido("Informe o seu CPF (11 números).");
+  if (cpf !== "" && cpf.length !== 11) return invalido("Confira o CPF (11 números).");
 
   const endereco = lerEndereco(b.endereco);
   if (!endereco) return invalido("Confira o endereço de cobrança do cartão.");
@@ -248,7 +272,10 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
     return invalido("Não conseguimos registrar o seu aceite. Recarregue a página e tente de novo.");
   }
 
-  return { ok: true, pedido: { plano, cpf, card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL } };
+  return {
+    ok: true,
+    pedido: { plano, ...(cpf ? { cpf } : {}), card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL },
+  };
 }
 
 export function enderecoPagarme(e: Endereco): Record<string, string> {
@@ -271,10 +298,17 @@ function telefonePagarme(e164: string): Record<string, unknown> | null {
 
 // Corpo de POST /subscriptions (docs.pagar.me, "Criar assinatura de plano"). Sem start_at: o teste vem
 // do plano. O cliente é a empresa do contexto, nunca dados do corpo do pedido.
-export function corpoAssinatura(pedido: Pedido, contexto: Contexto, planId: string, comTeste: boolean) {
+export function corpoAssinatura(
+  pedido: Pedido,
+  contexto: Contexto,
+  planId: string,
+  comTeste: boolean,
+  cupom: CupomValido | null = null,
+) {
   const phones = telefonePagarme(contexto.phone_e164);
   return {
     plan_id: planId,
+    ...(cupom ? { discounts: [descontoPagarme(cupom)] } : {}),
     payment_method: "credit_card",
     card_token: pedido.card_token,
     card: { billing_address: enderecoPagarme(pedido.endereco) },
@@ -286,8 +320,135 @@ export function corpoAssinatura(pedido: Pedido, contexto: Contexto, planId: stri
       ...(phones ? { phones } : {}),
       address: enderecoPagarme(pedido.endereco),
     },
-    metadata: { origem: "agente-fiscal", tenant_id: contexto.tenant_id, plano: pedido.plano, com_teste: comTeste },
+    metadata: {
+      origem: "agente-fiscal",
+      tenant_id: contexto.tenant_id,
+      plano: pedido.plano,
+      com_teste: comTeste,
+      ...(cupom ? { cupom: cupom.codigo } : {}),
+    },
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cupons. A prévia (validar_cupom) e o checkout usam o mesmo cálculo; o checkout revalida no banco.
+
+export type CupomValido = {
+  codigo: string;
+  descricao: string | null;
+  tipo: "percentual" | "valor";
+  valor: number;
+  cortesia: boolean;
+  ciclos: number | null;
+};
+
+const MSG_CUPOM: Record<string, string> = {
+  CUPOM_INVALIDO: "Cupom não encontrado. Confira o código.",
+  CUPOM_VENCIDO: "Este cupom venceu.",
+  CUPOM_ESGOTADO: "Este cupom já atingiu o limite de usos.",
+  CUPOM_PLANO: "Este cupom não vale para o plano escolhido.",
+  CUPOM_JA_USADO: "Sua empresa já usou este cupom.",
+  CUPOM_NAO_CORTESIA: "Este cupom não dispensa o pagamento. Informe o cartão.",
+};
+
+/** Código normalizado, null quando não veio, false quando veio fora do formato. */
+export function lerCodigoCupom(valor: unknown): string | null | false {
+  if (valor === undefined || valor === null || valor === "") return null;
+  if (typeof valor !== "string") return false;
+  const codigo = valor.trim().toUpperCase();
+  if (codigo === "") return null;
+  return /^[A-Z0-9_-]{3,40}$/.test(codigo) ? codigo : false;
+}
+
+/** Mensalidade com o desconto, em centavos (o que a página mostra e o Pagar.me cobra). */
+export function valorComDesconto(centavos: number, cupom: CupomValido): number {
+  if (cupom.tipo === "percentual") return Math.max(0, Math.round(centavos * (100 - cupom.valor) / 100));
+  return Math.max(0, centavos - cupom.valor);
+}
+
+/** Item de discounts da assinatura (docs.pagar.me, "Criar assinatura de plano"). */
+export function descontoPagarme(cupom: CupomValido): Record<string, unknown> {
+  return {
+    value: cupom.valor,
+    discount_type: cupom.tipo === "percentual" ? "percentage" : "flat",
+    ...(cupom.ciclos ? { cycles: cupom.ciclos } : {}),
+  };
+}
+
+function erroCupom(motivo: string): Resultado {
+  const codigo = motivo in MSG_CUPOM ? motivo : "CUPOM_INVALIDO";
+  return erro(422, codigo, MSG_CUPOM[codigo]);
+}
+
+/** Lê o cupom no banco e confere contra o preço do plano. Valor fixo que zera a mensalidade não vale: cortesia é só 100%. */
+async function avaliarCupom(
+  deps: Deps,
+  tenantId: string,
+  codigo: string,
+  plano: CodigoPlano,
+): Promise<{ ok: true; cupom: CupomValido } | { ok: false; resultado: Resultado }> {
+  if (!deps.validarCupom) return { ok: false, resultado: erroCupom("CUPOM_INVALIDO") };
+  const r = await deps.validarCupom(tenantId, codigo, plano);
+  if (!r || !r.ok || (r.tipo !== "percentual" && r.tipo !== "valor") || typeof r.valor !== "number") {
+    return { ok: false, resultado: erroCupom(r?.motivo || "CUPOM_INVALIDO") };
+  }
+  const cupom: CupomValido = {
+    codigo: r.codigo || codigo,
+    descricao: r.descricao ?? null,
+    tipo: r.tipo,
+    valor: r.valor,
+    cortesia: Boolean(r.cortesia),
+    ciclos: typeof r.ciclos === "number" ? r.ciclos : null,
+  };
+  if (!cupom.cortesia && valorComDesconto(PLANOS_PAGARME[plano].centavos, cupom) < 100) {
+    return { ok: false, resultado: erroCupom("CUPOM_PLANO") };
+  }
+  return { ok: true, cupom };
+}
+
+function cupomPublico(cupom: CupomValido, plano: CodigoPlano): Record<string, unknown> {
+  const centavos = PLANOS_PAGARME[plano].centavos;
+  return {
+    codigo: cupom.codigo,
+    descricao: cupom.descricao,
+    tipo: cupom.tipo,
+    valor: cupom.valor,
+    cortesia: cupom.cortesia,
+    ciclos: cupom.ciclos,
+    valor_centavos: centavos,
+    valor_centavos_com_desconto: cupom.cortesia ? 0 : valorComDesconto(centavos, cupom),
+  };
+}
+
+/** POST assinatura-fiscal {acao:"validar_cupom", codigo, plano}: prévia da etapa de pagamento. Não consome o cupom. */
+export async function processarValidarCupom(body: unknown, deps: Deps): Promise<Resultado> {
+  const b = obj(body);
+  const userId = await deps.sessao();
+  if (!userId) return erro(401, "SEM_SESSAO", "Entre na sua conta para usar um cupom.");
+  const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
+  if (!plano) return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
+  const codigo = lerCodigoCupom(b.codigo);
+  if (!codigo) return erroCupom("CUPOM_INVALIDO");
+  const contexto = await deps.contexto(userId);
+  if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da empresa antes de usar um cupom.");
+  const a = await avaliarCupom(deps, contexto.tenant_id, codigo, plano);
+  if (!a.ok) return a.resultado;
+  return { http: 200, body: { ok: true, cupom: cupomPublico(a.cupom, plano) } };
+}
+
+/** Pedido de cortesia: só plano e aceite; cartão e endereço não entram. */
+function validarPedidoCortesia(b: Record<string, unknown>): { ok: true; plano: CodigoPlano } | { ok: false; mensagem: string } {
+  if (CAMPOS_CARTAO.some((campo) => tem(b, campo))) {
+    return invalido("Por segurança, os dados do cartão não passam por aqui. Recarregue a página e tente de novo.");
+  }
+  const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
+  if (!plano) return invalido("Escolha um dos planos: Inicial ou Pro.");
+  if (b.termos_aceite !== true) return invalido("Para assinar, aceite os Termos de Uso.");
+  const recebido = typeof b.aceite_texto === "string" ? normalizarTexto(b.aceite_texto) : "";
+  if (recebido !== TEXTO_ACEITE_FISCAL) {
+    return invalido("Não conseguimos registrar o seu aceite. Recarregue a página e tente de novo.");
+  }
+  return { ok: true, plano };
 }
 
 const MSG_PAGARME =
@@ -297,6 +458,34 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   const log = deps.log ?? (() => {});
   const agora = deps.agora ?? (() => new Date());
   const config = lerConfig(deps.env);
+  const b = obj(body);
+
+  // Cupom: lido e revalidado aqui (a prévia da página não vale como prova). A cortesia termina neste
+  // bloco: não é venda (vale com a venda fechada) e não passa pelo Pagar.me.
+  const codigoCupom = lerCodigoCupom(b.cupom);
+  if (codigoCupom === false) return erroCupom("CUPOM_INVALIDO");
+  let cupom: CupomValido | null = null;
+  let sessaoLida: string | null | undefined;
+  const sessao = async () => (sessaoLida === undefined ? (sessaoLida = await deps.sessao()) : sessaoLida);
+  if (codigoCupom) {
+    if (config.ambiente === "producao" && TEXTO_ACEITE_PROVISORIO) {
+      log("error", "assinatura_fiscal_termos_provisorios", {});
+      return erro(500, "TERMOS_PROVISORIOS", "A assinatura ainda não está aberta. Nada foi cobrado; volte em breve.");
+    }
+    const userId = await sessao();
+    if (!userId) return erro(401, "SEM_SESSAO", "Entre na sua conta para assinar.");
+    const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
+    if (!plano) return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
+    const contexto = await deps.contexto(userId);
+    if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da conta e da empresa antes de assinar.");
+    if (contexto.assinatura && contexto.assinatura.status !== "cancelada") {
+      return erro(409, "ASSINATURA_EXISTENTE", "Esta empresa já tem uma assinatura.");
+    }
+    const a = await avaliarCupom(deps, contexto.tenant_id, codigoCupom, plano);
+    if (!a.ok) return a.resultado;
+    cupom = a.cupom;
+    if (cupom.cortesia) return await processarCortesia(b, contexto, cupom, deps, log);
+  }
 
   if (!config.vendaAberta) return erro(403, "VENDA_FECHADA", "A assinatura ainda não está aberta. Volte em breve.");
   if (!config.secretKey || !config.sal) {
@@ -312,7 +501,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     return erro(500, "TERMOS_PROVISORIOS", "A assinatura ainda não está aberta. Nada foi cobrado; volte em breve.");
   }
 
-  const userId = await deps.sessao();
+  const userId = await sessao();
   if (!userId) return erro(401, "SEM_SESSAO", "Entre na sua conta para assinar.");
 
   const validacao = validarPedido(body);
@@ -361,7 +550,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     const res = await deps.fetch(`${config.apiUrl}/subscriptions`, {
       method: "POST",
       headers,
-      body: JSON.stringify(corpoAssinatura(pedido, contexto, planId, comTeste)),
+      body: JSON.stringify(corpoAssinatura(pedido, contexto, planId, comTeste, cupom)),
     });
     if (!res.ok) {
       // Só o status HTTP; o corpo da resposta pode ter dado pessoal.
@@ -415,6 +604,16 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     );
   }
 
+  if (cupom && deps.usarCupom) {
+    // O desconto já está no Pagar.me; uma falha aqui só fica no log (o uso deixa de contar).
+    try {
+      const uso = await deps.usarCupom(contexto.tenant_id, cupom.codigo, pedido.plano, subId);
+      if (!uso?.ok) log("warn", "assinatura_fiscal_cupom_nao_registrado", { subscription_id: subId, motivo: uso?.motivo });
+    } catch {
+      log("error", "assinatura_fiscal_cupom_nao_registrado", { subscription_id: subId });
+    }
+  }
+
   const status = registro?.status || linha.status;
   log("info", "assinatura_fiscal_checkout", { plano: pedido.plano, com_teste: comTeste, subscription_id: subId, status });
   // A reconciliação pode trazer um aviso que chegou antes do registro.
@@ -432,6 +631,25 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       log("error", "assinatura_fiscal_marca_pago_falhou", { subscription_id: subId });
     }
   }
+  // Medição (medicao.ts): o navegador repete este evento com o mesmo event_id; com consentimento, a CAPI também.
+  const centavos = PLANOS_PAGARME[pedido.plano].centavos;
+  const compra = eventoDaCompra(registro.id, comTeste, cupom ? valorComDesconto(centavos, cupom) : centavos);
+  const medicao = lerMedicao(b.medicao);
+  if (medicao.consent === "granted" && deps.enviarMeta) {
+    try {
+      const corpo = await corpoDaCompraMeta(
+        compra,
+        { email: contexto.email, telefone: contexto.phone_e164, tenantId: contexto.tenant_id },
+        medicao,
+        deps.cliente ?? { ip: null, ua: null },
+        agora(),
+        deps.env.META_TEST_EVENT_CODE || undefined,
+      );
+      log("info", "assinatura_fiscal_capi", { evento: compra.evento, resultado: await deps.enviarMeta(corpo) });
+    } catch {
+      log("error", "assinatura_fiscal_capi", { evento: compra.evento, resultado: "erro_montagem" });
+    }
+  }
   return {
     http: 200,
     body: {
@@ -439,8 +657,48 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       status,
       assinatura_id: registro.id,
       com_teste: comTeste,
+      medicao: compra,
       trial_ends_at: trialEndsAt,
       ...(comTeste ? {} : { aviso: MSG_TESTE_JA_USADO }),
+      ...(cupom ? { cupom: cupomPublico(cupom, pedido.plano) } : {}),
+    },
+  };
+}
+
+/** Cortesia (cupom de 100%): sem Pagar.me, sem cartão e sem reivindicar o teste grátis. */
+async function processarCortesia(
+  b: Record<string, unknown>,
+  contexto: Contexto,
+  cupom: CupomValido,
+  deps: Deps,
+  log: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void,
+): Promise<Resultado> {
+  const v = validarPedidoCortesia(b);
+  if (!v.ok) return erro(400, "DADOS_INVALIDOS", v.mensagem);
+  if (!deps.registrarCortesia) return erroCupom("CUPOM_INVALIDO");
+  const r = await deps.registrarCortesia(contexto.tenant_id, v.plano, cupom.codigo, TEXTO_ACEITE_FISCAL);
+  if (!r || !r.ok) {
+    if (r?.motivo === "ASSINATURA_EXISTENTE") return erro(409, "ASSINATURA_EXISTENTE", "Esta empresa já tem uma assinatura.");
+    return erroCupom(r?.motivo || "CUPOM_INVALIDO");
+  }
+  log("info", "assinatura_fiscal_cortesia", { plano: v.plano, cupom: cupom.codigo });
+  if (deps.marcarPago) {
+    try {
+      await deps.marcarPago(contexto.tenant_id);
+    } catch {
+      log("error", "assinatura_fiscal_marca_pago_falhou", { cortesia: true });
+    }
+  }
+  return {
+    http: 200,
+    body: {
+      ok: true,
+      status: "paga",
+      assinatura_id: r.id,
+      cortesia: true,
+      com_teste: false,
+      trial_ends_at: null,
+      cupom: cupomPublico(cupom, v.plano),
     },
   };
 }

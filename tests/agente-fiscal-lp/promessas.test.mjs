@@ -51,36 +51,39 @@ test('a renovação do A1 nunca é pedida "por aqui"', () => {
   }
 });
 
-test('planos da decisão de 20/10', () => {
+// Decisão de Lucca em 22/10/2026: sem o cartão "Teste"; 5 primeiras emissões grátis no lugar dos 7 dias; o
+// sob medida se divide em Escritório (mais de 100 notas no próprio negócio) e Agência (vários CNPJs).
+test('planos da decisão de 22/10', () => {
   const secao = /<section\b[^>]*id="planos"[^>]*>([\s\S]*?)<\/section>/.exec(HTML);
   assert.ok(secao, 'seção #planos');
   const cartoes = itens(secao[1], 'fi-planos').map((html) => ({
     html, nome: texto((/<h3\b[^>]*>([^<]*)/.exec(html) || [])[1] || ''), txt: texto(html),
     acoes: [...html.matchAll(/<(a|button)\b([^>]*)>([\s\S]*?)<\/\1>/g)].map((m) => ({ rotulo: texto(m[3]), href: (/href="([^"]*)"/.exec(m[2]) || [])[1] }))
   }));
-  assert.deepEqual(cartoes.map((c) => c.nome), ['Teste', 'Inicial', 'Pro', 'Escritório']);
-  const [teste, inicial, pro, escritorio] = cartoes;
-
-  assert.match(teste.txt, /R\$ 0(?![\d,])/);
-  assert.match(teste.txt, /3 simulações/);
+  assert.deepEqual(cartoes.map((c) => c.nome), ['Inicial', 'Pro', 'Escritório', 'Agência']);
+  const [inicial, pro, escritorio, agencia] = cartoes;
 
   assert.match(inicial.txt, /R\$ 49(?![\d,])/);
   assert.match(inicial.txt, /até 20 notas/i);
-  // Critério 51 da tarefa agente-fiscal-v2 (21/10): o botão "Assinatura em breve" virou a entrada do cadastro no site.
-  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Testar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=inicial'), 'Inicial: "Testar 7 dias grátis"');
+  // Critério 51 da tarefa agente-fiscal-v2: o botão leva ao cadastro no site.
+  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Começar com 5 notas grátis' && a.href === '/agentes/fiscal/comecar/?plano=inicial'), 'Inicial: "Começar com 5 notas grátis"');
 
   assert.match(pro.txt, /R\$ 129(?![\d,])/);
   assert.match(pro.txt, /até 100 notas/i);
   assert.match(pro.txt, /cópia[^.]*cliente[^.]*contador/i);
-  assert.match(pro.txt, /resumo mensal/i);
-  assert.ok(pro.acoes.some((a) => a.rotulo === 'Testar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=pro'), 'Pro: "Testar 7 dias grátis"');
+  assert.match(pro.txt, /resumo das notas/i);
+  assert.ok(pro.acoes.some((a) => a.rotulo === 'Começar com 5 notas grátis' && a.href === '/agentes/fiscal/comecar/?plano=pro'), 'Pro: "Começar com 5 notas grátis"');
 
-  assert.match(escritorio.txt, /sob medida/i);
-  // Critério 51 da tarefa agente-fiscal-v2: o sob medida vai direto ao WhatsApp comercial (antes, /contato/).
-  assert.ok(escritorio.acoes.some((a) => a.href && a.href.startsWith('https://wa.me/5511939289413?text=')), 'Escritório: link para o WhatsApp comercial');
+  for (const c of [escritorio, agencia]) {
+    assert.match(c.txt, /sob medida/i);
+    assert.ok(c.acoes.some((a) => a.rotulo === 'Falar com a Nó' && a.href && a.href.startsWith('https://wa.me/5511939289413?text=')), `${c.nome}: WhatsApp comercial`);
+  }
+  assert.match(escritorio.txt, /mais de 100 notas/i);
+  assert.match(agencia.txt, /certificado A1 por cliente/i);
 
   for (const c of [inicial, pro]) assert.ok(!c.acoes.some((a) => a.href && /pagar|checkout|app\./i.test(a.href)), `${c.nome}: sem link de assinatura`);
-  assert.match(texto(secao[1]), /7 dias grátis/);
+  assert.match(texto(secao[1]), /5 emissões são gratuitas/);
+  assert.doesNotMatch(texto(secao[1]), /7 dias/);
 });
 
 test('FAQ e JSON-LD coerentes', () => {

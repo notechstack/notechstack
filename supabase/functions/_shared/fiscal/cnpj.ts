@@ -1,8 +1,11 @@
 // CNPJ do cadastro (critérios 2 e 3): dígitos verificadores, consulta na BrasilAPI
-// (`GET <CNPJ_API_URL>/api/cnpj/v1/<cnpj>`, padrão oficial https://brasilapi.com.br) e o município
-// no padrão nacional. Sem Deno.*: roda também no node --test.
+// (`GET <CNPJ_API_URL>/api/cnpj/v1/<cnpj>`, padrão oficial https://brasilapi.com.br, que espelha os
+// dados abertos da Receita Federal), situação cadastral ativa e o município no padrão nacional.
+// Sem Deno.*: roda também no node --test.
 
 export const CNPJ_API_PADRAO = "https://brasilapi.com.br";
+// A BrasilAPI responde 403 ao user-agent "node" e 429 sem user-agent (22/10/2026): o nosso vai sempre explícito.
+export const USER_AGENT = "no-fiscal/1.0 (+https://www.notechstack.com.br)";
 const TEMPO_MS = 8000;
 
 export function soDigitos(v: unknown): string {
@@ -33,7 +36,8 @@ export type DadosCnpj = {
 
 export type Consulta =
   | { ok: true; dados: DadosCnpj }
-  | { ok: false; motivo: "nao_encontrado" | "indisponivel" };
+  | { ok: false; motivo: "nao_encontrado" | "indisponivel" }
+  | { ok: false; motivo: "inativo"; situacao: string };
 
 function texto(v: unknown): string {
   return typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
@@ -56,7 +60,10 @@ export async function consultarCnpj(
   const controle = new AbortController();
   const relogio = setTimeout(() => controle.abort(), TEMPO_MS);
   try {
-    resp = await f(`${base}/api/cnpj/v1/${cnpj}`, { headers: { Accept: "application/json" }, signal: controle.signal });
+    resp = await f(`${base}/api/cnpj/v1/${cnpj}`, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      signal: controle.signal,
+    });
   } catch {
     return { ok: false, motivo: "indisponivel" };
   } finally {
@@ -69,6 +76,10 @@ export async function consultarCnpj(
   const ibge = codigo(b.codigo_municipio_ibge, 7);
   const razao = texto(b.razao_social);
   if (!ibge || !razao) return { ok: false, motivo: "indisponivel" };
+  // Só empresa ATIVA na Receita emite (pedido de Lucca, 22/10/2026). Sem o campo, a consulta não confirma nada.
+  const situacao = texto(b.descricao_situacao_cadastral).toUpperCase();
+  if (!situacao) return { ok: false, motivo: "indisponivel" };
+  if (situacao !== "ATIVA") return { ok: false, motivo: "inativo", situacao };
   return {
     ok: true,
     dados: {

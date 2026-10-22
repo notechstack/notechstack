@@ -36,6 +36,50 @@
     reveals.forEach(function (el) { obs.observe(el); });
   } else { reveals.forEach(function (el) { el.classList.add('is-in'); }); }
 
+  /* Ciclo "Simples assim" (círculo de 360°): o arco âmbar carrega sem parar do topo até fechar a volta, num ritmo
+     constante; cada nó acende quando o arco chega nele, e o centro mostra os detalhes. Só roda com a seção na tela.
+     Passar o mouse pausa; clicar num nó leva o arco até ele. Com movimento reduzido não avança sozinho. */
+  var ciclo = document.getElementById('fi-ciclo');
+  var nos = ciclo ? Array.prototype.slice.call(ciclo.querySelectorAll('.fi-roda-no')) : [];
+  if (nos.length) {
+    var PASSO_MS = 4200, VOLTA_MS = PASSO_MS * nos.length;
+    var arco = ciclo.querySelector('.fi-roda-arco');
+    var atual = -1, progresso = 0, ultimo = null, quadro = null, emTela = false, sobre = false;
+    var mostrar = function (i) {
+      if (i === atual) return;
+      nos.forEach(function (no, k) {
+        no.classList.toggle('is-ativo', k === i);
+        no.setAttribute('aria-pressed', k === i ? 'true' : 'false');
+        var det = document.getElementById(no.getAttribute('aria-controls'));
+        if (det) det.classList.toggle('is-ativo', k === i);
+      });
+      atual = i;
+    };
+    var desenhar = function () {
+      if (arco) arco.style.strokeDasharray = (progresso / VOLTA_MS * 360).toFixed(2) + ' 360';
+      mostrar(Math.min(nos.length - 1, Math.floor(progresso / PASSO_MS)));
+    };
+    var passo = function (t) {
+      if (ultimo !== null) progresso = (progresso + Math.min(t - ultimo, 100)) % VOLTA_MS;
+      ultimo = t;
+      desenhar();
+      quadro = requestAnimationFrame(passo);
+    };
+    var atualizar = function () {
+      var rodar = !reduzido && emTela && !sobre && !document.hidden;
+      if (rodar && quadro === null) { ultimo = null; quadro = requestAnimationFrame(passo); }
+      if (!rodar && quadro !== null) { cancelAnimationFrame(quadro); quadro = null; }
+    };
+    nos.forEach(function (no, k) { no.addEventListener('click', function () { progresso = k * PASSO_MS; desenhar(); }); });
+    ciclo.addEventListener('mouseenter', function () { sobre = true; atualizar(); });
+    ciclo.addEventListener('mouseleave', function () { sobre = false; atualizar(); });
+    document.addEventListener('visibilitychange', atualizar);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (itens) { emTela = itens[itens.length - 1].isIntersecting; atualizar(); }, { threshold: 0.35 }).observe(ciclo);
+    } else { emTela = true; atualizar(); }
+    desenhar();
+  }
+
   /* ---------- utilidades ---------- */
   function dl(obj) { window.dataLayer = window.dataLayer || []; window.dataLayer.push(obj); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -99,6 +143,13 @@
   if (btnDeny) btnDeny.addEventListener('click', function () { escolher('denied'); });
   Array.prototype.forEach.call(btnsPrefs, function (b) { b.addEventListener('click', function () { abrirCookies(true); }); });
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && cookies && !cookies.hidden) { ev.preventDefault(); fecharCookies(); } });
+
+  /* ---------- funil de compra (medicao.js) ---------- */
+  var medir = window.noFiscalMedicao || null;
+  if (medir) medir.verPagina();
+  Array.prototype.forEach.call(document.querySelectorAll('a[data-plano]'), function (a) {
+    a.addEventListener('click', function () { if (medir) medir.planoEscolhido(a.getAttribute('data-plano'), 'planos'); });
+  });
 
   /* ---------- simulador ---------- */
   var chat = document.getElementById('fi-chat');
@@ -200,7 +251,7 @@
   function ctaFinal(el) {
     el.addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-acao]'); if (!b) return;
-      if (b.dataset.acao === 'conta') { dl({ event: 'fiscal_cta_conta', origem: 'simulador' }); location.assign(cadastroUrl()); }
+      if (b.dataset.acao === 'conta') { dl({ event: 'fiscal_cta_conta', origem: 'simulador' }); if (medir) medir.planoEscolhido('inicial', 'simulador'); location.assign(cadastroUrl()); }
       else irPara('planos');
     });
   }
@@ -287,7 +338,7 @@
 
   function limite() {
     dl({ event: 'fiscal_simulacao_limite' });
-    var el = balao('fi-msg--agente fi-msg--limite', '<p>Você já usou seus ' + LIMITE + ' testes grátis por aqui. Para emitir de verdade, crie a sua conta: cadastro do CNPJ, certificado A1 e um plano de notas por mês, com os primeiros 7 dias grátis.</p>' +
+    var el = balao('fi-msg--agente fi-msg--limite', '<p>Você já usou seus ' + LIMITE + ' testes grátis por aqui. Para emitir de verdade, crie a sua conta: cadastro do CNPJ, certificado A1 e um plano de notas por mês, com as suas 5 primeiras emissões grátis.</p>' +
       botoes([{ acao: 'conta', rotulo: 'Criar minha conta', primario: true }, { acao: 'planos', rotulo: 'Ver os planos' }]));
     ctaFinal(el);
   }
@@ -329,7 +380,7 @@
     if (!lido.tomador && !lido.valor && !lido.modelo && !pendente.tomador && /^[A-Za-zÀ-ÿ0-9&.'\- ]{2,60}$/.test(texto.trim())) pendente.tomador = titulo(texto);
 
     if (!pendente.tomador && !pendente.valor) {
-      agente('<p>Não achei o cliente nem o valor. Tente algo como: “nota pra Clínica Aurora de 350 reais”.</p>');
+      agente('<p>Não achei o cliente nem o valor. Tente algo como: “nota pra Studio Lima de 350 reais”.</p>');
       return;
     }
     if (!pendente.tomador) { agente('<p>' + esc(brl(pendente.valor)) + ', anotado. Para quem é a nota?</p>'); return; }

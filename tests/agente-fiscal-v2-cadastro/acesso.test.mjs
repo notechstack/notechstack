@@ -296,3 +296,25 @@ test("código errado não abre sessão: GoTrue fora responde 503 e o código con
   const de_novo = await verificar(c, email, c.codigos[0]);
   assert.deepEqual([de_novo.status, de_novo.body], [200, { ok: true, access_token: "a", refresh_token: "r", expires_at: 1 }]);
 });
+
+// Código fixo da demonstração (pedido de Lucca, 22/10/2026): só com o site em localhost.
+test("código fixo da demo: abre sessão em localhost e não vale com o site de produção", async () => {
+  const sessao = { access_token: "at", refresh_token: "rt", expires_at: 123 };
+  const conferidos = [];
+  const extra = {
+    verificarNoGoTrue: async (email, codigo) => { conferidos.push(codigo); return { ok: true, sessao }; },
+  };
+  const local = cenario({ env: { FISCAL_CODIGO_FIXO_DEMO: "123456", FISCAL_SITE_URL: "http://localhost:3000" }, deps: extra });
+  const email = emailAleatorio();
+  const r = await pedir(local.deps, email, ipAleatorio(), { acao: "verificar", codigo: "123456" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { ok: true, ...sessao });
+  assert.deepEqual(conferidos, [local.codigos[0]], "a sessão sai de um código novo do GoTrue, não do fixo");
+
+  for (const site of ["https://www.notechstack.com.br", "", "http://localhost.evil.com"]) {
+    const prod = cenario({ env: { FISCAL_CODIGO_FIXO_DEMO: "123456", FISCAL_SITE_URL: site }, deps: extra });
+    const p = await pedir(prod.deps, emailAleatorio(), ipAleatorio(), { acao: "verificar", codigo: "123456" });
+    assert.notEqual(p.status, 200, `site ${site || "(vazio)"}`);
+    assert.equal(prod.codigos.length, 0, `site ${site || "(vazio)"}: nenhum código gerado`);
+  }
+});
