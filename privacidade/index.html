@@ -46,7 +46,7 @@
 
   <div class="lg-rot">Privacidade</div>
   <h1>Política de Privacidade e Cookies</h1>
-  <p class="lg-data">Última atualização: 21 de outubro de 2026</p>
+  <p class="lg-data">Última atualização: 22 de outubro de 2026</p>
   <p class="lg-abre">Esta política explica quais dados pessoais a nó tech stack coleta neste
   site, por que coleta, com quem compartilha e o que você pode exigir a respeito. Está
   escrita para ser lida, não para ser tolerada.</p>
@@ -57,7 +57,7 @@
   <p class="lg-id">nó tech stack é o nome comercial de <strong>60.342.339 LUCCA VICCHIATTI
   GIANI</strong>, inscrita no CNPJ sob o nº <strong>60.342.339/0001-06</strong>.</p>
   <p>Para qualquer assunto relacionado a dados pessoais, incluindo o exercício dos direitos
-  descritos na seção 9, o canal é
+  descritos na seção 10, o canal é
   <a href="mailto:notechstack@gmail.com">notechstack@gmail.com</a>.</p>
 
   <h2>2. Quais dados coletamos</h2>
@@ -74,7 +74,9 @@
     <li><strong>Descrição do seu projeto</strong> e as respostas que você escolheu ao longo
     da conversa (o caminho percorrido no diagnóstico), incluindo o prazo desejado.</li>
   </ul>
-  <p>Não pedimos CPF, dados de pagamento, documentos ou qualquer dado sensível. Se você
+  <p>No diagnóstico, não pedimos CPF, dados de pagamento, documentos ou qualquer dado sensível.
+  Os agentes por assinatura têm regras próprias: o auditor na seção 7 e o nó.fiscal na
+  seção 8. Se você
   escrever esse tipo de informação no campo livre de descrição, ela será tratada com a mesma
   finalidade das demais — mas pedimos que não o faça.</p>
 
@@ -115,6 +117,7 @@
       </tbody>
     </table>
   </div>
+  <p>As finalidades e as bases legais do auditor e do nó.fiscal estão nas seções 7 e 8.</p>
   <p><strong>Não vendemos seus dados.</strong> Não usamos o que você escreve no diagnóstico
   para treinar modelos de inteligência artificial de terceiros, e não enviamos e-mail
   promocional em massa a partir do contato deixado aqui.</p>
@@ -129,13 +132,15 @@
       </thead>
       <tbody>
         <tr><td>Vercel</td><td>Hospedagem do site</td><td>Estados Unidos</td></tr>
-        <tr><td>Supabase</td><td>Banco de dados onde o contato e os registros do Auditor de anúncios são gravados</td><td>Estados Unidos</td></tr>
-        <tr><td>Resend</td><td>Envio do e-mail de notificação do contato</td><td>Estados Unidos</td></tr>
+        <tr><td>Supabase</td><td>Banco de dados onde o contato, os registros do Auditor de anúncios e os dados do nó.fiscal são gravados, incluindo o cofre do certificado A1</td><td>Estados Unidos</td></tr>
+        <tr><td>Resend</td><td>Envio do e-mail de notificação do contato e, no nó.fiscal, do código de acesso, das notas emitidas e dos avisos</td><td>Estados Unidos</td></tr>
+        <tr><td>Pagar.me</td><td>Cobrança da assinatura dos agentes (cartão, cliente e endereço de cobrança)</td><td>Brasil</td></tr>
+        <tr><td>BrasilAPI</td><td>Consulta dos dados públicos do CNPJ no cadastro do nó.fiscal</td><td>Brasil</td></tr>
         <tr><td>Google (Analytics, Ads, Tag Manager)</td><td>Medição de audiência e de anúncios</td><td>Estados Unidos</td></tr>
         <tr><td>Meta (Pixel e Conversions API)</td><td>Medição de anúncios do Facebook e Instagram</td><td>Estados Unidos</td></tr>
         <tr><td>Meta (Marketing API) e Google (Ads, Analytics e Search Console APIs)</td><td>Leitura dos dados das contas que você conecta ao auditor (seção 7.7)</td><td>Estados Unidos</td></tr>
-        <tr><td>Anthropic</td><td>Assistente de conversa por IA, quando você usa o chat, e redação da análise dos relatórios do auditor</td><td>Estados Unidos</td></tr>
-        <tr><td>WhatsApp (Meta)</td><td>Envio da cópia do relatório do auditor, só para quem pedir (seção 7.7)</td><td>Estados Unidos</td></tr>
+        <tr><td>Anthropic</td><td>Assistente de conversa por IA, quando você usa o chat; redação da análise dos relatórios do auditor; e, no nó.fiscal, leitura dos pedidos de nota e dos PDFs de notas enviados (seção 8.4)</td><td>Estados Unidos</td></tr>
+        <tr><td>WhatsApp (Meta)</td><td>Envio da cópia do relatório do auditor, só para quem pedir (seção 7.7), e a conversa com o nó.fiscal</td><td>Estados Unidos</td></tr>
       </tbody>
     </table>
   </div>
@@ -224,6 +229,7 @@
     <li><strong>Dados de medição e publicidade:</strong> pelos prazos de cada cookie indicados
     na seção 5.1.</li>
     <li><strong>Registros do Auditor de anúncios:</strong> pelos prazos da seção 7.5.</li>
+    <li><strong>Dados do nó.fiscal:</strong> pelos prazos da seção 8.5.</li>
     <li>Encerrado o prazo, os dados são eliminados ou anonimizados, salvo quando a lei exigir
     guarda maior.</li>
   </ul>
@@ -284,7 +290,7 @@
 
   <h3>7.6. Como pedir exclusão ou acesso</h3>
   <p>Escreva para <a href="mailto:notechstack@gmail.com">notechstack@gmail.com</a>. Valem os
-  mesmos direitos e o mesmo prazo de resposta da seção 9. Para a medição, você também pode
+  mesmos direitos e o mesmo prazo de resposta da seção 10. Para a medição, você também pode
   recusar ou revogar a qualquer momento em “Preferências de cookies”, na própria página do
   auditor.</p>
 
@@ -381,13 +387,126 @@
     e relatórios em até <strong>15 dias</strong> e confirmamos por e-mail.</li>
   </ul>
 
-  <h2>8. Segurança</h2>
+  <h2 id="fiscal">8. nó.fiscal (Agente Fiscal)</h2>
+  <p>O <a href="/agentes/fiscal/">nó.fiscal</a> emite a NFS-e da sua empresa pelo WhatsApp
+  usando o certificado digital A1 dela. Esta seção explica o que ele guarda, para quê, com
+  quem compartilha, por quanto tempo e como apagar. As regras de uso estão na
+  <a href="/termos/#fiscal">seção 7 dos Termos de Uso</a>.</p>
+
+  <h3>8.1. O que coletamos</h3>
+  <ul>
+    <li><strong>Cadastro:</strong> CNPJ; razão social, município, atividade (CNAE) e regime
+    (MEI ou Simples), que buscamos nos dados públicos do CNPJ; nome do responsável; e-mail;
+    e WhatsApp.</li>
+    <li><strong>Pagamento:</strong> o número do cartão vai direto do seu navegador ao Pagar.me
+    e a nó não o vê. O endereço de cobrança é enviado ao Pagar.me e não fica no nosso banco.
+    Guardamos o plano, a situação da assinatura, os identificadores do Pagar.me e o texto e a
+    data do seu aceite.</li>
+    <li><strong>Certificado digital A1 e a senha dele</strong> (seção 8.3).</li>
+    <li><strong>Configuração fiscal:</strong> código de serviço, percentual de tributos do
+    Simples, e-mail do contador (plano Pro) e preferência de resumo das notas.</li>
+    <li><strong>Dados dos seus clientes</strong> (tomadores das notas): CPF ou CNPJ, nome,
+    e-mail, WhatsApp, endereço, serviço e valor, que você informa, que o agente encontra nas
+    notas que a sua empresa já emitiu ou que vêm dos PDFs de notas que você envia.</li>
+    <li><strong>Notas fiscais:</strong> as declarações (DPS), as notas autorizadas (XML) e os
+    eventos de cancelamento.</li>
+    <li><strong>Conversa no WhatsApp:</strong> não guardamos o texto das mensagens. Guardamos o
+    que o agente entendeu de cada pedido (tomador, valor, serviço), o andamento do pedido e a
+    hora das mensagens recebidas.</li>
+    <li><strong>PDFs de notas (DANFSe)</strong> que você envia no cadastro: são lidos para
+    extrair os dados dos clientes e descartados em seguida. O arquivo não é guardado.</li>
+    <li><strong>Teste grátis:</strong> para que ele valha uma vez por empresa, guardamos um
+    código irreversível (hash) do CNPJ, do e-mail, do telefone e, se você informar, do CPF.
+    O CPF em si não é gravado.</li>
+  </ul>
+
+  <h3>8.2. Para quê e com qual base legal</h3>
+  <ul>
+    <li><strong>Execução do contrato</strong> (art. 7º, V): cadastro, cobrança da assinatura,
+    emissão e cancelamento das notas, envio de PDF e XML, avisos do certificado e
+    atendimento.</li>
+    <li><strong>Cumprimento de obrigação legal</strong> (art. 7º, II): transmissão das notas à
+    Sefin Nacional e guarda das notas e dos registros de pagamento pelo prazo da
+    legislação.</li>
+    <li><strong>Legítimo interesse</strong> (art. 7º, IX): impedir o uso repetido do teste
+    grátis e manter a segurança do serviço.</li>
+    <li><strong>Consentimento</strong> (art. 7º, I): medição e anúncios, só se você permitir
+    no aviso de cookies (seção 5). Nesse caso, o início da assinatura é informado à Meta com
+    e-mail, telefone e identificador da empresa em código irreversível (hash).</li>
+  </ul>
+  <p><strong>Dados dos seus clientes:</strong> a sua empresa é a controladora desses dados, e
+  a nó atua como operadora, tratando-os só por conta da sua empresa e para emitir e enviar as
+  notas que você pedir. Ao informá-los, você declara que pode compartilhá-los para esse
+  fim.</p>
+
+  <h3>8.3. Certificado A1</h3>
+  <ul>
+    <li>O arquivo e a senha são enviados só pela página do site, por conexão criptografada,
+    e abertos em memória só para conferir o titular e a validade. Eles não são gravados em
+    registros (logs). Pelo WhatsApp, o agente recusa o arquivo sem baixá-lo.</li>
+    <li>Ficam cifrados no cofre (Vault) do Supabase, que guarda a chave de cifragem fora do
+    banco de dados. No banco ficam só o titular e a validade do certificado.</li>
+    <li>Só o motor de emissão lê o certificado, um CNPJ por vez, na hora de assinar uma nota
+    ou um cancelamento que você confirmou, ou de consultar no Ambiente de Dados Nacional as
+    notas que a sua empresa já emitiu, quando você pede isso no cadastro. A nó não usa o seu
+    certificado para nenhum outro fim.</li>
+  </ul>
+
+  <h3>8.4. Com quem compartilhamos</h3>
+  <ul>
+    <li><strong>Sefin Nacional e Ambiente de Dados Nacional</strong> (governo): as notas, os
+    cancelamentos e as consultas, assinados com o seu certificado.</li>
+    <li><strong>Pagar.me:</strong> razão social, CNPJ, e-mail, telefone, endereço de cobrança
+    e o cartão (tokenizado pelo próprio Pagar.me) para cobrar a assinatura.</li>
+    <li><strong>WhatsApp (Meta):</strong> as mensagens trocadas com o agente e o PDF das
+    notas, com as regras de privacidade do WhatsApp.</li>
+    <li><strong>Resend:</strong> os e-mails com o código de acesso, as notas em PDF e XML
+    (para você, para o tomador quando houver e-mail e, no plano Pro, para o contador) e os
+    avisos.</li>
+    <li><strong>Anthropic:</strong> o texto das mensagens enviadas pelos números autorizados,
+    para entender o pedido, e os PDFs de notas que você envia no cadastro, para extrair os
+    dados dos clientes. Pelos termos comerciais da Anthropic, o que enviamos pela API não é
+    usado para treinar modelos.</li>
+    <li><strong>BrasilAPI:</strong> o CNPJ informado, para buscar os dados públicos da
+    empresa.</li>
+    <li><strong>Supabase e Vercel:</strong> banco de dados, cofre do certificado e servidores
+    que executam o agente (seção 4).</li>
+  </ul>
+
+  <h3>8.5. Por quanto tempo guardamos</h3>
+  <ul>
+    <li><strong>Certificado A1 e senha:</strong> até você enviar outro, pedir a exclusão ou
+    apagar a conta. Cancelar a assinatura não apaga o certificado, para você poder voltar a
+    emitir; peça a exclusão se quiser.</li>
+    <li><strong>Notas, XML, eventos de cancelamento e registros da assinatura e dos
+    pagamentos:</strong> pelo prazo de guarda da legislação tributária e civil, em regra
+    5 anos, inclusive depois de a conta ser apagada.</li>
+    <li><strong>Clientes salvos, pedidos, números autorizados e configuração:</strong> até
+    você apagar a conta.</li>
+    <li><strong>Códigos de acesso por e-mail:</strong> 1 dia.</li>
+    <li><strong>Códigos irreversíveis do teste grátis:</strong> mantidos para impedir um novo
+    teste com os mesmos dados.</li>
+  </ul>
+
+  <h3>8.6. Como apagar</h3>
+  <ul>
+    <li><strong>Pela tela:</strong> em “Minha conta”, use “Apagar conta”. Cancelamos a
+    assinatura no Pagar.me e apagamos na hora o certificado e a senha, os clientes salvos, os
+    pedidos, os números autorizados e os códigos de acesso. Ficam só os itens que a lei manda
+    guardar e os códigos do teste grátis (seção 8.5).</li>
+    <li><strong>Por e-mail:</strong> escreva para
+    <a href="mailto:notechstack@gmail.com">notechstack@gmail.com</a> para apagar só o
+    certificado, apagar o seu cadastro de acesso depois de apagar a conta ou exercer
+    qualquer direito da seção 10. Respondemos em até <strong>15 dias</strong>.</li>
+  </ul>
+
+  <h2>9. Segurança</h2>
   <p>Os dados trafegam por conexão criptografada (HTTPS) e ficam em bancos com acesso
   restrito. O acesso interno é limitado a quem precisa dele para responder você. Nenhum
   sistema é infalível: se ocorrer incidente de segurança com risco relevante, comunicaremos
   você e a Autoridade Nacional de Proteção de Dados, como manda o art. 48 da LGPD.</p>
 
-  <h2>9. Seus direitos</h2>
+  <h2>10. Seus direitos</h2>
   <p>A LGPD garante a você, a qualquer momento e sem custo:</p>
   <ul>
     <li>Confirmar se tratamos dados seus e <strong>acessar</strong> esses dados.</li>
@@ -405,11 +524,11 @@
   <strong>15 dias</strong>. Podemos pedir uma confirmação de identidade antes de atender —
   é proteção sua, não burocracia nossa.</p>
 
-  <h2>10. Crianças e adolescentes</h2>
+  <h2>11. Crianças e adolescentes</h2>
   <p>Este site é dirigido a empresas e profissionais. Não coletamos intencionalmente dados de
   menores de 18 anos. Se identificarmos esse tipo de coleta, eliminamos o registro.</p>
 
-  <h2>11. Mudanças nesta política</h2>
+  <h2>12. Mudanças nesta política</h2>
   <p>Quando esta política mudar, a data no topo muda junto. Alterações relevantes na
   finalidade ou no compartilhamento serão comunicadas por meio visível no site. Continuar
   usando o site após a atualização significa que você tomou ciência da versão vigente.</p>
