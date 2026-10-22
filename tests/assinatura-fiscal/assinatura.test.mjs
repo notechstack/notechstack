@@ -312,12 +312,11 @@ test("aceite obrigatório", async () => {
     /aceite obrigatorio/,
   );
 
-  // Texto provisório (RFC 1 em aberto): em produção, nenhum checkout passa.
+  // Texto aprovado (RFC 1 fechada em 22/10/2026): em produção, o checkout chega ao Pagar.me.
   const outra = await empresa();
   const p = await checkout(outra, pedido(outra), { env: { PAGARME_ASSINATURA_AMBIENTE: "producao", PAGARME_ASSINATURA_SECRET_KEY: "sk_live_x" } });
-  assert.equal(p.http, 500);
-  assert.equal(p.body.error_code, "TERMOS_PROVISORIOS");
-  assert.equal(p.chamadas.length, 0);
+  assert.equal(p.http, 200, JSON.stringify(p.body));
+  assert.equal(p.chamadas.length, 1);
 });
 
 test("ordem dos avisos", async () => {

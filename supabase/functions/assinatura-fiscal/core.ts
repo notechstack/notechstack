@@ -58,10 +58,10 @@ export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown
   };
 }
 
-// PROVISÓRIO: o texto final dos Termos depende da RFC 1 (Unresolved 8 da tarefa, bloqueia o go-live).
-// Enquanto TEXTO_ACEITE_PROVISORIO for true, o checkout em produção responde TERMOS_PROVISORIOS.
+// Texto e Termos aprovados por Lucca em 22/10/2026 (fecha a RFC 1 / Unresolved 8). Voltar a true
+// faz o checkout em produção responder TERMOS_PROVISORIOS de novo.
 // O banco grava ESTA constante, nunca a string do cliente.
-export const TEXTO_ACEITE_PROVISORIO = true;
+export const TEXTO_ACEITE_PROVISORIO = false;
 export const TEXTO_ACEITE_FISCAL =
   "Li e aceito os Termos de Uso e a Política de Privacidade do Agente Fiscal da nó, inclusive a guarda do " +
   "meu certificado digital A1 para emitir as notas que eu confirmar no WhatsApp.";
