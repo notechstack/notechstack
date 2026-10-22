@@ -2,204 +2,41 @@
  "exportFormatVersion": 2,
  "exportTime": "2026-10-22 18:00:00",
  "containerVersion": {
+  "path": "accounts/6348281513/containers/248523885/versions/0",
   "accountId": "6348281513",
   "containerId": "248523885",
-  "variable": [
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "variableId": "920",
-    "name": "dl.plano",
-    "type": "v",
-    "parameter": [
-     {
-      "type": "INTEGER",
-      "key": "dataLayerVersion",
-      "value": "2"
-     },
-     {
-      "type": "BOOLEAN",
-      "key": "setDefaultValue",
-      "value": "false"
-     },
-     {
-      "type": "TEMPLATE",
-      "key": "name",
-      "value": "plano"
-     }
-    ]
+  "containerVersionId": "0",
+  "container": {
+   "path": "accounts/6348281513/containers/248523885",
+   "accountId": "6348281513",
+   "containerId": "248523885",
+   "name": "Nó Teck Stack",
+   "publicId": "GTM-NK87FH8W",
+   "usageContext": [
+    "WEB"
+   ],
+   "fingerprint": "1761160000000",
+   "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/6348281513/containers/248523885/workspaces?apiLink=container",
+   "features": {
+    "supportUserPermissions": true,
+    "supportEnvironments": true,
+    "supportWorkspaces": true,
+    "supportGtagConfigs": false,
+    "supportBuiltInVariables": true,
+    "supportClients": false,
+    "supportFolders": true,
+    "supportTags": true,
+    "supportTemplates": true,
+    "supportTriggers": true,
+    "supportVariables": true,
+    "supportVersions": true,
+    "supportZones": true,
+    "supportTransformations": false
    },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "variableId": "921",
-    "name": "dl.cupom",
-    "type": "v",
-    "parameter": [
-     {
-      "type": "INTEGER",
-      "key": "dataLayerVersion",
-      "value": "2"
-     },
-     {
-      "type": "BOOLEAN",
-      "key": "setDefaultValue",
-      "value": "false"
-     },
-     {
-      "type": "TEMPLATE",
-      "key": "name",
-      "value": "cupom"
-     }
-    ]
-   }
-  ],
-  "trigger": [
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "930",
-    "name": "ce.nofiscal_plano_escolhido (nó.fiscal plano escolhido)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_plano_escolhido"
-       }
-      ]
-     }
-    ]
-   },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "931",
-    "name": "ce.nofiscal_cadastro (nó.fiscal conta criada)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_cadastro"
-       }
-      ]
-     }
-    ]
-   },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "932",
-    "name": "ce.nofiscal_checkout (nó.fiscal pagamento aberto)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_checkout"
-       }
-      ]
-     }
-    ]
-   },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "933",
-    "name": "ce.nofiscal_pagamento_info (nó.fiscal cartão enviado)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_pagamento_info"
-       }
-      ]
-     }
-    ]
-   },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "934",
-    "name": "ce.nofiscal_compra (nó.fiscal assinatura cobrada)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_compra"
-       }
-      ]
-     }
-    ]
-   },
-   {
-    "accountId": "6348281513",
-    "containerId": "248523885",
-    "triggerId": "935",
-    "name": "ce.nofiscal_teste_iniciado (nó.fiscal assinatura em teste)",
-    "type": "CUSTOM_EVENT",
-    "customEventFilter": [
-     {
-      "type": "EQUALS",
-      "parameter": [
-       {
-        "type": "TEMPLATE",
-        "key": "arg0",
-        "value": "{{_event}}"
-       },
-       {
-        "type": "TEMPLATE",
-        "key": "arg1",
-        "value": "nofiscal_teste_iniciado"
-       }
-      ]
-     }
-    ]
-   }
-  ],
+   "tagIds": [
+    "GTM-NK87FH8W"
+   ]
+  },
   "tag": [
    {
     "accountId": "6348281513",
@@ -278,7 +115,8 @@
     "firingTriggerId": [
      "930"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    },
    {
     "accountId": "6348281513",
@@ -342,7 +180,8 @@
     "firingTriggerId": [
      "931"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    },
    {
     "accountId": "6348281513",
@@ -436,7 +275,8 @@
     "firingTriggerId": [
      "932"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    },
    {
     "accountId": "6348281513",
@@ -530,7 +370,8 @@
     "firingTriggerId": [
      "933"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    },
    {
     "accountId": "6348281513",
@@ -654,7 +495,8 @@
     "firingTriggerId": [
      "934"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    },
    {
     "accountId": "6348281513",
@@ -748,8 +590,225 @@
     "firingTriggerId": [
      "935"
     ],
-    "tagFiringOption": "ONCE_PER_EVENT"
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    }
-  ]
+  ],
+  "trigger": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "930",
+    "name": "ce.nofiscal_plano_escolhido (nó.fiscal plano escolhido)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_plano_escolhido"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "931",
+    "name": "ce.nofiscal_cadastro (nó.fiscal conta criada)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_cadastro"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "932",
+    "name": "ce.nofiscal_checkout (nó.fiscal pagamento aberto)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_checkout"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "933",
+    "name": "ce.nofiscal_pagamento_info (nó.fiscal cartão enviado)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_pagamento_info"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "934",
+    "name": "ce.nofiscal_compra (nó.fiscal assinatura cobrada)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_compra"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "935",
+    "name": "ce.nofiscal_teste_iniciado (nó.fiscal assinatura em teste)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_teste_iniciado"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
+   }
+  ],
+  "variable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "920",
+    "name": "dl.plano",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "plano"
+     }
+    ],
+    "fingerprint": "1761160000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "921",
+    "name": "dl.cupom",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "cupom"
+     }
+    ],
+    "fingerprint": "1761160000000",
+    "formatValue": {}
+   }
+  ],
+  "builtInVariable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "type": "EVENT",
+    "name": "Event"
+   }
+  ],
+  "fingerprint": "1761160000000",
+  "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/6348281513/containers/248523885/versions/0?apiLink=version"
  }
 }
