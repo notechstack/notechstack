@@ -1,5 +1,5 @@
 // Monta a DPS do leiaute nacional 1.01 (critério 4). Forma literal no Landing do checklist
-// (lote 2b - DPS montada): prestador do Simples emitindo a própria nota, tomador só com CPF
+// (lote 2b - DPS montada): prestador do Simples (ME/EPP ou MEI) emitindo a própria nota, tomador só com CPF
 // ou CNPJ e nome (o CNPJ entrou no lote B2 do agente fiscal; XSD 1.01 `TCInfoPessoa`), sem
 // endereço do tomador e sem o grupo IBSCBS. O XML sai sem indentação: quem assina
 // é o `xml-signer`, e o texto assinado não é reformatado.
@@ -132,6 +132,13 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
   if (im !== null && im.length > 15) throw new DpsInvalidError('inscrição municipal passa de 15 caracteres')
   const dhEmi = formatDhSaoPaulo(new Date(now.getTime() - DH_EMI_SKEW_MS))
   const ibge = tenant.codigo_municipio_ibge
+  // MEI (Anexo I v1.01): opSimpNac 2, sem regApTribSN (E0162), regEspTrib 0 (E0174) e sem pTotTribSN
+  // (E0710); no lugar, indTotTrib 0 (não informar tributos aproximados, Decreto 8.264/2014).
+  const mei = tenant.regime === 'mei'
+  const regTrib = mei
+    ? [leaf('opSimpNac', '2'), leaf('regEspTrib', '0')]
+    : [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]
+  const totTrib = mei ? leaf('indTotTrib', '0') : leaf('pTotTribSN', formatPercent(tenant.p_tot_trib_sn))
 
   const infDps = el(
     'infDPS',
@@ -147,7 +154,7 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
       el('prest', [
         leaf('CNPJ', tenant.cnpj),
         leaf('IM', im),
-        el('regTrib', [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]),
+        el('regTrib', regTrib),
       ]),
       el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome)]),
       el('serv', [
@@ -158,7 +165,7 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
         el('vServPrest', leaf('vServ', data.valor)),
         el('trib', [
           el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '1')]),
-          el('totTrib', leaf('pTotTribSN', formatPercent(tenant.p_tot_trib_sn))),
+          el('totTrib', totTrib),
         ]),
       ]),
     ],

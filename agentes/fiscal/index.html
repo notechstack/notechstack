@@ -5,7 +5,7 @@
 <meta name="color-scheme" content="only light">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Agente Fiscal: a NFS-e sai numa mensagem de WhatsApp | Nó Agentes</title>
-<meta name="description" content="Para empresas do Simples que prestam serviço: diga ao agente quem é o cliente e o valor, ele monta a DPS, assina com seu certificado A1, envia à Sefin Nacional e devolve a nota no WhatsApp e no e-mail. Teste grátis sem cadastro.">
+<meta name="description" content="Para MEI e empresas do Simples que prestam serviço: diga ao agente quem é o cliente e o valor, ele monta a DPS, assina com seu certificado A1, envia à Sefin Nacional e devolve a nota no WhatsApp e no e-mail. Teste grátis sem cadastro.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <link rel="canonical" href="https://www.notechstack.com.br/agentes/fiscal/">
 <meta name="theme-color" content="#FAFAF7">
@@ -57,11 +57,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {"@type": "Question", "name": "O que é o agente fiscal?", "acceptedAnswer": {"@type": "Answer", "text": "Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele."}},
+    {"@type": "Question", "name": "O que é o agente fiscal?", "acceptedAnswer": {"@type": "Answer", "text": "Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele."}},
     {"@type": "Question", "name": "Como o agente emite a nota pra mim?", "acceptedAnswer": {"@type": "Answer", "text": "Você escreve, por exemplo, “nota pra Studio Lima, 350 reais”. O agente procura o cliente na sua base, mostra o resumo do que entendeu e só emite depois do seu “confirmar”. Aí ele monta a DPS no padrão nacional, assina com o seu certificado A1 e transmite à Sefin. Assim que a Sefin autoriza, a NFS-e volta para você no WhatsApp, sem portal nem planilha."}},
     {"@type": "Question", "name": "O agente fala direto com os sistemas do governo?", "acceptedAnswer": {"@type": "Answer", "text": "Sim. Cada nota é transmitida direto à Sefin Nacional, o ambiente oficial da NFS-e de padrão nacional do governo, pela API oficial e assinada com o certificado A1 da sua empresa. Não há portal nem intermediário no caminho: a nota sai com chave de acesso e QR Code, e você e o seu cliente a encontram no portal oficial nfse.gov.br."}},
     {"@type": "Question", "name": "Preciso criar conta para testar?", "acceptedAnswer": {"@type": "Answer", "text": "Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: as suas 5 primeiras emissões são grátis."}},
-    {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "Empresas do Simples Nacional que prestam serviço e emitem NFS-e pelo padrão nacional (Sefin Nacional). O agente trabalha com CNPJ, inscrição municipal, código do município e certificado digital A1 da empresa. Se o seu município ainda não aderiu ao padrão nacional, a gente avisa no cadastro."}},
+    {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "MEI e empresas do Simples Nacional (ME e EPP) que prestam serviço. O MEI pode usar em qualquer município do Brasil, porque emite pelo padrão nacional em todo o país. A ME e a EPP precisam estar num município que já emite pelo padrão nacional (Sefin Nacional). O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. O agente trabalha com o certificado digital A1 da empresa."}},
+    {"@type": "Question", "name": "Sou MEI. Posso usar?", "acceptedAnswer": {"@type": "Answer", "text": "Pode. Desde 2023, o MEI que presta serviço emite a NFS-e pelo padrão nacional, em qualquer município, e é por esse mesmo caminho que o agente emite. No cadastro, o CNPJ já mostra que você é MEI, e você não precisa informar percentual de tributos: a nota do MEI não leva esse campo. Para a emissão automática, você precisa de um certificado digital A1 do CNPJ (e-CNPJ), que se compra em qualquer certificadora."}},
+    {"@type": "Question", "name": "Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?", "acceptedAnswer": {"@type": "Answer", "text": "Ainda não. Por enquanto, o agente atende só MEI e empresas do Simples Nacional. O cadastro confere o regime do CNPJ na Receita Federal e avisa logo no primeiro passo. Se quiser saber quando abrirmos para outros regimes, fale com a Nó pelo WhatsApp."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
     {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "O teste no site é grátis, e as suas 5 primeiras emissões depois de assinar também. Depois, vale a franquia do plano: Inicial, até 20 notas por mês, ou Pro, até 100. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores da seção de planos são provisórios e aparecem confirmados na tela de assinatura."}},
@@ -235,7 +237,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <div class="fi-faq-lista">
         <details open>
           <summary>O que é o agente fiscal?</summary>
-          <p>Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele.</p>
+          <p>Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele.</p>
         </details>
         <details>
           <summary>Como o agente emite a nota pra mim?</summary>
@@ -251,7 +253,15 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Que empresas podem usar?</summary>
-          <p>Empresas do Simples Nacional que prestam serviço e emitem NFS-e pelo padrão nacional (Sefin Nacional). O agente trabalha com CNPJ, inscrição municipal, código do município e certificado digital A1 da empresa. Se o seu município ainda não aderiu ao padrão nacional, a gente avisa no cadastro.</p>
+          <p>MEI e empresas do Simples Nacional (ME e EPP) que prestam serviço. O MEI pode usar em qualquer município do Brasil, porque emite pelo padrão nacional em todo o país. A ME e a EPP precisam estar num município que já emite pelo padrão nacional (Sefin Nacional). O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. O agente trabalha com o certificado digital A1 da empresa.</p>
+        </details>
+        <details>
+          <summary>Sou MEI. Posso usar?</summary>
+          <p>Pode. Desde 2023, o MEI que presta serviço emite a NFS-e pelo padrão nacional, em qualquer município, e é por esse mesmo caminho que o agente emite. No cadastro, o CNPJ já mostra que você é MEI, e você não precisa informar percentual de tributos: a nota do MEI não leva esse campo. Para a emissão automática, você precisa de um certificado digital A1 do CNPJ (e-CNPJ), que se compra em qualquer certificadora.</p>
+        </details>
+        <details>
+          <summary>Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?</summary>
+          <p>Ainda não. Por enquanto, o agente atende só MEI e empresas do Simples Nacional. O cadastro confere o regime do CNPJ na Receita Federal e avisa logo no primeiro passo. Se quiser saber quando abrirmos para outros regimes, fale com a Nó pelo WhatsApp.</p>
         </details>
         <details>
           <summary>Como fica o meu certificado digital A1?</summary>

@@ -142,6 +142,27 @@ test("configurar dados fiscais", async () => {
   assert.equal(r.chamadas.length + r2.chamadas.length + r3.chamadas.length, 0);
 });
 
+test("MEI configura sem percentual do Simples e a emissão não fica bloqueada por ele", async () => {
+  const e = await empresa({ etapa: "dados_fiscais", regime: "mei", certificado: true });
+  const r = await conta(e, { acao: "configurar", codigo_servico_nacional: CODIGO_A });
+  assert.equal(r.http, 200, JSON.stringify(r.body));
+  assert.equal(r.body.empresa.regime, "mei");
+  assert.equal(r.body.fiscal.p_tot_trib_sn, null);
+  // Percentual enviado por engano é ignorado: MEI não informa pTotTribSN (E0710).
+  const r2 = await conta(e, { acao: "configurar", codigo_servico_nacional: CODIGO_B, p_tot_trib_sn: 6 });
+  assert.equal(r2.http, 200, JSON.stringify(r2.body));
+  const t = await tenantDe(e);
+  assert.equal(t.codigo_servico_nacional, CODIGO_B);
+  assert.equal(t.pct, null);
+  assert.equal(t.onboarding_etapa, "clientes");
+  assert.notEqual(await bloqueio(e), "FISCAL_CONFIG_MISSING");
+
+  // Direto no banco, o Simples continua exigindo o percentual.
+  const simples = await empresa({ etapa: "dados_fiscais" });
+  const direto = await banco.configurar(simples.userId, { codigo_servico_nacional: CODIGO_A });
+  assert.equal(direto.campo, "p_tot_trib_sn");
+});
+
 test("contador e resumo por plano", async () => {
   const pro = await empresa({ plano: "pro" });
   const r = await conta(pro, {

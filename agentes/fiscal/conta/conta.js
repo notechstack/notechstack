@@ -134,7 +134,7 @@
 
     $('fa-fiscal').innerHTML = linhas([
       ['Código de serviço', f.codigo_servico_nacional ? nf.formatarCodigo(f.codigo_servico_nacional) : ''],
-      ['Tributos do Simples', f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') + '%' : ''],
+      ['Tributos do Simples', ehMei() ? undefined : f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') + '%' : ''],
       ['Contador', pro ? (f.contador_email || '') : undefined],
       ['Resumo das notas', pro ? textoResumo(f.resumo) : undefined]
     ]);
@@ -230,9 +230,12 @@
   }
 
   /* ---------- dados fiscais ---------- */
+  /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
+  function ehMei() { return !!(st.estado && st.estado.empresa && st.estado.empresa.regime === 'mei'); }
   function abrirFiscal() {
     var e = st.estado || {}, f = e.fiscal || {};
     $('fa-form-fiscal').hidden = false;
+    $('fa-campo-percentual').hidden = ehMei();
     var dia = $('fa-resumo-dia-mes');
     if (dia.options.length === 0) for (var i = 1; i <= 28; i++) { var o = document.createElement('option'); o.value = String(i); o.textContent = String(i); dia.appendChild(o); }
     $('fa-percentual').value = f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') : '';
@@ -249,11 +252,13 @@
     Object.keys(CAMPO_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_FISCAL[k], ''); });
     nf.aviso($('fa-aviso-fiscal'), '');
     var codigo = st.seletor ? st.seletor.valor() : '';
-    var pct = nf.percentual($('fa-percentual').value);
+    var mei = ehMei();
+    var pct = mei ? null : nf.percentual($('fa-percentual').value);
     var falhou = false;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
-    if (pct === null) { nf.erroCampo('fa-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
-    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo, p_tot_trib_sn: pct };
+    if (!mei && pct === null) { nf.erroCampo('fa-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo };
+    if (!mei) corpo.p_tot_trib_sn = pct;
     if (st.estado.plano === 'pro') {
       var contador = nf.texto($('fa-contador').value);
       if (contador && !nf.emailValido(contador)) { nf.erroCampo('fa-contador', 'Informe um e-mail válido ou deixe em branco.'); falhou = true; }

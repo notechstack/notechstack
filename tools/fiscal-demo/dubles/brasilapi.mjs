@@ -40,14 +40,17 @@ export const ehCnpjDeTeste = (cnpj) => String(cnpj).startsWith('777');
 
 function cnpjDeTeste(cnpj) {
   if (cnpj.startsWith('7770')) return [404, { message: `CNPJ ${cnpj} não encontrado.`, type: 'not_found', name: 'NotFoundError' }];
-  const fora = cnpj.startsWith('7779');
+  // 7779: Simples fora do padrão nacional; 7776: MEI fora do padrão (passa); 7775: Lucro Presumido (barrado).
+  const fora = cnpj.startsWith('7779') || cnpj.startsWith('7776');
+  const mei = cnpj.startsWith('7776');
+  const presumido = cnpj.startsWith('7775');
   return [200, {
     cnpj, razao_social: `EMPRESA DEMO ${cnpj.slice(3, 8)} LTDA`, nome_fantasia: 'DEMO',
     municipio: fora ? 'CIDADE FORA DO PADRAO' : 'SAO PAULO', uf: fora ? 'MG' : 'SP',
     codigo_municipio_ibge: fora ? 3199999 : 3550308, codigo_municipio: fora ? 9999 : 7107,
     cnae_fiscal: 8630503, cnae_fiscal_descricao: 'Atividade médica ambulatorial restrita a consultas',
     descricao_situacao_cadastral: cnpj.startsWith('7778') ? 'BAIXADA' : 'ATIVA', situacao_cadastral: cnpj.startsWith('7778') ? 8 : 2,
-    opcao_pelo_simples: true, porte: 'MICRO EMPRESA',
+    opcao_pelo_mei: mei, opcao_pelo_simples: presumido ? null : true, porte: presumido ? 'DEMAIS' : 'MICRO EMPRESA',
     cep: '01310100', logradouro: 'AVENIDA PAULISTA', numero: '1000', bairro: 'BELA VISTA'
   }];
 }

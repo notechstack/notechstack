@@ -69,7 +69,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <div class="nf-campo nf-campo--largo">
         <label for="fc-cnpj">CNPJ</label>
         <input id="fc-cnpj" name="cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00" required>
-        <small class="nf-dica" id="fc-cnpj-dica">Buscamos razão social, município e atividade nos dados públicos do CNPJ.</small>
+        <small class="nf-dica" id="fc-cnpj-dica">Buscamos razão social, município, atividade e regime (MEI ou Simples) nos dados públicos do CNPJ.</small>
         <small class="nf-erro" id="fc-cnpj-erro" hidden></small>
       </div>
       <div class="nf-campo nf-campo--largo">
@@ -241,7 +241,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <div class="nf-resultados" aria-live="polite"></div>
         <small class="nf-erro" id="fc-codigo-servico-erro" hidden></small>
       </fieldset>
-      <div class="nf-campo">
+      <div class="nf-campo" id="fc-campo-percentual">
         <label for="fc-percentual">Percentual de tributos do Simples (%) <span class="nf-obrigatorio">obrigatório</span></label>
         <input id="fc-percentual" inputmode="decimal" maxlength="6" placeholder="6,00">
         <small class="nf-dica">A Sefin recusa a nota de ME e EPP do Simples sem o percentual aproximado de tributos (Lei 12.741). Ele está no extrato do Simples (PGDAS) ou com a sua contabilidade.</small>

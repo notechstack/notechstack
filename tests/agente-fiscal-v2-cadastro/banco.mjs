@@ -110,9 +110,9 @@ export function funcoesDoBanco(servico) {
     preparar: async (email, chaveEmail, chaveIp) =>
       (await servico.query("select * from public.fiscal_acesso_preparar($1, $2, $3)", [email, chaveEmail, chaveIp])).rows[0],
     criar: (a) =>
-      um("select public.fiscal_cadastro_criar($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as r", [
+      um("select public.fiscal_cadastro_criar($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as r", [
         a.user_id, a.cnpj, a.razao_social, a.codigo_municipio_ibge, a.cnae, a.telefone, a.plano, a.responsavel,
-        a.api_key_hash, a.ambiente,
+        a.api_key_hash, a.ambiente, a.regime ?? "simples",
       ]),
     contexto: (userId) => um("select public.fiscal_assinatura_contexto($1) as r", [userId]),
     reivindicarTeste: (tenantId, hashes) =>
@@ -146,7 +146,9 @@ export function brasilApi(mapa) {
   return { fetch, chamadas };
 }
 
-export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO", uf = "SP", cnae = 6201501, situacao = "ATIVA" } = {}) {
+// regime: "simples" (padrão), "mei", "presumido" (nunca optou: null) ou "excluido" (saiu do Simples: false).
+export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO", uf = "SP", cnae = 6201501, situacao = "ATIVA", regime = "simples" } = {}) {
+  const simples = { simples: true, mei: true, presumido: null, excluido: false }[regime];
   return {
     cnpj,
     razao_social: `EMPRESA TESTE ${cnpj} LTDA`,
@@ -158,5 +160,7 @@ export function respostaBrasilApi(cnpj, { ibge = 3550308, municipio = "SAO PAULO
     cnae_fiscal: cnae,
     cnae_fiscal_descricao: "Desenvolvimento de programas de computador sob encomenda",
     descricao_situacao_cadastral: situacao,
+    opcao_pelo_mei: regime === "mei" ? true : regime === "presumido" ? null : false,
+    opcao_pelo_simples: simples,
   };
 }

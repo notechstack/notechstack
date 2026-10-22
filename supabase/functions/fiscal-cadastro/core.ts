@@ -3,7 +3,7 @@
 // Núcleo testável: sem Deno e sem supabase-js. O banco só é alcançado por public.fiscal_cadastro_criar.
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
-import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, padraoNacional, soDigitos } from "../_shared/fiscal/cnpj.ts";
+import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, municipioAtendido, type Regime, soDigitos } from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
 export type ArgsCriar = {
@@ -12,6 +12,7 @@ export type ArgsCriar = {
   razao_social: string;
   codigo_municipio_ibge: string;
   cnae: string | null;
+  regime: Regime;
   telefone: string;
   plano: "inicial" | "pro";
   responsavel: string;
@@ -42,7 +43,10 @@ function erro(status: number, error_code: string, mensagem: string, h: H): Respo
 const MSG_CNPJ_INVALIDO = "CNPJ inválido. Confira os 14 números.";
 const MSG_NAO_ENCONTRADO = "Não encontramos este CNPJ na Receita Federal.";
 const MSG_INDISPONIVEL = "Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.";
-const MSG_FORA_DO_PADRAO = "Seu município ainda não emite pelo padrão nacional";
+const MSG_FORA_DO_PADRAO =
+  "Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional";
+const MSG_FORA_DO_SIMPLES =
+  "O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples";
 
 // Nenhum caminho cria empresa sem a Receita confirmar o CNPJ: fora do ar também bloqueia (Lucca, 22/10/2026).
 function respostaConsulta(c: Consulta, h: H): Response | null {
@@ -52,6 +56,7 @@ function respostaConsulta(c: Consulta, h: H): Response | null {
     const situacao = c.situacao.toLowerCase();
     return erro(422, "CNPJ_INATIVO", `Este CNPJ está com situação ${situacao} na Receita Federal. Só empresas ativas podem emitir notas.`, h);
   }
+  if (c.motivo === "fora_do_simples") return erro(422, "CNPJ_FORA_DO_SIMPLES", MSG_FORA_DO_SIMPLES, h);
   return erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL, h);
 }
 
@@ -95,7 +100,7 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
       if (!c.ok) log("fiscal_cadastro_consulta", { motivo: c.motivo });
       return r!;
     }
-    return json(200, { ok: true, ...c.dados, padrao_nacional: padraoNacional(c.dados.codigo_municipio_ibge, await deps.municipios()) }, h);
+    return json(200, { ok: true, ...c.dados, padrao_nacional: municipioAtendido(c.dados, await deps.municipios()) }, h);
   }
 
   if (b.acao !== "criar") return erro(400, "ACAO_INVALIDA", "Ação desconhecida.", h);
@@ -115,11 +120,11 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   if (!telefone || !telefone.startsWith("+55")) return erro(422, "DADOS_INVALIDOS", "Informe um WhatsApp do Brasil com DDD.", h);
   const plano = b.plano === "pro" ? "pro" : "inicial";
 
-  // Município, IBGE e CNAE vêm sempre da consulta, nunca do corpo (critério 3).
+  // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3).
   const c = await consultar(cnpj);
   const r = respostaConsulta(c, h);
   if (r || !c.ok) return r!;
-  if (!padraoNacional(c.dados.codigo_municipio_ibge, await deps.municipios())) {
+  if (!municipioAtendido(c.dados, await deps.municipios())) {
     return erro(422, "MUNICIPIO_FORA_DO_PADRAO", MSG_FORA_DO_PADRAO, h);
   }
 
@@ -134,6 +139,7 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
       razao_social: c.dados.razao_social,
       codigo_municipio_ibge: c.dados.codigo_municipio_ibge,
       cnae: c.dados.cnae,
+      regime: c.dados.regime,
       telefone,
       plano,
       responsavel,
@@ -150,7 +156,7 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   switch (res.status) {
     case "criado":
     case "existente":
-      log("fiscal_cadastro_criado", { status: res.status, plano });
+      log("fiscal_cadastro_criado", { status: res.status, plano, regime: c.dados.regime });
       // novo: a conta nasceu agora (o site mede o cadastro concluído só uma vez).
       return json(201, { ok: true, tenant_id: res.tenant_id, etapa: res.etapa, novo: res.status === "criado" }, h);
     case "cnpj_ja_cadastrado":
