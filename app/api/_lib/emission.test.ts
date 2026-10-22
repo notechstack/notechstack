@@ -92,6 +92,21 @@ describe('emissão autorizada (C3)', () => {
     expect(row.dps_numero).toBeNull()
     expect(sefin.calls).toHaveLength(0)
   })
+
+  it('MEI sem p_tot_trib_sn chega a issued com opSimpNac 2', async () => {
+    const t0 = new Date()
+    const cert = sharedTestCertificate()
+    const t = await tenant({ certificado: cert.certificado, regime: 'mei', pTotTribSn: null })
+    const invoice = await insertQueuedInvoice(db, t.id)
+    const sefin = fakeSefin()
+    await runEmission({ db, sefin: createSefinClient({ transport: sefin.transport }), now: () => t0, tenantId: t.id })
+    const row = await readInvoice(db, invoice.id)
+    expect(row.status).toBe('issued')
+    expect(row.last_error_code).toBeNull()
+    expect(row.xml_dps).toContain('<opSimpNac>2</opSimpNac>')
+    expect(row.xml_dps).toContain('<indTotTrib>0</indTotTrib>')
+    expect(row.xml_dps).not.toContain('pTotTribSN')
+  })
 })
 
 describe('retentativa com consulta prévia (C17)', () => {

@@ -58,7 +58,7 @@ async function contar(cnpj, telefone, email) {
   return rows[0];
 }
 
-test("consultar cnpj: válido devolve 200 com os 7 campos", async () => {
+test("consultar cnpj: válido devolve 200 com os 8 campos", async () => {
   const cnpj = cnpjValido();
   const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj) });
   const r = await chamar({ acao: "consultar_cnpj", cnpj: `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}` }, { api });
@@ -69,6 +69,7 @@ test("consultar cnpj: válido devolve 200 com os 7 campos", async () => {
   assert.equal(r.body.uf, "SP");
   assert.equal(r.body.codigo_municipio_ibge, "3550308");
   assert.equal(r.body.cnae, "6201501");
+  assert.equal(r.body.regime, "simples");
   assert.equal(r.body.padrao_nacional, true);
   assert.deepEqual(api.chamadas, [`https://cnpj.simulado/api/cnpj/v1/${cnpj}`]);
 });
@@ -196,6 +197,61 @@ test("município fora do padrão: lista sem fonte (lote P sem resposta) deixa to
   }
 });
 
+test("MEI fora da lista do padrão nacional: consulta passa e criar grava regime mei", async () => {
+  const cnpj = cnpjValido();
+  const telefone = telefoneAleatorio();
+  const u = await criarUsuario(bancos.dono);
+  limpar.push({ userId: u.id, cnpj, telefone });
+  const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj, { ibge: FORA_DO_PADRAO, municipio: "CURITIBA", uf: "PR", regime: "mei" }) });
+
+  const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+  assert.equal(consulta.status, 200);
+  assert.equal(consulta.body.regime, "mei");
+  assert.equal(consulta.body.padrao_nacional, true);
+
+  const r = await chamar(
+    { acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "inicial" },
+    { api, userId: u.id },
+  );
+  assert.equal(r.status, 201);
+  assert.equal(r.chamadasCriar[0].regime, "mei");
+  const t = (await bancos.dono.query("select regime, codigo_municipio_ibge from nofiscal.fiscal_tenants where id = $1", [r.body.tenant_id])).rows[0];
+  assert.deepEqual(t, { regime: "mei", codigo_municipio_ibge: String(FORA_DO_PADRAO) });
+});
+
+test("fora do Simples (Lucro Presumido/Real ou excluído): consulta e criar respondem 422 sem gravar nada", async () => {
+  for (const regime of ["presumido", "excluido"]) {
+    const cnpj = cnpjValido();
+    const telefone = telefoneAleatorio();
+    const u = await criarUsuario(bancos.dono);
+    limpar.push({ userId: u.id, cnpj, telefone });
+    const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj, { regime }) });
+
+    const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+    assert.equal(consulta.status, 422, regime);
+    assert.equal(consulta.body.error_code, "CNPJ_FORA_DO_SIMPLES");
+    assert.match(consulta.body.mensagem, /MEI e empresas do Simples Nacional/);
+
+    const r = await chamar(
+      { acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro" },
+      { api, userId: u.id },
+    );
+    assert.equal(r.status, 422, regime);
+    assert.equal(r.body.error_code, "CNPJ_FORA_DO_SIMPLES");
+    assert.equal(r.chamadasCriar.length, 0);
+    assert.deepEqual(await contar(cnpj, telefone, u.email), { tenants: 0, phones: 0, clients: 0 });
+  }
+});
+
+test("consulta sem as opções do Simples e do MEI não confirma o regime: 503", async () => {
+  const cnpj = cnpjValido();
+  const { opcao_pelo_mei: _m, opcao_pelo_simples: _s, ...semOpcoes } = respostaBrasilApi(cnpj);
+  const api = brasilApi({ [cnpj]: semOpcoes });
+  const r = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+  assert.equal(r.status, 503);
+  assert.equal(r.body.error_code, "CONSULTA_INDISPONIVEL");
+});
+
 test("criar empresa: sessão válida responde 201 e grava cliente, vínculo, conta, tenant e telefone do dono", async () => {
   const cnpj = cnpjValido();
   const telefone = telefoneAleatorio();
@@ -212,13 +268,14 @@ test("criar empresa: sessão válida responde 201 e grava cliente, vínculo, con
   assert.match(r.body.tenant_id, /^[0-9a-f-]{36}$/);
 
   const t = (await bancos.dono.query(
-    `select id, client_id, cnpj, razao_social, codigo_municipio_ibge, cnae, plan, monthly_note_limit, ambiente,
+    `select id, client_id, cnpj, razao_social, codigo_municipio_ibge, cnae, regime, plan, monthly_note_limit, ambiente,
             api_key_hash, onboarding_etapa, pago_em
        from nofiscal.fiscal_tenants where id = $1`, [r.body.tenant_id])).rows[0];
   assert.equal(t.cnpj, cnpj);
   assert.equal(t.razao_social, `EMPRESA TESTE ${cnpj} LTDA`);
   assert.equal(t.codigo_municipio_ibge, "3550308");
   assert.equal(t.cnae, "6201501");
+  assert.equal(t.regime, "simples");
   assert.ok(t.client_id);
   assert.equal(t.plan, "pro");
   assert.equal(t.monthly_note_limit, 100);

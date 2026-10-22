@@ -1,6 +1,7 @@
 // CNPJ do cadastro (critérios 2 e 3): dígitos verificadores, consulta na BrasilAPI
 // (`GET <CNPJ_API_URL>/api/cnpj/v1/<cnpj>`, padrão oficial https://brasilapi.com.br, que espelha os
-// dados abertos da Receita Federal), situação cadastral ativa e o município no padrão nacional.
+// dados abertos da Receita Federal), situação cadastral ativa, regime (MEI ou Simples ME/EPP) e o
+// município no padrão nacional.
 // Sem Deno.*: roda também no node --test.
 
 export const CNPJ_API_PADRAO = "https://brasilapi.com.br";
@@ -32,11 +33,15 @@ export type DadosCnpj = {
   uf: string;
   codigo_municipio_ibge: string;
   cnae: string | null;
+  regime: Regime;
 };
+
+/** `opSimpNac` da DPS: mei = 2, simples (ME/EPP) = 3. Quem não é do Simples não é atendido. */
+export type Regime = "mei" | "simples";
 
 export type Consulta =
   | { ok: true; dados: DadosCnpj }
-  | { ok: false; motivo: "nao_encontrado" | "indisponivel" }
+  | { ok: false; motivo: "nao_encontrado" | "indisponivel" | "fora_do_simples" }
   | { ok: false; motivo: "inativo"; situacao: string };
 
 function texto(v: unknown): string {
@@ -80,6 +85,11 @@ export async function consultarCnpj(
   const situacao = texto(b.descricao_situacao_cadastral).toUpperCase();
   if (!situacao) return { ok: false, motivo: "indisponivel" };
   if (situacao !== "ATIVA") return { ok: false, motivo: "inativo", situacao };
+  // Só MEI e Simples ME/EPP emitem (Lucca, 22/10/2026): Lucro Presumido, Real e Arbitrado ficam fora.
+  // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou); sem as chaves, não confirma nada.
+  if (!("opcao_pelo_mei" in b) || !("opcao_pelo_simples" in b)) return { ok: false, motivo: "indisponivel" };
+  const regime: Regime | null = b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null;
+  if (!regime) return { ok: false, motivo: "fora_do_simples" };
   return {
     ok: true,
     dados: {
@@ -89,6 +99,7 @@ export async function consultarCnpj(
       uf: texto(b.uf).toUpperCase(),
       codigo_municipio_ibge: ibge,
       cnae: codigo(b.cnae_fiscal, 7),
+      regime,
     },
   };
 }
@@ -100,6 +111,12 @@ export type ListaMunicipios = { fonte: string | null; consultado_em?: string; co
 export function padraoNacional(ibge: string, lista: ListaMunicipios): boolean {
   if (!lista || !lista.fonte || !Array.isArray(lista.codigos_ibge)) return true;
   return lista.codigos_ibge.map(String).includes(ibge);
+}
+
+// O MEI emite pelo Emissor Nacional em qualquer município: as regras E0037, E0038 e E0039 da Sefin
+// (Anexo I v1.01, aba RN DPS_NFS-e) exceptuam o MEI. A lista só vale para o Simples ME/EPP.
+export function municipioAtendido(d: Pick<DadosCnpj, "regime" | "codigo_municipio_ibge">, lista: ListaMunicipios): boolean {
+  return d.regime === "mei" || padraoNacional(d.codigo_municipio_ibge, lista);
 }
 
 export function lerListaMunicipios(conteudo: string | null): ListaMunicipios {

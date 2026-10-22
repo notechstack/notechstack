@@ -43,6 +43,7 @@ export async function criarEmpresa(dono, {
   configurado = false,
   certificado = false,
   trialEndsAt = null,
+  regime = "simples",
 } = {}) {
   const userId = randomUUID();
   const clientId = randomUUID();
@@ -66,12 +67,12 @@ export async function criarEmpresa(dono, {
   const { rows } = await dono.query(
     `insert into nofiscal.fiscal_tenants
        (cnpj, razao_social, codigo_municipio_ibge, cnae, api_key_hash, plan, monthly_note_limit, active,
-        ambiente, client_id, onboarding_etapa, trial_ends_at, p_tot_trib_sn, codigo_servico_nacional)
-     values ($1, $2, '3550308', '6201501', $3, $4, $5, true, 'producao_restrita', $6, $7, $8, $9, $10)
+        ambiente, client_id, onboarding_etapa, trial_ends_at, p_tot_trib_sn, codigo_servico_nacional, regime)
+     values ($1, $2, '3550308', '6201501', $3, $4, $5, true, 'producao_restrita', $6, $7, $8, $9, $10, $11)
      returning id`,
     [
       cnpj, `Empresa de teste ${cnpj}`, randomBytes(32).toString("hex"), plano, plano === "pro" ? 100 : 20, clientId,
-      etapa, trialEndsAt, configurado ? "6.00" : null, configurado ? "010701" : null,
+      etapa, trialEndsAt, configurado && regime !== "mei" ? "6.00" : null, configurado ? "010701" : null, regime,
     ],
   );
   const tenantId = rows[0].id;

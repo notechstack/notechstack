@@ -13,6 +13,7 @@ export type SefinTenant = {
   razao_social: string
   inscricao_municipal: string | null
   codigo_municipio_ibge: string
+  /** `simples` (ME/EPP, opSimpNac 3) ou `mei` (opSimpNac 2). */
   regime: string
   ambiente: Ambiente
   /** `totTrib/pTotTribSN` da DPS (Landing, lote 2b); `numeric` chega do `pg` como texto. */

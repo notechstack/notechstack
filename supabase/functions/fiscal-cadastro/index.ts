@@ -26,6 +26,7 @@ Deno.serve((req: Request) =>
         p_razao_social: a.razao_social,
         p_codigo_municipio_ibge: a.codigo_municipio_ibge,
         p_cnae: a.cnae,
+        p_regime: a.regime,
         p_telefone: a.telefone,
         p_plano: a.plano,
         p_responsavel: a.responsavel,

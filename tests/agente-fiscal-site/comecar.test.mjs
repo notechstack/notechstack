@@ -67,6 +67,26 @@ test('município bloqueia', async () => {
   assert.match(p.texto('fc-aviso-1'), /Seu município ainda não emite pelo padrão nacional/);
 });
 
+test('mei passa fora da lista e fora do simples bloqueia (Lucca, 22/10/2026)', async () => {
+  const mei = superficie({ 'fiscal-cadastro:consultar_cnpj': (c) => ({ status: 200, corpo: { ok: true, cnpj: c.cnpj, razao_social: 'MARIA SOUZA 12345678900', municipio: 'SAO BERNARDO DO CAMPO', uf: 'SP', codigo_municipio_ibge: '3548708', cnae: '7319003', regime: 'mei', padrao_nacional: true } }) });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede: mei });
+  await preencherEtapa1(p);
+  assert.equal(p.texto('fc-cnpj-dica'), 'SAO BERNARDO DO CAMPO/SP · CNAE 7319003 · MEI');
+  assert.doesNotMatch(p.textoVisivel(), /Seu município ainda não emite/);
+  await p.enviar('fc-form-1');
+  assert.equal(mei.de('fiscal-acesso').length, 1, 'MEI segue para o código');
+
+  const msg = 'O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples';
+  const fora = superficie({ 'fiscal-cadastro:consultar_cnpj': r(422, { ok: false, error_code: 'CNPJ_FORA_DO_SIMPLES', mensagem: msg }) });
+  const q = await abrir('/agentes/fiscal/comecar/', { rede: fora });
+  await preencherEtapa1(q, { empresa: 'Empresa do Lucro Presumido' });
+  assert.equal(q.texto('fc-cnpj-erro'), msg);
+  await q.enviar('fc-form-1');
+  assert.equal(fora.de('fiscal-acesso').length, 0, 'não pede código');
+  assert.equal(q.etapa(), 1);
+  assert.equal(q.texto('fc-cnpj-erro'), msg);
+});
+
 test('etapa 1 incompleta não chama nada', async () => {
   const q = await abrir('/agentes/fiscal/comecar/');
   await q.preencher('fc-responsavel', 'Lucca Teste');
@@ -425,6 +445,18 @@ test('sem os arquivos de dados, a etapa 5 aceita o código digitado', async () =
   await p.preencher('fc-percentual', '100');
   await p.enviar('fc-form-5');
   assert.equal(p.rede.de('fiscal-conta:configurar')[0].corpo.codigo_servico_nacional, '040101');
+});
+
+test('mei: etapa 5 sem percentual do Simples', async () => {
+  const p = await abrirNaEtapa('dados_fiscais', { estadoExtra: { plano: 'inicial', empresa: { ...estado().empresa, regime: 'mei' } } });
+  await p.esvaziar(40);
+  assert.ok(!p.visivel('fc-percentual'), 'campo do percentual escondido');
+  const radio = p.$('fc-seletor').querySelector('.nf-sugestoes input[value="040101"]');
+  radio.checked = true;
+  radio.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  await p.enviar('fc-form-5');
+  assert.deepEqual(js(p.rede.de('fiscal-conta:configurar')[0].corpo), { acao: 'configurar', codigo_servico_nacional: '040101' });
+  assert.equal(p.etapa(), 6);
 });
 
 test('dados fiscais inválidos ficam na página e o 422 aponta o campo', async () => {

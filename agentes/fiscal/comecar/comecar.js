@@ -13,7 +13,8 @@
   };
   var MSG = {
     cnpj: 'CNPJ inválido',
-    municipio: 'Seu município ainda não emite pelo padrão nacional',
+    municipio: 'Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional',
+    foraDoSimples: 'O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples',
     codigoIncorreto: 'Código incorreto',
     codigoNovo: 'Peça um código novo',
     cnpjComConta: 'Este CNPJ já tem conta. <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>',
@@ -157,6 +158,8 @@
     if (!nf.telefoneE164(d.telefone)) erros['fc-telefone'] = 'Informe o WhatsApp com DDD.';
     return erros;
   }
+  // Sem o regime na resposta (fiscal-cadastro anterior ao MEI), a dica fica como antes.
+  var ROTULO_REGIME = { mei: 'MEI', simples: 'Simples Nacional' };
   function municipioBloqueado() { return !!(st.consulta && st.consulta.cnpj === st.cnpjConsultado && st.consulta.padrao_nacional === false); }
 
   function consultarCnpj() {
@@ -172,9 +175,9 @@
     st.consultando = nf.funcao('fiscal-cadastro', { acao: 'consultar_cnpj', cnpj: cnpj }, { auth: false }).then(function (r) {
       if (cnpj !== st.cnpjConsultado) return;
       if (r.ok) {
-        st.consulta = { cnpj: cnpj, razao_social: r.dados.razao_social, municipio: r.dados.municipio, uf: r.dados.uf, cnae: r.dados.cnae, padrao_nacional: r.dados.padrao_nacional };
+        st.consulta = { cnpj: cnpj, razao_social: r.dados.razao_social, municipio: r.dados.municipio, uf: r.dados.uf, cnae: r.dados.cnae, regime: r.dados.regime, padrao_nacional: r.dados.padrao_nacional };
         if (r.dados.razao_social) $('fc-empresa').value = r.dados.razao_social;
-        $('fc-cnpj-dica').textContent = [r.dados.municipio && (r.dados.municipio + (r.dados.uf ? '/' + r.dados.uf : '')), r.dados.cnae && ('CNAE ' + r.dados.cnae)].filter(Boolean).join(' · ');
+        $('fc-cnpj-dica').textContent = [r.dados.municipio && (r.dados.municipio + (r.dados.uf ? '/' + r.dados.uf : '')), r.dados.cnae && ('CNAE ' + r.dados.cnae), ROTULO_REGIME[r.dados.regime]].filter(Boolean).join(' · ');
         if (r.dados.padrao_nacional === false) nf.aviso($('fc-aviso-1'), MSG.municipio, 'erro');
       } else if (r.codigo === 'CNPJ_INVALIDO') {
         $('fc-cnpj-dica').textContent = '';
@@ -183,10 +186,10 @@
         $('fc-cnpj-dica').textContent = '';
         st.cnpjConsultado = '';
         nf.erroCampo('fc-cnpj', 'Não encontramos este CNPJ na Receita Federal. Confira os números.');
-      } else if (r.codigo === 'CNPJ_INATIVO') {
+      } else if (r.codigo === 'CNPJ_INATIVO' || r.codigo === 'CNPJ_FORA_DO_SIMPLES') {
         $('fc-cnpj-dica').textContent = '';
         st.cnpjConsultado = ''; // ao enviar, consulta de novo e mostra o erro outra vez
-        nf.erroCampo('fc-cnpj', r.mensagem || 'Este CNPJ não está ativo na Receita Federal.');
+        nf.erroCampo('fc-cnpj', r.mensagem || (r.codigo === 'CNPJ_INATIVO' ? 'Este CNPJ não está ativo na Receita Federal.' : MSG.foraDoSimples));
       } else {
         // Consulta fora do ar (503) ou sem rede: sem a Receita confirmar, não segue (Lucca, 22/10/2026).
         $('fc-cnpj-dica').textContent = '';
@@ -279,6 +282,7 @@
       else if (r.codigo === 'TELEFONE_DE_OUTRA_EMPRESA') { aviso = MSG.telefoneOutra; campo = ['fc-telefone', MSG.telefoneOutra]; }
       else if (r.codigo === 'CONTA_JA_TEM_EMPRESA') aviso = 'Este e-mail já tem uma empresa cadastrada. <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>';
       else if (r.codigo === 'MUNICIPIO_FORA_DO_PADRAO') aviso = MSG.municipio;
+      else if (r.codigo === 'CNPJ_FORA_DO_SIMPLES') campo = ['fc-cnpj', MSG.foraDoSimples];
       else if (r.codigo === 'CNPJ_INVALIDO') campo = ['fc-cnpj', MSG.cnpj];
       else if (r.codigo === 'CNPJ_NAO_ENCONTRADO') campo = ['fc-cnpj', 'Não encontramos este CNPJ nos dados públicos. Confira os números.'];
       else aviso = nf.esc(r.mensagem || MSG.generico);
@@ -535,9 +539,15 @@
   }
 
   /* ---------- 5 · Dados fiscais ---------- */
+  /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
+  function ehMei() {
+    var empresa = st.estado && st.estado.empresa;
+    return ((empresa && empresa.regime) || (st.consulta && st.consulta.regime)) === 'mei';
+  }
   function abrirFiscal() {
     var pro = st.plano === 'pro';
     $('fc-pro').hidden = !pro;
+    $('fc-campo-percentual').hidden = ehMei();
     var dia = $('fc-resumo-dia-mes');
     if (dia.options.length === 0) for (var i = 1; i <= 28; i++) { var o = document.createElement('option'); o.value = String(i); o.textContent = String(i); dia.appendChild(o); }
     var f = (st.estado && st.estado.fiscal) || {};
@@ -571,11 +581,13 @@
     Object.keys(CAMPO_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_FISCAL[k], ''); });
     nf.aviso($('fc-aviso-5'), '');
     var codigo = st.seletor ? st.seletor.valor() : '';
-    var pct = nf.percentual($('fc-percentual').value);
+    var mei = ehMei();
+    var pct = mei ? null : nf.percentual($('fc-percentual').value);
     var falhou = false;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fc-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
-    if (pct === null) { nf.erroCampo('fc-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
-    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo, p_tot_trib_sn: pct };
+    if (!mei && pct === null) { nf.erroCampo('fc-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo };
+    if (!mei) corpo.p_tot_trib_sn = pct;
     if (st.plano === 'pro') {
       var contador = nf.texto($('fc-contador').value);
       if (contador && !nf.emailValido(contador)) { nf.erroCampo('fc-contador', 'Informe um e-mail válido ou deixe em branco.'); falhou = true; }

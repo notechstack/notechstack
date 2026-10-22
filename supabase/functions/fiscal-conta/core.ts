@@ -131,6 +131,7 @@ export async function validarConfiguracao(
   body: Record<string, unknown>,
   plano: string,
   codigos: Set<string> | null,
+  regime: unknown = "simples",
 ): Promise<{ ok: true; config: Configuracao } | { ok: false; resultado: Resultado }> {
   const codigo = typeof body.codigo_servico_nacional === "string" ? body.codigo_servico_nacional.trim() : "";
   if (!/^\d{6}$/.test(codigo) || (codigos && !codigos.has(codigo))) {
@@ -139,15 +140,18 @@ export async function validarConfiguracao(
       resultado: invalido("codigo_servico_nacional", "Escolha um código de serviço da lista nacional (6 números)."),
     };
   }
-  const percentual = lerPercentual(body.p_tot_trib_sn);
-  if (percentual === null) {
+  // MEI não informa o percentual do Simples na DPS (E0710): o campo não existe para ele.
+  const mei = regime === "mei";
+  const percentual = mei ? null : lerPercentual(body.p_tot_trib_sn);
+  if (!mei && percentual === null) {
     return {
       ok: false,
       resultado: invalido("p_tot_trib_sn", "Informe o percentual de tributos do Simples entre 0 e 100, com até 2 casas."),
     };
   }
 
-  const dados: Record<string, unknown> = { codigo_servico_nacional: codigo, p_tot_trib_sn: percentual };
+  const dados: Record<string, unknown> = { codigo_servico_nacional: codigo };
+  if (!mei) dados.p_tot_trib_sn = percentual;
   const temContador = Object.hasOwn(body, "contador_email");
   const temResumo = Object.hasOwn(body, "resumo");
   const contador = temContador && body.contador_email !== null
@@ -258,7 +262,7 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
       codigos = null;
     }
     if (!codigos) log("warn", "fiscal_conta_lista_codigos_indisponivel", {});
-    const v = await validarConfiguracao(b, estado.plano, codigos);
+    const v = await validarConfiguracao(b, estado.plano, codigos, estado.empresa.regime);
     if (!v.ok) return v.resultado;
     const r = await deps.configurar(userId, v.config.dados);
     if (!r.ok) return resultadoDoBanco(r);

@@ -91,6 +91,24 @@ describe('dps-builder (C6)', () => {
     expect(text('tpAmb')).toBe('2')
   })
 
+  it('MEI: opSimpNac 2, sem regApTribSN e indTotTrib no lugar de pTotTribSN (E0162, E0174, E0710)', () => {
+    const { xml } = buildDps({ tenant: tenant({ regime: 'mei', p_tot_trib_sn: null }), serie: '1', numero: 1, payload, now })
+    const { all, text } = parse(xml)
+    const regTrib = all('regTrib')[0]
+    expect(Array.from(regTrib.childNodes).map((n) => (n as Element).localName)).toEqual(['opSimpNac', 'regEspTrib'])
+    expect(text('opSimpNac')).toBe('2')
+    expect(text('regEspTrib')).toBe('0')
+    expect(all('regApTribSN')).toHaveLength(0)
+    expect(text('indTotTrib')).toBe('0')
+    expect(all('pTotTribSN')).toHaveLength(0)
+    expect(text('tpRetISSQN')).toBe('1')
+    expect(all('pAliq')).toHaveLength(0)
+  })
+
+  it('Simples sem p_tot_trib_sn continua recusado', () => {
+    expect(() => buildDps({ tenant: tenant({ p_tot_trib_sn: null }), serie: '1', numero: 1, payload, now })).toThrow(DpsInvalidError)
+  })
+
   it('sai sem indentação e sem espaço entre tags', () => {
     const { xml } = buildDps({ tenant: tenant(), serie: '1', numero: 1, payload, now })
     expect(xml.startsWith('<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01"><infDPS Id="DPS')).toBe(true)

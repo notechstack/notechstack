@@ -104,7 +104,7 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
     case 'SUBSCRIPTION_CANCELLED':
       return `Sua assinatura foi cancelada. Assine de novo para emitir: ${links.assinatura}`
     case 'FISCAL_CONFIG_MISSING':
-      return `Falta concluir a configuração fiscal (código de serviço e percentual de tributos) no cadastro: ${links.site}`
+      return `Falta concluir a configuração fiscal (código de serviço e, no Simples, percentual de tributos) no cadastro: ${links.site}`
     default:
       return `A emissão está desativada para a sua empresa. Fale com a Nó: ${WHATSAPP_COMERCIAL}`
   }

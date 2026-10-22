@@ -11,7 +11,7 @@
 //   com `last_error_code = 'SEFIN_UNAVAILABLE'`.
 // Pausas: tenant inativo (critério 27) e certificado vencido (critério 17) não são
 // selecionados; a nota fica `queued` e sai sozinha quando o tenant volta ou o A1 é trocado.
-// Configuração incompleta (série única, `p_tot_trib_sn`) deixa a nota `queued` com o código
+// Configuração incompleta (série única, `p_tot_trib_sn` fora do MEI) deixa a nota `queued` com o código
 // `SERIE_NOT_CONFIGURED` ou `TRIBUTOS_NOT_CONFIGURED` e a revê em 5 min.
 // O limite do plano não entra na seleção (critério 29).
 import type { Db, Queryable } from './db.js'
@@ -200,7 +200,7 @@ async function claimNext(
         )
         return { id: row.id, plan: 'skip', tenant, invoice: null, attempts: row.attempts }
       }
-      if (row.p_tot_trib_sn === null) {
+      if (row.p_tot_trib_sn === null && row.regime !== 'mei') {
         await tx.query(
           `update nofiscal.fiscal_invoices
               set last_error_code = 'TRIBUTOS_NOT_CONFIGURED', next_attempt_at = $2, updated_at = $3
