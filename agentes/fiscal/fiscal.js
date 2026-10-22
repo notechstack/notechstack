@@ -24,6 +24,14 @@
     });
   }
 
+  /* Link direto para uma pergunta do FAQ (#certificado-a1, vindo do cadastro ou da faixa dos planos): abre a resposta. */
+  function abrirPerguntaDoHash() {
+    var alvo = location.hash && document.getElementById(location.hash.slice(1));
+    if (alvo && alvo.tagName === 'DETAILS' && !alvo.open) { alvo.open = true; alvo.scrollIntoView({ block: 'start' }); }
+  }
+  abrirPerguntaDoHash();
+  window.addEventListener('hashchange', abrirPerguntaDoHash);
+
   /* Entrada por rolagem (.fi-reveal): ganha .is-in na primeira vez em tela; filhos escalonam pelo --i. */
   var reveals = document.querySelectorAll('.fi-reveal');
   if (reveals.length && 'IntersectionObserver' in window && !reduzido) {

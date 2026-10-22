@@ -5,6 +5,7 @@
      LP carregada ............ nofiscal_view_content       ViewContent
      plano escolhido ......... nofiscal_plano_escolhido    AddToCart          (GA4 add_to_cart)
      cadastro aberto ......... nofiscal_cadastro_inicio    -
+     já tem A1? (etapa 1) .... nofiscal_a1                 -                  (também no painel: form_nofiscal_a1)
      conta criada ............ nofiscal_cadastro           CompleteRegistration (GA4 sign_up)
      pagamento aberto ........ nofiscal_checkout           InitiateCheckout   (GA4 begin_checkout)
      cartão enviado .......... nofiscal_pagamento_info     AddPaymentInfo     (GA4 add_payment_info)
@@ -89,6 +90,14 @@
     cadastroIniciado: function (plano) {
       if (!primeiraVez('cadastro_inicio')) return null;
       return disparar('nofiscal_cadastro_inicio', { plano: plano });
+    },
+    /** Resposta da etapa 1 (sim | contador | nao | nao_sei) com o regime do CNPJ (mei | simples). Vai também à fila do
+        painel de percurso (telemetria.js), que só aceita nomes form_*, e sai do navegador só com a medição permitida. */
+    a1: function (resposta, regime, plano) {
+      if (!resposta || !primeiraVez('a1.' + resposta)) return null;
+      var dados = { a1: resposta, regime: regime || undefined, plano: plano };
+      if (typeof window.trackFila === 'function') window.trackFila('form_nofiscal_a1', dados);
+      return disparar('nofiscal_a1', dados);
     },
     cadastroConcluido: function (plano) {
       if (!primeiraVez('cadastro')) return null;

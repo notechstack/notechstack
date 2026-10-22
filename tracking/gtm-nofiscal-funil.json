@@ -592,6 +592,86 @@
     ],
     "tagFiringOption": "ONCE_PER_EVENT",
     "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "946",
+    "name": "GA4 - nofiscal_a1 (nó.fiscal)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "nofiscal_a1"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "a1"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.a1}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "regime"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.regime}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "936"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761160000000"
    }
   ],
   "trigger": [
@@ -744,6 +824,31 @@
      }
     ],
     "fingerprint": "1761160000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "936",
+    "name": "ce.nofiscal_a1 (nó.fiscal já tem A1?)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_a1"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761160000000"
    }
   ],
   "variable": [
@@ -794,6 +899,58 @@
       "type": "TEMPLATE",
       "key": "name",
       "value": "cupom"
+     }
+    ],
+    "fingerprint": "1761160000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "922",
+    "name": "dl.a1",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "a1"
+     }
+    ],
+    "fingerprint": "1761160000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "923",
+    "name": "dl.regime",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "regime"
      }
     ],
     "fingerprint": "1761160000000",

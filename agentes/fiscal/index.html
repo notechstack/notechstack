@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=7">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=8">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -50,8 +50,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-NK87FH8W');</script>
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
-<script src="/agentes/fiscal/medicao.js?v=1" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=7" defer></script>
+<script src="/agentes/fiscal/medicao.js?v=2" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=8" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -64,6 +64,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "MEI e empresas do Simples Nacional (ME e EPP) que prestam serviço. O MEI pode usar em qualquer município do Brasil, porque emite pelo padrão nacional em todo o país. A ME e a EPP precisam estar num município que já emite pelo padrão nacional (Sefin Nacional). O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. O agente trabalha com o certificado digital A1 da empresa."}},
     {"@type": "Question", "name": "Sou MEI. Posso usar?", "acceptedAnswer": {"@type": "Answer", "text": "Pode. Desde 2023, o MEI que presta serviço emite a NFS-e pelo padrão nacional, em qualquer município, e é por esse mesmo caminho que o agente emite. No cadastro, o CNPJ já mostra que você é MEI, e você não precisa informar percentual de tributos: a nota do MEI não leva esse campo. Para a emissão automática, você precisa de um certificado digital A1 do CNPJ (e-CNPJ), que se compra em qualquer certificadora."}},
     {"@type": "Question", "name": "Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?", "acceptedAnswer": {"@type": "Answer", "text": "Ainda não. Por enquanto, o agente atende só MEI e empresas do Simples Nacional. O cadastro confere o regime do CNPJ na Receita Federal e avisa logo no primeiro passo. Se quiser saber quando abrirmos para outros regimes, fale com a Nó pelo WhatsApp."}},
+    {"@type": "Question", "name": "Não tenho certificado A1. Como consigo um?", "acceptedAnswer": {"@type": "Answer", "text": "O A1 (e-CNPJ) é a identidade digital da sua empresa: um arquivo .pfx ou .p12, protegido por senha, que assina as notas. Vale 1 ano e é comprado à parte, numa certificadora. Para emitir pela API oficial, a Sefin Nacional exige a nota assinada com o certificado da própria empresa, inclusive no MEI. Primeiro, pergunte ao seu contador: muitas vezes ele já tem o A1 da empresa e pode te mandar o arquivo e a senha. Se não tiver, compre um e-CNPJ do tipo A1 numa certificadora credenciada pela ICP-Brasil, como Certisign, Serasa Experian, Valid, Soluti ou Safeweb, faça a validação por videoconferência ou presencial, com os documentos da empresa e do responsável legal, e baixe o arquivo .pfx, guardando a senha que você criou. O A3, em cartão ou token USB, não serve: precisa ser o A1, em arquivo."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
     {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "O teste no site é grátis, e as suas 5 primeiras emissões depois de assinar também. Depois, vale a franquia do plano: Inicial, até 20 notas por mês, ou Pro, até 100. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores da seção de planos são provisórios e aparecem confirmados na tela de assinatura."}},
@@ -174,6 +175,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="fi-secao fi-planos-sec" id="planos" aria-labelledby="fi-planos-titulo">
     <h2 class="fi-h2" id="fi-planos-titulo">Escolha o volume que faz sentido para sua operação</h2>
     <p class="fi-sub fi-sub--centro">Simule de graça aqui no site. Ao assinar, suas primeiras 5 emissões são gratuitas. O que muda entre os planos é a quantidade de volume de notas por mês.</p>
+    <!-- Requisito do A1 perto do CTA (Lucca, 22/10/2026): antes ficava só no FAQ e no texto corrido -->
+    <p class="fi-requisito-a1"><b>Antes de assinar:</b> você vai precisar do certificado digital A1 da empresa <span>(e-CNPJ)</span>. É ele que assina as notas, inclusive para MEI. O A1 é comprado à parte, numa certificadora, e vale 1 ano. <a href="#certificado-a1">Como conseguir um A1</a></p>
     <ul class="fi-planos fi-reveal">
       <li class="fi-plano" data-plano="inicial">
         <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></svg></span>
@@ -265,6 +268,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <details>
           <summary>Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?</summary>
           <p>Ainda não. Por enquanto, o agente atende só MEI e empresas do Simples Nacional. O cadastro confere o regime do CNPJ na Receita Federal e avisa logo no primeiro passo. Se quiser saber quando abrirmos para outros regimes, fale com a Nó pelo WhatsApp.</p>
+        </details>
+        <details id="certificado-a1">
+          <summary>Não tenho certificado A1. Como consigo um?</summary>
+          <p>O A1 (e-CNPJ) é a identidade digital da sua empresa: um arquivo .pfx ou .p12, protegido por senha, que assina as notas. Vale 1 ano e é comprado à parte, numa certificadora. Para emitir pela API oficial, a Sefin Nacional exige a nota assinada com o certificado da própria empresa, inclusive no MEI. Primeiro, pergunte ao seu contador: muitas vezes ele já tem o A1 da empresa e pode te mandar o arquivo e a senha. Se não tiver, compre um e-CNPJ do tipo A1 numa certificadora credenciada pela ICP-Brasil, como Certisign, Serasa Experian, Valid, Soluti ou Safeweb, faça a validação por videoconferência ou presencial, com os documentos da empresa e do responsável legal, e baixe o arquivo .pfx, guardando a senha que você criou. O A3, em cartão ou token USB, não serve: precisa ser o A1, em arquivo.</p>
         </details>
         <details>
           <summary>Como fica o meu certificado digital A1?</summary>

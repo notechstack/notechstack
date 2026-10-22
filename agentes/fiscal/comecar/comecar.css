@@ -79,3 +79,11 @@
 @media(min-width:601px){.nf-zap-fixo{right:20px;top:calc(max(20px, env(safe-area-inset-top, 0px)) + 78px)}}
 @media(min-width:1000px){.nf-zap-fixo{top:max(26px, env(safe-area-inset-top, 0px))}}
 @media(prefers-reduced-motion:reduce){.nf-zap-fixo{transition:none}}
+
+/* requisito do A1 na etapa 1, antes do pagamento, e a pergunta "Você já tem o certificado A1?" (medida no funil) */
+.nf-requisito-a1{margin:0 0 22px}
+.nf-requisito-a1 b{font-weight:700}
+.nf-a1-pergunta legend,.nf-a1-pergunta .nf-a1-retorno,.nf-a1-pergunta .nf-erro{grid-column:1/-1;margin:0}
+.nf-requisito-a1 span{white-space:nowrap}
+.nf-a1-retorno{font-size:14px;line-height:1.5}
+.nf-a1-retorno a{color:var(--fi-texto);font-weight:600;text-underline-offset:2px}
