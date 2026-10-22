@@ -17,11 +17,13 @@ const pages = {
   '/termos/': 'termos/index.html',
   '/privacidade/': 'privacidade/index.html',
 };
+// Mapa do site (Lucca, 22/10/2026): Home, Agentes e Contato. A navbar, o rodapé e o sitemap.xml seguem esta lista.
 const groups = [
-  ['Home', [['Conheça a Nó', '/'], ['Como funciona', '/#como-funciona'], ['Nossos clientes', '/#clientes'], ['Colaboradores digitais', '/colaboradores-digitais/'], ['Nó Agentes', '/agentes/'], ['Auditor de marketing', '/agentes/auditor/'], ['nó.health', '/health/']]],
-  ['Agência', [['Soluções', '/agencia/#solucoes'], ['Como funciona', '/agencia/#como-funciona'], ['Organização', '/agencia/#organizacao'], ['Acompanhamento', '/agencia/#acompanhamento'], ['Empresas', '/agencia/#empresas']]],
-  ['Contato', [['Conte sua ideia', '/contato/'], ['Parceria com agências', '/agencia/#contato']]],
+  ['Home', [['Conheça a nó', '/'], ['Agência', '/agencia/']]],
+  ['Agentes', [['Conheça os agentes', '/agentes/'], ['nó.auditor', '/agentes/auditor/'], ['nó.fiscal', '/agentes/fiscal/']]],
+  ['Contato', [['Conte sua ideia', '/contato/']]],
 ];
+const topLinks = [['Home', '/'], ['Agentes', '/agentes/'], ['Contato', '/contato/']];
 const link = ([label, href]) => `<a href="${href}">${label}</a>`;
 const footer = `<footer class="no-site-footer">
   <div class="ft-brand">
@@ -29,12 +31,12 @@ const footer = `<footer class="no-site-footer">
     <div class="ft-txt">IA que arquiteta, integra e opera.</div>
     <a class="ft-whatsapp" href="https://wa.me/5511939289413?text=Ol%C3%A1%2C%20vim%20pelo%20site%21" target="_blank" rel="noopener noreferrer" aria-label="Falar com a nó pelo WhatsApp no número +55 11 93928-9413">WhatsApp <span aria-hidden="true">↗</span></a>
   </div>
-  <nav class="ft-nav" aria-label="Mapa do site">${[['Home','/'],['Agência','/agencia/'],['nó.health','/health/'],['Colaboradores digitais','/colaboradores-digitais/'],['Nó Agentes','/agentes/'],['Sobre a Nó','/sobre/'],['Conte sua ideia','/contato/']].map(link).join('')}</nav>
+  <nav class="ft-nav" aria-label="Mapa do site">${groups.flatMap(([, links]) => links).map(link).join('')}</nav>
   <div class="ft-legal ft-txt"><div class="ft-legal-links"><a href="/termos/" class="ft-link">Termos de uso</a><span aria-hidden="true"> · </span><a href="/privacidade/" class="ft-link">Privacidade e cookies</a></div><div>© 2026 nó. Todos os direitos reservados.</div></div>
 </footer>`;
 let stale = false;
 for (const [route, file] of Object.entries(pages)) {
-  const nav = `<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks">${[['Home','/'],['Agência','/agencia/'],['Contato','/contato/']].map(([label, href]) => `<a href="${href}"${route === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid">${groups.map(([title, links]) => `<div class="no-card"><b>${title}</b><div>${links.map(link).join('')}</div></div>`).join('')}</div></div></div></nav>`;
+  const nav = `<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks">${topLinks.map(([label, href]) => `<a href="${href}"${route === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid">${groups.map(([title, links]) => `<div class="no-card"><b>${title}</b><div>${links.map(link).join('')}</div></div>`).join('')}</div></div></div></nav>`;
   const url = new URL('../' + file, import.meta.url);
   const before = await readFile(url, 'utf8');
   let after = before;
