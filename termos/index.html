@@ -46,7 +46,7 @@
 
   <div class="lg-rot">Termos</div>
   <h1>Termos de Uso</h1>
-  <p class="lg-data">Última atualização: 21 de outubro de 2026</p>
+  <p class="lg-data">Última atualização: 22 de outubro de 2026</p>
   <p class="lg-abre">Estas são as condições para usar este site. Elas valem a partir do
   momento em que você navega por aqui. Se não concordar com alguma delas, o caminho honesto
   é não usar o site — e, se quiser, escrever para a gente dizendo por quê.</p>
@@ -62,6 +62,8 @@
   <p>Este site apresenta os serviços da nó tech stack e oferece um <strong>diagnóstico
   gratuito</strong>: uma conversa guiada em que você escolhe o caminho que descreve a sua
   situação e, ao final, pode deixar um contato para receber uma proposta.</p>
+  <p>O site também oferece os agentes por assinatura da nó: o auditor de anúncios e o
+  nó.fiscal, com regras próprias nas seções 6 e 7.</p>
 
   <h2>3. O que o diagnóstico não é</h2>
   <p>Este ponto é o mais importante desta página.</p>
@@ -128,39 +130,139 @@
     nó.</li>
   </ul>
 
-  <h2>7. Propriedade intelectual</h2>
+  <h2 id="fiscal">7. nó.fiscal (Agente Fiscal)</h2>
+  <p>O <a href="/agentes/fiscal/">nó.fiscal</a> emite e cancela a NFS-e de padrão nacional da
+  sua empresa a partir de mensagens no WhatsApp: você diz para quem é a nota e o valor, o
+  agente monta a declaração (DPS), assina com o certificado digital da empresa e transmite à
+  Sefin Nacional, o sistema oficial do governo. Ao assinar, você aceita as regras abaixo e a
+  <a href="/privacidade/#fiscal">seção 8 da Política de Privacidade</a>.</p>
+
+  <h3>7.1. Quem pode usar</h3>
+  <ul>
+    <li>Empresa com CNPJ ativo na Receita Federal que seja <strong>MEI</strong> (em qualquer
+    município) ou <strong>ME/EPP do Simples Nacional</strong> com sede em município que já emite
+    pelo padrão nacional. Lucro Presumido, Lucro Real e Arbitrado não são atendidos.</li>
+    <li>Quem faz o cadastro declara que é o responsável pela empresa ou tem poderes para
+    contratar e emitir notas em nome dela, e que os dados informados são verdadeiros.</li>
+    <li>Cada cadastro corresponde a um CNPJ, um e-mail e um WhatsApp. Os planos Escritório e
+    Agência são contratados por proposta própria, combinada com a nó.</li>
+  </ul>
+
+  <h3>7.2. Certificado digital A1</h3>
+  <ul>
+    <li>Para emitir pela API oficial, a Sefin Nacional exige a nota assinada com o
+    <strong>certificado digital ICP-Brasil da própria empresa</strong>, inclusive no MEI. O
+    nó.fiscal usa o tipo <strong>A1</strong> (arquivo .pfx ou .p12). Ele é comprado à parte,
+    numa certificadora, e o custo e a renovação são seus. O A3, em cartão ou token, não
+    serve.</li>
+    <li>O arquivo e a senha são enviados <strong>só pela página de cadastro ou por “Minha
+    conta”</strong>, nunca pelo WhatsApp. Ao enviar, você autoriza a nó a guardá-los e a
+    usá-los <strong>apenas</strong> para: (a) assinar as notas e os cancelamentos que você
+    confirmar; e (b) consultar no Ambiente de Dados Nacional as notas que a sua empresa já
+    emitiu, quando você pedir isso no cadastro, para montar os seus clientes. Nenhum outro
+    uso.</li>
+    <li>Com o certificado vencido, revogado ou ausente, o agente não emite. Avisamos pelo
+    WhatsApp e por e-mail quando faltarem 30 dias para o vencimento.</li>
+    <li>Você pode trocar o certificado em “Minha conta” e pedir a exclusão dele a qualquer
+    momento (veja a Política de Privacidade). Se suspeitar que o arquivo ou a senha vazaram,
+    revogue o certificado na certificadora e nos avise.</li>
+  </ul>
+
+  <h3>7.3. Como a emissão funciona</h3>
+  <ul>
+    <li>Só os números de WhatsApp cadastrados na sua conta podem pedir notas.</li>
+    <li>O agente usa inteligência artificial para entender a mensagem e pode errar. Por isso,
+    antes de transmitir, ele mostra o resumo da nota, e <strong>nada é emitido sem o seu
+    “confirmar”</strong>. Conferir tomador, valor, código de serviço e descrição antes de
+    confirmar é responsabilidade sua. Um pedido sem confirmação expira em 24 horas.</li>
+    <li>O cancelamento segue a mesma regra de confirmação e vale nos prazos e nas condições do
+    seu município e da Sefin. Se a Sefin recusar o cancelamento, a nota continua valendo e o
+    agente explica o motivo.</li>
+    <li>Se a Sefin estiver fora do ar, a nota entra numa fila e o agente tenta de novo até 5
+    vezes, avisando você no WhatsApp. Se não conseguir, a nota não é emitida e você é
+    avisado.</li>
+  </ul>
+
+  <h3>7.4. O que continua com você e a sua contabilidade</h3>
+  <p>O nó.fiscal é uma ferramenta de emissão, <strong>não é serviço contábil nem consultoria
+  tributária</strong>. Enquadramento, regime, código de serviço, percentual de tributos do
+  Simples, retenções, apuração e recolhimento de impostos e o cumprimento de prazos fiscais
+  continuam sob responsabilidade da sua empresa e da sua contabilidade. A nó não responde por
+  multas, autuações ou diferenças de imposto que decorram de dados que você informou ou
+  confirmou.</p>
+
+  <h3>7.5. Planos, teste grátis e pagamento</h3>
+  <ul>
+    <li>Os planos, a franquia mensal de notas e os preços estão na página do nó.fiscal e são
+    confirmados na tela de pagamento antes de você assinar.</li>
+    <li>A assinatura é mensal, renovada automaticamente e cobrada no cartão de crédito pelo
+    Pagar.me. O número do cartão vai direto ao Pagar.me: a nó não o vê nem o guarda.</li>
+    <li><strong>Teste grátis de 7 dias:</strong> o cartão é pedido no início, mas a primeira
+    cobrança só acontece depois dos 7 dias. Cancelando antes disso, nada é cobrado. O teste
+    vale uma vez por empresa: se o CNPJ, o e-mail ou o WhatsApp já tiverem usado o teste, a
+    assinatura começa sem teste e a primeira cobrança é imediata, o que a tela de pagamento
+    avisa antes.</li>
+    <li>Cupons valem nas condições informadas ao aplicar, uma vez por empresa.</li>
+    <li>Se você passar da franquia do plano no mês, as notas continuam saindo e avisamos você
+    para avaliar a troca de plano. Mudanças nessa regra ou nos preços serão comunicadas com
+    pelo menos 30 dias de antecedência.</li>
+    <li>Você pode trocar de plano em “Minha conta”. A franquia nova vale na hora.</li>
+  </ul>
+
+  <h3>7.6. Cancelamento e falta de pagamento</h3>
+  <ul>
+    <li>Você cancela quando quiser, em “Minha conta” ou mandando “cancelar assinatura” do
+    WhatsApp do dono da conta.</li>
+    <li>Durante o teste, o cancelamento é imediato e nada é cobrado. Depois do teste, você
+    continua emitindo até o fim do período já pago, e a assinatura não é renovada. Não há
+    reembolso proporcional do período em curso, ressalvados os direitos que o Código de
+    Defesa do Consumidor assegure quando aplicável.</li>
+    <li>Se a cobrança for recusada, novas emissões ficam bloqueadas até você atualizar o
+    cartão em “Minha conta”. As notas já emitidas continuam válidas.</li>
+    <li>A nó pode suspender ou encerrar a conta usada para fraude, para emitir nota sem
+    serviço prestado ou em desacordo com estes Termos, avisando o motivo.</li>
+  </ul>
+
+  <h3>7.7. Disponibilidade</h3>
+  <p>A emissão depende de sistemas de terceiros: Sefin Nacional e Ambiente de Dados Nacional
+  (governo), WhatsApp (Meta), Pagar.me e a sua certificadora. A indisponibilidade ou mudança
+  de regras desses sistemas não é responsabilidade da nó, que avisa você e retoma a emissão
+  assim que possível. Você pode sempre emitir pelo Emissor Nacional do governo, em
+  nfse.gov.br.</p>
+
+  <h2>8. Propriedade intelectual</h2>
   <p>Marca, logotipo, textos, código, ilustrações, vídeos, o mascote e os demais elementos
   visuais deste site pertencem à nó tech stack ou são usados sob licença. Nada nestes Termos
   transfere qualquer direito sobre eles.</p>
   <p>O conteúdo que <strong>você</strong> escreve no diagnóstico continua sendo seu. Você nos
   autoriza a usá-lo apenas para analisar o seu caso e responder você.</p>
 
-  <h2>8. Disponibilidade</h2>
+  <h2>9. Disponibilidade</h2>
   <p>Trabalhamos para manter o site no ar, mas ele pode ficar indisponível por manutenção,
   falha de terceiros ou causas fora do nosso controle. Não garantimos funcionamento
   ininterrupto e podemos alterar ou descontinuar partes do site a qualquer momento.</p>
 
-  <h2>9. Links para outros sites</h2>
+  <h2>10. Links para outros sites</h2>
   <p>Este site pode apontar para páginas de terceiros. Não controlamos o conteúdo nem as
   práticas de privacidade delas, e não respondemos por isso. Ao sair daqui, valem os termos
   do destino.</p>
 
-  <h2>10. Limitação de responsabilidade</h2>
+  <h2>11. Limitação de responsabilidade</h2>
   <p>Na máxima extensão permitida pela lei brasileira, a nó tech stack não responde por danos
   indiretos, lucros cessantes ou perda de oportunidade decorrentes do uso — ou da
   impossibilidade de uso — deste site ou do conteúdo do diagnóstico.</p>
   <p>Nada aqui afasta direitos que o Código de Defesa do Consumidor assegure a você quando
   aplicável.</p>
 
-  <h2>11. Dados pessoais</h2>
+  <h2>12. Dados pessoais</h2>
   <p>O tratamento de dados pessoais, incluindo cookies e ferramentas de medição, está descrito
   na <a href="/privacidade/">Política de Privacidade</a>, que faz parte destes Termos.</p>
 
-  <h2>12. Mudanças nestes Termos</h2>
+  <h2>13. Mudanças nestes Termos</h2>
   <p>Podemos atualizar estes Termos. Quando isso acontecer, a data no topo muda. Continuar
   usando o site depois da atualização significa que você tomou ciência da versão vigente.</p>
 
-  <h2>13. Lei aplicável e foro</h2>
+  <h2>14. Lei aplicável e foro</h2>
   <p>Estes Termos são regidos pela lei brasileira. Fica eleito o foro do domicílio do
   consumidor para as questões a ele aplicáveis e, nos demais casos, o foro da comarca da sede
   da nó tech stack.</p>
