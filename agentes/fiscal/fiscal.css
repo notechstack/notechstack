@@ -175,6 +175,12 @@
 .fi-plano-itens li{position:relative;padding-left:28px;text-wrap:pretty}
 .fi-plano-itens li::before{content:'';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--fi-acento-tint)}
 .fi-plano-itens li::after{content:'';position:absolute;left:6.5px;top:4.5px;width:4px;height:8px;border:solid var(--fi-acento-texto);border-width:0 2px 2px 0;transform:rotate(45deg)}
+/* requisito do A1 logo acima dos cartões (e dos botões de assinar) */
+.fi-requisito-a1{max-width:760px;margin:22px auto 0;padding:14px 18px;border-radius:16px;background:var(--fi-acento-tint);font-size:15px;line-height:1.55;color:var(--fi-texto);text-wrap:pretty}
+.fi-requisito-a1 b{font-weight:700}
+.fi-requisito-a1 span{white-space:nowrap}
+.fi-requisito-a1 a{color:var(--fi-texto);font-weight:600;text-underline-offset:3px;white-space:nowrap}
+.fi-faq details{scroll-margin-top:96px}
 .fi-planos-nota{margin:18px 0 0;text-align:center;font-size:12.5px;line-height:1.5;color:var(--fi-texto-sec)}
 
 /* ── Simples assim: ciclo em círculo (360°). Seis nós no anel; o arco âmbar carrega sem parar do topo até fechar a

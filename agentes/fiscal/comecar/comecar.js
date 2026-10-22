@@ -134,7 +134,8 @@
       empresa: nf.texto($('fc-empresa').value),
       responsavel: nf.texto($('fc-responsavel').value),
       email: nf.texto($('fc-email').value).toLowerCase(),
-      telefone: $('fc-telefone').value
+      telefone: $('fc-telefone').value,
+      a1: respostaA1()
     };
   }
   function preencherEtapa1(d) {
@@ -144,10 +145,33 @@
     if (d.responsavel) $('fc-responsavel').value = d.responsavel;
     if (d.email) $('fc-email').value = d.email;
     if (d.telefone) $('fc-telefone').value = d.telefone;
+    if (Object.prototype.hasOwnProperty.call(RETORNO_A1, d.a1)) {
+      var r = document.querySelector('input[name="fc-a1"][value="' + d.a1 + '"]');
+      if (r) { r.checked = true; mostrarRetornoA1(d.a1); }
+    }
   }
   function limparErros1() {
-    ['fc-cnpj', 'fc-empresa', 'fc-responsavel', 'fc-email', 'fc-telefone'].forEach(function (id) { nf.erroCampo(id, ''); });
+    ['fc-cnpj', 'fc-empresa', 'fc-responsavel', 'fc-email', 'fc-telefone', 'fc-a1'].forEach(function (id) { nf.erroCampo(id, ''); });
     nf.aviso($('fc-aviso-1'), '');
+  }
+
+  /* "Você já tem o certificado A1?" (Lucca, 22/10/2026): obrigatória, mas qualquer resposta segue; ela orienta e vai ao funil
+     (medicao.js, nofiscal_a1) com o regime do CNPJ, para medir quantos chegam sem A1 antes de vender o certificado. */
+  var LINK_A1 = ' <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
+  var RETORNO_A1 = {
+    sim: 'Ótimo. Você envia o arquivo (.pfx ou .p12) e a senha na etapa 4, depois do pagamento.',
+    contador: 'Peça a ele o arquivo .pfx (ou .p12) do A1 da empresa e a senha. Você envia na etapa 4.',
+    nao: 'Dá para seguir o cadastro agora. O A1 entra na etapa 4, e sem ele o agente não emite.' + LINK_A1,
+    nao_sei: 'Se você tem contador, pergunte a ele: muitas vezes o A1 da empresa já está com ele. Sem o A1, o agente não emite.' + LINK_A1
+  };
+  function respostaA1() {
+    var r = document.querySelector('input[name="fc-a1"]:checked');
+    return r ? r.value : '';
+  }
+  function mostrarRetornoA1(v) {
+    var el = $('fc-a1-retorno');
+    el.innerHTML = RETORNO_A1[v] || '';
+    el.hidden = !RETORNO_A1[v];
   }
   function validarEtapa1(d) {
     var erros = {};
@@ -156,6 +180,7 @@
     if (d.responsavel.length < 3) erros['fc-responsavel'] = 'Informe o nome do responsável.';
     if (!nf.emailValido(d.email)) erros['fc-email'] = 'Informe um e-mail válido.';
     if (!nf.telefoneE164(d.telefone)) erros['fc-telefone'] = 'Informe o WhatsApp com DDD.';
+    if (!d.a1) erros['fc-a1'] = 'Escolha uma opção.';
     return erros;
   }
   // Sem o regime na resposta (fiscal-cadastro anterior ao MEI), a dica fica como antes.
@@ -217,6 +242,7 @@
       if (!st.consulta || st.consulta.cnpj !== d.cnpj) return;
       d.empresa = nf.texto($('fc-empresa').value);
       nf.cadastro.gravar(d);
+      if (medir) medir.a1(d.a1, st.consulta.regime, st.plano);
       return nf.sessao.token().then(function (token) {
         if (token) return criar();
         return pedirCodigo(d.email, $('fc-aviso-1'));
@@ -796,6 +822,7 @@
     if (d.length === 14 && d !== st.cnpjConsultado) consultarCnpj();
     if (d.length < 14) { st.cnpjConsultado = ''; st.consulta = null; nf.aviso($('fc-aviso-1'), ''); }
   });
+  $('fc-a1').addEventListener('change', function () { nf.erroCampo('fc-a1', ''); mostrarRetornoA1(respostaA1()); });
   $('fc-form-2').addEventListener('submit', enviarCodigo);
   $('fc-reenviar').addEventListener('click', function () {
     var d = nf.cadastro.ler();
