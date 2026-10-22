@@ -9,6 +9,10 @@
     {
       "source": "/agentes/fiscal/api/:path*",
       "destination": "https://app.notechstack.com.br/api/:path*"
+    },
+    {
+      "source": "/agentes/fiscal/api/:path*/",
+      "destination": "https://app.notechstack.com.br/api/:path*/"
     }
   ],
   "headers": [
