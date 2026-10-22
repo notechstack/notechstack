@@ -28,6 +28,8 @@
 .fi-body .no-card-nav{background:var(--no-tinta);border-color:var(--no-tinta);color:var(--no-osso)}
 .fi-body .no-card-brand img{content:url(/brand/logo/svg/no-branca-ponto-ambar.svg)}
 .fi-body .no-card-toggle{color:var(--no-osso)}
+/* O painel do menu continua claro: os títulos dos cartões voltam à tinta, como no resto do site. */
+.fi-body .no-card-panel{color:var(--no-tinta)}
 .fi-body .no-card-toplinks a{color:var(--no-osso)}
 .fi-body .no-card-toplinks a:hover,.fi-body .no-card-toplinks a[aria-current=page]{background:var(--no-tinta-alt2)}
 .fi-body .no-card-toplinks a:last-child{background:var(--no-ambar);color:var(--no-tinta)}
