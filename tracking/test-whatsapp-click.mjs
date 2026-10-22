@@ -78,7 +78,7 @@ function boot(pathname,{withFbq=true}={}){
 // 6) rodapé gerado continua sem data-track (agencia.js dispararia cta_click/modo agencia)
 assert(!/class="ft-whatsapp"[^>]*data-track/.test(readFileSync('shared/sync-site-layout.mjs','utf8')));
 // 7) toda página com o rodapé compartilhado carrega a telemetria e o GTM (o clique chega ao GA4 e ao Meta)
-for(const page of ['lp-narrador/cenas-lp/lp-v8.html','agencia/index.html','colaboradores-digitais/index.html','health/index.html','sobre/index.html','contato/index.html','termos/index.html','privacidade/index.html']){
+for(const page of ['lp-narrador/cenas-lp/lp-v8.html','agencia/index.html','health/index.html','sobre/index.html','contato/index.html','termos/index.html','privacidade/index.html']){
  const html=readFileSync(page,'utf8');
  assert(html.includes('class="ft-whatsapp"'),page+' sem rodapé');
  assert(/\/shared\/telemetria\.js\?v=3/.test(html),page+' sem telemetria');

@@ -1,0 +1,49 @@
+/* Cursor com texto e ícone (inspirado no Text Icons Effect do Cursify) e termos com nota, como em artigo acadêmico.
+   O ponto é o ponto âmbar do "nó.". Cores da marca pelos tokens, com o valor da marca como reserva nas páginas que
+   não carregam tokens.css. Comportamento em texticon-cursor.js; textos em glossario.js. */
+:root{--tic-ambar:var(--no-ambar,#EDA33B);--tic-tinta:var(--no-tinta,#141414);--tic-osso:var(--no-osso,#FAFAF7);--tic-sombra:var(--no-shadow-card,0 12px 32px rgba(20,20,20,.07))}
+
+/* termo no texto: sublinhado pontilhado âmbar e número de nota */
+body{counter-reset:no-termo}
+.no-termo{counter-increment:no-termo;color:inherit;text-decoration:underline dotted var(--tic-ambar);text-decoration-thickness:2px;text-underline-offset:3px;cursor:help;border-radius:3px}
+.no-termo::after{content:counter(no-termo);display:inline-block;margin-left:2px;padding:0 4px;border-radius:999px;background:var(--tic-ambar);color:var(--tic-tinta);font:700 .58em/1.5 'JetBrains Mono',ui-monospace,monospace;vertical-align:super;text-decoration:none}
+.no-termo:hover,.no-termo[aria-expanded="true"]{text-decoration-style:solid}
+.no-termo:focus-visible{outline:2px solid var(--tic-ambar);outline-offset:2px}
+.no-termo-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* cursor: ponto + pílula (links e botões) ou cartão (termos) */
+.no-tic{display:none;position:fixed;z-index:2147483000;top:0;left:0;pointer-events:none;opacity:0;transition:opacity .16s ease;will-change:transform}
+.no-tic.is-visivel{opacity:1}
+.no-tic-ponto{position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:var(--tic-ambar);box-shadow:0 0 0 2px var(--tic-tinta);transition:transform .18s ease,background-color .18s ease}
+.no-tic.is-ativo .no-tic-ponto{transform:scale(1.45);background:transparent;box-shadow:0 0 0 2px var(--tic-ambar),0 0 0 3.5px var(--tic-tinta)}
+.no-tic-rotulo,.no-tic-cartao{position:absolute;left:20px;top:0;border:1px solid color-mix(in srgb,var(--tic-osso) 14%,transparent);font-family:Sora,system-ui,sans-serif;color:var(--tic-osso);background:var(--tic-tinta);box-shadow:var(--tic-sombra);animation:no-tic-entra .2s ease-out}
+.no-tic-rotulo{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;font-size:13px;font-weight:600;line-height:1;white-space:nowrap;transform:translateY(-50%)}
+.no-tic-rotulo svg{width:15px;height:15px;flex:none}
+.no-tic-rotulo:empty,.no-tic-rotulo[hidden],.no-tic-cartao[hidden]{display:none}
+.no-tic-cartao{width:290px;padding:14px 16px;border-radius:16px;transform:translateY(-12px)}
+.no-tic.is-esquerda .no-tic-rotulo,.no-tic.is-esquerda .no-tic-cartao{left:auto;right:20px}
+.no-tic.is-acima .no-tic-cartao{top:auto;bottom:0;transform:translateY(12px)}
+@keyframes no-tic-entra{from{opacity:0;translate:-10px 0}to{opacity:1;translate:0 0}}
+.no-tic.is-esquerda .no-tic-rotulo,.no-tic.is-esquerda .no-tic-cartao{animation-name:no-tic-entra-esq}
+@keyframes no-tic-entra-esq{from{opacity:0;translate:10px 0}to{opacity:1;translate:0 0}}
+
+/* conteúdo do cartão (cursor e pop-up de toque/foco) */
+.no-explica-kicker{display:flex;align-items:center;gap:6px;margin:0 0 6px;font:600 10.5px/1 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--tic-ambar)}
+.no-explica-kicker::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tic-ambar)}
+.no-explica-titulo{margin:0 0 4px;font-size:15px;font-weight:700;line-height:1.25;color:var(--tic-osso)}
+.no-explica-texto{margin:0;font-size:13.5px;line-height:1.5;color:var(--tic-osso);opacity:.86;white-space:normal}
+.no-explica-acao{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;font-weight:600;color:var(--tic-ambar);text-decoration:none}
+
+/* pop-up do termo para toque, teclado e movimento reduzido */
+.no-termo-pop{position:absolute;z-index:2147482999;border:1px solid color-mix(in srgb,var(--tic-osso) 14%,transparent);width:min(300px,calc(100vw - 32px));padding:14px 16px;border-radius:16px;background:var(--tic-tinta);box-shadow:var(--tic-sombra);font-family:Sora,system-ui,sans-serif;text-align:left}
+.no-termo-pop[hidden]{display:none}
+.no-termo-pop .no-explica-acao:hover{text-decoration:underline}
+
+/* só com mouse fino e sem movimento reduzido o cursor nativo dá lugar ao ponto */
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
+  html.has-tic-cursor,html.has-tic-cursor *{cursor:none!important}
+  .no-tic{display:block}
+  html.has-tic-cursor input,html.has-tic-cursor textarea,html.has-tic-cursor [contenteditable]{cursor:text!important}
+  html.has-tic-cursor select,html.has-tic-cursor video[controls],html.has-tic-cursor dialog[open],html.has-tic-cursor dialog[open] *{cursor:auto!important}
+}
+@media(prefers-reduced-motion:reduce){.no-tic-rotulo,.no-tic-cartao{animation:none}.no-tic-ponto{transition:none}}
