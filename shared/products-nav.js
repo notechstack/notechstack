@@ -1,4 +1,4 @@
-/* Navegação da home, da LP de colaboradores e das páginas de serviço/conteúdo.
+/* Navegação da home e das páginas de serviço/conteúdo.
    A marcação pode vir PRONTA no HTML (é o que o Google lê e segue — links
    montados só por JS são descoberta de segunda classe): nesse caso esta
    função só liga os menus. Sem marcação, ela escreve o menu. */
@@ -12,7 +12,7 @@ const SERVICOS = [
   ['/conteudos/', 'Conteúdos', '#E0543C']
 ];
 const PRODUTOS = [
-  ['/colaboradores-digitais/', 'Agentes', '#EDA33B'],
+  ['/agentes/', 'Agentes', '#EDA33B'],
   ['/roteador/', 'Roteador', '#3D63DB'],
   ['/health/', 'Nó Health', '#30A46C']
 ];

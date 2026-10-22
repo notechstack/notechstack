@@ -82,6 +82,16 @@
   ],
   "redirects": [
     {
+      "source": "/colaboradores-digitais/",
+      "destination": "/agentes/",
+      "permanent": true
+    },
+    {
+      "source": "/colaboradores-digitais/:path*",
+      "destination": "/agentes/",
+      "permanent": true
+    },
+    {
       "source": "/lp-narrador/cenas-lp/lp-v7.html",
       "destination": "/",
       "permanent": true

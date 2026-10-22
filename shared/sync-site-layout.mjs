@@ -5,7 +5,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 const pages = {
   '/': 'lp-narrador/cenas-lp/lp-v8.html',
   '/agencia/': 'agencia/index.html',
-  '/colaboradores-digitais/': 'colaboradores-digitais/index.html',
   '/agentes/': 'agentes/index.html',
   '/agentes/auditor/': 'agentes/auditor/index.html',
   '/agentes/fiscal/': 'agentes/fiscal/index.html',

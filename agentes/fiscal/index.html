@@ -73,6 +73,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   ]
 }
 </script>
+<!-- Cursor com texto e ícone e notas do glossário (shared/texticon-cursor.js) -->
+<link rel="stylesheet" href="/shared/texticon-cursor.css?v=1">
+<script src="/shared/glossario.js?v=1" defer></script><script src="/shared/texticon-cursor.js?v=1" defer></script>
 </head>
 <body class="fi-body">
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NK87FH8W" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -86,7 +89,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="fi-hero" aria-labelledby="fi-titulo">
     <p class="fi-lockup"><span class="fi-lockup-no">nó</span><span class="fi-lockup-sub">.fiscal</span></p>
     <h1 id="fi-titulo">Já pensou em emitir sua nota fiscal direto no WhatsApp?</h1>
-    <p class="fi-sub">A ideia é simples: agora, participantes do Simples Nacional devem emitir a NFS-e seguindo um padrão nacional. Envelopamos isso dentro do seu WhatsApp.</p>
+    <p class="fi-sub">A ideia é simples: agora, participantes do Simples Nacional devem emitir a <a class="no-termo" data-termo="nfse-nacional" href="#planos">NFS-e seguindo um padrão nacional</a>. Envelopamos isso dentro do seu WhatsApp.</p>
 
     <div class="fi-canvas" id="simulador">
       <canvas class="fi-canvas-gl" id="fi-fluido" aria-hidden="true"></canvas>
@@ -112,7 +115,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <!-- ── Simples assim: ciclo em círculo; o passo da vez acende no anel e abre os detalhes no centro (fiscal.js) ── -->
   <section class="fi-secao fi-simples" id="como-funciona" aria-labelledby="fi-simples-titulo">
     <h2 class="fi-h2" id="fi-simples-titulo">Simples assim: você pede, ele emite pra você</h2>
-    <p class="fi-sub fi-sub--centro">Basta informar o cliente, o valor e se quiser, especificações do serviço. Ele consulta sua base, analisa se você emitiu nota parecida, monta a DPS, assina com o seu A1, transmite à Sefin Nacional e manda a nota de volta pra você e pro seu cliente.</p>
+    <p class="fi-sub fi-sub--centro">Basta informar o cliente, o valor e se quiser, especificações do serviço. Ele consulta sua base, analisa se você emitiu nota parecida, monta a <a class="no-termo" data-termo="dps" href="#como-funciona">DPS</a>, assina com o seu <a class="no-termo" data-termo="certificado-a1" href="#faq">A1</a>, transmite à <a class="no-termo" data-termo="sefin-nacional" href="#planos">Sefin Nacional</a> e manda a nota de volta pra você e pro seu cliente.</p>
     <div class="fi-roda fi-reveal" id="fi-ciclo">
       <div class="fi-roda-palco">
         <svg class="fi-roda-anel" viewBox="0 0 100 100" aria-hidden="true"><circle class="fi-roda-trilho" cx="50" cy="50" r="42"/><circle class="fi-roda-arco" cx="50" cy="50" r="42" pathLength="360"/></svg>

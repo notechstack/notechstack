@@ -7,7 +7,7 @@ const context={location:{hostname:'www.notechstack.com.br'},Date,window:{dataLay
 vm.runInNewContext(readFileSync('shared/marketing-host.js','utf8'),context);
 vm.runInNewContext(code,context);vm.runInNewContext(code,context);
 assert.equal(scripts.length,1);assert.equal(pushes.length,1);assert.equal(pushes[0].event,'gtm.js');
-for(const file of ['lp-narrador/cenas-lp/lp-v8.html','agencia/index.html','contato/index.html','colaboradores-digitais/index.html']){
+for(const file of ['lp-narrador/cenas-lp/lp-v8.html','agencia/index.html','contato/index.html']){
  const html=readFileSync(file,'utf8');
  assert.equal((html.match(/src="\/shared\/marketing.js/g)||[]).length,1);
  assert.equal((html.match(/src="\/shared\/telemetria.js/g)||[]).length,1);

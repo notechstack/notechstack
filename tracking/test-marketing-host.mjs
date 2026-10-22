@@ -27,7 +27,7 @@ for(const file of ['shared/marketing.js','shared/marketing-lazy.js']){
 }
 
 // Every GTM load point in the repo goes through the single host function (noscript is justified in the inventory).
-const pages={'agencia/index.html':'marketing.js','colaboradores-digitais/index.html':'marketing.js','contato/index.html':'marketing.js',
+const pages={'agencia/index.html':'marketing.js','contato/index.html':'marketing.js',
  'lp-narrador/cenas-lp/lp-v8.html':'marketing.js','health/index.html':'inline','sobre/index.html':'inline',
  'lp-narrador/cenas-lp/lp-v5.html':'inline','lp-narrador/cenas-lp/lp-v7.html':'inline','lp-narrador/cenas-lp/lp-v3.html':'inline'};
 for(const [file,kind] of Object.entries(pages)){
