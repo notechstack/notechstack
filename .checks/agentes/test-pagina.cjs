@@ -242,15 +242,17 @@ async function principal() {
     const main = servido.slice(servido.indexOf('<main'), servido.indexOf('</main>'));
     assert(main.length > 0, 'C1: <main> não encontrado');
     const ordem = [
-      'NÓ AGENTES',
-      '<h1', 'Cada agente resolve um problema da sua empresa.',
-      'Por assinatura. Toque numa mesa para ver o agente trabalhando.',
+      'src="/brand/agentes/no-agentes-tinta-azul.webp" alt="nó.agentes"',
+      '<h1', 'Encontre soluções já mapeadas que transformamos em agentes.',
+      'Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.',
       'data-mesa="fiscal"', 'nó.fiscal',
       'data-mesa="auditor"', 'nó.auditor',
       'data-mesa="vaga"', 'criar uma automação',
-      '<h2', 'Quando forem vários, a gente une tudo num sistema só.',
+      '<h2', 'Entenda mais sobre nossas soluções',
       'class="ag-cartao" href="/agentes/fiscal/"', 'class="ag-cartao" href="/agentes/auditor/"',
-      'href="/contato/">Conte sua ideia<',
+      '<h2 id="ag-parceira-titulo">Quer criar um agente de IA seu?</h2>',
+      'Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática.',
+      'class="ag-pilula-cta" href="/contato/" data-cta="vamos_conversar">Vamos conversar',
     ];
     let i = 0;
     for (const trecho of ordem) {
@@ -260,12 +262,14 @@ async function principal() {
     }
     const { contexto, pagina } = await abrir({ js: false });
     const h1 = (await pagina.locator('h1').innerText()).trim();
-    assert.equal(h1, 'Cada agente resolve um problema da sua empresa.');
+    assert.equal(h1, 'Encontre soluções já mapeadas que transformamos em agentes.');
+    assert(await pagina.locator('img.ag-logo-agentes').evaluate((i) => i.complete && i.naturalWidth > 0), 'C1: logo nó.agentes não carregou');
     for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'nó.auditor'], ['vaga', 'criar uma automação']]) {
       assert.equal((await pagina.locator(`[data-mesa="${mesa}"]`).innerText()).trim(), texto, `C1: texto da mesa ${mesa}`);
     }
     assert.equal(await pagina.locator('.ag-cartao').count(), 2, 'C1: dois cartões');
-    assert.equal(await pagina.locator('a:has-text("Conte sua ideia")').last().getAttribute('href'), '/contato/');
+    assert.equal(await pagina.locator('main a:has-text("Vamos conversar")').getAttribute('href'), '/contato/');
+    assert.equal(await pagina.locator('main a:has-text("Conte sua ideia")').count(), 0, 'C1: "Conte sua ideia" ainda no conteúdo (R18)');
     await contexto.close();
     ok('C1');
   }
@@ -350,7 +354,7 @@ async function principal() {
   {
     const { contexto, pagina } = await abrir({ js: false });
     assert.equal(await pagina.locator('.ag-carregamento').isVisible(), false, 'C28: tela de carregamento visível sem JS');
-    for (const sel of ['.ag-rotulo', 'h1', '.ag-sub', '[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-fecho h2', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-cta']) {
+    for (const sel of ['.ag-rotulo', 'h1', '.ag-sub', '[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-fecho h2', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-pilula-cta']) {
       const el = pagina.locator(sel).first();
       await el.scrollIntoViewIfNeeded();
       assert(await el.isVisible(), `C28: ${sel} invisível`);
@@ -713,7 +717,7 @@ async function principal() {
     }
     await rolarPara(pagina, 0);
     await pagina.waitForTimeout(300);
-    const alvos = ['[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-cta'];
+    const alvos = ['[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-pilula-cta'];
     for (const sel of alvos) {
       const b = await pagina.locator(sel).boundingBox();
       assert(b && b.width >= 44 && b.height >= 44, `C30: ${sel} com ${b && `${b.width.toFixed(0)}×${b.height.toFixed(0)}`}`);
@@ -783,6 +787,64 @@ async function principal() {
     assert.deepEqual(s.erros, [], `erros na página: ${s.erros}`);
     await s.contexto.close();
     ok('C32', `(canvas ${c.width}×${c.height.toFixed(0)}, centro ${(c.x + c.width / 2).toFixed(1)} / ${meio})`);
+  }
+
+  // ── C33-medicao (rodada 7): dataLayer, Pixel e CAPI com o mesmo event_id ──
+  {
+    const s = await abrir({
+      antes: async (pagina) => {
+        await pagina.addInitScript(() => {
+          window.__fbq = [];
+          window.fbq = (...args) => window.__fbq.push(args);
+        });
+      },
+    });
+    const pg = s.pagina;
+    await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
+    const eventos = (nome) => pg.evaluate((n) => (window.dataLayer || []).filter((e) => e && e.event === n), nome);
+    // ViewContent: dataLayer, Pixel e CAPI com o mesmo id; fora de produção a CAPI não sai da página.
+    const [vc] = await eventos('agentes_view_content');
+    assert(vc && /^agentes-vc-/.test(vc.event_id), 'C33: agentes_view_content sem event_id');
+    const fbqVc = await pg.evaluate(() => window.__fbq.find((a) => a[0] === 'track' && a[1] === 'ViewContent'));
+    assert(fbqVc, 'C33: fbq ViewContent não chamado');
+    assert.equal(fbqVc[3].eventID, vc.event_id, 'C33: eventID do Pixel ≠ event_id do dataLayer');
+    const capi = await pg.evaluate(() => window.__agentesPagina.medicao.capi);
+    assert.equal(capi.length, 1, 'C33: CAPI deveria ter um ViewContent');
+    assert.equal(capi[0].event_name, 'ViewContent');
+    assert.equal(capi[0].event_id, vc.event_id, 'C33: event_id da CAPI ≠ do Pixel');
+    const chamadasCapi = await pg.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/functions/v1/meta-capi')).length);
+    assert.equal(chamadasCapi, 0, 'C33: CAPI saiu do navegador fora do domínio de produção');
+    // Gaveta pelo botão e CTA dentro dela.
+    let navegou = 0;
+    await pg.route(/\/agentes\/(fiscal|auditor)\/|\/contato\//, (r) => {
+      if (r.request().isNavigationRequest()) { navegou += 1; return r.fulfill({ status: 204, body: '' }); }
+      return r.continue();
+    });
+    let antes = null;
+    assert(await esperarPara(async () => { const agora = JSON.stringify(await pg.locator('[data-mesa="fiscal"]').boundingBox()); const parado = agora === antes; antes = agora; return parado; }, 6000, 300));
+    await pg.locator('[data-mesa="fiscal"]').click();
+    assert(await esperarPara(async () => (await eventos('agentes_mesa_aberta')).length === 1), 'C33: agentes_mesa_aberta não veio');
+    const [mesa] = await eventos('agentes_mesa_aberta');
+    assert.deepEqual([mesa.agente, mesa.origem, mesa.versao], ['fiscal', 'botao', 'animada'], `C33: mesa ${JSON.stringify(mesa)}`);
+    await pg.locator('#gaveta a[href="/agentes/fiscal/#simulador"]').click();
+    assert(await esperarPara(async () => (await eventos('agentes_cta')).length >= 1), 'C33: agentes_cta da gaveta não veio');
+    const [cta] = await eventos('agentes_cta');
+    assert.deepEqual([cta.cta, cta.destino, cta.origem], ['simular_emissao', '/agentes/fiscal/#simulador', 'gaveta'], `C33: cta ${JSON.stringify(cta)}`);
+    assert.deepEqual(s.erros, [], `erros na página: ${s.erros}`);
+    await s.contexto.close();
+    // CTAs da página e versão estática.
+    const e = await abrir({ reduzido: 'reduce' });
+    await e.pagina.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'estatica');
+    await e.pagina.route(/\/agentes\/(fiscal|auditor)\/|\/contato\//, (r) => (r.request().isNavigationRequest() ? r.fulfill({ status: 204, body: '' }) : r.continue()));
+    const est = await e.pagina.evaluate(() => (window.dataLayer || []).filter((x) => x.event === 'agentes_versao_estatica'));
+    assert.deepEqual(est.map((x) => x.motivo), ['movimento-reduzido'], 'C33: agentes_versao_estatica');
+    for (const [sel, nome] of [['.ag-cartao[data-cta="lp_auditor"]', 'lp_auditor'], ['.ag-pilula-cta', 'vamos_conversar'], ['[data-mesa="vaga"]', 'criar_automacao']]) {
+      await e.pagina.evaluate((q) => document.querySelector(q).click(), sel);
+      const ultimo = await e.pagina.evaluate(() => (window.dataLayer || []).filter((x) => x.event === 'agentes_cta').pop());
+      assert.equal(ultimo && ultimo.cta, nome, `C33: cta ${nome}`);
+    }
+    await e.contexto.close();
+    ok('C33-medicao', `(event_id ${vc.event_id.slice(0, 16)}…, Pixel = CAPI = dataLayer)`);
   }
 }
 

@@ -53,6 +53,97 @@ const estado = {
 };
 window.__agentesPagina = estado;
 
+// ── Medição (rodada 7, skill gtm-meta-google-tracking) ──
+// Tudo passa por window.track (shared/telemetria.js): dataLayer → GTM (GA4, tags em
+// tracking/gtm-agentes-escritorio.json) e a fila do painel de percurso. A Meta recebe só o
+// ViewContent da página, no Pixel (vindo do GTM) e na CAPI (função meta-capi) com o MESMO
+// event_id, para a Meta deduplicar. Fora do domínio de produção (marketing-host.js) a CAPI não
+// sai do navegador: o corpo fica em estado.medicao.capi, para as provas.
+//
+//   agentes_view_content ..... página carregada               Meta ViewContent (Pixel + CAPI)
+//   agentes_mesa_aberta ...... gaveta aberta (agente, origem)  -
+//   agentes_cta .............. CTA para LP, simulador ou contato -
+//   agentes_sala_vista ....... rolou até a sala (1× por sessão) -
+//   agentes_versao_estatica .. caiu na versão estática (motivo) -
+const FN_CAPI = 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/meta-capi';
+const producao = () => typeof window.noMarketingHostAllowed === 'function' && window.noMarketingHostAllowed(location.hostname);
+estado.medicao = { capi: [] };
+
+function medir(nome, dados, chave) {
+  const p = Object.assign({ pagina: location.pathname }, dados);
+  if (typeof window.track === 'function') { window.track(nome, p, chave); return; }
+  (window.dataLayer = window.dataLayer || []).push(Object.assign({ event: nome }, p));
+}
+function idEvento(prefixo) {
+  const c = window.crypto;
+  const u = c && typeof c.randomUUID === 'function' ? c.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  return `${prefixo}-${u}`;
+}
+function cookie(nome) {
+  const m = String(document.cookie || '').match(new RegExp(`(?:^|; )${nome}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function fbcAtual() {
+  const c = cookie('_fbc');
+  if (c) return c;
+  let id = '';
+  try { id = new URLSearchParams(location.search).get('fbclid') || ''; } catch { id = ''; }
+  return id ? `fb.1.${Date.now()}.${id}` : '';
+}
+// O Pixel chega pelo GTM e pode demorar: tenta por até 5 s.
+function fbqQuandoPronto(args, tentativas = 0) {
+  if (typeof window.fbq === 'function') { window.fbq(...args); return; }
+  if (tentativas >= 20) return;
+  setTimeout(() => fbqQuandoPronto(args, tentativas + 1), 250);
+}
+function enviarCapi(eventName, eventId) {
+  const corpo = {
+    event_name: eventName,
+    event_id: eventId,
+    event_source_url: location.href,
+    fbp: cookie('_fbp') || undefined,
+    fbc: fbcAtual() || undefined,
+  };
+  estado.medicao.capi.push(corpo);
+  if (!producao()) return;
+  try {
+    fetch(FN_CAPI, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), keepalive: true })
+      .catch(() => {}); // medição não pode derrubar a página
+  } catch { /* idem */ }
+}
+function verPagina() {
+  const eventId = idEvento('agentes-vc');
+  medir('agentes_view_content', { event_id: eventId });
+  fbqQuandoPronto(['track', 'ViewContent', {}, { eventID: eventId }]);
+  enviarCapi('ViewContent', eventId);
+}
+
+// CTAs: os links da página e os botões da gaveta (montados por gaveta.js) saem por delegação,
+// sem segurar a navegação.
+const CTA_POR_HREF = new Map([
+  ['/agentes/fiscal/#simulador', 'simular_emissao'],
+  ['/agentes/auditor/', 'diagnosticar'],
+]);
+function ctaDoLink(a) {
+  if (a.dataset.cta) return a.dataset.cta;
+  if (a.dataset.mesa === 'vaga') return 'criar_automacao';
+  if (raizGaveta.contains(a)) {
+    const href = a.getAttribute('href') || '';
+    return CTA_POR_HREF.get(href) || null;
+  }
+  return null;
+}
+document.addEventListener('click', (ev) => {
+  try {
+    const a = ev.target instanceof Element ? ev.target.closest('a[href]') : null;
+    if (!a) return;
+    const cta = ctaDoLink(a);
+    if (!cta) return;
+    // A mesa vaga no modo animado é tratada em abrirMesa (canvas) ou pelo link comum (botão).
+    medir('agentes_cta', { cta, destino: a.getAttribute('href'), origem: raizGaveta.contains(a) ? 'gaveta' : 'pagina' });
+  } catch { /* medição não pode segurar o clique */ }
+}, true);
+
 let timerBotao = 0;
 let rolagemAntesDaGaveta = null;
 let ultimoT = -1;
@@ -97,6 +188,7 @@ function entrarEstatica(motivo) {
   estado.fase = 'estatica';
   estado.motivo = motivo;
   console.info(`[agentes] versão estática: ${motivo}`);
+  medir('agentes_versao_estatica', { motivo }, 'estatica');
   clearTimeout(timerBotao);
   if (estado.cena) {
     try { estado.cena.destruir(); } catch { /* a cena já pode ter caído */ }
@@ -141,9 +233,13 @@ async function montarGaveta(estatico) {
 
 function abrirMesa(mesa, origem) {
   if (mesa === 'vaga') {
-    location.assign(mesas.get('vaga')?.getAttribute('href') || '/contato/');
+    const destino = mesas.get('vaga')?.getAttribute('href') || '/contato/';
+    medir('agentes_cta', { cta: 'criar_automacao', destino, origem: 'cena' });
+    location.assign(destino);
     return;
   }
+  origemAbertura = tocouCena ? 'cena' : 'botao';
+  tocouCena = false;
   if (!estado.gaveta || !origem) return;
   if (estado.cena) {
     // Celular: o canvas sobe para logo abaixo da navbar e a mesa aproximada fica acima da gaveta.
@@ -194,8 +290,13 @@ function reenquadrarMesa() {
   });
 }
 
+let origemAbertura = 'botao';
+let tocouCena = false;
 function aoMudarGaveta({ aberta, agente } = {}) {
   if (aberta) {
+    if (estado.aberta !== agente) {
+      medir('agentes_mesa_aberta', { agente, origem: origemAbertura, versao: estado.fase === 'estatica' ? 'estatica' : 'animada' });
+    }
     estado.aberta = agente;
     if (!estado.cena) return;
     requestAnimationFrame(() => {
@@ -255,6 +356,7 @@ function atualizarRolagem() {
   if (Math.abs(t - ultimoT) < 0.001) return;
   ultimoT = t;
   estado.cena.fecho(t);
+  if (t >= 0.95) medir('agentes_sala_vista', {}, 'sala');
 }
 
 let cenaNaTela = true;
@@ -360,7 +462,7 @@ function revelar() {
   // "tocar fora" e fecha (critério 20); tocar em outra mesa troca a gaveta (critério 21).
   cena.aoTocarMesa((mesa) => {
     if (estado.aberta && estado.aberta === mesa) estado.gaveta?.fechar();
-    else abrirMesa(mesa, mesas.get(mesa));
+    else { tocouCena = true; abrirMesa(mesa, mesas.get(mesa)); }
   });
   montarGaveta(false);
 
@@ -372,6 +474,7 @@ function revelar() {
 }
 
 // ── Decisão inicial ──
+verPagina();
 if (movimentoReduzido) entrarEstatica('movimento-reduzido');
 else if (!temWebGL()) entrarEstatica('sem-webgl');
 else iniciarAnimada();

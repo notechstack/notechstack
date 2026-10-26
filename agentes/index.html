@@ -78,9 +78,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <main class="ag-main" id="conteudo">
   <section class="ag-hero" aria-labelledby="ag-titulo">
     <div class="ag-coluna">
-      <p class="ag-rotulo">NÓ AGENTES</p>
-      <h1 id="ag-titulo" tabindex="-1">Cada agente resolve um problema da sua empresa.</h1>
-      <p class="ag-sub">Por assinatura. Toque numa mesa para ver o agente trabalhando.</p>
+      <p class="ag-rotulo"><img class="ag-logo-agentes" src="/brand/agentes/no-agentes-tinta-azul.webp" alt="nó.agentes" width="720" height="142"></p>
+      <h1 id="ag-titulo" tabindex="-1">Encontre soluções já mapeadas que transformamos em agentes.</h1>
+      <p class="ag-sub">Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.</p>
     </div>
     <div class="ag-escritorio">
       <canvas id="escritorio-canvas" class="ag-canvas" role="img" aria-label="Escritório da nó em 3D: os agentes trabalhando nas mesas"></canvas>
@@ -96,20 +96,31 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="ag-fecho" aria-labelledby="ag-fecho-titulo">
     <img id="fecho-poster" class="ag-fecho-poster" src="/agentes/escritorio/poster-fecho.webp" alt="A sala nó tech stack, com os cabos azuis das três mesas chegando até ela" width="750" height="1040" loading="lazy" decoding="async">
     <div class="ag-coluna">
-      <h2 id="ag-fecho-titulo">Quando forem vários, a gente une tudo num sistema só.</h2>
+      <h2 id="ag-fecho-titulo">Entenda mais sobre nossas soluções</h2>
       <div class="ag-cartoes">
-        <a class="ag-cartao" href="/agentes/fiscal/">
+        <a class="ag-cartao" href="/agentes/fiscal/" data-cta="lp_fiscal">
           <span class="ag-cartao-nome"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span>
           <span class="ag-cartao-linha">Emite a NFS-e pelo WhatsApp, para MEI e Simples.</span>
           <svg class="ag-cartao-seta" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
-        <a class="ag-cartao" href="/agentes/auditor/">
+        <a class="ag-cartao" href="/agentes/auditor/" data-cta="lp_auditor">
           <span class="ag-cartao-nome"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>nó.auditor</span>
           <span class="ag-cartao-linha">Confere se o rastreamento dos seus anúncios conta certo.</span>
           <svg class="ag-cartao-seta" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
       </div>
-      <a class="ag-cta" href="/contato/">Conte sua ideia</a>
+    </div>
+  </section>
+
+  <!-- Card copiado de /agencia/ (.agency-partner), com tokens no lugar das cores soltas. -->
+  <section class="ag-parceira" aria-labelledby="ag-parceira-titulo">
+    <div class="ag-parceira-palco">
+      <img src="/brand/logo/svg/no-branca-ponto-ambar.svg" alt="" aria-hidden="true" width="160" height="94">
+      <div>
+        <h2 id="ag-parceira-titulo">Quer criar um agente de IA seu?</h2>
+        <p>Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática.</p>
+      </div>
+      <a class="ag-pilula-cta" href="/contato/" data-cta="vamos_conversar">Vamos conversar <span class="ag-pilula-cta-circulo" aria-hidden="true">→</span></a>
     </div>
   </section>
 </main>
