@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>bancada · cena do Escritório nó (375×812)</title>
+<title>bancada · cena do Escritório nó (375×520)</title>
 <link rel="stylesheet" href="/brand/tokens/tokens.css">
 <link rel="stylesheet" href="/brand/fonts/fonts.css">
 <style>
   html { background: var(--no-osso); }
   body { margin: 0; font-family: var(--no-font-sans); color: var(--no-tinta); }
-  #palco { display: block; width: 375px; height: 812px; margin: 0 auto; touch-action: pan-y; }
+  #palco { display: block; width: 375px; height: 520px; margin: 0 auto; touch-action: pan-y; }
   #controles { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px; justify-content: center; flex-wrap: wrap; z-index: 2; }
   #controles button { font: 600 12px var(--no-font-sans); padding: 8px 10px; border: 1px solid var(--no-borda); border-radius: 999px; background: #fff; color: var(--no-tinta); }
   #controles.oculto { display: none; }
@@ -42,8 +42,12 @@
   const params = new URLSearchParams(location.search);
   window.progresso = [];
   window.toques = [];
+  /* ?altura=812 troca a altura do canvas (a largura fica em 375) */
+  if (params.get('altura')) canvas.style.height = Number(params.get('altura')) + 'px';
   try {
+    const t0 = performance.now();
     window.cena = await montarEscritorio(canvas, { aoProgresso: p => window.progresso.push(p) });
+    window.tempoMontagem = Math.round(performance.now() - t0);
     window.cena.aoTocarMesa(m => { window.toques.push(m); });
     if (params.get('tela') === 'fecho') window.cena.fecho(1);
     if (params.get('tela') === 'fiscal' || params.get('tela') === 'auditor') window.cena.focar(params.get('tela'));

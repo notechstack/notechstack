@@ -1,8 +1,9 @@
-/* Prova da cena 3D do Escritório nó (frente B): C6–C11 e C26-posteres.
+/* Prova da cena 3D do Escritório nó (frente B): C6–C11, C26-posteres e Rodada 5 (R8, R11–R16).
+   A cena vem de agentes/escritorio/escritorio.glb; a bancada tem o canvas da página (375×520).
    Uso: node .checks/agentes/test-cena.mjs            (prova inteira; C9 leva 60 s reais)
         node .checks/agentes/test-cena.mjs --capturas (só C6, C11 e as capturas, para iterar)
         node .checks/agentes/test-cena.mjs --posteres (também regrava os WebP em agentes/escritorio/)
-   Sobe um servidor estático na raiz da worktree, abre .checks/agentes/cena.html em 375×812
+   Sobe um servidor estático na raiz da worktree, abre .checks/agentes/cena.html (canvas 375×520)
    @2x com o Playwright e afirma o que o checklist .checks/agentes-escritorio.md diz. */
 import { createRequire } from 'node:module';
 import http from 'node:http';
@@ -95,7 +96,8 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     assert(progresso.length >= 3 && progresso[progresso.length - 1] === 1 && progresso.every((p, i) => i === 0 || p >= progresso[i - 1]), 'aoProgresso sobe de 0 a 1: ' + progresso);
     const canvas = page.locator('#palco');
     const caixa = await canvas.boundingBox();
-    assert.equal(Math.round(caixa.width), 375); assert.equal(Math.round(caixa.height), 812);
+    assert.equal(Math.round(caixa.width), 375); assert.equal(Math.round(caixa.height), 520);
+    const ALTURA = 520;
     await assentar(page);
 
     /* ── C6 · Tela 1: ordem das mesas, etiquetas e enquadramento ── */
@@ -107,8 +109,8 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     assert(p['mesa-vaga'].y < p['recepcao'].y, 'vaga acima da recepção');
     const et = Object.fromEntries(i1.etiquetas.map(e => [e.mesa, e]));
     assert.equal(et.fiscal.texto, 'nó.fiscal'); assert.equal(et.fiscal.cor, TOKEN.verde);
-    assert.equal(et.auditor.texto, 'Auditor'); assert.equal(et.auditor.cor, TOKEN.azul);
-    assert.equal(et.vaga.texto, 'um problema seu aqui?'); assert.equal(et.vaga.cor, TOKEN.ambar);
+    assert.equal(et.auditor.texto, 'nó.auditor'); assert.equal(et.auditor.cor, TOKEN.azul);
+    assert.equal(et.vaga.texto, 'criar uma automação'); assert.equal(et.vaga.cor, TOKEN.ambar);
     assert.equal(i1.enquadramento, 'tela1');
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela1.png') });
     const pngTela1 = path.join(tmp, 'poster-escritorio.png');
@@ -118,15 +120,35 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     await ESPERA(250);
     await canvas.screenshot({ path: pngTela1, omitBackground: true });
     await page.evaluate(() => cena.mostrarEtiquetas(true));
-    console.log('PASS C6 mesas em coluna, etiquetas verde/azul/âmbar, enquadramento tela1');
+    console.log('PASS C6 mesas em coluna, etiquetas nó.fiscal/nó.auditor/"criar uma automação" em verde/azul/âmbar, enquadramento tela1');
+
+    /* ── R8 · contraste na Tela 1 (canvas da página, 375×520): luminância ≤ 165, desvio ≥ 62 ── */
+    const lum = py(`
+import sys
+from PIL import Image, ImageStat
+s=ImageStat.Stat(Image.open(sys.argv[1]).convert('L'))
+print('%.1f %.1f' % (s.mean[0], s.stddev[0]))`, path.join(AQUI, 'cena-tela1.png')).split(' ').map(Number);
+    assert(lum[0] <= 165, `R8 luminância média ${lum[0]} > 165`);
+    assert(lum[1] >= 62, `R8 desvio da luminância ${lum[1]} < 62`);
+    console.log(`PASS R8 Tela 1 com luminância média ${lum[0]} (≤ 165) e desvio ${lum[1]} (≥ 62)`);
 
     if (!SO_CAPTURAS){
-      /* ── C7 · dois personagens, cápsula + esfera, crachás, sem nomes nem mascote ── */
+      /* ── C7 (R13) · duas pessoas pessoa-fiscal e pessoa-auditor, crachá com a faixa na cor do
+            token, sem nomes de pessoa, sem The Office, sem mascote ou animal ── */
       assert.equal(i1.personagens.length, 2);
       const per = Object.fromEntries(i1.personagens.map(x => [x.agente, x]));
       assert.deepEqual(Object.keys(per).sort(), ['auditor', 'fiscal']);
-      for (const x of i1.personagens){ assert.equal(x.corpo, 'CapsuleGeometry'); assert.equal(x.cabeca, 'SphereGeometry'); assert.equal(Object.hasOwn(x, 'nome'), false); }
+      for (const x of i1.personagens){ assert.equal(x.no, 'pessoa-' + x.agente); assert.equal(Object.hasOwn(x, 'nome'), false); }
       assert.equal(per.fiscal.cracha, TOKEN.verde); assert.equal(per.auditor.cracha, TOKEN.azul);
+      /* os nós e materiais do GLB também não podem ter nome de pessoa, The Office nem mascote */
+      const glb = fs.readFileSync(path.join(RAIZ, 'agentes/escritorio/escritorio.glb'));
+      const json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8'));
+      const nomesGlb = [...(json.nodes || []), ...(json.materials || []), ...(json.meshes || []), ...(json.animations || [])].map(x => x.name || '');
+      assert(nomesGlb.includes('pessoa-fiscal') && nomesGlb.includes('pessoa-auditor'), 'GLB sem pessoa-fiscal/pessoa-auditor');
+      for (const n of nomesGlb){
+        assert(!/Michael|Dwight|Jim|Pam|Dunder|Scranton|Office/.test(n), 'nó do GLB cita The Office: ' + n);
+        assert(!/polvo|mascote|octopus|tent[áa]culo|animal|bicho|gato|cachorro|\bpet\b/i.test(n), 'nó do GLB cita mascote ou animal: ' + n);
+      }
       const fontes = fs.readdirSync(path.join(RAIZ, 'agentes/escritorio')).filter(f => /^cena.*\.js$/.test(f));
       assert(fontes.includes('cena.js'));
       for (const f of fontes){
@@ -135,7 +157,7 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
         assert(!/\b(polvo|mascote|octopus|tentáculo|tentaculo|animal|bicho|gato|cachorro|pet)\b/i.test(src), f + ' cita mascote ou animal');
         assert(!/\bnome\s*:/.test(src), f + ' dá nome a alguém');
       }
-      console.log('PASS C7 dois personagens em cápsula e esfera, crachás verde/azul, sem nomes nem mascote');
+      console.log('PASS C7 (R13) pessoa-fiscal e pessoa-auditor com crachás de faixa verde/azul, sem nomes de pessoa, The Office nem mascote');
 
       /* ── C8 · "nó." do balcão: plano, sem sombra, sem contorno, mapa do SVG oficial ── */
       const lg = i1.logoBalcao;
@@ -195,15 +217,26 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
       console.log('PASS C10 pausa fora da tela e com a aba oculta; retoma ao voltar');
     }
 
-    /* ── C11 · fecho(1): recuo, sala visível, três linhas azuis, placa; fecho(0) volta ── */
+    /* ── C11 (R11) · fecho(1): a câmera só é arrastada até a sala (altura do quadro varia ≤ 3%),
+          sala visível, três cabos #3d63db acesos, placa; fecho(0) volta ── */
+    const alturaTela1 = (await page.evaluate(() => cena.inspecionar())).camera.altura;
     await page.evaluate(() => cena.fecho(1));
     await assentar(page);
+    await ESPERA(1500);
     const i3 = await page.evaluate(() => cena.inspecionar());
     assert.equal(i3.enquadramento, 'fecho');
     assert(i3.projetados['sala-tech-stack'].visivel, 'sala não visível no fecho');
+    const variacao = Math.abs(i3.camera.altura - alturaTela1) / alturaTela1;
+    assert(variacao <= .03, `altura do quadro variou ${(variacao * 100).toFixed(1)}% entre a Tela 1 e o fecho`);
     assert.equal(i3.linhas.cor, TOKEN.azul); assert.equal(i3.linhas.cor, '#3d63db');
     assert.equal(i3.linhas.quantidade, 3);
+    assert(i3.cabos.every(c => c.cor === '#3d63db'), 'cabo fora de #3d63db');
+    assert(i3.cabosAcesos >= 1, 'cabos não acenderam até a sala no fecho');
     assert.equal(i3.placaSala, 'nó tech stack');
+    /* ── R12 · os três cabos passam acima do piso ── */
+    assert.equal(i3.cabos.length, 3);
+    for (const c of i3.cabos) assert(c.yMin > i3.pisoY, `${c.no} desce a ${c.yMin} (piso em ${i3.pisoY})`);
+    console.log('PASS R12 três cabos acima do piso (y mínimo ' + i3.cabos.map(c => (c.yMin - i3.pisoY).toFixed(3) + ' m').join(' / ') + ' sobre o piso)');
     await ESPERA(600);
     await page.addStyleTag({ content: 'html,body{background:var(--no-osso)!important}' });
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela3.png') });
@@ -217,7 +250,7 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     await page.evaluate(() => cena.fecho(0));
     await assentar(page);
     assert.equal((await page.evaluate(() => cena.inspecionar())).enquadramento, 'tela1');
-    console.log('PASS C11 fecho com sala visível, 3 linhas #3d63db e placa "nó tech stack"; fecho(0) volta a tela1');
+    console.log(`PASS C11 (R11) fecho arrastado até a sala (altura do quadro ${(variacao * 100).toFixed(1)}% ≤ 3%), 3 cabos #3d63db acesos e placa "nó tech stack"; fecho(0) volta a tela1`);
 
     /* contrato que a frente A consome: toque no canvas e foco com alvoY (capturas da Tela 2) */
     const pf = (await page.evaluate(() => cena.inspecionar().projetados))['mesa-fiscal'];
@@ -229,7 +262,7 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
       const i2 = await page.evaluate(() => cena.inspecionar());
       assert.equal(i2.enquadramento, m);
       const y = i2.projetados['mesa-' + m].y;
-      assert(Math.abs(y - .2 * 812) <= 4, `${m} com alvoY .2 ficou em y=${y}`);
+      assert(Math.abs(y - .2 * ALTURA) <= 4, `${m} com alvoY .2 ficou em y=${y}`);
       await page.addStyleTag({ content: 'html,body{background:var(--no-osso)!important}' });
       await canvas.screenshot({ path: path.join(AQUI, `cena-foco-${m}.png`) });
     }
@@ -238,7 +271,7 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     assert.equal((await page.evaluate(() => cena.inspecionar())).enquadramento, 'tela1');
     console.log('PASS contrato aoTocarMesa por clique no canvas e focar(mesa, { alvoY }) a 20% da altura');
 
-    /* ── C26-posteres · 750×1624, renderizados da própria cena ──
+    /* ── C26-posteres (R15) · 750×1040, renderizados da própria cena ──
        Os WebP são gerados num diretório temporário a cada execução; os arquivos
        versionados em agentes/escritorio/ só são regravados com --posteres (ou
        quando não existem), para a verificação não sujar a árvore. */
@@ -247,13 +280,29 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     for (const [f, png] of posteres){
       const novo = path.join(tmp, f);
       paraWebp(png, novo);
-      assert.equal(tamanhoWebp(novo), '750x1624', f + ' recém-renderizado fora de 750×1624');
+      assert.equal(tamanhoWebp(novo), '750x1040', f + ' recém-renderizado fora de 750×1040');
       const alvo = path.join(dir, f);
       if (REGRAVA_POSTERES || !fs.existsSync(alvo)) fs.copyFileSync(novo, alvo);
       const t = tamanhoWebp(alvo);
-      assert.equal(t, '750x1624', f + ' mede ' + t);
+      assert.equal(t, '750x1040', f + ' mede ' + t);
     }
-    console.log('PASS C26-posteres poster-escritorio.webp e poster-fecho.webp em 750×1624' + (REGRAVA_POSTERES ? ' (regravados)' : ''));
+    console.log('PASS C26-posteres (R15) poster-escritorio.webp e poster-fecho.webp em 750×1040' + (REGRAVA_POSTERES ? ' (regravados)' : ''));
+
+    /* ── R16 · um único GLB de no máximo 3 MB ── */
+    const tamGlb = fs.statSync(path.join(RAIZ, 'agentes/escritorio/escritorio.glb')).size;
+    assert(tamGlb <= 3 * 1024 * 1024, `escritorio.glb tem ${(tamGlb / 1048576).toFixed(2)} MB`);
+    const globs = fs.readdirSync(path.join(RAIZ, 'agentes/escritorio')).filter(f => f.endsWith('.glb'));
+    assert.deepEqual(globs, ['escritorio.glb'], 'mais de um GLB: ' + globs);
+    console.log(`PASS R16 escritorio.glb único, ${(tamGlb / 1048576).toFixed(2)} MB (≤ 3 MB)`);
+
+    /* desempenho (informativo): tempo de montagem e quadros por segundo na bancada */
+    await page.evaluate(() => { window.scrollTo(0, 0); cena.fecho(0); cena.focar(null); });
+    await ESPERA(800);
+    const q0 = await page.evaluate(() => cena.quadros()); await ESPERA(3000);
+    const q1 = await page.evaluate(() => cena.quadros());
+    const montagem = await page.evaluate(() => window.tempoMontagem);
+    const custo = (await page.evaluate(() => cena.inspecionar())).desenho;
+    console.log(`INFO montagem ${montagem} ms · ${((q1 - q0) / 3).toFixed(1)} quadros/s na bancada headless · ${custo.chamadas} draw calls · ${custo.triangulos} triângulos`);
     assert.deepEqual(errosPagina, [], 'erros na página');
   } finally {
     await browser.close(); servidor.close();
