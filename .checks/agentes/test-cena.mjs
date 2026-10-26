@@ -1,6 +1,7 @@
 /* Prova da cena 3D do Escritório nó (frente B): C6–C11 e C26-posteres.
    Uso: node .checks/agentes/test-cena.mjs            (prova inteira; C9 leva 60 s reais)
         node .checks/agentes/test-cena.mjs --capturas (só C6, C11 e as capturas, para iterar)
+        node .checks/agentes/test-cena.mjs --posteres (também regrava os WebP em agentes/escritorio/)
    Sobe um servidor estático na raiz da worktree, abre .checks/agentes/cena.html em 375×812
    @2x com o Playwright e afirma o que o checklist .checks/agentes-escritorio.md diz. */
 import { createRequire } from 'node:module';
@@ -20,6 +21,7 @@ const { chromium } = pw;
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, '..', '..');
 const SO_CAPTURAS = process.argv.includes('--capturas');
+const REGRAVA_POSTERES = process.argv.includes('--posteres');
 const ESPERA = ms => new Promise(r => setTimeout(r, ms));
 const py = (codigo, ...args) => execFileSync('python', ['-I', '-c', codigo, ...args], { encoding: 'utf8' }).trim();
 
@@ -228,15 +230,22 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     assert.equal((await page.evaluate(() => cena.inspecionar())).enquadramento, 'tela1');
     console.log('PASS contrato aoTocarMesa por clique no canvas e focar(mesa, { alvoY }) a 20% da altura');
 
-    /* ── C26-posteres · 750×1624, renderizados da própria cena ── */
+    /* ── C26-posteres · 750×1624, renderizados da própria cena ──
+       Os WebP são gerados num diretório temporário a cada execução; os arquivos
+       versionados em agentes/escritorio/ só são regravados com --posteres (ou
+       quando não existem), para a verificação não sujar a árvore. */
     const dir = path.join(RAIZ, 'agentes/escritorio');
-    paraWebp(pngTela1, path.join(dir, 'poster-escritorio.webp'));
-    paraWebp(pngFecho, path.join(dir, 'poster-fecho.webp'));
-    for (const f of ['poster-escritorio.webp', 'poster-fecho.webp']){
-      const t = tamanhoWebp(path.join(dir, f));
+    const posteres = [['poster-escritorio.webp', pngTela1], ['poster-fecho.webp', pngFecho]];
+    for (const [f, png] of posteres){
+      const novo = path.join(tmp, f);
+      paraWebp(png, novo);
+      assert.equal(tamanhoWebp(novo), '750x1624', f + ' recém-renderizado fora de 750×1624');
+      const alvo = path.join(dir, f);
+      if (REGRAVA_POSTERES || !fs.existsSync(alvo)) fs.copyFileSync(novo, alvo);
+      const t = tamanhoWebp(alvo);
       assert.equal(t, '750x1624', f + ' mede ' + t);
     }
-    console.log('PASS C26-posteres poster-escritorio.webp e poster-fecho.webp em 750×1624');
+    console.log('PASS C26-posteres poster-escritorio.webp e poster-fecho.webp em 750×1624' + (REGRAVA_POSTERES ? ' (regravados)' : ''));
     assert.deepEqual(errosPagina, [], 'erros na página');
   } finally {
     await browser.close(); servidor.close();
