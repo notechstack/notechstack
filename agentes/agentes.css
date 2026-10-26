@@ -69,18 +69,24 @@
   min-height: 420px;
   overflow: hidden;
   background: transparent;
+}
+/* O degradê vale para a imagem da cena (canvas e pôster), não para os botões das mesas. */
+.ag-escritorio > .ag-canvas,
+.ag-escritorio > .ag-poster {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
 }
 @media (min-width: 769px) {
-  .ag-escritorio {
-    max-height: calc(100svh - 240px);
+  .ag-escritorio { max-height: calc(100svh - 240px); }
+  .ag-escritorio > .ag-canvas,
+  .ag-escritorio > .ag-poster {
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
     -webkit-mask-composite: source-in;
     mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
     mask-composite: intersect;
   }
 }
+
 /* Estática e sem JS: o quadro tem a proporção do pôster (750×1040 = a do canvas, R15),
    sem corte, para os botões das mesas caírem exatamente onde a cena desenha as etiquetas. */
 html:not(.carregando):not(.animada) .ag-escritorio {
@@ -137,11 +143,12 @@ html.animada .ag-fecho-poster { display: none; }
   -webkit-tap-highlight-color: transparent;
   transition: opacity .2s ease;
 }
-/* Posições das etiquetas no pôster, medidas em cena.inspecionar().projetados['etiqueta-*']
-   (375×812): fiscal e Auditor ancoram pela esquerda, a vaga pelo centro. */
-.ag-mesa[data-mesa="fiscal"]  { --mx: 46.4%; --my: 21.6%; }
-.ag-mesa[data-mesa="auditor"] { --mx: 58.7%; --my: 36.0%; }
-.ag-mesa[data-mesa="vaga"]    { --mx: 77.0%; --my: 53.3%; width: max-content; transform: translate(-50%, -50%); }
+/* Posições das etiquetas no pôster 375×520, medidas em cena.inspecionar().projetados['etiqueta-*']
+   (cena do GLB, commit 72340cce): as três ancoram pelo centro. */
+.ag-mesa[data-mesa] { transform: translate(-50%, -50%); width: max-content; }
+.ag-mesa[data-mesa="fiscal"]  { --mx: 60.8%; --my: 8.3%; }
+.ag-mesa[data-mesa="auditor"] { --mx: 74.8%; --my: 29.6%; }
+.ag-mesa[data-mesa="vaga"]    { --mx: 63.3%; --my: 56.8%; }
 
 .ag-mesa-pilula {
   display: inline-flex;

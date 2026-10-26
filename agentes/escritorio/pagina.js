@@ -178,12 +178,19 @@ function calcularAlvoY() {
   return clamp(faixa / 2 / altura, 0.06, 0.5);
 }
 
+// Enquadramento da mesa aproximada: centro em alvoY e altura visível (fração do canvas entre
+// a navbar e o topo da gaveta), para a cena caber a pessoa e a mesa inteiras nessa faixa.
+function quadroFoco() {
+  const alvoY = calcularAlvoY();
+  return { alvoY, alturaVisivel: clamp(alvoY * 2, 0.12, 1) };
+}
+
 let reenquadrar = 0;
 function reenquadrarMesa() {
   if (reenquadrar || !estado.aberta || !estado.cena) return;
   reenquadrar = requestAnimationFrame(() => {
     reenquadrar = 0;
-    if (estado.aberta && estado.cena) estado.cena.focar(estado.aberta, { alvoY: calcularAlvoY() });
+    if (estado.aberta && estado.cena) estado.cena.focar(estado.aberta, quadroFoco());
   });
 }
 
@@ -192,7 +199,7 @@ function aoMudarGaveta({ aberta, agente } = {}) {
     estado.aberta = agente;
     if (!estado.cena) return;
     requestAnimationFrame(() => {
-      if (estado.cena && estado.aberta === agente) estado.cena.focar(agente, { alvoY: calcularAlvoY() });
+      if (estado.cena && estado.aberta === agente) estado.cena.focar(agente, quadroFoco());
     });
     return;
   }
@@ -349,7 +356,12 @@ function revelar() {
     travarPagina(false);
   }, 260);
 
-  cena.aoTocarMesa((mesa) => abrirMesa(mesa, mesas.get(mesa)));
+  // Com a gaveta aberta, a mesa aproximada ocupa quase toda a cena acima dela: tocar nela é
+  // "tocar fora" e fecha (critério 20); tocar em outra mesa troca a gaveta (critério 21).
+  cena.aoTocarMesa((mesa) => {
+    if (estado.aberta && estado.aberta === mesa) estado.gaveta?.fechar();
+    else abrirMesa(mesa, mesas.get(mesa));
+  });
   montarGaveta(false);
 
   addEventListener('scroll', agendarQuadro, { passive: true });
