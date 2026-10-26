@@ -67,6 +67,14 @@
   background: color-mix(in srgb, var(--no-ambar-tint) 55%, var(--no-osso));
 }
 @media (min-width: 769px) { .ag-escritorio { border-radius: 20px; } }
+/* Estática e sem JS: o quadro tem a proporção do pôster (750×1624), sem corte, para os
+   botões das mesas caírem exatamente onde a cena desenha as etiquetas. */
+html:not(.carregando):not(.animada) .ag-escritorio {
+  width: min(100%, 420px);
+  aspect-ratio: 750 / 1624;
+  max-height: none;
+  min-height: 0;
+}
 
 .ag-canvas,
 .ag-poster {
@@ -103,7 +111,7 @@ html.animada .ag-fecho-poster { display: none; }
   position: absolute;
   left: var(--mx);
   top: var(--my);
-  transform: translate(-50%, calc(-100% - var(--ergue)));
+  transform: translate(0, -50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -116,9 +124,11 @@ html.animada .ag-fecho-poster { display: none; }
   -webkit-tap-highlight-color: transparent;
   transition: opacity .2s ease;
 }
-.ag-mesa[data-mesa="fiscal"]  { --mx: 66%; --my: 22%; }
-.ag-mesa[data-mesa="auditor"] { --mx: 62%; --my: 47%; }
-.ag-mesa[data-mesa="vaga"]    { --mx: 70%; --my: 71%; }
+/* Posições das etiquetas no pôster, medidas em cena.inspecionar().projetados['etiqueta-*']
+   (375×812): fiscal e Auditor ancoram pela esquerda, a vaga pelo centro. */
+.ag-mesa[data-mesa="fiscal"]  { --mx: 51.7%; --my: 26.5%; }
+.ag-mesa[data-mesa="auditor"] { --mx: 65.4%; --my: 41.5%; }
+.ag-mesa[data-mesa="vaga"]    { --mx: 81.4%; --my: 56.1%; width: max-content; transform: translate(-50%, -50%); }
 
 .ag-mesa-pilula {
   display: inline-flex;
@@ -133,13 +143,22 @@ html.animada .ag-fecho-poster { display: none; }
   white-space: nowrap;
   transition: transform .2s ease;
 }
-.ag-mesa[data-mesa="vaga"] .ag-mesa-pilula { font-size: 12px; }
+.ag-mesa[data-mesa="vaga"] .ag-mesa-pilula { max-width: 140px; white-space: normal; border-radius: 16px; }
 .ag-mesa:hover .ag-mesa-pilula { transform: translateY(-2px); }
 .ag-mesa:focus-visible { outline: none; }
 .ag-mesa:focus-visible .ag-mesa-pilula { outline: 3px solid var(--no-azul); outline-offset: 2px; }
 
-/* Na animada a posição muda junto com a câmera. */
-html.animada .ag-mesa { transition: opacity .2s ease, left .08s linear, top .08s linear; }
+/* Na animada as etiquetas são as da própria cena (critério 6): os botões viram áreas de toque
+   transparentes sobre cada mesa, que seguem a câmera, e a pílula só aparece no foco do teclado. */
+html.animada .ag-mesa,
+html.animada .ag-mesa[data-mesa="vaga"] {
+  width: 132px;
+  height: 96px;
+  transform: translate(-50%, -62%);
+  transition: opacity .2s ease, left .08s linear, top .08s linear;
+}
+html.animada .ag-mesa-pilula { opacity: 0; }
+html.animada .ag-mesa:focus-visible .ag-mesa-pilula { opacity: 1; }
 .ag-mesa.ag-mesa--oculta { opacity: 0; pointer-events: none; }
 /* No recuo do fecho (Tela 3) as etiquetas saem; o foco do teclado ainda as mostra. */
 .ag-mesas.ag-mesas--longe .ag-mesa { opacity: 0; pointer-events: none; }

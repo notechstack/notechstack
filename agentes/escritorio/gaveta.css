@@ -29,6 +29,8 @@ html.gv-aberta { overflow: hidden; }
   opacity: 0; transition: opacity var(--gv-animacao) ease;
 }
 .gv-fundo.is-aberta { opacity: 1; }
+/* fechada = fora da árvore de foco: o display:flex do painel não pode vencer o [hidden] */
+.gv-fundo[hidden], .gv-painel[hidden] { display: none; }
 
 /* ── painel: sobe de baixo no celular ── */
 .gv-painel {

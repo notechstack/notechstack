@@ -13,6 +13,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const LOGO_BALCAO = '/brand/logo/svg/no-tinta-ponto-azul.svg';
 const R2 = Math.SQRT1_2;
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const suave = t => t * t * (3 - 2 * t);
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -449,6 +450,10 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const desejado = { alvo: QUADROS.tela1.alvo.clone(), altura: QUADROS.tela1.altura };
   const atual = { alvo: QUADROS.tela1.alvo.clone(), altura: QUADROS.tela1.altura };
   let aspecto = 1;
+  /* A Tela 1 foi afinada em 375×812. Num canvas mais largo (a hero da página), a largura de
+     mundo visível é a mesma e a altura encolhe até o mínimo em que a coluna inteira cabe. */
+  const LARGURA_TELA1 = QUADROS.tela1.altura * 375 / 812;
+  const alturaTela1 = () => clamp(LARGURA_TELA1 / aspecto, 9.6, QUADROS.tela1.altura);
   const tmp = new THREE.Vector3();
   function calculaDesejado(){
     const q = suave(clamp01(estado.tFecho));
@@ -465,7 +470,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
       desejado.altura = altura;
     } else {
       desejado.alvo.lerpVectors(QUADROS.tela1.alvo, QUADROS.fecho.alvo, q);
-      desejado.altura = lerp(QUADROS.tela1.altura, QUADROS.fecho.altura, q);
+      desejado.altura = lerp(alturaTela1(), QUADROS.fecho.altura, q);
     }
   }
   function aplicaCamera(){
@@ -618,7 +623,10 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
       'recepcao': projeta(rec.userData.marca),
       'personagem-fiscal': projeta(personagens.fiscal.userData.partes.marca),
       'personagem-auditor': projeta(personagens.auditor.userData.partes.marca),
-      'sala-tech-stack': projeta(sala.userData.marca)
+      'sala-tech-stack': projeta(sala.userData.marca),
+      'etiqueta-fiscal': projeta(chips.fiscal),
+      'etiqueta-auditor': projeta(chips.auditor),
+      'etiqueta-vaga': projeta(chips.vaga)
     };
     const etiquetas = ['fiscal', 'auditor', 'vaga'].map(id => {
       const sp = chips[id];
@@ -667,6 +675,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     pausar(){ pausado = true; liga(); },
     retomar(){ pausado = false; liga(); },
     quadros(){ return nQuadros; },
+    /* os pôsteres saem sem os chips: na versão estática as etiquetas são os botões HTML */
+    mostrarEtiquetas(v){ for (const sp of Object.values(chips)) sp.visible = !!v; },
     destruir,
     inspecionar
   };

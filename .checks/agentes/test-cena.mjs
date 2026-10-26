@@ -113,7 +113,11 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela1.png') });
     const pngTela1 = path.join(tmp, 'poster-escritorio.png');
     await page.addStyleTag({ content: 'html,body{background:transparent!important}' });
+    /* pôster sem os chips das mesas: na versão estática as etiquetas são os botões HTML */
+    await page.evaluate(() => cena.mostrarEtiquetas(false));
+    await ESPERA(250);
     await canvas.screenshot({ path: pngTela1, omitBackground: true });
+    await page.evaluate(() => cena.mostrarEtiquetas(true));
     console.log('PASS C6 mesas em coluna, etiquetas verde/azul/âmbar, enquadramento tela1');
 
     if (!SO_CAPTURAS){
@@ -205,7 +209,11 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela3.png') });
     const pngFecho = path.join(tmp, 'poster-fecho.png');
     await page.addStyleTag({ content: 'html,body{background:transparent!important}' });
+    /* pôster sem os chips das mesas: na versão estática as etiquetas são os botões HTML */
+    await page.evaluate(() => cena.mostrarEtiquetas(false));
+    await ESPERA(250);
     await canvas.screenshot({ path: pngFecho, omitBackground: true });
+    await page.evaluate(() => cena.mostrarEtiquetas(true));
     await page.evaluate(() => cena.fecho(0));
     await assentar(page);
     assert.equal((await page.evaluate(() => cena.inspecionar())).enquadramento, 'tela1');

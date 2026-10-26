@@ -247,14 +247,16 @@ function posicionarEtiquetas(agora) {
   if (!pontos) return;
   const largura = escritorio.clientWidth;
   const altura = escritorio.clientHeight;
+  // Área de toque transparente centrada na mesa. Em px inteiros e só quando muda: a câmera
+  // assenta devagar, e uma posição que oscila décimos de px nunca fica parada sob o dedo.
   for (const [mesa, el] of mesas) {
     const p = pontos[`mesa-${mesa}`];
     if (!p) continue;
     const meia = el.offsetWidth / 2;
-    const x = clamp(p.x, meia + 6, Math.max(meia + 6, largura - meia - 6));
-    const y = clamp(p.y, el.offsetHeight + 28, altura);
-    el.style.setProperty('--mx', `${x.toFixed(1)}px`);
-    el.style.setProperty('--my', `${y.toFixed(1)}px`);
+    const x = Math.round(clamp(p.x, meia, Math.max(meia, largura - meia)));
+    const y = Math.round(clamp(p.y, el.offsetHeight * 0.62, altura));
+    if (el.dataset.mx !== String(x)) { el.dataset.mx = x; el.style.setProperty('--mx', `${x}px`); }
+    if (el.dataset.my !== String(y)) { el.dataset.my = y; el.style.setProperty('--my', `${y}px`); }
     el.classList.toggle('ag-mesa--oculta', !p.visivel);
   }
 }

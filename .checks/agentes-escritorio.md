@@ -188,3 +188,10 @@ superfície (página, cena, gaveta), como em `.tasks/agentes-escritorio-frentes.
 o Verifier (frente D) sobre `9a12aecb..HEAD`.
 
 - Settled mid-build: o polvo/mascote saiu da task e da imagem (commit `b4a452dc`); a conta Claude 02 não é usada (erro de autenticação); frentes de design (B e C) rodam em Fable 5.1, esforço alto.
+- Boundary: merge local de `feat/agentes-escritorio-cena` (`b15867e1`) e `feat/agentes-escritorio-whatsapp` (`fe9f1031`) em `feat/agentes-escritorio`, sem conflito. As três provas ficam verdes com os módulos reais (`AGENTES_REAL=1` na da página).
+- Decidido na integração (aditivo; nada quebra o contrato):
+  - Etiquetas: na animada valem os chips da cena (critério 6). Os botões HTML viram áreas de toque transparentes de 132×96 sobre cada mesa, que seguem `projetados['mesa-*']` em px inteiros e mostram a pílula só no foco do teclado. Alternativa rejeitada: pílulas HTML sobre o canvas, que duplicavam as etiquetas e cobriam as cabeças.
+  - Pôsteres sem chips (`cena.mostrarEtiquetas(false)` antes da captura em `test-cena.mjs`). Na estática e sem JS, o quadro tem a proporção do pôster (750×1624) e as pílulas HTML ficam onde a cena desenha os chips, medidos por `projetados['etiqueta-*']`. Alternativa rejeitada: chips gravados no pôster com as pílulas por cima, que dava duplicata com corte variável.
+  - Tela 1 na página: o canvas da hero é 375:520, e a altura de mundo passa a ser `clamp(largura da Tela 1 / aspecto, 9.6, 13.4)`. Em 375×812 continua 13.4 (C6 e pôsteres iguais).
+  - `gaveta.css`: `.gv-painel[hidden], .gv-fundo[hidden] { display: none }`. O `display:flex` vencia o `[hidden]`, e a gaveta fechada ficava fora da tela, mas com os botões alcançáveis pelo Tab (achado pelo C26a real).
+- Abandonado: nada.
