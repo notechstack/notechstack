@@ -28,15 +28,19 @@ const tk = n => tokens.match(new RegExp(n.replace(/-/g, '\\-') + ':\\s*(#[0-9a-f
 const C = { azul: tk('--no-azul'), verde: tk('--no-verde'), ambar: tk('--no-ambar'), tinta: tk('--no-tinta'), osso: tk('--no-osso') };
 
 /* cada peça: id do elemento, largura e altura em px de textura, HTML */
-const chip = (id, cor, texto, duas) => `
-  <div id="${id}" class="peca" style="width:${duas ? 430 : 440}px;height:${duas ? 170 : 140}px;display:flex;align-items:center;justify-content:center">
-    <div style="display:flex;align-items:center;gap:20px;background:#fff;border-radius:${duas ? 40 : 999}px;padding:${duas ? '22px 34px 22px 24px' : '20px 38px 20px 22px'};
-      box-shadow:0 8px 22px rgba(60,40,20,.18), 0 0 0 2px rgba(20,20,20,.05)">
-      <span style="position:relative;width:60px;height:60px;flex:none">
+/* chip de etiqueta: círculo cheio com halo (R4) e contorno na cor do agente (R9, R10).
+   soContorno: só o anel do contorno, num PNG do mesmo tamanho, para piscar por cima (R10). */
+const BORDA = 8;   // px de textura: ≈ 2,4 px em 375 de largura na Tela 1
+const chip = (id, cor, texto, larg, contorno, soContorno) => `
+  <div id="${id}" class="peca" style="width:${larg}px;height:140px;display:flex;align-items:center;justify-content:center">
+    <div style="display:flex;align-items:center;gap:20px;border-radius:999px;padding:20px 38px 20px 22px;
+      ${soContorno ? 'background:transparent' : 'background:#fff;box-shadow:0 8px 22px rgba(60,40,20,.18)'};
+      border:${BORDA}px solid ${contorno || 'transparent'}">
+      <span style="position:relative;width:60px;height:60px;flex:none;${soContorno ? 'visibility:hidden' : ''}">
         <span style="position:absolute;inset:-12px;border-radius:50%;background:${cor};opacity:.22"></span>
         <span style="position:absolute;inset:0;border-radius:50%;background:${cor}"></span>
       </span>
-      <span style="font:600 ${duas ? 40 : 46}px/1.15 Sora;color:${C.tinta};letter-spacing:-.01em;white-space:nowrap">${texto}</span>
+      <span style="font:600 46px/1.15 Sora;color:${C.tinta};letter-spacing:-.01em;white-space:nowrap;${soContorno ? 'visibility:hidden' : ''}">${texto}</span>
     </div>
   </div>`;
 const cracha = (id, cor, logo) => `
@@ -82,9 +86,10 @@ const pagina = `<!doctype html><html><head><meta charset="utf-8">
     <img src="/brand/lockup/svg/no-tech-stack-tinta-ponto-azul.svg" style="width:1180px"></div>
   ${cracha('cracha-fiscal', C.verde, 'no-tinta-ponto-verde.svg')}
   ${cracha('cracha-auditor', C.azul, 'no-tinta-ponto-azul.svg')}
-  ${chip('chip-fiscal', C.verde, 'nó.fiscal')}
-  ${chip('chip-auditor', C.azul, 'nó.auditor')}
-  ${chip('chip-vaga', C.ambar, 'um problema<br>seu aqui?', true)}
+  ${chip('chip-fiscal', C.verde, 'nó.fiscal', 460, C.verde)}
+  ${chip('chip-auditor', C.azul, 'nó.auditor', 480, C.azul)}
+  ${chip('chip-vaga', C.ambar, 'criar uma automação', 660, null)}
+  ${chip('chip-vaga-contorno', C.ambar, 'criar uma automação', 660, C.ambar, true)}
   ${tela('tela-0', 0)}${tela('tela-1', 1)}${tela('tela-2', 2)}
   ${teclado}${livros}${rack}
 </body></html>`;
@@ -97,7 +102,7 @@ const pagina = `<!doctype html><html><head><meta charset="utf-8">
     await page.goto(`http://127.0.0.1:${servidor.address().port}/__pagina`);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => [...document.images].every(i => i.complete && i.naturalWidth > 0));
-    for (const id of ['logo', 'placa', 'cracha-fiscal', 'cracha-auditor', 'chip-fiscal', 'chip-auditor', 'chip-vaga', 'tela-0', 'tela-1', 'tela-2', 'teclado', 'livros', 'rack']){
+    for (const id of ['logo', 'placa', 'cracha-fiscal', 'cracha-auditor', 'chip-fiscal', 'chip-auditor', 'chip-vaga', 'chip-vaga-contorno', 'tela-0', 'tela-1', 'tela-2', 'teclado', 'livros', 'rack']){
       await page.locator('#' + id).screenshot({ path: path.join(SAIDA, id + '.png'), omitBackground: true });
       console.log('ok', id);
     }

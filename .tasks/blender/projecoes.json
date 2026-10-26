@@ -33,12 +33,12 @@
    8.3
   ],
   "etiqueta-auditor": [
-   74.0,
-   29.7
+   74.8,
+   29.6
   ],
   "etiqueta-vaga": [
-   79.0,
-   54.9
+   63.3,
+   56.8
   ]
  },
  "Tela2_fiscal": {
@@ -75,12 +75,12 @@
    17.2
   ],
   "etiqueta-auditor": [
-   91.5,
-   87.5
+   93.0,
+   87.1
   ],
   "etiqueta-vaga": [
-   101.1,
-   170.0
+   70.5,
+   176.2
   ]
  },
  "Tela2_auditor": {
@@ -117,54 +117,54 @@
    -50.8
   ],
   "etiqueta-auditor": [
-   72.4,
-   19.5
+   74.0,
+   19.2
   ],
   "etiqueta-vaga": [
-   82.1,
-   102.1
+   51.4,
+   108.2
   ]
  },
  "Fecho_sala": {
   "marca-mesa-fiscal": [
-   2.1,
-   57.6
+   -11.0,
+   68.5
   ],
   "marca-mesa-auditor": [
-   10.6,
-   75.8
+   -1.2,
+   89.2
   ],
   "marca-mesa-vaga": [
-   19.2,
-   93.9
+   8.5,
+   109.8
   ],
   "marca-recepcao": [
-   -20.5,
-   105.3
+   -36.7,
+   122.9
   ],
   "marca-sala": [
-   68.8,
-   38.7
+   65.0,
+   46.9
   ],
   "marca-pessoa-fiscal": [
-   -9.0,
-   47.7
+   -23.6,
+   57.1
   ],
   "marca-pessoa-auditor": [
-   -0.4,
-   65.9
+   -13.9,
+   77.9
   ],
   "etiqueta-fiscal": [
-   10.8,
-   43.0
+   -1.1,
+   51.8
   ],
   "etiqueta-auditor": [
-   22.4,
-   61.8
+   12.9,
+   73.1
   ],
   "etiqueta-vaga": [
-   26.7,
-   83.9
+   1.4,
+   100.3
   ]
  }
 }

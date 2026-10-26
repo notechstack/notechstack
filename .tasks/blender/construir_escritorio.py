@@ -81,7 +81,11 @@ def material(nome, cor, rough=.8, metal=0.0, sheen=0.0, emissao=None, forca=0.0,
             em = nt.nodes.new('ShaderNodeEmission'); tr = nt.nodes.new('ShaderNodeBsdfTransparent')
             mx = nt.nodes.new('ShaderNodeMixShader')
             nt.links.new(tx.outputs['Color'], em.inputs['Color'])
-            nt.links.new(tx.outputs['Alpha'], mx.inputs['Fac'])
+            # opacidade animável (contorno que pisca, chips que somem no arrasto)
+            op = nt.nodes.new('ShaderNodeValue'); op.name = op.label = 'opacidade'; op.outputs[0].default_value = 1
+            mul = nt.nodes.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'
+            nt.links.new(tx.outputs['Alpha'], mul.inputs[0]); nt.links.new(op.outputs[0], mul.inputs[1])
+            nt.links.new(mul.outputs[0], mx.inputs['Fac'])
             nt.links.new(tr.outputs[0], mx.inputs[1]); nt.links.new(em.outputs[0], mx.inputs[2])
             nt.links.new(mx.outputs[0], nt.nodes['Material Output'].inputs['Surface'])
         else:
@@ -174,6 +178,20 @@ def bm_tubo(pontos, r, sseg=8):
         aneis.append([bm.verts.new(p + (a * math.cos(2 * PI * j / sseg) + b * math.sin(2 * PI * j / sseg)) * r) for j in range(sseg)])
     for a, b in zip(aneis, aneis[1:]):
         for j in range(sseg): bm.faces.new((a[j], b[j], b[(j + 1) % sseg], a[(j + 1) % sseg]))
+    return bm
+def bm_mecha(pontos, raios, sseg=7):
+    """tubo afilado: raio variável ao longo dos pontos, pontas fechadas (mechas, sobrancelhas)"""
+    bm = bmesh.new(); aneis = []
+    for i, p in enumerate(pontos):
+        t = (pontos[min(i + 1, len(pontos) - 1)] - pontos[max(i - 1, 0)]).normalized()
+        a = t.orthogonal().normalized(); b = t.cross(a)
+        aneis.append([bm.verts.new(p + (a * math.cos(2 * PI * j / sseg) + b * math.sin(2 * PI * j / sseg)) * raios[i]) for j in range(sseg)])
+    for a_, b_ in zip(aneis, aneis[1:]):
+        for j in range(sseg): bm.faces.new((a_[j], b_[j], b_[(j + 1) % sseg], a_[(j + 1) % sseg]))
+    for anel, ponta in ((aneis[0], pontos[0] - (pontos[1] - pontos[0]) * .5), (aneis[-1], pontos[-1] + (pontos[-1] - pontos[-2]) * .5)):
+        c = bm.verts.new(ponta)
+        for j in range(sseg): bm.faces.new((anel[j], anel[(j + 1) % sseg], c))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return bm
 def bm_placa_arred(w, d, r, h, seg=10):
     """retângulo de cantos bem redondos extrudado em Z (tampo, balcão), base em z = 0"""
@@ -278,15 +296,18 @@ def T1(sx, sy, z=0.0):
 
 # ───────────────────────── materiais da cena ─────────────────────────
 M = {
-    'piso': material('piso', '#DCCBB3', rough=.92),
-    'parede': material('parede', '#EDE3D3', rough=.9),
-    'rodape': material('rodape', '#D2BFA2', rough=.7),
-    'base': material('branco-quente', '#F1E8DA', rough=.55),
-    'madeira': material('carvalho', '#D7B07A', rough=.5),
-    'madeira_escura': material('carvalho-escuro', '#B38A5C', rough=.55),
-    'tecido': material('tecido-creme', '#E6D8C2', rough=.95, sheen=.4),
-    'tecido_cinza': material('tecido-cinza', '#BFB4A4', rough=.95, sheen=.4),
-    'tapete': material('tapete', '#8F877C', rough=1.0),
+    # R8: valores separados — piso médio, paredes mais claras que o piso, carvalho saturado,
+    # pedestais e balcão em branco-creme, escada em cinza-areia
+    'piso': material('piso', '#B79B76', rough=.92),
+    'parede': material('parede', '#F6F0E7', rough=.9),
+    'rodape': material('rodape', '#A8916F', rough=.7),
+    'base': material('branco-quente', '#F7F1E7', rough=.5),
+    'escada': material('cinza-areia', '#ADA294', rough=.75),
+    'madeira': material('carvalho', '#B87C42', rough=.45),
+    'madeira_escura': material('carvalho-escuro', '#7E5530', rough=.55),
+    'tecido': material('tecido-creme', '#E3D3BB', rough=.95, sheen=.25),
+    'tecido_cinza': material('tecido-cinza', '#A79B8A', rough=.95, sheen=.25),
+    'tapete': material('tapete', '#6F675C', rough=1.0),
     'preto': material('preto-fosco', '#1C1B1A', rough=.42, metal=.2),
     'grafite': material('grafite', '#34322F', rough=.5, metal=.2),
     'metal': material('metal', '#B9B6B0', rough=.3, metal=.8),
@@ -304,7 +325,9 @@ M = {
     'vidro': material('vidro', '#DCE7F2', rough=.04, alfa=.16),
     'janela': material('vidro-janela', '#EAF1F7', rough=.1, emissao='#F6F2EA', forca=1.2),
     'caixilho': material('caixilho', '#151515', rough=.35, metal=.3),
-    'azul': material('azul-linha', MARCA['azul'], rough=.3, emissao=MARCA['azul'], forca=1.2),
+    'azul': material('azul-cabo', MARCA['azul'], rough=.22, emissao=MARCA['azul'], forca=.45),
+    'pulso': material('pulso-luz', '#BFD0FF', rough=.2, emissao='#A8C0FF', forca=18),
+    'conector': material('conector', '#F4F1EA', rough=.35),
     'tela': [material('tela-%d' % k, '#EEF2FA', rough=.25, emissao='#FFFFFF', forca=1.1, imagem='tela-%d.png' % k) for k in range(3)],
     'teclado': material('teclado', '#2B2A28', rough=.6, imagem='teclado.png'),
     'livros': material('lombadas', '#E9DFCF', rough=.8, imagem='livros.png'),
@@ -485,8 +508,8 @@ def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g
     m_labio = material('labio-' + agente, mistura(pele, '#5C2420', .7), rough=.5)
     m_cab = material('cabelo-' + agente, cabelo, rough=.55, sheen=.3)
     m_cab2 = material('cabelo-claro-' + agente, mistura(cabelo, '#7A5A44', .25), rough=.55, sheen=.3)
-    m_camisa = material('camisa', CAMISA, rough=.78, sheen=.7)
-    m_camisa_s = material('camisa-dobra', '#E6E0D5', rough=.8, sheen=.5)
+    m_camisa = material('camisa', CAMISA, rough=.7, sheen=.15)
+    m_camisa_s = material('camisa-dobra', '#DDD5C8', rough=.75, sheen=.1)
     m_calca = material('calca-' + agente, calca, rough=.85, sheen=.3)
     m_sapato = material('sapato-' + agente, sapato, rough=.5)
     m_sola = material('sola', '#EFEAE1', rough=.7)
@@ -550,8 +573,9 @@ def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g
         x, y, z = s * (R_CAB - .006), C_CAB.y + .015, C_CAB.z - .05
         r.add(bm_esfera(14, 10), m_pele, loc=(x, y, z), rot=(0, s * .15, 0), esc=(.046, .056, .074))
         r.add(bm_esfera(10, 8), m_pele_esc, loc=(x + s * .02, y - .008, z), esc=(.018, .03, .04))
-        sb = cab(s * .37, .24, .004)
-        r.add(bm_capsula(.0125, .05, 8, 3), m_cab, loc=tuple(sb), rot=(0, PI / 2 + s * .12, s * .37), esc=(1, .6, 1), ordem='XYZ')
+        # sobrancelha natural: arco suave, mais grossa perto do nariz e afilada na ponta
+        pts_sb = [cab(s * (.2 + .3 * k / 8), .228 + .045 * math.sin(PI * k / 8) - .012 * k / 8, .006) for k in range(9)]
+        r.add(bm_mecha(pts_sb, [.0115 - .0045 * k / 8 for k in range(9)], 6), m_cab)
         bc = cab(s * .62, -.17, -.024)
         r.add(bm_esfera(12, 8), m_bochecha, loc=tuple(bc), rot=(0, 0, s * .62), esc=(.052, .03, .032))
     n = cab(0, -.07, -.008)
@@ -581,16 +605,25 @@ def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g
             pt = cab(s * 1.3, .1, .008)
             h.add(bm_esfera(10, 8), m_cab, loc=tuple(pt), rot=(0, 0, s * 1.3), esc=(.028, .04, .06))
     else:
-        def mechas(n_):
-            az = math.atan2(n_.x, -n_.y); pol = math.acos(max(-1, min(1, n_.z)))
-            sulco = .011 * (1 - abs(math.sin(az * 9 + pol * 2.6))) + .005 * math.sin(az * 23)
-            volume = .024 * max(0, n_.z)
-            # franja penteada para o lado: o volume da frente cresce para +X e cai sobre a testa
-            franja = .03 * math.exp(-((az - .35) / .7) ** 2) * math.exp(-((pol - 1.3) / .35) ** 2)
-            return sulco + volume + franja
-        cal = deforma_esfera(bm_esfera(72, 36), PI * .6, mechas)
-        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.055 + (v.co.length - 1))
-        h.add(cal, m_cab, loc=(C_CAB.x, C_CAB.y + .004, C_CAB.z + .006), rot=(-.66, 0, -.12))
+        # base lisa por baixo e, por cima, mechas afiladas que saem do redemoinho e caem
+        # penteadas para o lado; na frente elas formam a franja (sem cara de capacete)
+        cal = deforma_esfera(bm_esfera(64, 32), PI * .6, lambda n_: .012 * max(0, n_.z))
+        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.03 + (v.co.length - 1))
+        h.add(cal, m_cab, loc=(C_CAB.x, C_CAB.y + .004, C_CAB.z + .004), rot=(-.66, 0, -.12))
+        N = 34
+        for k in range(N):
+            th0 = -PI + 2 * PI * (k + .5) / N
+            frente = abs(th0) < 1.05; lado = 1.05 <= abs(th0) < 2.25
+            ph1 = (.3 + .07 * abs(th0)) if frente else (-.04 if lado else -.32)
+            giro = .5 if frente else (.25 if lado else .1)
+            pts, raios = [], []
+            for j in range(13):
+                t = j / 12
+                th = th0 + giro * t ** 1.4; ph = 1.32 + (ph1 - 1.32) * t
+                rr = R_CAB * 1.035 + .02 * math.sin(PI * t) + .012 * (1 - t)
+                pts.append(C_CAB + V(rr * math.sin(th) * math.cos(ph), -rr * math.cos(th) * math.cos(ph), rr * math.sin(ph)))
+                raios.append(.008 + .021 * math.sin(PI * min(1, .15 + t * .95)) ** .7)
+            h.add(bm_mecha(pts, raios), m_cab2 if k % 3 == 1 else m_cab)
         for s in (-1, 1):
             pt = cab(s * 1.36, .02, .006)
             h.add(bm_esfera(10, 8), m_cab, loc=tuple(pt), rot=(0, 0, s * 1.36), esc=(.032, .04, .075))
@@ -722,10 +755,10 @@ def escada(loc, n=7, larg=1.15, passo=.34, alt=.17):
     col = COL['esc']
     g = vazio('escada', col, None, loc)
     for i in range(n):
-        caixa('degrau', larg, passo + .02, alt * (i + 1), .03, M['base'], col, g, (0, i * passo, 0))
+        caixa('degrau', larg, passo + .02, alt * (i + 1), .03, M['escada'], col, g, (0, i * passo, 0))
         caixa('degrau-borda', larg - .02, .03, .012, .006, material('creme', '#E2D4BE', rough=.5), col, g, (0, i * passo - passo / 2 + .005, alt * (i + 1) - .008))
     comp, topo = n * passo, n * alt
-    caixa('patamar', larg + .1, 1.2, topo, .04, M['base'], col, g, (0, comp - passo / 2 + .6, 0))
+    caixa('patamar', larg + .1, 1.2, topo, .04, M['escada'], col, g, (0, comp - passo / 2 + .6, 0))
     # mureta em rampa do lado de fora
     bm = bmesh.new()
     pts = [(-passo / 2, 0), (-passo / 2, .55), (comp - passo / 2, topo + .55), (comp - passo / 2 + 1.2, topo + .55), (comp - passo / 2 + 1.2, 0)]
@@ -861,11 +894,20 @@ def sala_tech_stack(loc, W, D, H):
     planta('sala-planta-a', 'espada', 1.0, 4, 'ceramica', col, g, (W / 2 - .35, -D / 2 + .4, .08))
     planta('sala-planta-b', 'folhagem', .8, 8, 'terracota', col, g, (-W / 2 + .3, -D / 2 + .35, .08))
     # luz quente acesa lá dentro (Tela 3)
-    lz = bpy.data.lights.new('sala-luz', 'POINT'); lz.energy = 120; lz.color = (1, .78, .55); lz.shadow_soft_size = .6
-    objeto('sala-luz', lz, COL['luz'], g, (0, .2, 1.9))
+    for i, (x, y, e) in enumerate([(-.3, .2, 380), (.7, .3, 220)]):
+        lz = bpy.data.lights.new('sala-luz-%d' % i, 'POINT'); lz.energy = e; lz.color = (1, .8, .58); lz.shadow_soft_size = .7
+        objeto('sala-luz-%d' % i, lz, COL['luz'], g, (x, y, 1.95))
     # placa com o lockup oficial no friso da frente
-    pl = plano_imagem('placa-tech-stack', 1.9, 1.9 * 340 / 1400, M['placa'], col, g, (.1, -D / 2 - .06, .08 + H + .02), (PI / 2, 0, 0))
+    # placa grande, apoiada no friso da frente e inclinada para trás, como na referência
+    PW = W * .82; PH = PW * 340 / 1400; INC = .42
+    # a borda de baixo da placa fica logo acima do friso preto (topo em .08 + H + .13)
+    suporte = vazio('placa-suporte', col, g, (.1, -D / 2 + .02, .08 + H + .15 + PH / 2 * math.cos(INC)), (PI / 2 - INC, 0, 0))
+    caixa('placa-chapa', PW + .05, PH + .05, .035, .02, M['base'], col, suporte, (0, 0, -.04))
+    pl = plano_imagem('placa-tech-stack', PW, PH, M['placa'], col, suporte, (0, 0, .0), (0, 0, 0))
+    pl.location = (0, 0, .0)
     pl.visible_shadow = False
+    for x in (-PW * .35, PW * .35):
+        caixa('placa-mao-francesa', .04, .16, .3, .01, M['caixilho'], col, g, (.1 + x, -D / 2 + .12, .08 + H + .1))
     # hub azul onde as linhas chegam, rente ao vidro da esquerda
     hub = caixa('hub', .3, .24, .12, .05, M['azul'], col, g, (-W / 2 - .2, -D / 2 + .55, 0))
     vazio('marca-sala', col, g, (0, 0, 1.1))
@@ -895,8 +937,8 @@ papeis(col, mesas['vaga'], (-.15, .28, ALT), 2, -.25)
 caneca('caneca-vaga', col, mesas['vaga'], (.35, -.05, ALT))
 
 PESSOAS = {
-    'fiscal': pessoa('fiscal', '#F0C7A4', '#2E2019', 'liso', '#3D4350', '#3A2E26', MARCA['verde'], 0, mesas['fiscal']),
-    'auditor': pessoa('auditor', '#7A4B33', '#16110E', 'crespo', '#2F3A4C', '#1E1B19', MARCA['azul'], 3.3, mesas['auditor']),
+    'fiscal': pessoa('fiscal', '#EDBF98', '#2A1B13', 'liso', '#262D3A', '#2E241D', MARCA['verde'], 0, mesas['fiscal']),
+    'auditor': pessoa('auditor', '#6E4029', '#120D0B', 'crespo', '#2E2924', '#171513', MARCA['azul'], 3.3, mesas['auditor']),
 }
 for id_ in ('fiscal', 'auditor'):
     A = ASSENTO
@@ -935,42 +977,99 @@ sala, hub = sala_tech_stack((x_sala, y_sala, 0), SW, SD, SH)
 bpy.context.view_layer.update()
 _c = [sala.matrix_world @ V(x * SW / 2, y * SD / 2, 0) for x in (-1, 1) for y in (-1, 1)]
 _sx = sum(tela_de(c)[0] for c in _c) / 4; _sy = min(tela_de(c)[1] for c in _c)
-p = na_tela(_sx + .35, _sy - 1.45); tapete('tapete-estar', (p.x, p.y, 0), 3.0, 2.2, M['tapete'])
-p = na_tela(_sx + .55, _sy - 1.0, .2); sofa((p.x, p.y, 0), 0)
-p = na_tela(_sx - .8, _sy - 1.6); poltrona((p.x, p.y, 0), -.9)
-p = na_tela(_sx + .65, _sy - 2.0); g = mesinha((p.x, p.y, 0), .3, .4); planta('planta-mesinha', 'suculenta', 1.2, 30, 'ceramica', col, g, (0, 0, .44))
+# à direita do canal dos cabos, para nenhum móvel ficar em cima deles
+p = na_tela(_sx + .95, _sy - 1.45); tapete('tapete-estar', (p.x, p.y, 0), 3.0, 2.2, M['tapete'])
+p = na_tela(_sx + 1.15, _sy - 1.0, .2); sofa((p.x, p.y, 0), 0)
+p = na_tela(_sx - .05, _sy - 1.7); poltrona((p.x, p.y, 0), -.9)
+p = na_tela(_sx + 1.25, _sy - 2.0); g = mesinha((p.x, p.y, 0), .3, .4); planta('planta-mesinha', 'suculenta', 1.2, 30, 'ceramica', col, g, (0, 0, .44))
 
-# ───────────── as três linhas azuis: das mesas, pelo chão, até o hub da sala (R7) ─────────────
+# ───────────── R12: três cabos, das mesas à sala, sempre acima do piso ─────────────
+# Roteamento ortogonal no plano do chão: cada cabo sai do conector no pé do pedestal da sua
+# mesa, corre na altura da mesa até o seu canal, sobe pelo canal e chega ao hub numa faixa
+# própria. Os canais ficam em ordem (fiscal < auditor < vaga em X; faixas de cima para baixo
+# no hub), então nenhum cabo cruza outro. Cantos com raio constante.
 bpy.context.view_layer.update()
 hubP = hub.matrix_world.translation.copy()
-Y0 = .03
-ondas = {'fiscal': (-.18, .05), 'auditor': (-.3, .0), 'vaga': (.2, .0)}
-hx, hy = tela_de(V(hubP.x, hubP.y, 0))
-for id_, (A_, B_) in ondas.items():
+R_CABO, ESP, RAIO = .028, .095, .24
+Z_CABO = R_CABO + .006                        # o tubo nunca encosta no piso
+ORDEM = ['fiscal', 'auditor', 'vaga']
+conectores = {}
+for id_ in ORDEM:
     mw = mesas[id_].matrix_world
-    s0 = mw @ V(LARG / 2 - .3, -.22, ALT + .012); s1 = mw @ V(LARG / 2 + .02, -.22, ALT - .03); d0 = mw @ V(LARG / 2 + .3, -.32, Y0)
-    dx_, dy_ = tela_de(V(d0.x, d0.y, 0))
-    ex, ey = hx - dx_, hy - dy_; nn = math.hypot(ex, ey); px_, py_ = -ey / nn, ex / nn
-    pts = [s0, s1, d0]
-    for t in (.22, .45, .68, .86):
-        o = A_ * math.sin(PI * t) + B_ * math.sin(2 * PI * t)
-        pts.append(na_tela(dx_ + ex * t + px_ * o, dy_ + ey * t + py_ * o, Y0))
-    pts.append(V(hubP.x, hubP.y, .06))
-    cu = bpy.data.curves.new('linha-' + id_, 'CURVE'); cu.dimensions = '3D'
-    cu.bevel_depth = .024; cu.bevel_resolution = 4; cu.resolution_u = 16
-    sp = cu.splines.new('BEZIER'); sp.bezier_points.add(len(pts) - 1)
-    for bp, pt in zip(sp.bezier_points, pts):
-        bp.co = pt; bp.handle_left_type = bp.handle_right_type = 'AUTO'
+    c = mw @ V(LARG / 2 - .07 + .045, -.18, 0)
+    caixa('conector-' + id_, .09, .13, .075, .02, M['conector'], COL['esc'], None, (c.x, c.y, 0))
+    malha('conector-porta-' + id_, bm_cilindro(.022, .022, .02, 16), M['azul'], COL['esc'], None, (c.x + .045, c.y, Z_CABO), (0, PI / 2, 0))
+    conectores[id_] = V(c.x + .055, c.y, Z_CABO)
+X_BASE = max(c.x for c in conectores.values()) + .38
+x_hub = hubP.x - .15
+def arredonda(cantos, raio, passo=.025):
+    """polilinha com cantos em arco de raio constante (filete), amostrada a cada `passo`"""
+    pts = [cantos[0]]
+    for a_, b_, c_ in zip(cantos, cantos[1:], cantos[2:]):
+        d1 = (b_ - a_).normalized(); d2 = (c_ - b_).normalized()
+        r = min(raio, (b_ - a_).length * .45, (c_ - b_).length * .45)
+        p1 = b_ - d1 * r; p2 = b_ + d2 * r
+        pts.append(p1)
+        for k in range(1, 12):           # arco de 90° aproximado por Bézier quadrática (raio constante na prática)
+            t = k / 12
+            pts.append((1 - t) ** 2 * p1 + 2 * (1 - t) * t * b_ + t * t * p2)
+        pts.append(p2)
+    pts.append(cantos[-1])
+    out = [pts[0]]
+    for q in pts[1:]:
+        seg = q - out[-1]; n = max(1, int(seg.length / passo))
+        out += [out[-1] + seg * (k / n) for k in range(1, n + 1)]
+    return out
+cabos = {}
+for i, id_ in enumerate(ORDEM):
+    c = conectores[id_]
+    x_canal = X_BASE + i * ESP
+    y_faixa = hubP.y + (1 - i) * ESP          # fiscal na faixa de trás, vaga na da frente
+    cantos = [c, V(x_canal, c.y, Z_CABO), V(x_canal, y_faixa, Z_CABO), V(x_hub, y_faixa, Z_CABO)]
+    pts = arredonda(cantos, RAIO)
+    assert min(p.z for p in pts) - R_CABO >= .004, 'cabo encosta no piso'
+    cu = bpy.data.curves.new('cabo-' + id_, 'CURVE'); cu.dimensions = '3D'
+    cu.bevel_depth = R_CABO; cu.bevel_resolution = 6; cu.use_fill_caps = True
+    sp = cu.splines.new('POLY'); sp.points.add(len(pts) - 1)
+    for pt, q in zip(sp.points, pts): pt.co = (q.x, q.y, q.z, 1)
     cu.materials.append(M['azul'])
-    ob = objeto('linha-' + id_, cu, COL['lin'])
-    # a linha acende das mesas até a sala ao longo do laço (a página vai ligar isso à rolagem)
-    # na página a linha acende conforme a rolagem (bevel_factor_end de 0 a 1); aqui fica inteira
+    cu.use_path = True; cu.path_duration = 100
+    ob = objeto('cabo-' + id_, cu, COL['lin'])
+    # o cabo acende da mesa até a sala durante o arrasto da câmera (quadros 1–60)
+    cu.bevel_factor_end = 0; cu.keyframe_insert('bevel_factor_end', frame=1)
+    cu.bevel_factor_end = 1; cu.keyframe_insert('bevel_factor_end', frame=60)
+    cabos[id_] = ob
+# entrada da sala: os três cabos chegam ao hub e um conduto passa pelo vidro até os racks
+bpy.context.view_layer.update()
+loc_sala = sala.matrix_world
+malha('conduto-sala', bm_tubo([hubP + V(.15, 0, .06), hubP + V(.4, 0, .06), loc_sala @ V(-SW / 2 + .55, SD / 2 - .8, .14), loc_sala @ V(-SW / 2 + .55, SD / 2 - .78, .3)], .04, 10), M['azul'], COL['lin'])
+placa_ent = caixa('conector-sala', .06, .2, .16, .02, M['conector'], COL['esc'], None, tuple(loc_sala @ V(-SW / 2 + .02, hubP.y - loc_sala.translation.y, .0)))
+# pulsos de luz correndo da mesa até a sala, em laço (48 quadros cada, três por cabo)
+prefs = bpy.context.preferences.edit
+interp0 = prefs.keyframe_new_interpolation_type
+pulsos = []
+for id_, ob in cabos.items():
+    for k in range(3):
+        pz = malha('pulso-%s-%d' % (id_, k), bm_esfera(14, 10), M['pulso'], COL['lin'], None, (0, 0, 0), esc=(.052, .052, .052))
+        pz.visible_shadow = False
+        cn = pz.constraints.new('FOLLOW_PATH'); cn.target = ob; cn.use_fixed_location = True; cn.use_curve_follow = False
+        prefs.keyframe_new_interpolation_type = 'LINEAR'
+        for q0 in range(-48, LACO + 48, 48):
+            a0 = q0 + k * 16
+            cn.offset_factor = 0; pz.keyframe_insert('constraints["%s"].offset_factor' % cn.name, frame=a0)
+            cn.offset_factor = 1; pz.keyframe_insert('constraints["%s"].offset_factor' % cn.name, frame=a0 + 47)
+        prefs.keyframe_new_interpolation_type = 'CONSTANT'
+        pz.scale = (0, 0, 0); pz.keyframe_insert('scale', frame=1)       # só depois que o cabo acendeu
+        pz.scale = (.052, .052, .052); pz.keyframe_insert('scale', frame=60)
+        pulsos.append(pz)
+prefs.keyframe_new_interpolation_type = interp0
+print('CABOS', {k: round(min(p.co.z for p in v.data.splines[0].points) - R_CABO, 4) for k, v in cabos.items()})
 
 # ───────────────────────── luz e mundo (R3) ─────────────────────────
 mundo = bpy.data.worlds.new('mundo'); cena.world = mundo
 mundo.use_nodes = True
 nt = mundo.node_tree; bg = nt.nodes['Background']
-bg.inputs['Color'].default_value = lin('#F2E8DA'); bg.inputs['Strength'].default_value = .6
+bg.inputs['Color'].default_value = lin('#EFE3D1'); bg.inputs['Strength'].default_value = .14
 # a câmera vê o fundo da página (osso); a luz do céu continua quente
 cam_bg = nt.nodes.new('ShaderNodeBackground'); cam_bg.inputs['Color'].default_value = lin(MARCA['osso']); cam_bg.inputs['Strength'].default_value = 1
 lp = nt.nodes.new('ShaderNodeLightPath'); mx = nt.nodes.new('ShaderNodeMixShader')
@@ -978,12 +1077,12 @@ nt.links.new(lp.outputs['Is Camera Ray'], mx.inputs['Fac'])
 nt.links.new(bg.outputs[0], mx.inputs[1]); nt.links.new(cam_bg.outputs[0], mx.inputs[2])
 nt.links.new(mx.outputs[0], nt.nodes['World Output'].inputs['Surface'])
 
-sol = bpy.data.lights.new('sol', 'SUN'); sol.energy = 3.4; sol.color = (1.0, .94, .86); sol.angle = math.radians(7)
+sol = bpy.data.lights.new('sol', 'SUN'); sol.energy = 6.0; sol.color = (1.0, .93, .83); sol.angle = math.radians(4)
 centro = na_tela(2.0, -.5)
 dir_sol = V(-9, -2.2, 9.5).normalized()
 o_sol = objeto('sol', sol, COL['luz'], loc=tuple(centro + dir_sol * 15))
 o_sol.rotation_euler = (-dir_sol).to_track_quat('-Z', 'Y').to_euler()
-pre = bpy.data.lights.new('preenchimento', 'SUN'); pre.energy = .5; pre.color = (.95, .96, 1.0); pre.angle = math.radians(30)
+pre = bpy.data.lights.new('preenchimento', 'SUN'); pre.energy = .1; pre.color = (.95, .96, 1.0); pre.angle = math.radians(30)
 pre.use_shadow = False
 d2 = V(6, -12, 7).normalized()
 o_pre = objeto('preenchimento', pre, COL['luz'], loc=tuple(centro + d2 * 15)); o_pre.rotation_euler = (-d2).to_track_quat('-Z', 'Y').to_euler()
@@ -1017,31 +1116,48 @@ def alvo_mesa(id_, desloc):
     return mesas[id_].matrix_world @ V(.15, 0, ALT) + DIREITA * desloc[0] + CIMA * desloc[1]
 CAMS['Tela2_fiscal'] = camera('Tela2_fiscal', alvo_mesa('fiscal', (-.05, .42)), 2.05, (750, 620))
 CAMS['Tela2_auditor'] = camera('Tela2_auditor', alvo_mesa('auditor', (-.05, .42)), 2.05, (750, 620))
-# fecho: a câmera viaja até a sala e a enquadra em destaque, com a mesma altura de quadro (±15%)
-ALTURA_F = ALTURA_T1 * 1.14                     # R7: no máximo 15% acima da Tela 1
-cantos = [sala.matrix_world @ V(x * SW / 2, y * SD / 2, z) for x in (-1, 1) for y in (-1, 1) for z in (0, SH + .4)]
+# R11: o fecho é a Tela 1 arrastada — mesmo ângulo, mesmo ortho_scale, só transladada
+# para a direita/fundo até a sala ficar em destaque no quadro
+cantos = [sala.matrix_world @ V(x * SW / 2, y * SD / 2, z) for x in (-1, 1) for y in (-1, 1) for z in (0, SH + .7)]
 xs = [tela_de(c)[0] for c in cantos]; ys = [tela_de(c)[1] for c in cantos]
-larg_f = ALTURA_F * 750 / 1040
-cx = max(xs) + .15 - larg_f * .5                     # a sala encosta na direita; as mesas entram pela esquerda
-cy = (min(ys) + max(ys)) / 2 - ALTURA_F * .14     # a sala um pouco acima do meio
-CAMS['Fecho_sala'] = camera('Fecho_sala', na_tela(cx, cy, 0), ALTURA_F, (750, 1040))
-print('SALA_LARGURA_NO_FECHO', round((max(xs) - min(xs)) / larg_f * 100, 1))
+larg_t1 = ALTURA_T1 * 750 / 1040
+cx = max(xs) + .12 - larg_t1 / 2               # a sala encosta na direita; os cabos entram pela esquerda
+cy = (min(ys) + max(ys)) / 2 - ALTURA_T1 * .08
+CAMS['Fecho_sala'] = camera('Fecho_sala', na_tela(cx, cy, 0), ALTURA_T1, (750, 1040))
+print('SALA_LARGURA_NO_FECHO', round((max(xs) - min(xs)) / larg_t1 * 100, 1),
+      'ORTHO', CAMS['Tela1'].data.ortho_scale, CAMS['Fecho_sala'].data.ortho_scale)
+# câmera do arrasto Tela1 → Fecho_sala (quadros 1–60), para ver com a tecla espaço
+arr = camera('Arrasto_Tela1_Fecho', V(0, 0, 0), ALTURA_T1, (750, 1040))
+arr.location = CAMS['Tela1'].location; arr.keyframe_insert('location', frame=1)
+arr.location = CAMS['Fecho_sala'].location; arr.keyframe_insert('location', frame=60)
+CAMS_EXTRA = {'Arrasto_Tela1_Fecho': arr}
 cena.camera = CAMS['Tela1']
 
 # ───────────────── etiquetas (só prévia): chips voltados para a câmera da Tela 1 ─────────────────
 rot_cam = CAMS['Tela1'].rotation_euler.copy()
-def etiqueta(nome, png, w_px, h_px, mesa_id, local, altura_mundo):
+def etiqueta(nome, png, w_px, h_px, mesa_id, local, altura_mundo, frente=0.0):
     mt = material('chip-' + nome, '#FFFFFF', imagem=png, sem_luz=True)
     w = altura_mundo * w_px / h_px
-    pl = plano_imagem('etiqueta-' + nome, w, altura_mundo, mt, COL['eti'], None, tuple(mesas[mesa_id].matrix_world @ V(*local)), tuple(rot_cam))
+    pos = mesas[mesa_id].matrix_world @ V(*local) + DIR_CAM * frente
+    pl = plano_imagem('etiqueta-' + nome, w, altura_mundo, mt, COL['eti'], None, tuple(pos), tuple(rot_cam))
     pl.visible_shadow = False
-    return pl
-# círculo de 60 px numa textura de 140 px (170 na de duas linhas): ≥ 16 px em 375 de largura (R4)
-etiqueta('fiscal', 'chip-fiscal.png', 440, 140, 'fiscal', (.62, .35, 1.72), .55)
-etiqueta('auditor', 'chip-auditor.png', 440, 140, 'auditor', (.78, .3, 1.66), .55)
-etiqueta('vaga', 'chip-vaga.png', 430, 170, 'vaga', (.55, .35, 1.3), .67)
-for nome, h_px, h_mundo in [('fiscal', 140, .55), ('vaga', 170, .67)]:
-    print('CIRCULO_PX_375', nome, round(60 / h_px * h_mundo * 375 / (ALTURA_T1 * 750 / 1040), 1))
+    return pl, mt.node_tree.nodes['opacidade'].outputs[0]
+# círculo de 60 px e contorno de 8 px numa textura de 140 px de altura (R4, R9, R10)
+H_CHIP = .55
+chips = [
+    etiqueta('fiscal', 'chip-fiscal.png', 460, 140, 'fiscal', (.62, .35, 1.72), H_CHIP),
+    etiqueta('auditor', 'chip-auditor.png', 480, 140, 'auditor', (.82, .3, 1.66), H_CHIP),
+    etiqueta('vaga', 'chip-vaga.png', 660, 140, 'vaga', (-.25, .35, 1.32), H_CHIP),
+    etiqueta('vaga-contorno', 'chip-vaga-contorno.png', 660, 140, 'vaga', (-.25, .35, 1.32), H_CHIP, .01),
+]
+px375 = 375 / larg_t1 * H_CHIP / 140
+print('CIRCULO_PX_375', round(60 * px375, 1), 'CONTORNO_PX_375', round(8 * px375, 2))
+# os chips ficam presos às mesas: no arrasto eles saem do quadro junto com elas
+# R10: o contorno âmbar pisca em laço (32 quadros), por cima do chip
+op_c = chips[3][1]
+for q in range(1, LACO + 2, 16):
+    op_c.default_value = 1.0 if (q // 16) % 2 else .2
+    op_c.keyframe_insert('default_value', frame=q)
 
 # ───────────────────────── salvar e renderizar ─────────────────────────
 for ob in bpy.data.objects:
@@ -1068,21 +1184,29 @@ with open(os.path.join(AQUI, 'projecoes.json'), 'w', encoding='utf8') as f:
     json.dump(info, f, indent=1, ensure_ascii=False)
 print('PROJECOES', json.dumps(info))
 
+QUADRO = {'Tela1': 1, 'Tela2_fiscal': 1, 'Tela2_auditor': 1, 'Fecho_sala': 72}
+def renderiza(cam, arquivo, quadro):
+    cena.frame_set(quadro)
+    cena.camera = cam
+    cena.render.resolution_x, cena.render.resolution_y = cam['resolucao']
+    cena.render.resolution_percentage = 100
+    cena.render.image_settings.file_format = 'PNG'
+    cena.render.filepath = os.path.join(AQUI, arquivo)
+    for ob in COL['eti'].objects: ob.hide_render = cam is CAMS['Fecho_sala']   # a Tela 3 não tem etiquetas
+    bpy.ops.render.render(write_still=True)
+    for ob in COL['eti'].objects: ob.hide_render = False
+    print('RENDER', arquivo)
 if '--sem-render' not in ARGS:
-    so = [a for a in ARGS if a in CAMS] or list(CAMS)
-    cena.frame_set(int(ARGS[ARGS.index('--quadro') + 1]) if '--quadro' in ARGS else 1)
+    so = [a for a in ARGS if a in CAMS or a == 'arrasto'] or list(CAMS) + ['arrasto']
     for nome in so:
-        cam = CAMS[nome]
-        cena.camera = cam
-        cena.render.resolution_x, cena.render.resolution_y = cam['resolucao']
-        cena.render.resolution_percentage = 100
-        cena.render.image_settings.file_format = 'PNG'
-        for ob in COL['eti'].objects: ob.hide_render = nome != 'Tela1'   # a Tela 3 não tem etiquetas
-        for ob in list(COL['lin'].objects) + [hub]: ob.hide_render = nome != 'Fecho_sala'   # linhas e hub só acendem na viagem até a sala
-        cena.render.filepath = os.path.join(AQUI, 'previa-%s.png' % nome)
-        bpy.ops.render.render(write_still=True)
-        print('RENDER', nome)
-    cena.camera = CAMS['Tela1']
-    cena.render.resolution_x, cena.render.resolution_y = CAMS['Tela1']['resolucao']
-    bpy.ops.wm.save_as_mainfile(filepath=BLEND, compress=True)
-    if os.path.exists(BLEND + '1'): os.remove(BLEND + '1')
+        if nome == 'arrasto':
+            for k, q in enumerate((1, 15, 30, 45, 60), 1):
+                renderiza(arr, 'previa-arrasto-%02d.png' % k, q)
+        else:
+            renderiza(CAMS[nome], 'previa-%s.png' % nome, QUADRO[nome])
+# o .blend abre na câmera do arrasto: espaço mostra a Tela 1 deslizando até a sala
+cena.frame_set(1)
+cena.camera = arr
+cena.render.resolution_x, cena.render.resolution_y = 750, 1040
+bpy.ops.wm.save_as_mainfile(filepath=BLEND, compress=True)
+if os.path.exists(BLEND + '1'): os.remove(BLEND + '1')
