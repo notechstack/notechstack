@@ -242,15 +242,17 @@ async function principal() {
     const main = servido.slice(servido.indexOf('<main'), servido.indexOf('</main>'));
     assert(main.length > 0, 'C1: <main> não encontrado');
     const ordem = [
-      'NÓ AGENTES',
-      '<h1', 'Cada agente resolve um problema da sua empresa.',
-      'Por assinatura. Toque numa mesa para ver o agente trabalhando.',
+      'src="/brand/agentes/no-agentes-tinta-azul.webp" alt="nó.agentes"',
+      '<h1', 'Encontre soluções já mapeadas que transformamos em agentes.',
+      'Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.',
       'data-mesa="fiscal"', 'nó.fiscal',
       'data-mesa="auditor"', 'nó.auditor',
       'data-mesa="vaga"', 'criar uma automação',
-      '<h2', 'Quando forem vários, a gente une tudo num sistema só.',
+      '<h2', 'Entenda mais sobre nossas soluções',
       'class="ag-cartao" href="/agentes/fiscal/"', 'class="ag-cartao" href="/agentes/auditor/"',
-      'href="/contato/">Conte sua ideia<',
+      '<h2 id="ag-parceira-titulo">Quer criar um agente de IA seu?</h2>',
+      'Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática.',
+      'class="ag-pilula-cta" href="/contato/">Vamos conversar',
     ];
     let i = 0;
     for (const trecho of ordem) {
@@ -260,12 +262,14 @@ async function principal() {
     }
     const { contexto, pagina } = await abrir({ js: false });
     const h1 = (await pagina.locator('h1').innerText()).trim();
-    assert.equal(h1, 'Cada agente resolve um problema da sua empresa.');
+    assert.equal(h1, 'Encontre soluções já mapeadas que transformamos em agentes.');
+    assert(await pagina.locator('img.ag-logo-agentes').evaluate((i) => i.complete && i.naturalWidth > 0), 'C1: logo nó.agentes não carregou');
     for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'nó.auditor'], ['vaga', 'criar uma automação']]) {
       assert.equal((await pagina.locator(`[data-mesa="${mesa}"]`).innerText()).trim(), texto, `C1: texto da mesa ${mesa}`);
     }
     assert.equal(await pagina.locator('.ag-cartao').count(), 2, 'C1: dois cartões');
-    assert.equal(await pagina.locator('a:has-text("Conte sua ideia")').last().getAttribute('href'), '/contato/');
+    assert.equal(await pagina.locator('main a:has-text("Vamos conversar")').getAttribute('href'), '/contato/');
+    assert.equal(await pagina.locator('main a:has-text("Conte sua ideia")').count(), 0, 'C1: "Conte sua ideia" ainda no conteúdo (R18)');
     await contexto.close();
     ok('C1');
   }
@@ -350,7 +354,7 @@ async function principal() {
   {
     const { contexto, pagina } = await abrir({ js: false });
     assert.equal(await pagina.locator('.ag-carregamento').isVisible(), false, 'C28: tela de carregamento visível sem JS');
-    for (const sel of ['.ag-rotulo', 'h1', '.ag-sub', '[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-fecho h2', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-cta']) {
+    for (const sel of ['.ag-rotulo', 'h1', '.ag-sub', '[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-fecho h2', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-pilula-cta']) {
       const el = pagina.locator(sel).first();
       await el.scrollIntoViewIfNeeded();
       assert(await el.isVisible(), `C28: ${sel} invisível`);
@@ -713,7 +717,7 @@ async function principal() {
     }
     await rolarPara(pagina, 0);
     await pagina.waitForTimeout(300);
-    const alvos = ['[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-cta'];
+    const alvos = ['[data-mesa="fiscal"]', '[data-mesa="auditor"]', '[data-mesa="vaga"]', '.ag-cartao >> nth=0', '.ag-cartao >> nth=1', '.ag-pilula-cta'];
     for (const sel of alvos) {
       const b = await pagina.locator(sel).boundingBox();
       assert(b && b.width >= 44 && b.height >= 44, `C30: ${sel} com ${b && `${b.width.toFixed(0)}×${b.height.toFixed(0)}`}`);

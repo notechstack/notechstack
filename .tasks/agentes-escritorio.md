@@ -158,6 +158,14 @@ Lucca aprovou levar ao site a cena de `.tasks/blender/escritorio.blend` (commit 
 - **R15 · pôsteres** (critério 26): passam a ter 750×1040 (375:520 @2x, a proporção do canvas da página), nos quadros `tela1` e `fecho`, renderizados da cena do site.
 - **R16 · peso:** um único `agentes/escritorio/escritorio.glb` de no máximo 3 MB, com meshopt e texturas WebP.
 
+## Rodada 6 · otimização da página pedida por Lucca (26/10/2026)
+
+Lucca aprovou a cena e pediu estas mudanças de conteúdo (substituem os textos do critério 1):
+
+- **R17 · hero:** o rótulo `NÓ AGENTES` vira o logo nó.agentes (`brand/agentes/no-agentes-tinta-azul.webp`, derivado de `brand/agentes/Logotipo nó.agentes em fundo marfim-2.png`, com `alt="nó.agentes"`). `h1`: "Encontre soluções já mapeadas que transformamos em agentes." Subtítulo: "Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar."
+- **R18 · seção abaixo da hero:** `h2` "Entenda mais sobre nossas soluções", seguido dos botões-cartão que levam a `/agentes/fiscal/` e a `/agentes/auditor/` (os do critério 2). O botão "Conte sua ideia" sai desta seção.
+- **R19 · nova seção:** o card escuro "tecnologia para o que sua agência imaginar" de `/agencia/` (`.agency-partner`), copiado com tokens: o logo "nó." branco à esquerda, `h2` "Quer criar um agente de IA seu?", subtítulo "Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática." e o botão "Vamos conversar" no mesmo formato (pílula clara com círculo âmbar e →), levando a `/contato/`. No subtítulo, "à colocar" foi grafado sem crase.
+
 ## States
 
 ```mermaid
