@@ -500,6 +500,118 @@ def deforma_esfera(bm, corte, fn):
         n = v.co.normalized(); v.co = n * (v.co.length + fn(n))
     return bm
 
+# ───────────────────────── cabelo ─────────────────────────
+def material_cabelo(nome, rough, sheen, especular=.4):
+    """cabelo: a cor vem por vértice (atributo 'Cor'), com raiz escura e pontas mais claras"""
+    if nome in _mats: return _mats[nome]
+    m = bpy.data.materials.new(nome); m.use_nodes = True
+    nt = m.node_tree; pb = nt.nodes['Principled BSDF']
+    vc = nt.nodes.new('ShaderNodeVertexColor'); vc.layer_name = 'Cor'
+    nt.links.new(vc.outputs['Color'], pb.inputs['Base Color'])
+    pb.inputs['Roughness'].default_value = rough
+    pb.inputs['Sheen Weight'].default_value = sheen; pb.inputs['Sheen Roughness'].default_value = .35
+    pb.inputs['Specular IOR Level'].default_value = especular
+    try: pb.inputs['Anisotropic'].default_value = .6
+    except KeyError: pass
+    _mats[nome] = m
+    return m
+
+def angulos(u):
+    """(azimute a partir da testa, elevação) de uma direção no espaço da cabeça; a testa olha para -Y"""
+    return math.atan2(u.x, -u.y), math.asin(max(-1, min(1, u.z)))
+def limite_cabelo(th, frente, tempora, nuca):
+    """elevação mínima da linha do cabelo por azimute: testa, têmporas (acima das orelhas) e nuca"""
+    a = abs(th)
+    if a < .85: return frente
+    if a < 1.55: return frente + (tempora - frente) * (a - .85) / .7
+    if a < 2.3: return tempora + (nuca - tempora) * (a - 1.55) / .75
+    return nuca
+def fibonacci(n):
+    g = PI * (3 - math.sqrt(5)); out = []
+    for i in range(n):
+        z = 1 - 2 * (i + .5) / n; r = math.sqrt(max(0, 1 - z * z))
+        out.append(V(r * math.cos(g * i), r * math.sin(g * i), z))
+    return out
+def bm_fita(pts, normais, larguras, esp_rel=.42, sseg=8):
+    """mecha de seção elíptica: larga no sentido da superfície, fina no da normal, ponta afilada"""
+    bm = bmesh.new(); aneis = []
+    for i, p in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        n = (normais[i] - t * normais[i].dot(t)).normalized(); b = t.cross(n)
+        w = larguras[i] / 2
+        aneis.append([bm.verts.new(p + b * (math.cos(2 * PI * j / sseg) * w) + n * (math.sin(2 * PI * j / sseg) * w * esp_rel)) for j in range(sseg)])
+    for a_, b_ in zip(aneis, aneis[1:]):
+        for j in range(sseg): bm.faces.new((a_[j], b_[j], b_[(j + 1) % sseg], a_[(j + 1) % sseg]))
+    for anel, ponta in ((aneis[0], pts[0] - (pts[1] - pts[0]) * .3), (aneis[-1], pts[-1] + (pts[-1] - pts[-2]) * .6)):
+        c = bm.verts.new(ponta)
+        for j in range(sseg): bm.faces.new((anel[j], anel[(j + 1) % sseg], c))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return bm
+
+def mechas_lisas(peca, mat, rnd):
+    """cabelo liso curto: mechas que nascem no couro cabeludo e seguem um campo de fluxo —
+       no alto, para a frente e de lado (franja penteada); nas laterais e na nuca, para baixo"""
+    def fluxo(u, giro):
+        topo = max(0, min(1, (u.z - .2) / .55)); topo = topo * topo * (3 - 2 * topo)
+        f = V(.45 + giro, -1, .05) * topo + V(0, .12 * (u.y > .25), -1) * (1 - topo)
+        f = f - u * f.dot(u)
+        return f.normalized()
+    n = 0
+    for k, u0 in enumerate(fibonacci(330)):
+        th, ph = angulos(u0)
+        if ph < limite_cabelo(th, .62, .36, -.12) + .06: continue
+        externa = k % 2 == 1
+        r_base = R_CAB * (1.04 if externa else 1.022)
+        comp = (.15 if externa else .19) + rnd.random() * .06
+        larg = (.044 if externa else .054) * (.85 + rnd.random() * .3)
+        giro = (rnd.random() - .5) * .25
+        u = u0.copy(); pts, nor, lar = [], [], []
+        passos = 10
+        for j in range(passos):
+            t = j / (passos - 1)
+            r = r_base + .009 * math.sin(PI * min(1, t * 1.2)) - .006 * t * (1 - max(0, u.z))
+            pts.append(C_CAB + u * r); nor.append(u.copy())
+            lar.append(larg * (1 - .82 * t ** 1.6) * (.78 + .22 * math.sin(PI * min(1, t * 2))))
+            u = (u + fluxo(u, giro) * (comp / (passos - 1)) / r).normalized()
+            th, ph = angulos(u)
+            if ph < limite_cabelo(th, .3, .02, -.3) and j >= 3: break
+        if len(pts) < 4: continue
+        peca.add(bm_fita(pts, nor, lar, .42 if externa else .5, 7), mat)
+        n += 1
+    return n
+
+def cachos(peca, mat, rnd):
+    """cabelo crespo curto: cachos miúdos e apertados, mais volume no alto"""
+    n = 0
+    for u in fibonacci(1250):
+        th, ph = angulos(u)
+        if ph < limite_cabelo(th, .4, .02, -.3): continue
+        sz = .014 + rnd.random() * .007
+        r = R_CAB * 1.035 + .01 + .02 * max(0, u.z) ** 1.5 + rnd.random() * .008
+        bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1)
+        q = V(0, 0, 1).rotation_difference(u)
+        rot = Euler((rnd.random() * PI, rnd.random() * PI, rnd.random() * PI)).to_matrix().to_4x4()
+        Mx = Matrix.Translation(C_CAB + u * r) @ q.to_matrix().to_4x4() @ Matrix.Diagonal((sz, sz * (.8 + rnd.random() * .3), sz * 1.15, 1)) @ rot
+        bmesh.ops.transform(bm, matrix=Mx, verts=bm.verts)
+        peca.add(bm, mat)
+        n += 1
+    return n
+
+def pinta_cabelo(ob, cor, claro, r0, r1):
+    """cor por vértice: escura junto ao couro cabeludo (oclusão entre mechas), clara por fora,
+       com variação por mecha; grava o atributo 'Cor' usado pelo material do cabelo"""
+    me = ob.data
+    at = me.color_attributes.new('Cor', 'FLOAT_COLOR', 'POINT')
+    c0, c1 = lin(cor), (claro if isinstance(claro, tuple) else lin(claro))
+    for v in me.vertices:
+        d = v.co - C_CAB
+        prof = max(0, min(1, (d.length - r0) / (r1 - r0)))
+        g = (round(v.co.x * 30), round(v.co.y * 30), round(v.co.z * 30))
+        h = (math.sin(g[0] * 12.9898 + g[1] * 78.233 + g[2] * 37.719) * 43758.5453) % 1
+        k = .62 + .55 * prof + .18 * (h - .5)
+        mix = .35 * prof
+        at.data[v.index].color = tuple(max(0, (c0[i] + (c1[i] - c0[i]) * mix) * k) for i in range(3)) + (1,)
+
 def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g):
     col = COL['pes']
     m_pele = material('pele-' + agente, pele, rough=.5, sss=.25)
@@ -507,7 +619,6 @@ def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g
     m_bochecha = material('bochecha-' + agente, mistura(pele, '#E07F72', .22), rough=.6)
     m_labio = material('labio-' + agente, mistura(pele, '#5C2420', .7), rough=.5)
     m_cab = material('cabelo-' + agente, cabelo, rough=.55, sheen=.3)
-    m_cab2 = material('cabelo-claro-' + agente, mistura(cabelo, '#7A5A44', .25), rough=.55, sheen=.3)
     m_camisa = material('camisa', CAMISA, rough=.7, sheen=.15)
     m_camisa_s = material('camisa-dobra', '#DDD5C8', rough=.75, sheen=.1)
     m_calca = material('calca-' + agente, calca, rough=.85, sheen=.3)
@@ -591,43 +702,30 @@ def pessoa(agente, pele, cabelo, estilo, calca, sapato, cor_cracha, fase, mesa_g
         o.add(bm_esfera(8, 6), m_brilho, loc=(e.x - .009, e.y - .016, e.z + .014), esc=(.0095, .0095, .0095))
         o.add(bm_esfera(6, 4), m_brilho, loc=(e.x + .008, e.y - .016, e.z - .012), esc=(.0045, .0045, .0045))
     olhos = o.objeto('olhos-' + agente, col, pesc, (0, 0, C_CAB.z))
-    # cabelo
+    # cabelo: base escura por baixo e, por cima, mechas (liso) ou cachos (crespo)
+    import random
+    rnd = random.Random(7 if estilo == 'crespo' else 3)
+    m_h = material_cabelo('cabelo-mechas-' + agente, .82 if estilo == 'crespo' else .56,
+                          .9 if estilo == 'crespo' else .45, .18 if estilo == 'crespo' else .38)
     h = Peca()
     if estilo == 'crespo':
-        def cacho(n_):
-            a = 40
-            return math.sin(n_.x * a) * math.sin(n_.y * a + 1.3) * math.sin(n_.z * a + .7)
-        cal = deforma_esfera(bm_esfera(120, 60), PI * .53, lambda n_: R_CAB * .03 + .03 + .019 * cacho(n_) + .034 * max(0, n_.z) ** 1.5)
-        bmesh.ops.scale(cal, vec=V(R_CAB, R_CAB, R_CAB), verts=[]) if False else None
-        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.03 + (v.co.length - 1))
-        h.add(cal, m_cab, loc=(C_CAB.x, C_CAB.y + .01, C_CAB.z + .006), rot=(-.6, 0, 0))
-        for s in (-1, 1):
-            pt = cab(s * 1.3, .1, .008)
-            h.add(bm_esfera(10, 8), m_cab, loc=tuple(pt), rot=(0, 0, s * 1.3), esc=(.028, .04, .06))
+        cal = deforma_esfera(bm_esfera(64, 32), PI * .55, lambda n_: .01 + .02 * max(0, n_.z) ** 1.5)
+        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.025 + (v.co.length - 1))
+        h.add(cal, m_h, loc=(C_CAB.x, C_CAB.y + .008, C_CAB.z + .004), rot=(-.6, 0, 0))
+        n_mechas = cachos(h, m_h, rnd)
+        claro = mistura(cabelo, '#4A382C', .4)
     else:
-        # base lisa por baixo e, por cima, mechas afiladas que saem do redemoinho e caem
-        # penteadas para o lado; na frente elas formam a franja (sem cara de capacete)
-        cal = deforma_esfera(bm_esfera(64, 32), PI * .6, lambda n_: .012 * max(0, n_.z))
-        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.03 + (v.co.length - 1))
-        h.add(cal, m_cab, loc=(C_CAB.x, C_CAB.y + .004, C_CAB.z + .004), rot=(-.66, 0, -.12))
-        N = 34
-        for k in range(N):
-            th0 = -PI + 2 * PI * (k + .5) / N
-            frente = abs(th0) < 1.05; lado = 1.05 <= abs(th0) < 2.25
-            ph1 = (.3 + .07 * abs(th0)) if frente else (-.04 if lado else -.32)
-            giro = .5 if frente else (.25 if lado else .1)
-            pts, raios = [], []
-            for j in range(13):
-                t = j / 12
-                th = th0 + giro * t ** 1.4; ph = 1.32 + (ph1 - 1.32) * t
-                rr = R_CAB * 1.035 + .02 * math.sin(PI * t) + .012 * (1 - t)
-                pts.append(C_CAB + V(rr * math.sin(th) * math.cos(ph), -rr * math.cos(th) * math.cos(ph), rr * math.sin(ph)))
-                raios.append(.008 + .021 * math.sin(PI * min(1, .15 + t * .95)) ** .7)
-            h.add(bm_mecha(pts, raios), m_cab2 if k % 3 == 1 else m_cab)
+        cal = deforma_esfera(bm_esfera(64, 32), PI * .6, lambda n_: .008 * max(0, n_.z))
+        for v in cal.verts: v.co = v.co.normalized() * (R_CAB * 1.022 + (v.co.length - 1))
+        h.add(cal, m_h, loc=(C_CAB.x, C_CAB.y + .006, C_CAB.z + .002), rot=(-.7, 0, -.1))
+        n_mechas = mechas_lisas(h, m_h, rnd)
+        claro = mistura(cabelo, '#6B4A33', .45)
         for s in (-1, 1):
-            pt = cab(s * 1.36, .02, .006)
-            h.add(bm_esfera(10, 8), m_cab, loc=tuple(pt), rot=(0, 0, s * 1.36), esc=(.032, .04, .075))
-    h.objeto('cabelo-' + agente, col, pesc)
+            pt = cab(s * 1.36, .0, .004)
+            h.add(bm_esfera(10, 8), m_h, loc=tuple(pt), rot=(0, 0, s * 1.36), esc=(.026, .035, .06))
+    ob_h = h.objeto('cabelo-' + agente, col, pesc)
+    pinta_cabelo(ob_h, cabelo, claro, R_CAB * 1.0, R_CAB * 1.13)
+    print('CABELO', agente, n_mechas, 'pecas', len(ob_h.data.polygons), 'faces')
 
     # braços: ombro → cotovelo → punho, posados por IK de dois ossos até o teclado
     teclado_p = V(0, .27 - ASSENTO.y, ALT + .022)        # no espaço da pessoa
@@ -980,7 +1078,10 @@ _sx = sum(tela_de(c)[0] for c in _c) / 4; _sy = min(tela_de(c)[1] for c in _c)
 # à direita do canal dos cabos, para nenhum móvel ficar em cima deles
 p = na_tela(_sx + .95, _sy - 1.45); tapete('tapete-estar', (p.x, p.y, 0), 3.0, 2.2, M['tapete'])
 p = na_tela(_sx + 1.15, _sy - 1.0, .2); sofa((p.x, p.y, 0), 0)
-p = na_tela(_sx - .05, _sy - 1.7); poltrona((p.x, p.y, 0), -.9)
+p = na_tela(_sx - .05, _sy - 1.7)
+# posição ajustada por Lucca no Blender em 26/10 (achada no autosave): 28 cm para a esquerda,
+# 34 cm para a frente e girada para ficar de frente para o sofá
+poltrona((p.x - .28, p.y - .34, 0), 1.0199)
 p = na_tela(_sx + 1.25, _sy - 2.0); g = mesinha((p.x, p.y, 0), .3, .4); planta('planta-mesinha', 'suculenta', 1.2, 30, 'ceramica', col, g, (0, 0, .44))
 
 # ───────────── R12: três cabos, das mesas à sala, sempre acima do piso ─────────────
