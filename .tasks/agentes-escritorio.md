@@ -166,6 +166,15 @@ Lucca aprovou a cena e pediu estas mudanças de conteúdo (substituem os textos 
 - **R18 · seção abaixo da hero:** `h2` "Entenda mais sobre nossas soluções", seguido dos botões-cartão que levam a `/agentes/fiscal/` e a `/agentes/auditor/` (os do critério 2). O botão "Conte sua ideia" sai desta seção.
 - **R19 · nova seção:** o card escuro "tecnologia para o que sua agência imaginar" de `/agencia/` (`.agency-partner`), copiado com tokens: o logo "nó." branco à esquerda, `h2` "Quer criar um agente de IA seu?", subtítulo "Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática." e o botão "Vamos conversar" no mesmo formato (pílula clara com círculo âmbar e →), levando a `/contato/`. No subtítulo, "à colocar" foi grafado sem crase.
 
+## Rodada 7 · medição (skill gtm-meta-google-tracking, 26/10/2026)
+
+Resolve o Unresolved 4: sim, a página mede. Lucca pediu a instalação.
+
+- **R20 · eventos** (`agentes/escritorio/pagina.js`, via `window.track` de `shared/telemetria.js`): `agentes_view_content` (com `event_id`), `agentes_mesa_aberta` (`agente`, `origem` cena|botao, `versao`), `agentes_cta` (`cta` simular_emissao|diagnosticar|lp_fiscal|lp_auditor|criar_automacao|vamos_conversar, `destino`, `origem`), `agentes_sala_vista` (1× por sessão) e `agentes_versao_estatica` (`motivo`, 1× por sessão).
+- **R21 · Meta:** só `ViewContent`, no Pixel (vindo do GTM, `eventID`) e na CAPI (`meta-capi`, `event_id`), com o mesmo id para deduplicar. A CAPI só sai do navegador no domínio de produção (`marketing-host.js`). Nenhum `content_*` (política da `meta-capi`).
+- **R22 · GTM:** `tracking/gtm-agentes-escritorio.json` (importar com **mesclar** no container `GTM-NK87FH8W` e publicar): 4 tags GA4 (`select_content`, `agentes_cta`, `agentes_sala_vista`, `agentes_versao_estatica`), 4 gatilhos e 6 variáveis `dl.*`, com IDs 1001–1024. O PageView do GA4 e da Meta continuam pelas tags que já existem.
+- **Prova:** `test-pagina.cjs` → `PASS C33-medicao`.
+
 ## States
 
 ```mermaid

@@ -252,7 +252,7 @@ async function principal() {
       'class="ag-cartao" href="/agentes/fiscal/"', 'class="ag-cartao" href="/agentes/auditor/"',
       '<h2 id="ag-parceira-titulo">Quer criar um agente de IA seu?</h2>',
       'Estamos aqui para estruturar sua ideia e te ajudar a colocar em prática.',
-      'class="ag-pilula-cta" href="/contato/">Vamos conversar',
+      'class="ag-pilula-cta" href="/contato/" data-cta="vamos_conversar">Vamos conversar',
     ];
     let i = 0;
     for (const trecho of ordem) {
@@ -787,6 +787,64 @@ async function principal() {
     assert.deepEqual(s.erros, [], `erros na página: ${s.erros}`);
     await s.contexto.close();
     ok('C32', `(canvas ${c.width}×${c.height.toFixed(0)}, centro ${(c.x + c.width / 2).toFixed(1)} / ${meio})`);
+  }
+
+  // ── C33-medicao (rodada 7): dataLayer, Pixel e CAPI com o mesmo event_id ──
+  {
+    const s = await abrir({
+      antes: async (pagina) => {
+        await pagina.addInitScript(() => {
+          window.__fbq = [];
+          window.fbq = (...args) => window.__fbq.push(args);
+        });
+      },
+    });
+    const pg = s.pagina;
+    await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
+    const eventos = (nome) => pg.evaluate((n) => (window.dataLayer || []).filter((e) => e && e.event === n), nome);
+    // ViewContent: dataLayer, Pixel e CAPI com o mesmo id; fora de produção a CAPI não sai da página.
+    const [vc] = await eventos('agentes_view_content');
+    assert(vc && /^agentes-vc-/.test(vc.event_id), 'C33: agentes_view_content sem event_id');
+    const fbqVc = await pg.evaluate(() => window.__fbq.find((a) => a[0] === 'track' && a[1] === 'ViewContent'));
+    assert(fbqVc, 'C33: fbq ViewContent não chamado');
+    assert.equal(fbqVc[3].eventID, vc.event_id, 'C33: eventID do Pixel ≠ event_id do dataLayer');
+    const capi = await pg.evaluate(() => window.__agentesPagina.medicao.capi);
+    assert.equal(capi.length, 1, 'C33: CAPI deveria ter um ViewContent');
+    assert.equal(capi[0].event_name, 'ViewContent');
+    assert.equal(capi[0].event_id, vc.event_id, 'C33: event_id da CAPI ≠ do Pixel');
+    const chamadasCapi = await pg.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/functions/v1/meta-capi')).length);
+    assert.equal(chamadasCapi, 0, 'C33: CAPI saiu do navegador fora do domínio de produção');
+    // Gaveta pelo botão e CTA dentro dela.
+    let navegou = 0;
+    await pg.route(/\/agentes\/(fiscal|auditor)\/|\/contato\//, (r) => {
+      if (r.request().isNavigationRequest()) { navegou += 1; return r.fulfill({ status: 204, body: '' }); }
+      return r.continue();
+    });
+    let antes = null;
+    assert(await esperarPara(async () => { const agora = JSON.stringify(await pg.locator('[data-mesa="fiscal"]').boundingBox()); const parado = agora === antes; antes = agora; return parado; }, 6000, 300));
+    await pg.locator('[data-mesa="fiscal"]').click();
+    assert(await esperarPara(async () => (await eventos('agentes_mesa_aberta')).length === 1), 'C33: agentes_mesa_aberta não veio');
+    const [mesa] = await eventos('agentes_mesa_aberta');
+    assert.deepEqual([mesa.agente, mesa.origem, mesa.versao], ['fiscal', 'botao', 'animada'], `C33: mesa ${JSON.stringify(mesa)}`);
+    await pg.locator('#gaveta a[href="/agentes/fiscal/#simulador"]').click();
+    assert(await esperarPara(async () => (await eventos('agentes_cta')).length >= 1), 'C33: agentes_cta da gaveta não veio');
+    const [cta] = await eventos('agentes_cta');
+    assert.deepEqual([cta.cta, cta.destino, cta.origem], ['simular_emissao', '/agentes/fiscal/#simulador', 'gaveta'], `C33: cta ${JSON.stringify(cta)}`);
+    assert.deepEqual(s.erros, [], `erros na página: ${s.erros}`);
+    await s.contexto.close();
+    // CTAs da página e versão estática.
+    const e = await abrir({ reduzido: 'reduce' });
+    await e.pagina.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'estatica');
+    await e.pagina.route(/\/agentes\/(fiscal|auditor)\/|\/contato\//, (r) => (r.request().isNavigationRequest() ? r.fulfill({ status: 204, body: '' }) : r.continue()));
+    const est = await e.pagina.evaluate(() => (window.dataLayer || []).filter((x) => x.event === 'agentes_versao_estatica'));
+    assert.deepEqual(est.map((x) => x.motivo), ['movimento-reduzido'], 'C33: agentes_versao_estatica');
+    for (const [sel, nome] of [['.ag-cartao[data-cta="lp_auditor"]', 'lp_auditor'], ['.ag-pilula-cta', 'vamos_conversar'], ['[data-mesa="vaga"]', 'criar_automacao']]) {
+      await e.pagina.evaluate((q) => document.querySelector(q).click(), sel);
+      const ultimo = await e.pagina.evaluate(() => (window.dataLayer || []).filter((x) => x.event === 'agentes_cta').pop());
+      assert.equal(ultimo && ultimo.cta, nome, `C33: cta ${nome}`);
+    }
+    await e.contexto.close();
+    ok('C33-medicao', `(event_id ${vc.event_id.slice(0, 16)}…, Pixel = CAPI = dataLayer)`);
   }
 }
 
