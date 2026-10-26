@@ -1,0 +1,335 @@
+/* /agentes/ — "Escritório nó" (frente A: página, carregamento e versão estática).
+   Cores só por variáveis de /brand/tokens/tokens.css e color-mix(): nenhuma cor hex aqui.
+   Celular primeiro; no desktop é a mesma coluna, com a cena de até 720 px, centralizada.
+
+   Estados no <html> (postos por agentes/escritorio/pagina.js):
+   - sem classe  → sem JS: pôsteres e botões das mesas, sem tela de carregamento;
+   - .carregando → tela de carregamento cobrindo a viewport, canvas montando por baixo;
+   - .animada    → canvas no lugar do pôster;
+   - .estatica   → pôsteres, sem canvas. */
+
+.ag-pagina {
+  --ag-margem: 20px;
+  --ag-larg: 720px;
+  margin: 0;
+  padding-top: 88px;
+  background: var(--no-osso);
+  color: var(--no-tinta);
+  font-family: var(--no-font-sans);
+}
+@media (min-width: 769px) { .ag-pagina { padding-top: 108px; } }
+
+.ag-main { overflow-x: clip; }
+
+.ag-coluna {
+  width: min(100% - 2 * var(--ag-margem), var(--ag-larg));
+  margin-inline: auto;
+}
+
+/* ── Hero (Tela 1) ── */
+.ag-hero { padding-top: 22px; }
+.ag-rotulo {
+  margin: 0 0 12px;
+  font: 500 12px/1.4 var(--no-font-mono);
+  letter-spacing: var(--no-tracking-label);
+  text-transform: uppercase;
+  color: var(--no-cinza);
+}
+.ag-hero h1 {
+  margin: 0 0 14px;
+  font-family: var(--no-font-sans);
+  font-weight: var(--no-weight-display);
+  font-size: clamp(30px, 8.2vw, 56px);
+  line-height: 1.06;
+  letter-spacing: var(--no-tracking-headline);
+  text-wrap: balance;
+  outline: none;
+}
+.ag-sub {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--no-cinza);
+}
+@media (min-width: 769px) { .ag-sub { font-size: 18px; } }
+
+/* ── Escritório: canvas (animada) ou pôster (estática / sem JS) ── */
+.ag-escritorio {
+  position: relative;
+  width: min(100%, var(--ag-larg));
+  margin: 18px auto 0;
+  aspect-ratio: 375 / 520;
+  max-height: calc(100svh - 120px);
+  min-height: 420px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--no-ambar-tint) 55%, var(--no-osso));
+}
+@media (min-width: 769px) { .ag-escritorio { border-radius: 20px; } }
+
+.ag-canvas,
+.ag-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ag-canvas { display: none; touch-action: pan-y; }
+.ag-poster { object-fit: cover; object-position: 50% 50%; max-width: none; }
+
+html.carregando .ag-canvas,
+html.animada .ag-canvas { display: block; }
+html.carregando .ag-poster,
+html.animada .ag-poster,
+html.carregando .ag-fecho-poster,
+html.animada .ag-fecho-poster { display: none; }
+
+/* Botões das mesas: viram as etiquetas sobre a cena (alvo de toque ≥ 44×44).
+   --mx/--my é o ponto da mesa; a etiqueta fica logo acima dele.
+   Sem JS e na estática, as posições abaixo acompanham o pôster; na animada,
+   pagina.js troca por px a partir de cena.inspecionar().projetados. */
+.ag-mesas {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+.ag-mesa {
+  --ergue: 22px;
+  position: absolute;
+  left: var(--mx);
+  top: var(--my);
+  transform: translate(-50%, calc(-100% - var(--ergue)));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 2px;
+  color: var(--no-tinta);
+  text-decoration: none;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity .2s ease;
+}
+.ag-mesa[data-mesa="fiscal"]  { --mx: 66%; --my: 22%; }
+.ag-mesa[data-mesa="auditor"] { --mx: 62%; --my: 47%; }
+.ag-mesa[data-mesa="vaga"]    { --mx: 70%; --my: 71%; }
+
+.ag-mesa-pilula {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px 7px 11px;
+  border-radius: 999px;
+  background: var(--no-osso);
+  box-shadow: var(--no-shadow-card);
+  border: 1px solid color-mix(in srgb, var(--no-borda) 70%, transparent);
+  font: 600 13px/1.2 var(--no-font-sans);
+  white-space: nowrap;
+  transition: transform .2s ease;
+}
+.ag-mesa[data-mesa="vaga"] .ag-mesa-pilula { font-size: 12px; }
+.ag-mesa:hover .ag-mesa-pilula { transform: translateY(-2px); }
+.ag-mesa:focus-visible { outline: none; }
+.ag-mesa:focus-visible .ag-mesa-pilula { outline: 3px solid var(--no-azul); outline-offset: 2px; }
+
+/* Na animada a posição muda junto com a câmera. */
+html.animada .ag-mesa { transition: opacity .2s ease, left .08s linear, top .08s linear; }
+.ag-mesa.ag-mesa--oculta { opacity: 0; pointer-events: none; }
+/* No recuo do fecho (Tela 3) as etiquetas saem; o foco do teclado ainda as mostra. */
+.ag-mesas.ag-mesas--longe .ag-mesa { opacity: 0; pointer-events: none; }
+.ag-mesas .ag-mesa:focus-visible { opacity: 1; }
+
+.ag-ponto {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ag-ponto--verde { background: var(--no-verde); }
+.ag-ponto--azul  { background: var(--no-azul); }
+.ag-ponto--ambar { background: var(--no-ambar); }
+
+/* ── Fecho (Tela 3) ── */
+.ag-fecho { padding: 24px 0 56px; }
+.ag-fecho-poster {
+  display: block;
+  width: min(100%, var(--ag-larg));
+  max-width: none;
+  margin: -24px auto 24px;
+  aspect-ratio: 375 / 440;
+  height: auto;
+  object-fit: cover;
+  object-position: 50% 45%;
+}
+@media (min-width: 769px) { .ag-fecho-poster { border-radius: 20px; margin-top: 0; } }
+
+.ag-fecho h2 {
+  margin: 0 0 18px;
+  font-weight: var(--no-weight-titulo);
+  font-size: clamp(24px, 6.4vw, 40px);
+  line-height: 1.14;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.ag-cartoes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.ag-cartao {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 44px;
+  padding: 14px 30px 14px 14px;
+  border: 1px solid var(--no-borda);
+  border-radius: 14px;
+  background: var(--no-osso);
+  box-shadow: var(--no-shadow-card);
+  color: var(--no-tinta);
+  text-decoration: none;
+  transition: border-color .2s ease;
+}
+.ag-cartao:hover { border-color: color-mix(in srgb, var(--no-tinta) 25%, var(--no-borda)); }
+.ag-cartao-nome {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: var(--no-weight-subtitulo);
+  font-size: 15px;
+  line-height: 1.25;
+}
+.ag-cartao-linha {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--no-cinza);
+}
+.ag-cartao-seta {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--no-tinta);
+}
+@media (min-width: 769px) {
+  .ag-cartao { padding: 18px 36px 18px 18px; }
+  .ag-cartao-nome { font-size: 17px; }
+  .ag-cartao-linha { font-size: 14px; }
+}
+
+.ag-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  margin-top: 14px;
+  border: 1.5px solid var(--no-azul);
+  border-radius: 12px;
+  color: var(--no-azul);
+  font-weight: var(--no-weight-subtitulo);
+  font-size: 15px;
+  text-decoration: none;
+  transition: background .2s ease;
+}
+.ag-cta:hover { background: var(--no-azul-tint); }
+.ag-cta:focus-visible,
+.ag-cartao:focus-visible { outline: 3px solid var(--no-azul); outline-offset: 2px; }
+
+/* ── Tela de carregamento (critérios 22–24) ── */
+.ag-carregamento {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--no-osso);
+  text-align: center;
+  transition: opacity .25s ease;
+}
+html.carregando .ag-carregamento { display: flex; }
+html.carregando.saindo .ag-carregamento { opacity: 0; }
+html.carregando body { overflow: hidden; }
+
+.ag-carregamento-miolo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ag-carregamento-logo { width: 116px; height: auto; }
+.ag-pontos { display: flex; gap: 10px; margin: 22px 0 18px; }
+.ag-pontos i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  opacity: .3;
+  animation: ag-ponto 1.4s ease-in-out infinite;
+}
+/* ordem da assinatura: azul → vermelho → âmbar → verde */
+.ag-pontos i:nth-child(1) { background: var(--no-azul);     animation-delay: 0s; }
+.ag-pontos i:nth-child(2) { background: var(--no-vermelho); animation-delay: .175s; }
+.ag-pontos i:nth-child(3) { background: var(--no-ambar);    animation-delay: .35s; }
+.ag-pontos i:nth-child(4) { background: var(--no-verde);    animation-delay: .525s; }
+@keyframes ag-ponto {
+  0%, 55%, 100% { opacity: .3; transform: translateY(0); }
+  22% { opacity: 1; transform: translateY(-6px); }
+}
+
+.ag-carregamento-texto {
+  margin: 0;
+  font-weight: var(--no-weight-subtitulo);
+  font-size: 15px;
+}
+.ag-progresso {
+  width: 168px;
+  height: 4px;
+  margin: 16px 0 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--no-borda);
+}
+.ag-progresso-barra {
+  display: block;
+  width: calc(var(--ag-progresso, 0) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--no-tinta);
+  transition: width .2s ease;
+}
+.ag-progresso-pct {
+  margin: 0;
+  font: 500 12px/1.4 var(--no-font-mono);
+  letter-spacing: .08em;
+  color: var(--no-cinza);
+  font-variant-numeric: tabular-nums;
+}
+.ag-sem-animacoes {
+  min-height: 44px;
+  margin-top: 22px;
+  padding: 0 22px;
+  border: 1px solid var(--no-tinta);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--no-tinta);
+  font: 600 14px/1 var(--no-font-sans);
+  cursor: pointer;
+}
+.ag-sem-animacoes[hidden] { display: none; }
+.ag-sem-animacoes:hover { background: color-mix(in srgb, var(--no-tinta) 6%, transparent); }
+.ag-sem-animacoes:focus-visible { outline: 3px solid var(--no-azul); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-pontos i { animation: none; opacity: 1; }
+  .ag-mesa, .ag-mesa-pilula, .ag-mesas, .ag-carregamento { transition: none; }
+}

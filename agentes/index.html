@@ -32,7 +32,17 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/auditor/auditor.css?v=2">
+<link rel="stylesheet" href="/agentes/agentes.css?v=1">
+<link rel="preload" href="/brand/fonts/jetbrains-mono/jetbrains-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<!-- three.js pelo mesmo importmap da home (lp-narrador/cenas-lp/lp-v8.html) -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="/agentes/escritorio/pagina.js?v=1"></script>
 <script src="/shared/card-nav.js" defer></script>
 <script src="/shared/telemetria.js?v=3"></script>
 <!-- Google Tag Manager (mesmo container da home) -->
@@ -47,38 +57,64 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link rel="stylesheet" href="/shared/texticon-cursor.css?v=1">
 <script src="/shared/glossario.js?v=1" defer></script><script src="/shared/texticon-cursor.js?v=1" defer></script>
 </head>
-<body class="ag-body">
+<body class="ag-pagina">
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NK87FH8W" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <!-- site-nav:start -->
 <nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agentes/" aria-current="page">Agentes</a><a href="/contato/">Contato</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a nó</a><a href="/agencia/">Agência</a></div></div><div class="no-card"><b>Agentes</b><div><a href="/agentes/">Conheça os agentes</a><a href="/agentes/auditor/">nó.auditor</a><a href="/agentes/fiscal/">nó.fiscal</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a></div></div></div></div></div></nav>
 <!-- site-nav:end -->
 
+<!-- Tela de carregamento: só aparece quando pagina.js põe a classe "carregando" no <html>. -->
+<div class="ag-carregamento">
+  <div class="ag-carregamento-miolo">
+    <img class="ag-carregamento-logo" src="/brand/logo/svg/no-tinta-ponto-azul.svg" alt="nó." width="1633" height="964">
+    <div class="ag-pontos" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <p class="ag-carregamento-texto" role="status">Montando o escritório…</p>
+    <div class="ag-progresso" role="progressbar" aria-label="Carregando o escritório" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="ag-progresso-barra"></span></div>
+    <p class="ag-progresso-pct">0%</p>
+    <button class="ag-sem-animacoes" type="button" hidden>Ver sem animações</button>
+  </div>
+</div>
+
 <main class="ag-main" id="conteudo">
-  <section class="ag-hero">
-    <span class="ag-kicker">Nó Agentes</span>
-    <h1>Produtos que trabalham junto com a sua equipe.</h1>
-    <p class="ag-lead">Nó Agentes é a linha de produtos da Nó Tech Stack: <a class="no-termo" data-termo="agentes" href="/agentes/fiscal/">agentes</a> que executam tarefas reais, com supervisão sua e resultado que dá para conferir.</p>
+  <section class="ag-hero" aria-labelledby="ag-titulo">
+    <div class="ag-coluna">
+      <p class="ag-rotulo">NÓ AGENTES</p>
+      <h1 id="ag-titulo" tabindex="-1">Cada agente resolve um problema da sua empresa.</h1>
+      <p class="ag-sub">Por assinatura. Toque numa mesa para ver o agente trabalhando.</p>
+    </div>
+    <div class="ag-escritorio">
+      <canvas id="escritorio-canvas" class="ag-canvas" role="img" aria-label="Escritório da nó em 3D: os agentes trabalhando nas mesas"></canvas>
+      <img id="escritorio-poster" class="ag-poster" src="/agentes/escritorio/poster-escritorio.webp" alt="Escritório da nó: a mesa do nó.fiscal, a mesa do Auditor, uma mesa vaga e a recepção" width="750" height="1624" loading="lazy" decoding="async">
+      <ul class="ag-mesas" aria-label="Mesas do escritório">
+        <li><a class="ag-mesa" data-mesa="fiscal" href="/agentes/fiscal/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span></a></li>
+        <li><a class="ag-mesa" data-mesa="auditor" href="/agentes/auditor/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>Auditor</span></a></li>
+        <li><a class="ag-mesa" data-mesa="vaga" href="/contato/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--ambar" aria-hidden="true"></i>um problema seu aqui?</span></a></li>
+      </ul>
+    </div>
   </section>
 
-  <section class="ag-grid" aria-label="Produtos">
-    <article class="ag-card ag-card--destaque">
-      <span class="ag-tag">Primeiro produto · grátis para testar</span>
-      <h2>Auditor de Integridade de Marketing</h2>
-      <p>Cole a URL do seu site e receba um diagnóstico de <a class="no-termo" data-termo="rastreamento" href="/agentes/auditor/">rastreamento</a>: pixel, GA4, consentimento e eventos duplicados. Sem cadastro para ver o primeiro relatório.</p>
-      <a class="ag-btn ag-btn--primario" href="/agentes/auditor/">Diagnosticar grátis</a>
-    </article>
-    <article class="ag-card">
-      <span class="ag-tag">Segundo produto · simulador grátis</span>
-      <h2>Agente Fiscal: NFS-e pelo WhatsApp</h2>
-      <p>Para MEI e empresas do Simples que prestam serviço: diga quem é o cliente e o valor, e o agente monta, assina com o seu A1, envia à <a class="no-termo" data-termo="sefin-nacional" href="/agentes/fiscal/">Sefin Nacional</a> e devolve a nota no WhatsApp e no e-mail.</p>
-      <a class="ag-btn ag-btn--primario" href="/agentes/fiscal/">Simular uma emissão</a>
-    </article>
-  </section>
-
-  <section class="ag-faixa">
-    <p>Quer um agente para um processo específico? <a href="/contato/">Conte sua ideia</a>.</p>
+  <section class="ag-fecho" aria-labelledby="ag-fecho-titulo">
+    <img id="fecho-poster" class="ag-fecho-poster" src="/agentes/escritorio/poster-fecho.webp" alt="As três mesas ligadas por linhas azuis à sala nó tech stack" width="750" height="1624" loading="lazy" decoding="async">
+    <div class="ag-coluna">
+      <h2 id="ag-fecho-titulo">Quando forem vários, a gente une tudo num sistema só.</h2>
+      <div class="ag-cartoes">
+        <a class="ag-cartao" href="/agentes/fiscal/">
+          <span class="ag-cartao-nome"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span>
+          <span class="ag-cartao-linha">Emite a NFS-e pelo WhatsApp, para MEI e Simples.</span>
+          <svg class="ag-cartao-seta" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="ag-cartao" href="/agentes/auditor/">
+          <span class="ag-cartao-nome"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>Auditor</span>
+          <span class="ag-cartao-linha">Confere se o rastreamento dos seus anúncios conta certo.</span>
+          <svg class="ag-cartao-seta" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+      <a class="ag-cta" href="/contato/">Conte sua ideia</a>
+    </div>
   </section>
 </main>
+
+<div id="gaveta"></div>
 
 <!-- site-footer:start -->
 <footer class="no-site-footer">
