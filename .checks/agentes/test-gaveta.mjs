@@ -1,5 +1,7 @@
 // Prova da frente C (gaveta e mockups de WhatsApp): C12, C13, C14, C15, C16, C17, C18,
-// C20-gaveta, C21 e C26b de .checks/agentes-escritorio.md.
+// C20-gaveta, C21 e C26b de .checks/agentes-escritorio.md, mais R1 e R6 da rodada 3
+// (.tasks/agentes-escritorio.md): título "nó.auditor — …", explicação breve tirada da LP antes
+// do mockup, gaveta ≤ 62% de 812 e janela de conversa ≤ 300 px.
 // Uso: node .checks/agentes/test-gaveta.mjs  (na raiz da worktree)
 import { createRequire } from 'node:module';
 import http from 'node:http';
@@ -139,10 +141,55 @@ async function lados(page) {
       assert.equal(info.live, 'polite');
       await esperar(400); // fim da animação de entrada
       const r = await page.evaluate(() => document.querySelector('[role="dialog"]').getBoundingClientRect().toJSON());
-      assert.ok(r.height <= 0.75 * VIEWPORT.height + 0.5, `altura ${r.height} ≤ 75% de 812`);
+      assert.ok(r.height <= 0.62 * VIEWPORT.height + 0.5, `altura ${r.height} ≤ 62% de 812 (R6)`);
       assert.ok(Math.abs(r.bottom - VIEWPORT.height) <= 1, `rente ao fundo (bottom ${r.bottom})`);
       const mud = await page.evaluate(() => window.mudancas);
       assert.deepEqual(mud.map((m) => [m.aberta, m.agente]).slice(-1)[0], [true, 'fiscal']);
+    });
+
+    // ── R6 (rodada 3) ─────────────────────────────────────────────────────────
+    // Explicação breve antes do mockup, tirada da LP; gaveta ≤ 62% de 812; janela ≤ 300 px.
+    // texto da LP: o HTML bruto (pega atributos como a meta description) + o texto sem tags (pega
+    // parágrafos com <a> no meio)
+    const textoDaLp = (html) => html + '\n' + html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    const lps = {
+      fiscal: textoDaLp(fs.readFileSync(path.join(raiz, 'agentes/fiscal/index.html'), 'utf8')),
+      auditor: textoDaLp(fs.readFileSync(path.join(raiz, 'agentes/auditor/index.html'), 'utf8')),
+    };
+    async function conferirR6(page, agente) {
+      const info = await page.evaluate(() => {
+        const dlg = document.querySelector('[role="dialog"]');
+        const ex = dlg.querySelector('.gv-explica');
+        const wa = dlg.querySelector('.gv-wa');
+        const sonda = document.createElement('span'); sonda.style.color = 'var(--no-cinza)'; document.body.append(sonda);
+        const corCinza = getComputedStyle(sonda).color; sonda.remove();
+        const est = ex ? getComputedStyle(ex) : null;
+        const caixa = (el) => el.getBoundingClientRect().toJSON();
+        return ex && {
+          texto: ex.innerText.trim(), fonte: est.fontFamily, tamanho: parseFloat(est.fontSize), cor: est.color, corCinza,
+          ex: caixa(ex), titulo: caixa(dlg.querySelector('.gv-titulo')), selo: caixa(dlg.querySelector('.gv-selo')), wa: caixa(wa), dlg: caixa(dlg), cta: caixa(dlg.querySelector('.gv-cta')),
+          ordem: [...dlg.querySelectorAll('.gv-selo, .gv-titulo, .gv-explica, .gv-wa, .gv-nota:not([hidden]), .gv-cta')].map((e) => e.className.split(' ')[0]),
+        };
+      });
+      assert.ok(info, 'explicação (.gv-explica) presente');
+      assert.ok(info.texto.length > 0 && info.texto.length <= 180, `explicação com ${info.texto.length} caracteres (≤ 180): ${info.texto}`);
+      const frases = info.texto.split(/[.!?](?:\s+|$)/).filter((f) => f.trim()).length;
+      assert.ok(frases <= 2, `${frases} frases (≤ 2)`);
+      // sem afirmação nova: o texto está na LP do agente (com a inicial minúscula ou igual)
+      const minuscula = info.texto[0].toLowerCase() + info.texto.slice(1);
+      assert.ok(lps[agente].includes(info.texto) || lps[agente].includes(minuscula), `explicação copiada de agentes/${agente}/index.html`);
+      assert.match(info.fonte, /Sora/, 'Sora');
+      assert.ok(info.tamanho >= 15 && info.tamanho <= 16, `corpo ${info.tamanho}px (15–16)`);
+      assert.equal(info.cor, info.corCinza, 'cor --no-cinza');
+      assert.ok(info.ex.top >= info.titulo.bottom - 1 && info.ex.bottom <= info.wa.top + 1, 'explicação entre o título e o mockup');
+      assert.deepEqual(info.ordem.filter((c) => c !== 'gv-nota'), ['gv-selo', 'gv-titulo', 'gv-explica', 'gv-wa', 'gv-cta'], 'ordem: selo → título → explicação → janela → CTA');
+      assert.ok(info.dlg.height <= 0.62 * VIEWPORT.height + 0.5, `gaveta ${info.dlg.height}px ≤ 62% de 812`);
+      assert.ok(info.wa.height <= 300.5, `janela de conversa ${info.wa.height}px ≤ 300`);
+      assert.ok(info.cta.bottom <= VIEWPORT.height + 1 && info.cta.top >= info.wa.bottom, 'CTA à vista, abaixo da janela, sem rolar a gaveta');
+      console.log(`     explicação (${agente}, ${info.texto.length} c.):`, info.texto);
+    }
+    await check('R6 fiscal: explicação breve da LP antes do mockup; gaveta ≤ 62%; janela ≤ 300 px; CTA à vista', async () => {
+      await conferirR6(page, 'fiscal');
     });
 
     // ── C13 ───────────────────────────────────────────────────────────────────
@@ -195,6 +242,9 @@ async function lados(page) {
         assert.ok(g.cor.every((c) => c >= 240), `balão do agente branco (${g.cor})`);
       }
       assert.ok(await page.evaluate(() => !document.querySelector('.gv-wa a[href*="wa.me"]')), 'mockup sem link wa.me');
+      // R6: a conversa rola dentro da janela e a última mensagem fica visível
+      const vis = await page.evaluate(() => { const r = document.querySelector('.gv-wa-rolagem').getBoundingClientRect(); const m = Array.from(document.querySelectorAll('.gv-msg')).pop().getBoundingClientRect(); return { r: r.toJSON(), m: m.toJSON() }; });
+      assert.ok(vis.m.bottom <= vis.r.bottom + 1 && vis.m.bottom > vis.r.top, `última mensagem visível na janela (fundo ${vis.m.bottom} dentro de ${vis.r.top}–${vis.r.bottom})`);
       await page.screenshot({ path: path.join(aqui, 'gaveta-fiscal.png') }); capturas.push('gaveta-fiscal.png');
     });
 
@@ -237,7 +287,7 @@ async function lados(page) {
           texto: msg ? semHora(msg.innerText) : '', negrito: msg ? Array.from(msg.querySelectorAll('b,strong')).map((b) => b.innerText) : [], link: msg?.querySelector('.gv-link, a')?.innerText, msgs: dlg.querySelectorAll('.gv-msg').length };
       });
       assert.equal(info.selo, 'DEMONSTRAÇÃO');
-      assert.equal(info.titulo, 'Auditor — seu relatório semanal no WhatsApp');
+      assert.equal(info.titulo, 'nó.auditor — seu relatório semanal no WhatsApp'); // R1
       assert.equal(info.nome, 'nó.'); assert.equal(info.sub, 'equipe nó');
       assert.match(info.avatar, /^\/brand\/logo\/svg\//);
       const msgs = lerMensagens(evs);
@@ -268,6 +318,9 @@ async function lados(page) {
       assert.deepEqual(faltam, [], 'números que não estão na retrospectiva: ' + faltam.join(', '));
       console.log('     números conferidos na retrospectiva:', numeros.join(', '));
       await page.screenshot({ path: path.join(aqui, 'gaveta-auditor.png') }); capturas.push('gaveta-auditor.png');
+    });
+    await check('R6 auditor: explicação breve da LP antes do mockup; gaveta ≤ 62%; janela ≤ 300 px; CTA à vista', async () => {
+      await conferirR6(page, 'auditor');
     });
 
     // ── C17 ───────────────────────────────────────────────────────────────────
@@ -323,7 +376,7 @@ async function lados(page) {
       await page.click('[data-mesa="auditor"]');
       const d = await dialogos(page);
       assert.equal(d.length, 1, 'uma gaveta');
-      assert.equal(await page.evaluate(() => document.querySelector('[role="dialog"] .gv-titulo').innerText), 'Auditor — seu relatório semanal no WhatsApp');
+      assert.equal(await page.evaluate(() => document.querySelector('[role="dialog"] .gv-titulo').innerText), 'nó.auditor — seu relatório semanal no WhatsApp');
       assert.ok(await page.evaluate(() => !document.querySelector('.gv-wa-conversa').innerText.includes('Studio Lima')), 'conversa do fiscal sumiu na troca');
       await esperar(15000);
       const evs = await eventos(page);

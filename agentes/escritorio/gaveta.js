@@ -6,8 +6,8 @@
    - estatico: true mostra a conversa inteira de uma vez, sem "digitando…" nem animação.
    - aoMudar(fn): fn({ aberta, agente }) em toda abertura, troca e fechamento.
 
-   O mockup é um celular (moldura, barra de status, cabeçalho verde, fundo com rabiscos, balões,
-   barra de entrada) desenhado só com HTML/CSS e SVG inline, sem imagem do WhatsApp. */
+   O mockup é uma janela de conversa compacta (cabeçalho verde, fundo com rabiscos, balões, barra
+   de entrada fina) desenhada só com HTML/CSS e SVG inline, sem imagem do WhatsApp (rodada 3, R6). */
 
 const ANIMACAO_MS = 320;
 const RECOMECO_MS = 4000; // critério 14: 4 s depois da mensagem 5, volta à mensagem 1
@@ -30,10 +30,6 @@ const ICONE = {
   microfone: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>',
   baixar: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="currentColor" d="M11 6h2v7.2l2.6-2.6 1.4 1.4-5 5-5-5 1.4-1.4 2.6 2.6z"/></svg>',
   responder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>',
-  cadeado: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM9 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9z"/></svg>',
-  sinal: '<svg viewBox="0 0 20 12" aria-hidden="true"><g fill="currentColor"><rect x="0" y="8" width="3.5" height="4" rx=".8"/><rect x="5.3" y="5.5" width="3.5" height="6.5" rx=".8"/><rect x="10.6" y="3" width="3.5" height="9" rx=".8"/><rect x="15.9" y="0" width="3.5" height="12" rx=".8"/></g></svg>',
-  wifi: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>',
-  bateria: '<svg viewBox="0 0 28 13" aria-hidden="true"><rect x=".6" y=".6" width="23" height="11.8" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5" stroke-width="1.2"/><rect x="2.4" y="2.4" width="19" height="8.2" rx="1.8" fill="currentColor"/><path fill="currentColor" fill-opacity=".5" d="M25.3 4.2v4.6c.9-.3 1.5-1.2 1.5-2.3s-.6-2-1.5-2.3z"/></svg>',
   pdf: '<svg viewBox="0 0 32 40" aria-hidden="true"><path fill="currentColor" d="M4 0h17l11 11v25a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4z"/><path fill="white" fill-opacity=".45" d="M21 0v8a3 3 0 0 0 3 3h8z"/><text x="16" y="29" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9.5" font-weight="700" fill="white">PDF</text></svg>',
   xml: '<svg viewBox="0 0 32 40" aria-hidden="true"><path fill="currentColor" d="M4 0h17l11 11v25a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4z"/><path fill="white" fill-opacity=".45" d="M21 0v8a3 3 0 0 0 3 3h8z"/><text x="16" y="29" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9.5" font-weight="700" fill="white">XML</text></svg>',
 };
@@ -60,6 +56,8 @@ function documento(tipo, nome, detalhe) {
 const MESAS = {
   fiscal: {
     titulo: 'nó.fiscal — sua NFS-e pelo WhatsApp',
+    // R6: explicação breve tirada da LP, sem afirmação nova (agentes/fiscal/index.html, linha 17, og:description)
+    explica: 'O agente fiscal da Nó monta, assina e envia a NFS-e à Sefin Nacional. Teste grátis sem cadastro.',
     nome: 'nó.fiscal',
     subtitulo: 'online',
     cta: { rotulo: 'Simular uma emissão', href: '/agentes/fiscal/#simulador' },
@@ -95,7 +93,9 @@ const MESAS = {
     ],
   },
   auditor: {
-    titulo: 'Auditor — seu relatório semanal no WhatsApp',
+    titulo: 'nó.auditor — seu relatório semanal no WhatsApp', // R1
+    // R6: explicação breve tirada da LP, sem afirmação nova (agentes/auditor/index.html, linha 85, lead do hero)
+    explica: 'Cole a URL do seu site. Em segundos você vê se pixel, GA4, Google Ads e aviso de cookies estão instalados do jeito certo.',
     nome: 'nó.',
     subtitulo: 'equipe nó',
     cta: { rotulo: 'Diagnosticar grátis', href: '/agentes/auditor/' },
@@ -149,13 +149,10 @@ export function montarGaveta(raiz, { estatico = false } = {}) {
   painel.innerHTML =
     '<div class="gv-alca" aria-hidden="true"></div>' +
     '<button type="button" class="gv-fechar" aria-label="Fechar"><span aria-hidden="true">×</span></button>' +
-    '<div class="gv-cabeca"><span class="gv-selo">DEMONSTRAÇÃO</span><h2 class="gv-titulo" id="gv-titulo"></h2></div>' +
+    '<div class="gv-cabeca"><span class="gv-selo">DEMONSTRAÇÃO</span><h2 class="gv-titulo" id="gv-titulo"></h2><p class="gv-explica"></p></div>' +
     '<div class="gv-corpo">' +
-    // ── o celular ──
-    '<div class="gv-cel">' +
+    // ── a janela de conversa ──
     '<div class="gv-wa" aria-label="Mockup de conversa no WhatsApp">' +
-    '<div class="gv-status" aria-hidden="true"><span class="gv-status-hora">9:41</span><span class="gv-ilha"></span>' +
-    '<span class="gv-status-icones">' + ICONE.sinal + ICONE.wifi + ICONE.bateria + '</span></div>' +
     '<div class="gv-wa-cab">' +
     '<span class="gv-wa-voltar" aria-hidden="true">' + ICONE.voltar + '</span>' +
     '<span class="gv-avatar"><img alt="" width="24" height="14"></span>' +
@@ -165,14 +162,11 @@ export function montarGaveta(raiz, { estatico = false } = {}) {
     '<div class="gv-wa-fundo"><div class="gv-wa-padrao" aria-hidden="true"></div>' +
     '<div class="gv-wa-rolagem">' +
     '<span class="gv-wa-data">Hoje</span>' +
-    '<span class="gv-wa-aviso">' + ICONE.cadeado + 'As mensagens são protegidas com a criptografia de ponta a ponta.</span>' +
     '<div class="gv-wa-conversa" aria-live="polite"></div>' +
     '</div></div>' +
     '<div class="gv-wa-entrada" aria-hidden="true">' +
     '<span class="gv-wa-campo">' + ICONE.emoji + '<span class="gv-wa-placeholder">Mensagem</span>' + ICONE.clipe + ICONE.camera + '</span>' +
     '<span class="gv-wa-mic">' + ICONE.microfone + '</span>' +
-    '</div>' +
-    '<div class="gv-wa-home" aria-hidden="true"><i></i></div>' +
     '</div>' +
     '</div>' +
     '<p class="gv-nota" hidden></p>' +
@@ -184,6 +178,7 @@ export function montarGaveta(raiz, { estatico = false } = {}) {
   const q = (s) => painel.querySelector(s);
   const btnFechar = q('.gv-fechar');
   const titulo = q('.gv-titulo');
+  const explica = q('.gv-explica');
   const corpo = q('.gv-corpo');
   const rolagem = q('.gv-wa-rolagem');
   const avatar = q('.gv-avatar img');
@@ -316,6 +311,7 @@ export function montarGaveta(raiz, { estatico = false } = {}) {
     painel.dataset.agente = agente;
     // "NFS-e" não quebra no hífen (o texto continua idêntico ao do critério 12)
     titulo.innerHTML = esc(mesa.titulo).replace(/NFS-e/g, '<span class="gv-nq">NFS-e</span>');
+    explica.textContent = mesa.explica;
     avatar.src = LOGO[agente];
     nome.textContent = mesa.nome;
     sub.textContent = mesa.subtitulo;
