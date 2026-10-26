@@ -1,19 +1,20 @@
-/* /agentes/ · Escritório nó — gaveta e mockup de WhatsApp num celular.
+/* /agentes/ · Escritório nó — gaveta e mockup compacto de WhatsApp (rodada 3, R6).
    Sem cor hex: tudo vem de brand/tokens/tokens.css (+ shared/brand-derived.css) e de
    color-mix() sobre esses tokens. Tela 2 de .tasks/refs/agentes-escritorio-referencia.webp.
-   Dentro do celular vale a tipografia do sistema, como no app real. */
+   Dentro da janela de conversa vale a tipografia do sistema, como no app real. */
 
 .gv {
   --gv-largura: 540px;
-  --gv-altura-max: 75vh;
+  --gv-altura-max: 62vh;   /* R6: a gaveta inteira ocupa no máximo 62% da altura em 375×812 */
+  --gv-janela-max: 300px;  /* R6: a conversa rola dentro de uma janela de no máximo 300 px */
   --gv-raio: 26px;
   --gv-branco: var(--no-osso);
   --gv-azul: var(--no-agentes-azul, var(--no-azul));
   --gv-azul-escuro: var(--no-agentes-azul-escuro, var(--no-azul-escuro, var(--no-azul)));
   --gv-animacao: 320ms;
 
-  /* ── paleta do WhatsApp, aproximada por color-mix sobre os tokens ── */
-  --wa-verde-escuro: color-mix(in srgb, color-mix(in srgb, var(--no-verde) 84%, var(--no-azul)) 70%, var(--no-tinta)); /* cabeçalho e barra de status */
+  /* ── paleta do WhatsApp, aproximada por color-mix em sRGB sobre os tokens ── */
+  --wa-verde-escuro: color-mix(in srgb, color-mix(in srgb, var(--no-verde) 84%, var(--no-azul)) 70%, var(--no-tinta)); /* cabeçalho */
   --wa-verde-vivo: color-mix(in srgb, var(--no-verde) 86%, var(--no-azul));                                            /* microfone */
   --wa-fundo: color-mix(in srgb, color-mix(in srgb, var(--no-osso-alt, var(--no-osso)) 78%, var(--no-ambar-tint)) 95%, var(--no-tinta)); /* papel de parede bege */
   --wa-rabisco: color-mix(in srgb, var(--no-tinta) 5.5%, transparent);
@@ -26,8 +27,6 @@
   --wa-divisor: color-mix(in srgb, var(--no-tinta) 9%, transparent);
   --wa-barra: color-mix(in srgb, var(--no-osso-alt, var(--no-osso)) 86%, var(--no-azul-tint));
   --wa-chip: color-mix(in srgb, white 92%, var(--no-azul-tint));
-  --wa-aviso: color-mix(in srgb, var(--no-ambar-tint) 70%, white);
-  --wa-aviso-texto: color-mix(in srgb, var(--no-ambar-escuro, var(--no-ambar)) 80%, var(--no-tinta));
   --wa-sombra: 0 1px .5px color-mix(in srgb, var(--no-tinta) 13%, transparent);
   --wa-fonte: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
@@ -48,7 +47,7 @@ html.gv-aberta { overflow: hidden; }
 /* fechada = fora da árvore de foco: o display:flex do painel não pode vencer o [hidden] */
 .gv-fundo[hidden], .gv-painel[hidden] { display: none; }
 
-/* ── painel: sobe de baixo no celular, com altura fixa para o celular de dentro ter onde caber ── */
+/* ── painel: sobe de baixo no celular, com altura fixa para a janela de conversa ter onde caber ── */
 .gv-painel {
   position: fixed; z-index: 1401;
   left: 0; right: 0; bottom: 0;
@@ -66,12 +65,12 @@ html.gv-aberta { overflow: hidden; }
 .gv-painel.is-aberta { transform: translateY(0); }
 
 .gv-alca {
-  flex: none; width: 44px; height: 5px; margin: 10px auto 0;
+  flex: none; width: 44px; height: 5px; margin: 8px auto 0;
   border-radius: 999px; background: var(--no-borda);
 }
 
 .gv-fechar {
-  position: absolute; top: 10px; right: 10px;
+  position: absolute; top: 8px; right: 8px;
   width: 44px; height: 44px; padding: 0;
   display: grid; place-items: center;
   border: 0; border-radius: 50%; background: transparent; color: var(--no-cinza);
@@ -80,83 +79,69 @@ html.gv-aberta { overflow: hidden; }
 .gv-fechar:hover { background: var(--no-osso-alt, var(--no-borda)); color: var(--no-tinta); }
 .gv-fechar:focus-visible { outline: 3px solid var(--gv-azul); outline-offset: 2px; }
 
-.gv-cabeca { flex: none; padding: 12px 24px 10px; }
+/* ── cabeça: selo → título → explicação breve (R6) ── */
+.gv-cabeca { flex: none; padding: 8px 56px 8px 20px; }
 
 .gv-selo {
-  display: inline-block; padding: 4px 10px;
+  display: inline-block; padding: 3px 9px;
   border: 1.5px solid var(--gv-azul); border-radius: 999px;
   color: var(--gv-azul);
-  font: 500 10.5px/1.3 var(--no-font-mono); letter-spacing: var(--no-tracking-label); text-transform: uppercase;
+  font: 500 10px/1.3 var(--no-font-mono); letter-spacing: var(--no-tracking-label); text-transform: uppercase;
 }
 
 .gv-titulo {
-  margin: 10px 0 0;
-  font-weight: var(--no-weight-titulo); font-size: 22px; line-height: 1.15; letter-spacing: -0.03em;
+  margin: 8px 0 0;
+  font-weight: var(--no-weight-titulo); font-size: 20px; line-height: 1.15; letter-spacing: -0.03em;
   text-wrap: balance;
 }
 .gv-nq { white-space: nowrap; }
 
-/* ── corpo: o celular e, no auditor, a nota abaixo dele ── */
+.gv-explica {
+  margin: 6px 0 0;
+  font-family: var(--no-font-sans); font-weight: 400; font-size: 15px; line-height: 1.4;
+  color: var(--no-cinza);
+  text-wrap: pretty;
+}
+
+/* ── corpo: a janela de conversa e, no nó.auditor, a nota abaixo dela ── */
 .gv-corpo {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   display: flex; flex-direction: column;
-  padding: 0 16px 10px;
+  padding: 0 16px 6px;
 }
 
-/* ── o celular: moldura escura fina e cantos bem arredondados ── */
-.gv-cel {
-  flex: 1 1 auto; min-height: 300px;
-  width: 100%; max-width: 380px; margin: 0 auto;
-  display: flex; flex-direction: column;
-  padding: 5px; border-radius: 30px;
-  background: var(--no-tinta);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--no-tinta) 18%, transparent), inset 0 0 0 1.5px color-mix(in srgb, white 22%, transparent);
-  font-family: var(--wa-fonte);
-  color: var(--wa-texto);
-}
-
+/* ── a janela de conversa: cantos arredondados, no máximo 300 px, rolagem interna ── */
 .gv-wa {
-  flex: 1 1 auto; min-height: 0;
+  flex: 1 1 auto; min-height: 150px; max-height: var(--gv-janela-max);
+  width: 100%; max-width: 400px; margin: 0 auto;
   display: flex; flex-direction: column;
-  border-radius: 25px; overflow: hidden;
+  border-radius: 14px; overflow: hidden;
   background: var(--wa-fundo);
-  font-size: 14px; line-height: 1.35;
+  box-shadow: 0 0 0 1px var(--no-borda), var(--no-shadow-sm, var(--no-shadow-card));
+  font-family: var(--wa-fonte); font-size: 13.5px; line-height: 1.35;
+  color: var(--wa-texto);
   -webkit-font-smoothing: antialiased;
 }
-
-/* barra de status: hora, ilha e ícones, sobre o mesmo verde do cabeçalho */
-.gv-status {
-  flex: none; position: relative; height: 30px;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 2px 22px 0 24px;
-  background: var(--wa-verde-escuro); color: white;
-  font-weight: 600; font-size: 12.5px; letter-spacing: -.01em;
-}
-.gv-ilha { position: absolute; left: 50%; top: 5px; width: 78px; height: 20px; border-radius: 999px; background: var(--no-tinta); transform: translateX(-50%); }
-.gv-status-icones { display: inline-flex; align-items: center; gap: 5px; }
-.gv-status-icones svg { height: 11px; width: auto; display: block; }
-.gv-status-icones svg:nth-child(2) { height: 12px; }
-.gv-status-icones svg:nth-child(3) { height: 12px; }
 
 /* cabeçalho verde-escuro da conversa */
 .gv-wa-cab {
   flex: none;
   display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px 8px 6px; background: var(--wa-verde-escuro); color: white;
+  padding: 6px 10px 6px 6px; background: var(--wa-verde-escuro); color: white;
 }
-.gv-wa-voltar { flex: none; width: 24px; height: 24px; display: grid; place-items: center; }
-.gv-wa-voltar svg { width: 22px; height: 22px; }
+.gv-wa-voltar { flex: none; width: 22px; height: 22px; display: grid; place-items: center; }
+.gv-wa-voltar svg { width: 20px; height: 20px; }
 .gv-avatar {
-  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
   display: grid; place-items: center; background: var(--no-osso);
 }
-.gv-avatar img { width: 23px; height: auto; display: block; }
-.gv-wa-quem { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; padding-left: 4px; }
-.gv-wa-nome { font-weight: 600; font-size: 15.5px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gv-wa-sub { font-size: 12px; line-height: 1.3; opacity: .85; }
-.gv-wa-acoes { flex: none; display: inline-flex; align-items: center; gap: 16px; padding-right: 2px; }
-.gv-wa-acoes svg { width: 22px; height: 22px; display: block; }
-.gv-wa-acoes svg:last-child { width: 20px; margin-left: -6px; }
+.gv-avatar img { width: 20px; height: auto; display: block; }
+.gv-wa-quem { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; padding-left: 2px; }
+.gv-wa-nome { font-weight: 600; font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gv-wa-sub { font-size: 11px; line-height: 1.3; opacity: .85; }
+.gv-wa-acoes { flex: none; display: inline-flex; align-items: center; gap: 12px; }
+.gv-wa-acoes svg { width: 19px; height: 19px; display: block; }
+.gv-wa-acoes svg:last-child { width: 18px; margin-left: -4px; }
 
 /* papel de parede: cor de token + rabiscos por máscara; a conversa rola por cima */
 .gv-wa-fundo { flex: 1 1 0; min-height: 0; position: relative; }
@@ -164,36 +149,35 @@ html.gv-aberta { overflow: hidden; }
   position: absolute; inset: 0; pointer-events: none;
   background: var(--wa-rabisco);
   -webkit-mask-image: url(gaveta-padrao.svg); mask-image: url(gaveta-padrao.svg);
-  -webkit-mask-size: 132px 132px; mask-size: 132px 132px;
+  -webkit-mask-size: 120px 120px; mask-size: 120px 120px;
   -webkit-mask-repeat: repeat; mask-repeat: repeat;
 }
 .gv-wa-rolagem {
   position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column;
-  padding: 8px 10px 10px;
+  padding: 8px 8px 8px;
   scrollbar-width: none;
 }
 .gv-wa-rolagem::-webkit-scrollbar { display: none; }
 
-.gv-wa-data, .gv-wa-aviso {
-  align-self: center; border-radius: 8px; box-shadow: var(--wa-sombra);
-  font-size: 12px; line-height: 1.3; text-align: center;
+.gv-wa-data {
+  align-self: center; padding: 4px 10px; margin-bottom: 6px;
+  border-radius: 7px; box-shadow: var(--wa-sombra);
+  background: var(--wa-chip); color: var(--wa-texto-suave);
+  font-size: 11px; line-height: 1.3; text-transform: uppercase;
 }
-.gv-wa-data { padding: 5px 12px; margin-bottom: 8px; background: var(--wa-chip); color: var(--wa-texto-suave); text-transform: uppercase; font-size: 11.5px; }
-.gv-wa-aviso { padding: 6px 12px; margin: 0 14px 10px; background: var(--wa-aviso); color: var(--wa-aviso-texto); }
-.gv-wa-aviso svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; }
 
 .gv-wa-conversa { display: flex; flex-direction: column; min-height: 40px; }
 
 /* ── balões ── */
 .gv-msg {
-  position: relative; max-width: 84%;
+  position: relative; max-width: 86%;
   border-radius: 8px;
   box-shadow: var(--wa-sombra);
   animation: gv-entrar var(--gv-animacao) ease both;
   margin-top: 2px;
 }
-.gv-msg--cauda { margin-top: 8px; }
+.gv-msg--cauda { margin-top: 7px; }
 .gv-msg--pessoa { align-self: flex-end; background: var(--wa-balao-pessoa); }
 .gv-msg--agente { align-self: flex-start; background: var(--wa-balao-agente); }
 .gv-msg--pessoa.gv-msg--cauda { border-top-right-radius: 0; }
@@ -204,32 +188,32 @@ html.gv-aberta { overflow: hidden; }
   border-style: solid; filter: drop-shadow(var(--wa-sombra));
 }
 .gv-msg--agente.gv-msg--cauda::before, .gv-digitando--agente.gv-digitando--cauda::before {
-  left: -8px; border-width: 0 8px 10px 0; border-color: transparent var(--wa-balao-agente) transparent transparent;
+  left: -7px; border-width: 0 7px 9px 0; border-color: transparent var(--wa-balao-agente) transparent transparent;
 }
 .gv-msg--pessoa.gv-msg--cauda::before, .gv-digitando--pessoa.gv-digitando--cauda::before {
-  right: -8px; border-width: 0 0 10px 8px; border-color: transparent transparent transparent var(--wa-balao-pessoa);
+  right: -7px; border-width: 0 0 9px 7px; border-color: transparent transparent transparent var(--wa-balao-pessoa);
 }
 
-.gv-msg-miolo { position: relative; padding: 6px 7px 7px 9px; font-size: 14.2px; line-height: 1.38; overflow-wrap: anywhere; }
-.gv-msg-miolo--folga { padding-bottom: 20px; }
+.gv-msg-miolo { position: relative; padding: 5px 7px 6px 8px; font-size: 13.5px; line-height: 1.38; overflow-wrap: anywhere; }
+.gv-msg-miolo--folga { padding-bottom: 18px; }
 .gv-msg p { margin: 0; }
 .gv-msg p + p { margin-top: 6px; }
 .gv-msg b { font-weight: 600; }
 /* espaço que a última linha deixa para a hora, como no app */
-.gv-espaco { display: inline-block; width: 44px; height: 0; }
-.gv-msg--pessoa .gv-espaco { width: 62px; }
+.gv-espaco { display: inline-block; width: 40px; height: 0; }
+.gv-msg--pessoa .gv-espaco { width: 58px; }
 
 .gv-meta {
-  position: absolute; right: 7px; bottom: 3px;
+  position: absolute; right: 6px; bottom: 3px;
   display: flex; align-items: center; gap: 3px;
-  font-size: 11px; line-height: 1; color: var(--wa-texto-suave);
+  font-size: 10.5px; line-height: 1; color: var(--wa-texto-suave);
 }
-.gv-ticks { color: var(--wa-ticks); font-size: 13px; line-height: 1; letter-spacing: -.42em; margin-right: .42em; }
+.gv-ticks { color: var(--wa-ticks); font-size: 12.5px; line-height: 1; letter-spacing: -.42em; margin-right: .42em; }
 
 /* indicador "digitando…": balão com três pontinhos */
 .gv-digitando {
   position: relative; display: inline-flex; align-items: center; gap: 4px;
-  margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+  margin-top: 7px; padding: 9px 11px; border-radius: 8px;
   box-shadow: var(--wa-sombra);
   animation: gv-entrar var(--gv-animacao) ease both;
 }
@@ -238,7 +222,7 @@ html.gv-aberta { overflow: hidden; }
 .gv-digitando--agente.gv-digitando--cauda { border-top-left-radius: 0; }
 .gv-digitando--pessoa.gv-digitando--cauda { border-top-right-radius: 0; }
 .gv-digitando i {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--wa-texto-suave);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--wa-texto-suave);
   animation: gv-pontinho 1.2s infinite ease-in-out;
 }
 .gv-digitando i:nth-child(2) { animation-delay: .18s; }
@@ -249,16 +233,16 @@ html.gv-aberta { overflow: hidden; }
 .gv-botoes { display: flex; flex-direction: column; }
 .gv-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 9px 8px; border-top: 1px solid var(--wa-divisor);
-  color: var(--wa-botao); font-weight: 500; font-size: 14px; line-height: 1.2;
+  padding: 8px 8px; border-top: 1px solid var(--wa-divisor);
+  color: var(--wa-botao); font-weight: 500; font-size: 13.5px; line-height: 1.2;
 }
-.gv-btn svg { width: 16px; height: 16px; }
+.gv-btn svg { width: 15px; height: 15px; }
 
 /* passos da emissão (mensagem 4) */
-.gv-passos { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; font-size: 13.5px; }
-.gv-passos li { display: flex; align-items: center; gap: 7px; color: var(--wa-texto-suave); transition: color var(--gv-animacao) ease; }
+.gv-passos { list-style: none; margin: 5px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.gv-passos li { display: flex; align-items: center; gap: 6px; color: var(--wa-texto-suave); transition: color var(--gv-animacao) ease; }
 .gv-passos li i {
-  flex: none; width: 15px; height: 15px; border-radius: 50%;
+  flex: none; width: 14px; height: 14px; border-radius: 50%;
   border: 1.5px solid var(--wa-divisor); background: transparent; display: grid; place-items: center;
   transition: background var(--gv-animacao) ease, border-color var(--gv-animacao) ease;
 }
@@ -269,63 +253,61 @@ html.gv-aberta { overflow: hidden; }
 .gv-passos li.is-feito i::after { content: ''; width: 3px; height: 6px; margin-top: -2px; border: solid white; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 
 /* mensagens de documento (mensagem 5) */
-.gv-anexos { display: grid; gap: 4px; margin: 6px -2px 0 -4px; }
+.gv-anexos { display: grid; gap: 4px; margin: 5px -2px 0 -3px; }
 .gv-anexo {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 8px 8px 9px; border-radius: 7px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 7px 7px 8px; border-radius: 7px;
   background: color-mix(in srgb, var(--no-tinta) 5%, transparent);
 }
-.gv-anexo > i { flex: none; width: 26px; height: 32px; display: block; }
+.gv-anexo > i { flex: none; width: 24px; height: 30px; display: block; }
 .gv-anexo > i svg { width: 100%; height: 100%; display: block; }
 .gv-anexo--pdf > i { color: var(--no-vermelho); }
 .gv-anexo--xml > i { color: color-mix(in srgb, var(--no-azul) 80%, var(--no-tinta)); }
 .gv-anexo-texto { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; gap: 2px; }
-.gv-anexo-nome { font-size: 13.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gv-anexo-texto small { font-size: 11.5px; color: var(--wa-texto-suave); }
-.gv-anexo-baixar { flex: none; width: 26px; height: 26px; color: var(--wa-texto-suave); }
+.gv-anexo-nome { font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gv-anexo-texto small { font-size: 11px; color: var(--wa-texto-suave); }
+.gv-anexo-baixar { flex: none; width: 24px; height: 24px; color: var(--wa-texto-suave); }
 .gv-anexo-baixar svg { width: 100%; height: 100%; }
 .gv-carimbo {
-  display: inline-block; margin-top: 10px; padding: 2px 8px;
+  display: inline-block; margin-top: 8px; padding: 2px 8px;
   border: 1.5px dashed var(--no-ambar-escuro, var(--no-ambar)); border-radius: 6px;
   color: var(--no-ambar-escuro, var(--no-ambar));
-  font: 500 11px/1.4 var(--no-font-mono); letter-spacing: .1em;
+  font: 500 10.5px/1.4 var(--no-font-mono); letter-spacing: .1em;
   transform: rotate(-3deg);
 }
 
-/* mensagem do auditor: texto no formato do WhatsApp */
+/* mensagem do nó.auditor: texto no formato do WhatsApp */
 .gv-linha { display: block; }
 .gv-quebra { display: block; height: .75em; }
 .gv-link { color: var(--wa-botao); text-decoration: underline; word-break: break-all; }
 
-/* barra de entrada: campo "Mensagem" e microfone verde */
+/* barra de entrada fina: campo "Mensagem" e microfone verde */
 .gv-wa-entrada {
   flex: none; display: flex; align-items: center; gap: 6px;
-  padding: 6px 7px 4px; background: var(--wa-barra); color: var(--wa-texto-suave);
+  padding: 5px 7px; background: var(--wa-barra); color: var(--wa-texto-suave);
 }
 .gv-wa-campo {
-  flex: 1 1 auto; min-width: 0; height: 40px;
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 10px; border-radius: 999px; background: white;
+  flex: 1 1 auto; min-width: 0; height: 32px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 9px; border-radius: 999px; background: white;
   box-shadow: var(--wa-sombra);
 }
-.gv-wa-campo svg { flex: none; width: 23px; height: 23px; }
-.gv-wa-placeholder { flex: 1 1 auto; font-size: 15.5px; color: var(--wa-texto-suave); }
+.gv-wa-campo svg { flex: none; width: 19px; height: 19px; }
+.gv-wa-placeholder { flex: 1 1 auto; font-size: 13.5px; color: var(--wa-texto-suave); }
 .gv-wa-mic {
-  flex: none; width: 40px; height: 40px; border-radius: 50%;
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
   display: grid; place-items: center; background: var(--wa-verde-vivo); color: white;
   box-shadow: var(--wa-sombra);
 }
-.gv-wa-mic svg { width: 22px; height: 22px; }
-.gv-wa-home { flex: none; height: 16px; display: grid; place-items: center; background: var(--wa-barra); }
-.gv-wa-home i { width: 104px; height: 4px; border-radius: 999px; background: var(--no-tinta); }
+.gv-wa-mic svg { width: 18px; height: 18px; }
 
-.gv-nota { flex: none; margin: 10px 4px 0; font-size: 13px; line-height: 1.5; color: var(--no-cinza); }
+.gv-nota { flex: none; margin: 8px 2px 0; font-size: 12.5px; line-height: 1.45; color: var(--no-cinza); }
 
-/* ── rodapé com o CTA azul largo ── */
-.gv-rodape { flex: none; padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--gv-branco); }
+/* ── rodapé com o CTA azul largo, sempre à vista ── */
+.gv-rodape { flex: none; padding: 6px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--gv-branco); }
 .gv-cta {
   display: flex; align-items: center; justify-content: center;
-  min-height: 52px; padding: 12px 20px; border-radius: 14px;
+  min-height: 50px; padding: 12px 20px; border-radius: 14px;
   background: var(--gv-azul); color: var(--no-osso); text-decoration: none;
   font-weight: var(--no-weight-subtitulo); font-size: 16px;
   transition: background var(--gv-animacao) ease;
@@ -333,24 +315,28 @@ html.gv-aberta { overflow: hidden; }
 .gv-cta:hover { background: var(--gv-azul-escuro); }
 .gv-cta:focus-visible { outline: 3px solid var(--no-tinta); outline-offset: 2px; }
 
-/* ── desktop: centralizada ── */
+/* ── desktop: centralizada, altura pelo conteúdo ── */
 @media (min-width: 768px) {
+  /* centralizada por inset + margin auto (sem translate(-50%), que deixava uma emenda de meio
+     pixel entre o corpo rolável e o rodapé) */
   .gv-painel {
-    left: 50%; right: auto; bottom: auto; top: 50%;
+    inset: 0; margin: auto;
     width: min(var(--gv-largura), calc(100vw - 48px));
-    height: min(84vh, 800px);
+    height: fit-content;
     max-height: min(84vh, 800px);
     border-radius: var(--gv-raio);
-    transform: translate(-50%, -50%) translateY(24px);
+    transform: translateY(24px);
     opacity: 0;
     transition: transform var(--gv-animacao) cubic-bezier(.22, .8, .32, 1), opacity var(--gv-animacao) ease;
   }
-  .gv-painel.is-aberta { transform: translate(-50%, -50%); opacity: 1; }
+  .gv-painel.is-aberta { transform: none; opacity: 1; }
   .gv-alca { display: none; }
-  .gv-cabeca { padding: 22px 28px 14px; }
-  .gv-titulo { font-size: 28px; }
-  .gv-corpo { padding: 0 24px 12px; }
-  .gv-rodape { padding: 12px 24px 20px; }
+  .gv-cabeca { padding: 22px 64px 12px 28px; }
+  .gv-titulo { font-size: 26px; }
+  .gv-explica { font-size: 16px; }
+  .gv-corpo { padding: 0 24px 10px; }
+  .gv-wa { flex: 0 0 var(--gv-janela-max); height: var(--gv-janela-max); }
+  .gv-rodape { padding: 10px 24px 20px; }
 }
 
 @keyframes gv-entrar { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
