@@ -212,3 +212,16 @@ o Verifier (frente D) sobre `9a12aecb..HEAD`.
 | R15 pôsteres 750×1040 | `test-cena.mjs` → `PASS C26-posteres`; `test-pagina.cjs` → `PASS C26a` |
 | R16 GLB ≤ 3 MB | `test-cena.mjs` → `PASS R16` |
 | Tela 2 enquadrada acima da gaveta | `test-cena.mjs` → `PASS C12-foco`; `test-pagina.cjs` → `PASS C31` |
+
+## Rodadas 6–8 (renegociadas por Lucca e correções das verificações 2 e 3)
+
+| Item | Prova |
+| --- | --- |
+| R17 logo nó.agentes, `h1` e subtítulo novos | `test-pagina.cjs` → `PASS C1` (ordem, textos exatos e logo carregado) |
+| R18 "Entenda mais sobre nossas soluções" + cartões das LPs, sem "Conte sua ideia" | `test-pagina.cjs` → `PASS C1`, `PASS C2` |
+| R19 card "Quer criar um agente de IA seu?" com "Vamos conversar" → `/contato/` | `test-pagina.cjs` → `PASS C1`, `PASS C28`, `PASS C30` (alvo ≥ 44 px) |
+| R20 eventos `agentes_*` no dataLayer | `test-pagina.cjs` → `PASS C33-medicao` |
+| R21 ViewContent com o mesmo `event_id` no Pixel e na CAPI; só `event_name`, `event_id`, URL sem query, `fbp`, `fbc`; nada sai fora de produção | `test-pagina.cjs` → `PASS C33-medicao` |
+| R22 `tracking/gtm-agentes-escritorio.json` | leitura do JSON (IDs 1001–1024, referências, GA4 `G-1YEB89RVER`); importação e publicação no GTM são ação de Lucca, conferidas depois pelo `gtm.js` público (LEI #3 da skill) |
+| R23 Tela 2 no desktop: painel à direita a partir de 1280 px, folha de 52% entre 768 e 1279 px; mesa e pessoa visíveis e aproximadas (≥ ×1,15) | `test-pagina.cjs` → `PASS C31-desktop` em 1024×768, 1280×800 e 1440×900 |
+| R4 halo pulsando | `test-cena.mjs` → `PASS C6` (escala do halo muda) |

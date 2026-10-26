@@ -790,11 +790,14 @@ async function principal() {
   }
 
   // ── C31-desktop (R23): em 1440×900 a mesa aproximada fica visível ao lado do painel ──
-  {
-    const s = await abrir({ largura: 1440, altura: 900 });
+  for (const [largura, altura] of [[1024, 768], [1280, 800], [1440, 900]]) {
+    const s = await abrir({ largura, altura });
     const pg = s.pagina;
     await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
     const notas = [];
+    // Distância na tela entre a mesa e a pessoa na Tela 1: a aproximação tem de aumentá-la.
+    const distancia = async (mesa) => { const q = (await inspecionar(pg)).projetados; return Math.hypot(q[`mesa-${mesa}`].x - q[`personagem-${mesa}`].x, q[`mesa-${mesa}`].y - q[`personagem-${mesa}`].y); };
+    const tela1 = { fiscal: await distancia('fiscal'), auditor: await distancia('auditor') };
     for (const mesa of ['fiscal', 'auditor']) {
       await pg.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
       let antes = null;
@@ -803,7 +806,7 @@ async function principal() {
       assert(await esperarPara(() => gavetaAberta(pg)), `C31-desktop: gaveta do ${mesa} não abriu`);
       await pg.waitForTimeout(7000);
       const g = await caixaDaGaveta(pg);
-      const painel = await pg.evaluate(() => { const d = document.querySelector('#gaveta [role="dialog"]').getBoundingClientRect(); return { left: d.left, right: d.right }; });
+      const painel = await pg.evaluate(() => { const d = document.querySelector('#gaveta [role="dialog"]').getBoundingClientRect(); return { left: d.left > 1 ? d.left : 0, right: d.right }; });
       const c = await pg.locator('#escritorio-canvas').boundingBox();
       const m = (await inspecionar(pg)).projetados[`mesa-${mesa}`];
       const pessoa = (await inspecionar(pg)).projetados[`personagem-${mesa}`] || m;
@@ -811,11 +814,15 @@ async function principal() {
       for (const [nome, ponto] of [['mesa', m], ['pessoa', pessoa]]) {
         const x = c.x + ponto.x;
         const y = c.y + ponto.y;
-        assert(y > fundoNav && y < 900, `C31-desktop ${mesa}: ${nome} fora da vista (y=${y.toFixed(0)}, navbar ${fundoNav.toFixed(0)})`);
-        assert(x < painel.left - 8, `C31-desktop ${mesa}: ${nome} sob o painel (x=${x.toFixed(0)}, painel em ${painel.left.toFixed(0)})`);
+        assert(y > fundoNav && y < altura, `C31-desktop ${largura} ${mesa}: ${nome} fora da vista (y=${y.toFixed(0)}, navbar ${fundoNav.toFixed(0)})`);
+        // Painel lateral (≥ 1280): a mesa fica à esquerda dele. Folha de baixo: acima do topo dela.
+        if (painel.left > 0) assert(x < painel.left - 8, `C31-desktop ${largura} ${mesa}: ${nome} sob o painel (x=${x.toFixed(0)}, painel em ${painel.left.toFixed(0)})`);
+        else assert(y < g.top, `C31-desktop ${largura} ${mesa}: ${nome} sob a gaveta (y=${y.toFixed(0)}, gaveta em ${g.top.toFixed(0)})`);
       }
-      notas.push(`${mesa}: mesa (${(c.x + m.x).toFixed(0)}, ${(c.y + m.y).toFixed(0)}), painel x≥${painel.left.toFixed(0)}, ${g.height.toFixed(0)}px`);
-      if (mesa === 'fiscal') await pg.screenshot({ path: path.join(CAPTURAS, 'pagina-gaveta-1440.png') });
+      const zoom = (await distancia(mesa)) / tela1[mesa];
+      assert(zoom >= 1.15, `C31-desktop ${largura} ${mesa}: a câmera não aproximou a mesa (×${zoom.toFixed(2)})`);
+      notas.push(`${largura} ${mesa}: mesa (${(c.x + m.x).toFixed(0)}, ${(c.y + m.y).toFixed(0)}), aproximação ×${zoom.toFixed(2)}`);
+      if (mesa === 'fiscal') await pg.screenshot({ path: path.join(CAPTURAS, `pagina-gaveta-${largura}.png`) });
       await pg.keyboard.press('Escape');
       assert(await esperarPara(async () => !(await gavetaAberta(pg))));
       await pg.waitForTimeout(600);
@@ -848,6 +855,11 @@ async function principal() {
     assert.equal(capi.length, 1, 'C33: CAPI deveria ter um ViewContent');
     assert.equal(capi[0].event_name, 'ViewContent');
     assert.equal(capi[0].event_id, vc.event_id, 'C33: event_id da CAPI ≠ do Pixel');
+    // R21: nada de dado pessoal nem content_* vai à Meta; a URL vai sem query.
+    const chavesPermitidas = ['event_name', 'event_id', 'event_source_url', 'fbp', 'fbc'];
+    assert.deepEqual(Object.keys(capi[0]).filter((k) => capi[0][k] !== undefined && !chavesPermitidas.includes(k)), [], `C33: chaves a mais na CAPI ${Object.keys(capi[0])}`);
+    assert(!capi[0].event_source_url.includes('?'), `C33: URL com query na CAPI (${capi[0].event_source_url})`);
+    assert.deepEqual(fbqVc[2], {}, `C33: dados no ViewContent do Pixel ${JSON.stringify(fbqVc[2])}`);
     const chamadasCapi = await pg.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/functions/v1/meta-capi')).length);
     assert.equal(chamadasCapi, 0, 'C33: CAPI saiu do navegador fora do domínio de produção');
     // Gaveta pelo botão e CTA dentro dela.

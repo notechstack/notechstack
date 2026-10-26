@@ -316,12 +316,17 @@ html.gv-aberta { overflow: hidden; }
 .gv-cta:focus-visible { outline: 3px solid var(--no-tinta); outline-offset: 2px; }
 
 /* ── desktop: centralizada, altura pelo conteúdo ── */
-@media (min-width: 1024px) {
-  /* Desktop (R23): painel encostado à direita, para a mesa aproximada ficar livre à esquerda dele
-     (o canvas tem até 720 px, centralizado). Entre 768 e 1023 px vale a folha de baixo do celular. */
+/* Tablet e desktop estreito (768–1279 px): folha de baixo mais baixa, para sobrar faixa e a
+   câmera aproximar a mesa acima dela (C31-desktop em 1024×768). */
+@media (min-width: 768px) and (max-width: 1279px) { .gv { --gv-altura-max: 52vh; } }
+
+@media (min-width: 1280px) {
+  /* Desktop (R23): painel de 480 px encostado à direita, para a mesa aproximada ficar livre à
+     esquerda dele (o canvas tem até 720 px, centralizado: a coluna da mesa vai até ~vw/2 + 120,
+     e o painel começa em vw − 504). Abaixo de 1280 px vale a folha de baixo do celular. */
   .gv-painel {
     inset: auto 24px 24px auto; margin: 0;
-    width: min(var(--gv-largura), calc(100vw - 48px));
+    width: min(480px, calc(100vw - 48px));
     height: fit-content;
     max-height: min(84vh, 800px);
     border-radius: var(--gv-raio);

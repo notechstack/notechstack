@@ -125,6 +125,9 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     const op3 = (await page.evaluate(() => cena.inspecionar())).contornoVaga.opacidade;
     assert.equal(i1.contornoVaga.cor, TOKEN.ambar, `R10: contorno ${i1.contornoVaga.cor}`);
     assert(Math.max(op1, op2, op3) - Math.min(op1, op2, op3) > 0.1, `R10: contorno âmbar parado (${op1}, ${op2}, ${op3})`);
+    /* R4: o halo de cada etiqueta pulsa (escala muda) */
+    const h1 = i1.halos, h3 = (await page.evaluate(() => cena.inspecionar())).halos;
+    for (const id of ['fiscal', 'auditor', 'vaga']) assert(Math.abs(h1[id].escala - h3[id].escala) > 1e-3, `R4 ${id}: halo parado`);
     assert.equal(i1.enquadramento, 'tela1');
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela1.png') });
     const pngTela1 = path.join(tmp, 'poster-escritorio.png');

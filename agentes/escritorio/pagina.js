@@ -100,7 +100,7 @@ function enviarCapi(eventName, eventId) {
   const corpo = {
     event_name: eventName,
     event_id: eventId,
-    event_source_url: location.href,
+    event_source_url: location.origin + location.pathname, // sem query: nada além da página vai à Meta
     fbp: cookie('_fbp') || undefined,
     fbc: fbcAtual() || undefined,
   };
@@ -268,7 +268,7 @@ function calcularAlvoY() {
   if (folha) {
     const caixa = folha.getBoundingClientRect();
     // Painel ao lado (desktop, R23): não cobre a coluna da mesa, então a faixa vai até o fim do canvas.
-    if (caixa.left >= meioCanvas + 160 || caixa.right <= meioCanvas - 160) {
+    if (caixa.left >= meioCanvas + 120 || caixa.right <= meioCanvas - 120) {
       const faixaLivre = clamp(Math.min(innerHeight, quadroCanvas.bottom), topoCanvas + 40, topoCanvas + altura) - topoCanvas;
       return clamp(faixaLivre / 2 / altura, 0.06, 0.5);
     }
@@ -285,7 +285,9 @@ function calcularAlvoY() {
 // a navbar e o topo da gaveta), para a cena caber a pessoa e a mesa inteiras nessa faixa.
 function quadroFoco() {
   const alvoY = calcularAlvoY();
-  return { alvoY, alturaVisivel: clamp(alvoY * 2, 0.12, 1) };
+  // No desktop a faixa livre é o canvas inteiro: limitar a 0,6 garante a aproximação da mesa
+  // (critério 12) em vez de um quadro quase igual ao da Tela 1.
+  return { alvoY, alturaVisivel: clamp(alvoY * 2, 0.12, 0.6) };
 }
 
 let reenquadrar = 0;

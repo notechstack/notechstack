@@ -1,31 +1,26 @@
-# Verificação da frente D — resumo (rodada 2)
+# Verificação da frente D — resumo (rodada 3)
 
-Relatório completo: `.checks/agentes-escritorio.verified.md` (Round 2, verificado em `c54fbd54`, faixa `9a12aecb..c54fbd54`, perfil `light` + passo 1 a pedido).
+Relatório completo: `.checks/agentes-escritorio.verified.md` (Round 3, verificado em `bd2b2073`; re-verificação de `c54fbd54..bd2b2073` e do que não passou na rodada 2; perfil `light` + passo 1).
 
-**Veredito: FAIL** · critérios 1–32 renegociados: 32/32 provados · 44/44 `PASS` nas três provas, rodadas uma de cada vez (EXIT 0) · R vigentes: 8 por asserção, 3 parciais, 3 só por inspeção, R3 em aberto · faults não rodaram (`light`)
+**Veredito: FAIL** · 46/46 `PASS` nas três provas, rodadas inteiras e uma de cada vez (EXIT 0) · nenhuma asserção enfraquecida · faults não rodaram (`light`)
 
 ## Lacunas, por gravidade
 
-1. **Alta — 1440, Tela 2:** o modal da gaveta cobre a mesa aproximada. No fiscal, a mesa está em y=163 com o topo do modal em 165; no Auditor, em y=152 com o topo em 131. Foi dado como corrigido e não está, e nenhum check cobre isso. Ver `final2-tela2-1440.png`.
-2. **Média-alta — R4, R9 e R10 sem asserção:** círculo ≥ 16 px, halo, contorno ≥ 2 px e âmbar piscando apontam para o `PASS C6`, que só afirma texto e cor. O código (`cena.js:47`, `:354-359`) e a imagem conferem. R5 (forma do crachá), R12 (lado a lado, sem cruzar, tubos com pulsos) e R16 (meshopt e WebP) também foram conferidos só à mão.
-3. **Média — R3:** a mediana `[220,199,170] ±12` ficou sem prova, e a cena dá `[204,154,108]`. A R8 manda escurecer, mas não retira a mediana de forma expressa.
-4. **Média-baixa:** o corpo do checklist (C1, C2, C6, C7, C16, C26a, C31) e o Unresolved 6 da task ainda trazem os valores antigos.
-5. **Baixa:** arranjo da referência sem check (cartões, CTA, alça, botão largo); "mesmo ângulo" (R11) não é afirmado; no C16, inteiros pequenos passam trivialmente; as provas regravam 16 PNGs versionados; na Tela 2, o `h1` aparece acima da navbar.
+1. **Alta — R23 falha em 1024×768:** o painel (x=460–1000) cobre a mesa aproximada, que fica em x≈517, e a câmera se afasta ×1,80. O `C31-desktop` só mede 1440. Ver `final3-tela2-1024.png` e `final3-tela2-auditor-1024.png`.
+2. **Média-alta — 1440:** a mesa fica à esquerda do painel, mas a câmera não aproxima (×0,98). O critério 12 ("aproxima essa mesa") não é afirmado na página.
+3. **Média — C33:** não afirma a ausência de dado pessoal e de `content_*`, embora o código confira. Também não exercita o envio em produção. `event_source_url` leva a query string inteira.
+4. **Média-baixa:** o checklist não tem linhas para R17–R23, C31-desktop e C33, e o corpo dos checks segue com valores antigos. No Unresolved 4, 6 e 7, só o status mudou.
+5. **Baixa:** halo da R4 sem asserção; faixa de 769–1100 px do `.agency-partner` não copiada; arquivo de origem do logo ausente; `h1` acima da navbar na Tela 2; provas regravando PNGs.
 
-## Fechado desde a rodada 1
+## Fechado desde a rodada 2
 
-- O C31 agora mede com a conversa completa (9 s / 7 s): a gaveta tem 503 px (≤ 62%) e a mesa fica acima dela.
-- Em 1440, o fecho mostra a sala abaixo da navbar junto com o `h2`.
-- O C6 roda no canvas da página e o C7 varre os nomes do GLB.
+- 1440: mesa e pessoa à esquerda do painel.
+- R4 (círculo), R9 e R10 afirmados a partir da textura real.
+- R3 substituída pela R8, com aprovação registrada.
 
 ## Conferido sem achado
 
-- R2: cena de borda a borda, sem caixa, com degradê de 64 px.
-- Telas 1, 2 e 3 em 375 e 390.
-- Nenhum polvo, mascote ou animal no GLB (nós e texturas), nos pôsteres ou nas texturas do Blender.
-- `agentes/fiscal/` e `agentes/auditor/` intactos.
-- As provas que mudaram mudaram por renegociação registrada (R1, R6, R10, R11, R13, R15) ou só por tempo, sem enfraquecimento.
-
-## Atenção
-
-A worktree recebeu a Rodada 6 (R17–R19) sem commit às 17:52–17:54, durante a verificação. Minhas provas e capturas terminaram antes (17:47 e 17:51) e valem para `c54fbd54`. A Rodada 6 não foi verificada.
+- R17–R19: textos exatos; o card repete a estrutura e o CSS do `.agency-partner` com tokens, sem hex.
+- R20–R21: o mesmo `event_id` chega ao dataLayer, ao Pixel e ao corpo da CAPI (o mesmo objeto do `fetch`), e a CAPI fica presa fora da produção.
+- R22: o JSON do GTM é coerente. Os IDs 1001–1024 não colidem com `gtm-nofiscal-funil` nem com `gtm-compra-diagnostico`, as referências existem e o GA4 é `G-1YEB89RVER`.
+- `agentes/fiscal/`, `agentes/auditor/` e `shared/` intactos.

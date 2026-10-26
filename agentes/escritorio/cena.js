@@ -495,6 +495,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     return {
       enquadramento, projetados, etiquetas, logoBalcao, personagens,
       contornoVaga: { opacidade: +contornoVaga.material.opacity.toFixed(3), cor: corBorda(contornoVaga) },
+      halos: Object.fromEntries(MESAS.map(id => [id, { opacidade: +halos[id].material.opacity.toFixed(3), escala: +halos[id].scale.x.toFixed(4) }])),
       linhas: { cor: '#' + cabos[0].material.color.getHexString(), quantidade: cabos.length },
       placaSala: placa ? placa.userData.texto : null,
       /* aditivos: quadro da câmera, cabos sobre o piso (R12) e custo do último quadro */
