@@ -1,0 +1,170 @@
+{
+ "Tela1": {
+  "marca-mesa-fiscal": [
+   50.9,
+   24.9
+  ],
+  "marca-mesa-auditor": [
+   60.6,
+   45.7
+  ],
+  "marca-mesa-vaga": [
+   70.4,
+   66.3
+  ],
+  "marca-recepcao": [
+   25.2,
+   79.3
+  ],
+  "marca-sala": [
+   126.9,
+   3.3
+  ],
+  "marca-pessoa-fiscal": [
+   38.2,
+   13.6
+  ],
+  "marca-pessoa-auditor": [
+   48.0,
+   34.3
+  ],
+  "etiqueta-fiscal": [
+   60.8,
+   8.3
+  ],
+  "etiqueta-auditor": [
+   74.0,
+   29.7
+  ],
+  "etiqueta-vaga": [
+   79.0,
+   54.9
+  ]
+ },
+ "Tela2_fiscal": {
+  "marca-mesa-fiscal": [
+   46.3,
+   71.8
+  ],
+  "marca-mesa-auditor": [
+   65.3,
+   139.7
+  ],
+  "marca-mesa-vaga": [
+   84.4,
+   207.3
+  ],
+  "marca-recepcao": [
+   -4.0,
+   250.2
+  ],
+  "marca-sala": [
+   194.8,
+   1.1
+  ],
+  "marca-pessoa-fiscal": [
+   21.6,
+   34.7
+  ],
+  "marca-pessoa-auditor": [
+   40.6,
+   102.6
+  ],
+  "etiqueta-fiscal": [
+   65.7,
+   17.2
+  ],
+  "etiqueta-auditor": [
+   91.5,
+   87.5
+  ],
+  "etiqueta-vaga": [
+   101.1,
+   170.0
+  ]
+ },
+ "Tela2_auditor": {
+  "marca-mesa-fiscal": [
+   27.2,
+   3.8
+  ],
+  "marca-mesa-auditor": [
+   46.3,
+   71.8
+  ],
+  "marca-mesa-vaga": [
+   65.3,
+   139.3
+  ],
+  "marca-recepcao": [
+   -23.1,
+   182.2
+  ],
+  "marca-sala": [
+   175.7,
+   -66.9
+  ],
+  "marca-pessoa-fiscal": [
+   2.5,
+   -33.3
+  ],
+  "marca-pessoa-auditor": [
+   21.6,
+   34.7
+  ],
+  "etiqueta-fiscal": [
+   46.6,
+   -50.8
+  ],
+  "etiqueta-auditor": [
+   72.4,
+   19.5
+  ],
+  "etiqueta-vaga": [
+   82.1,
+   102.1
+  ]
+ },
+ "Fecho_sala": {
+  "marca-mesa-fiscal": [
+   2.1,
+   57.6
+  ],
+  "marca-mesa-auditor": [
+   10.6,
+   75.8
+  ],
+  "marca-mesa-vaga": [
+   19.2,
+   93.9
+  ],
+  "marca-recepcao": [
+   -20.5,
+   105.3
+  ],
+  "marca-sala": [
+   68.8,
+   38.7
+  ],
+  "marca-pessoa-fiscal": [
+   -9.0,
+   47.7
+  ],
+  "marca-pessoa-auditor": [
+   -0.4,
+   65.9
+  ],
+  "etiqueta-fiscal": [
+   10.8,
+   43.0
+  ],
+  "etiqueta-auditor": [
+   22.4,
+   61.8
+  ],
+  "etiqueta-vaga": [
+   26.7,
+   83.9
+  ]
+ }
+}
