@@ -41,16 +41,17 @@ Com a mudança, quem abre `/agentes/` no celular vê um escritório 3D isométri
    - a mesa do `nó.fiscal`, com etiqueta de ponto verde;
    - a mesa do `Auditor`, com etiqueta de ponto azul;
    - a mesa vazia, com etiqueta "um problema seu aqui?" de ponto âmbar;
-   - a recepção, com o polvo mascote (corpo verde e pontas dos tentáculos em azul, vermelho, âmbar e verde) e o "nó." na frente do balcão.
+   - a recepção, com o balcão e o "nó." na frente dele.
 
    É o enquadramento da Tela 1 da referência.
 7. Sempre:
+   - a cena não tem mascote nem animal: só os dois personagens, móveis, plantas e objetos de escritório;
    - os personagens são figuras de corpo em cápsula e cabeça redonda, com crachá na cor do agente: verde no fiscal e azul no auditor;
    - nenhum personagem tem nome de pessoa;
    - a cena não usa nada da planta nem dos nomes de *The Office*.
 8. Sempre: o "nó." do balcão é uma textura plana feita de `/brand/logo/svg/no-tinta-ponto-azul.svg`, sem extrusão, sombra própria nem contorno.
-9. Enquanto a cena está visível e a aba ativa, os dois personagens e o polvo se mexem sem parar:
-   - em dois quadros capturados com 1 s de intervalo, a região de cada um dos três difere;
+9. Enquanto a cena está visível e a aba ativa, os dois personagens se mexem sem parar:
+   - em dois quadros capturados com 1 s de intervalo, a região de cada um dos dois difere;
    - após 60 s, o mesmo teste ainda dá diferença;
    - o laço não tem ponto de parada.
 10. Enquanto o canvas está fora da tela ou a aba está oculta, nenhum quadro é renderizado: o contador de quadros exposto pela cena não sobe. Ao voltar à tela, a animação continua.
@@ -200,10 +201,10 @@ stateDiagram-v2
 ## Sources
 
 - Conversa com Lucca de 26/10/2026, sem endereço. Linhas que decidem, citadas: "o escritório e os bonecos ficaram bons, mas quero eles em constante movimento em loop"; "as demonstrações do nó.fiscal devem ser um mockup de conversa no whatsapp onde simula as mensagens básicas para gerar uma nota fiscal e o auditor a mensagem também chegando no whatsapp com um relatório resumido em mensagens do desempenho em tráfego na última semana"; "os botões de cada agente levando para a LP do agente"; "se necessário criamos ao usuário entrar no site uma tela de carregamento… Se demorar muito, abre uma opção de ver sem animações e abre a versão do site estática"; "tem que ser mobile first".
-- `.tasks/refs/agentes-escritorio-referencia.webp` - **vinculante para a interface**. Gerada no ChatGPT por Lucca e aprovada por ele. Tela 1: hero com rótulo, `h1`, subtítulo e escritório vertical com três mesas e a recepção. Tela 2: mesa aproximada em cima, gaveta com selo, título, conversa e botão azul largo. Tela 3: recuo com linhas azuis até a sala "nó tech stack", `h2`, dois cartões lado a lado e o botão "Conte sua ideia" com contorno. O texto da imagem prevalece onde os critérios o transcrevem; os passos ilustrados na gaveta da Tela 2 são substituídos pelo mockup de WhatsApp dos critérios 13 e 16, como Lucca pediu depois.
+- `.tasks/refs/agentes-escritorio-referencia.webp` - **vinculante para a interface**. Gerada no ChatGPT por Lucca e aprovada por ele; em 26/10/2026, a pedido dele, o mascote foi apagado do balcão nas Telas 1 e 3. Tela 1: hero com rótulo, `h1`, subtítulo e escritório vertical com três mesas e a recepção. Tela 2: mesa aproximada em cima, gaveta com selo, título, conversa e botão azul largo. Tela 3: recuo com linhas azuis até a sala "nó tech stack", `h2`, dois cartões lado a lado e o botão "Conte sua ideia" com contorno. O texto da imagem prevalece onde os critérios o transcrevem; os passos ilustrados na gaveta da Tela 2 são substituídos pelo mockup de WhatsApp dos critérios 13 e 16, como Lucca pediu depois.
 - `agentes/fiscal/index.html` e `agentes/fiscal/fiscal.js` (linhas 248–311) - textos da conversa do fiscal e âncora `#simulador`.
 - `supabase/functions/marketing-hub/auditor.ts` `textoCopia`, `app/src/auditor/CopiaWhatsapp.tsx` e `app/src/auditor/checkout.ts` (`PLANOS`: Semanal "Toda segunda") - formato da mensagem do auditor e o fato de que a cópia é manual e opcional. **Isso corrige a fonte**: o pedido fala em mensagem "chegando no WhatsApp", e ela chega, mas como cópia enviada pela equipe, não por um robô.
-- Design system nó v1.0.0 (skill `no-design-system`) - duas fontes, tokens, "nó." plano, o polvo como o único personagem 3D da marca e o selo de demonstração.
+- Design system nó v1.0.0 (skill `no-design-system`) - duas fontes, tokens, "nó." plano e o selo de demonstração. O mascote do design system não entra nesta página (pedido de Lucca em 26/10/2026).
 - `lp-narrador/cenas-lp/historia/cenas3d.js` - matéria dos blocos arredondados, cores da cena e padrão de carga sob demanda e de movimento reduzido.
 
 This task is the record of decision. If a linked document diverges, ask before building.
