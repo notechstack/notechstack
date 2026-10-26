@@ -225,11 +225,13 @@ for (const [mesa, el] of mesas) {
 // ── Rolagem → cena.fecho(t) e etiquetas sobre a cena ──
 // t = 1 assim que o canvas encosta na navbar ou o h2 do fecho chega a FIM_FECHO da viewport,
 // o que vier primeiro: assim o recuo (Tela 3) acontece com a cena inteira à vista, com o h2
-// logo abaixo, também no desktop. O recuo ocupa os 60% de altura do canvas anteriores a isso.
+// logo abaixo, também no desktop. O recuo ocupa os 60% de altura do canvas anteriores a isso,
+// depois de uma zona morta (ZONA_MORTA px ou metade do caminho): rolar de leve mantém a Tela 1.
+const ZONA_MORTA = 80;
 function progressoFecho() {
   const encosta = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
   const fim = Math.max(1, Math.min(encosta, topoNoDocumento(tituloFecho) - innerHeight * FIM_FECHO));
-  const inicio = Math.max(0, fim - escritorio.clientHeight * 0.6);
+  const inicio = Math.max(Math.min(ZONA_MORTA, fim / 2), fim - escritorio.clientHeight * 0.6);
   return clamp((scrollY - inicio) / (fim - inicio), 0, 1);
 }
 

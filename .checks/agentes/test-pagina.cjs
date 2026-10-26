@@ -475,6 +475,9 @@ async function principal() {
         if (!REAL) await pagina.addInitScript(() => { window.__stubCenaAtraso = 1200; });
         // gaveta.js e a JetBrains Mono chegam por último: a tela tem de esperar por eles.
         await pagina.route(/\/gaveta\.js$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2200)); await r.continue(); });
+        // A montagem da cena real trava a thread principal por alguns segundos: ela só começa
+        // depois das leituras abaixo, senão a tela some antes de a prova conseguir olhá-la.
+        await pagina.route(/\/agentes\/escritorio\/cena\.js$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 1800)); await r.continue(); });
         await pagina.route(/jetbrains-mono-latin-500-normal\.woff2$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2600)); await r.continue(); });
       },
     });
@@ -635,6 +638,14 @@ async function principal() {
     await p.waitForTimeout(300);
     const vaga = p.locator('[data-mesa="vaga"]');
     assert.equal(await vaga.getAttribute('href'), '/contato/');
+    // A câmera ainda volta da gaveta do C20: espera o botão parar, como faria uma pessoa.
+    let antes = null;
+    assert(await esperarPara(async () => {
+      const agora = JSON.stringify(await vaga.boundingBox());
+      const parado = agora === antes;
+      antes = agora;
+      return parado;
+    }, 6000, 300), 'C19: botão da vaga não parou');
     await vaga.click();
     assert(await esperarPara(() => navegou >= 1), 'C19: botão da vaga não navegou para /contato/');
     assert.equal(await gavetaAberta(p), false, 'C19: abriu gaveta (botão)');

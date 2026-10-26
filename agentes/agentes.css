@@ -126,9 +126,9 @@ html.animada .ag-fecho-poster { display: none; }
 }
 /* Posições das etiquetas no pôster, medidas em cena.inspecionar().projetados['etiqueta-*']
    (375×812): fiscal e Auditor ancoram pela esquerda, a vaga pelo centro. */
-.ag-mesa[data-mesa="fiscal"]  { --mx: 51.7%; --my: 26.5%; }
-.ag-mesa[data-mesa="auditor"] { --mx: 65.4%; --my: 41.5%; }
-.ag-mesa[data-mesa="vaga"]    { --mx: 81.4%; --my: 56.1%; width: max-content; transform: translate(-50%, -50%); }
+.ag-mesa[data-mesa="fiscal"]  { --mx: 46.4%; --my: 21.6%; }
+.ag-mesa[data-mesa="auditor"] { --mx: 58.7%; --my: 36.0%; }
+.ag-mesa[data-mesa="vaga"]    { --mx: 77.0%; --my: 53.3%; width: max-content; transform: translate(-50%, -50%); }
 
 .ag-mesa-pilula {
   display: inline-flex;
