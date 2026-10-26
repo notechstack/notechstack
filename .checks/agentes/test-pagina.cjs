@@ -191,7 +191,7 @@ async function esperarPara(fn, timeout = 4000, passo = 100) {
   return ultimo;
 }
 
-// Pôsteres provisórios da bancada (750×1624, sem mascote nem animal): gerados uma vez.
+// Pôsteres provisórios da bancada (750×1040, sem mascote nem animal): gerados uma vez.
 async function garantirPosteresStub() {
   const alvo = (n) => path.join(raiz, STUBS.slice(1), `poster-${n}.webp`);
   if (fs.existsSync(alvo('escritorio')) && fs.existsSync(alvo('fecho'))) return;
@@ -200,10 +200,10 @@ async function garantirPosteresStub() {
   for (const nome of ['escritorio', 'fecho']) {
     const dados = await p.evaluate((fecho) => {
       const c = document.createElement('canvas');
-      c.width = 750; c.height = 1624;
+      c.width = 750; c.height = 1040;
       const x = c.getContext('2d');
       const cor = { fundo: '#FCF3E0', piso: '#F3F2ED', mesa: '#FAFAF7', tinta: '#141414', cinza: '#6B6F76', azul: '#3D63DB', verde: '#30A46C', ambar: '#EDA33B', vidro: '#E9EEFB' };
-      x.fillStyle = cor.fundo; x.fillRect(0, 0, 750, 1624);
+      x.fillStyle = cor.fundo; x.fillRect(0, 0, 750, 1040);
       x.fillStyle = cor.piso;
       x.beginPath(); x.moveTo(375, 120); x.lineTo(740, 760); x.lineTo(375, 1560); x.lineTo(10, 760); x.closePath(); x.fill();
       const mesas = fecho ? [[300, 560, cor.verde], [270, 820, cor.azul], [330, 1080, cor.ambar]] : [[450, 420, cor.verde], [390, 780, cor.azul], [480, 1150, cor.ambar]];
@@ -389,14 +389,14 @@ async function principal() {
     await pagina.waitForFunction(() => document.getElementById('escritorio-poster').complete);
     const p1 = await img.evaluate((el) => ({ src: el.currentSrc || el.src, w: el.naturalWidth, h: el.naturalHeight }));
     assert(/\/poster-escritorio\.webp$/.test(p1.src), `C26a: src ${p1.src}`);
-    assert.deepEqual([p1.w, p1.h], [750, 1624], 'C26a: pôster do escritório não é 750×1624');
+    assert.deepEqual([p1.w, p1.h], [750, 1040], 'C26a: pôster do escritório não é 750×1040 (R15)');
     const fecho = pagina.locator('#fecho-poster');
     await fecho.scrollIntoViewIfNeeded();
     await pagina.waitForFunction(() => { const i = document.getElementById('fecho-poster'); return i.complete && i.naturalWidth > 0; });
     const p2 = await fecho.evaluate((el) => ({ src: el.currentSrc || el.src, w: el.naturalWidth, h: el.naturalHeight }));
     assert(await fecho.isVisible());
     assert(/\/poster-fecho\.webp$/.test(p2.src), `C26a: src ${p2.src}`);
-    assert.deepEqual([p2.w, p2.h], [750, 1624], 'C26a: pôster do fecho não é 750×1624');
+    assert.deepEqual([p2.w, p2.h], [750, 1040], 'C26a: pôster do fecho não é 750×1040 (R15)');
     await pagina.screenshot({ path: path.join(CAPTURAS, 'pagina-estatica-fecho-375.png') });
     await rolarPara(pagina, 0);
     await pagina.waitForFunction(() => window.__agentesPagina.gaveta);
