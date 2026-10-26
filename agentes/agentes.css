@@ -56,17 +56,31 @@
 @media (min-width: 769px) { .ag-sub { font-size: 18px; } }
 
 /* ── Escritório: canvas (animada) ou pôster (estática / sem JS) ── */
+/* A cena faz parte da tela (rodada 3, R2): de borda a borda, sem caixa nem fundo próprio, e
+   as bordas se fundem ao fundo da página por degradê (64 px em cima e embaixo; nas laterais
+   só no desktop, onde a cena não vai até a borda). */
 .ag-escritorio {
+  --ag-fade: 64px;
   position: relative;
   width: min(100%, var(--ag-larg));
-  margin: 18px auto 0;
+  margin: 0 auto;
   aspect-ratio: 375 / 520;
   max-height: calc(100svh - 120px);
   min-height: 420px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--no-ambar-tint) 55%, var(--no-osso));
+  background: transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
 }
-@media (min-width: 769px) { .ag-escritorio { border-radius: 20px; max-height: calc(100svh - 240px); } }
+@media (min-width: 769px) {
+  .ag-escritorio {
+    max-height: calc(100svh - 240px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
+    mask-composite: intersect;
+  }
+}
 /* Estática e sem JS: o quadro tem a proporção do pôster (750×1624), sem corte, para os
    botões das mesas caírem exatamente onde a cena desenha as etiquetas. */
 html:not(.carregando):not(.animada) .ag-escritorio {

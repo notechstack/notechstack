@@ -246,7 +246,7 @@ async function principal() {
       '<h1', 'Cada agente resolve um problema da sua empresa.',
       'Por assinatura. Toque numa mesa para ver o agente trabalhando.',
       'data-mesa="fiscal"', 'nó.fiscal',
-      'data-mesa="auditor"', 'Auditor',
+      'data-mesa="auditor"', 'nó.auditor',
       'data-mesa="vaga"', 'um problema seu aqui?',
       '<h2', 'Quando forem vários, a gente une tudo num sistema só.',
       'class="ag-cartao" href="/agentes/fiscal/"', 'class="ag-cartao" href="/agentes/auditor/"',
@@ -261,7 +261,7 @@ async function principal() {
     const { contexto, pagina } = await abrir({ js: false });
     const h1 = (await pagina.locator('h1').innerText()).trim();
     assert.equal(h1, 'Cada agente resolve um problema da sua empresa.');
-    for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'Auditor'], ['vaga', 'um problema seu aqui?']]) {
+    for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'nó.auditor'], ['vaga', 'um problema seu aqui?']]) {
       assert.equal((await pagina.locator(`[data-mesa="${mesa}"]`).innerText()).trim(), texto, `C1: texto da mesa ${mesa}`);
     }
     assert.equal(await pagina.locator('.ag-cartao').count(), 2, 'C1: dois cartões');
@@ -280,7 +280,7 @@ async function principal() {
     assert((await fiscal.innerText()).includes('Emite a NFS-e pelo WhatsApp, para MEI e Simples.'), 'C2: linha do fiscal');
     assert((await fiscal.innerText()).includes('nó.fiscal'));
     assert((await auditor.innerText()).includes('Confere se o rastreamento dos seus anúncios conta certo.'), 'C2: linha do auditor');
-    assert((await auditor.innerText()).includes('Auditor'));
+    assert((await auditor.innerText()).includes('nó.auditor'));
     assert(!servido.includes('Revisa e organiza'), 'C2: "Revisa e organiza" no HTML');
     assert(!(await pagina.locator('body').innerText()).includes('Revisa e organiza'));
     await contexto.close();
@@ -593,7 +593,7 @@ async function principal() {
     await p.locator('[data-mesa="auditor"]').click();
     assert(await esperarPara(() => gavetaAberta(p)), 'C16-pagina: gaveta não abriu');
     assert.equal(await esperarPara(async () => ((await enquadramento(p)) === 'auditor' ? 'auditor' : null)), 'auditor', 'C16-pagina: câmera fora da mesa');
-    assert((await p.locator('#gaveta').innerText()).includes('Auditor — seu relatório semanal no WhatsApp'), 'C16-pagina: título');
+    assert((await p.locator('#gaveta').innerText()).includes('nó.auditor — seu relatório semanal no WhatsApp'), 'C16-pagina: título');
     await fecharComEsc();
     ok(naBancada('C16-pagina'));
   }
@@ -664,7 +664,7 @@ async function principal() {
   {
     const medirC31 = async (mesa, rotulo) => {
       const g = await caixaDaGaveta(p);
-      assert(g.height <= 0.75 * 812 + 0.5, `C31 ${rotulo}: gaveta com ${g.height}px`);
+      assert(g.height <= 0.62 * 812 + 0.5, `C31 ${rotulo}: gaveta com ${g.height}px`);
       const caixa = await p.locator('#escritorio-canvas').boundingBox();
       const m = (await inspecionar(p)).projetados[`mesa-${mesa}`];
       const yMesa = caixa.y + m.y;
