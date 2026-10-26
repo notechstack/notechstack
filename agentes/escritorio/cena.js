@@ -1,313 +1,46 @@
 /* ══════════════════════════════════════════════════════════════════════
    Escritório nó · cena 3D isométrica de /agentes/
-   three.js puro, geometria feita aqui (sem GLB): blocos arredondados em
-   osso, bege e madeira clara, como a matéria da home (cenas3d.js).
-   Três mesas em coluna (nó.fiscal, Auditor, mesa vaga), a recepção com o
-   "nó." plano no balcão e, à direita, a sala envidraçada "nó tech stack".
-   Só as duas pessoas, móveis, plantas e objetos de escritório: nada além disso.
+   three.js puro, geometria feita aqui (sem GLB), seguindo as Telas 1 e 3
+   da referência: piso creme, paredes osso, carvalho claro e cerâmica branca;
+   três mesas em coluna (nó.fiscal, Auditor, mesa vaga), a escada à
+   esquerda, a recepção com o "nó." plano no balcão e o estar embaixo; no
+   recuo do fecho, a sala envidraçada "nó tech stack" à direita, ligada às
+   mesas por três linhas azuis que correm pelo chão.
+   Só as duas pessoas, móveis, plantas e objetos de trabalho: nada além disso.
+   Módulos: cena-materia.js (matéria e assadura), cena-moveis.js (móveis e
+   sala), cena-pessoas.js (as duas pessoas e o movimento delas).
    Contrato: .tasks/agentes-escritorio-frentes.md (montarEscritorio).
    ══════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MARCA, COR, clamp01, clamp, suave, lerp, mat, malha, geoCaixa, texturaPiso, assar, limparCache } from './cena-materia.js';
+import {
+  MESA, mesa, recepcao, escada, estante, prateleira, janela, sofa, poltrona, banco, mesinha, tapete, planta,
+  salaTechStack, chip, luminaria, caneca, papeis, pilhaLivros, caixaPreta, mouse, sombraContato
+} from './cena-moveis.js';
+import { criarPessoa } from './cena-pessoas.js';
 
 const LOGO_BALCAO = '/brand/logo/svg/no-tinta-ponto-azul.svg';
-const R2 = Math.SQRT1_2;
-const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-const suave = t => t * t * (3 - 2 * t);
-const lerp = (a, b, t) => a + (b - a) * t;
 
-/* cores de marca lidas dos tokens da página (brand/tokens/tokens.css);
-   o valor entre parênteses é só o fallback quando o CSS não carregou */
-function token(nome, padrao){
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
-    if (/^#[0-9a-f]{6}$/i.test(v)) return v;
-  } catch (e) {}
-  return padrao;
+/* ── câmera ortográfica: quase de frente, como na referência (as bordas das
+      mesas sobem um pouco para a direita; a coluna de mesas desce em diagonal) ── */
+const ELEV = 35 * Math.PI / 180, AZ = -18 * Math.PI / 180;
+const DIR_CAM = new THREE.Vector3(Math.sin(AZ) * Math.cos(ELEV), Math.sin(ELEV), Math.cos(AZ) * Math.cos(ELEV)).normalize();
+const DIR_DIREITA = new THREE.Vector3(Math.cos(AZ), 0, -Math.sin(AZ));
+const DIR_CIMA = new THREE.Vector3().crossVectors(DIR_CAM, DIR_DIREITA).normalize();
+/* ponto do mundo na altura y que cai em (sx, sy) do plano da tela (unidades de mundo) */
+function naTela(sx, sy, y = 0){
+  const r = DIR_DIREITA, u = DIR_CIMA, b = sy - u.y * y;
+  const det = r.x * u.z - r.z * u.x;
+  return new THREE.Vector3((sx * u.z - r.z * b) / det, y, (r.x * b - u.x * sx) / det);
 }
-const MARCA = {
-  azul: token('--no-azul', '#3D63DB'), verde: token('--no-verde', '#30A46C'),
-  ambar: token('--no-ambar', '#EDA33B'), tinta: token('--no-tinta', '#141414')
-};
-/* matéria da cena: bege/osso quente, madeira clara, tinta nos monitores */
-const COR = {
-  piso: 0xE6DCCB, parede: 0xF3EDE3, madeira: 0xDBBB8E, madeiraEscura: 0xC9A579,
-  branco: 0xF9F6F0, osso: 0xEFE8DC, tinta: 0x1E1C1A, grafite: 0x4A4744, tela: 0x121722,
-  folha: 0x3C9D66, folhaEscura: 0x2E7F52, vaso: 0xD9C4A7, vasoEscuro: 0xB89B7B,
-  sofa: 0xEEE6D9, pele1: 0xF2CBA9, pele2: 0x8A5A3E, cabelo1: 0x2A1E19, cabelo2: 0x1A1412,
-  vidro: 0xD9E6F7, metal: 0xE8E4DC
-};
-const FONTE = "'Sora', system-ui, sans-serif";
+const tela = p => [p.dot(DIR_DIREITA), p.dot(DIR_CIMA)];
 
-/* ── matéria: material por cor, geometria arredondada com a base em y=0 ── */
-const materiais = new Map();
-function mat(cor, opts){
-  const k = cor + JSON.stringify(opts || {});
-  if (!materiais.has(k)) materiais.set(k, new THREE.MeshStandardMaterial(Object.assign({ color: cor, roughness: .86, metalness: 0 }, opts || {})));
-  return materiais.get(k);
-}
-function sombra(m){ m.castShadow = true; m.receiveShadow = true; return m; }
-function bloco(w, h, d, r, cor, opts){
-  const g = new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2, h / 2, d / 2));
-  g.translate(0, h / 2, 0);
-  return sombra(new THREE.Mesh(g, mat(cor, opts)));
-}
-function cilindro(rTopo, rBase, h, cor, seg = 24){
-  const g = new THREE.CylinderGeometry(rTopo, rBase, h, seg);
-  g.translate(0, h / 2, 0);
-  return sombra(new THREE.Mesh(g, mat(cor)));
-}
-function esfera(r, cor, seg = 18){
-  return sombra(new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(8, seg - 4)), mat(cor)));
-}
-/* coordenadas de composição: u desce na tela (x+z), v vai para a direita (x-z) */
-function emUV(obj, u, v, y = 0){ obj.position.set((u + v) * R2, y, (u - v) * R2); return obj; }
-
-/* ── etiqueta: chip branco arredondado, ponto colorido e texto em Sora ── */
-function chip({ texto, cor, mesa, tam = 30, peso = 600, alturaMundo = .5, ancora = [0, .5] }){
-  const dpr = 3, pad = 22, ponto = 9, alt = 56, entre = 34;
-  const linhas = texto.split('\n');
-  const cv = document.createElement('canvas');
-  const c = cv.getContext('2d');
-  const fonte = peso + ' ' + tam + "px " + FONTE;
-  c.font = fonte;
-  const larg = Math.max(...linhas.map(l => c.measureText(l).width));
-  const recuo = cor ? ponto * 2 + 12 : 0;
-  const w = pad + recuo + larg + pad, h = alt + (linhas.length - 1) * entre;
-  cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(h * dpr);
-  c.scale(dpr, dpr);
-  const r = linhas.length > 1 ? 18 : h / 2;
-  c.beginPath(); c.roundRect(0, 0, w, h, r);
-  c.fillStyle = '#FFFFFF'; c.fill();
-  c.lineWidth = 1.5; c.strokeStyle = 'rgba(20,20,20,.08)'; c.stroke();
-  const px = { x: Math.round((pad + ponto) * dpr), y: Math.round(h / 2 * dpr) };
-  if (cor){ c.fillStyle = cor; c.beginPath(); c.arc(pad + ponto, h / 2, ponto, 0, Math.PI * 2); c.fill(); }
-  c.font = fonte; c.fillStyle = MARCA.tinta; c.textBaseline = 'middle';
-  linhas.forEach((l, i) => c.fillText(l, pad + recuo, h / 2 + (i - (linhas.length - 1) / 2) * entre));
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
-  sp.renderOrder = 20;
-  const k = alturaMundo / alt;
-  sp.scale.set(w * k, h * k, 1);
-  sp.center.set(ancora[0], ancora[1]);
-  sp.userData = { mesa, texto: linhas.join(' '), ponto: cor ? px : null };
-  return sp;
-}
-/* placa da sala: "nó" + ponto azul + "tech stack", num chip branco */
-function placaTechStack(){
-  const dpr = 3, pad = 20, h = 52;
-  const cv = document.createElement('canvas');
-  const c = cv.getContext('2d');
-  const f1 = "800 30px " + FONTE, f2 = "600 24px " + FONTE;
-  c.font = f1; const w1 = c.measureText('nó').width;
-  c.font = f2; const w2 = c.measureText('tech stack').width;
-  const pontoW = 8, gap = 6, w = pad + w1 + 2 + pontoW + gap + w2 + pad;
-  cv.width = Math.ceil(w * dpr); cv.height = Math.ceil(h * dpr);
-  c.scale(dpr, dpr);
-  c.beginPath(); c.roundRect(0, 0, w, h, 12); c.fillStyle = '#FFFFFF'; c.fill();
-  c.lineWidth = 1.5; c.strokeStyle = 'rgba(20,20,20,.08)'; c.stroke();
-  c.textBaseline = 'alphabetic'; c.fillStyle = MARCA.tinta;
-  const base = h / 2 + 11;
-  c.font = f1; c.fillText('nó', pad, base);
-  c.fillStyle = MARCA.azul; c.fillRect(pad + w1 + 2, base - pontoW, pontoW, pontoW);
-  c.fillStyle = MARCA.tinta; c.font = f2; c.fillText('tech stack', pad + w1 + 2 + pontoW + gap, base);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
-  sp.renderOrder = 20;
-  const k = .5 / h; sp.scale.set(w * k, h * k, 1);
-  sp.userData.texto = 'nó tech stack';
-  return sp;
-}
-
-/* ── mobília ── */
-function planta(escala = 1, fase = 0){
-  const g = new THREE.Group();
-  g.add(cilindro(.2, .15, .32, COR.vaso));
-  const folhas = new THREE.Group(); folhas.position.y = .32; g.add(folhas);
-  const cores = [COR.folha, COR.folhaEscura, COR.folha, COR.folhaEscura, COR.folha];
-  for (let i = 0; i < 5; i++){
-    const f = esfera(.19, cores[i], 14);
-    f.scale.set(.55, 1.35, .55);
-    const a = i * Math.PI * 2 / 5 + fase;
-    f.position.set(Math.cos(a) * .13, .22, Math.sin(a) * .13);
-    f.rotation.set(Math.sin(a) * .55, 0, -Math.cos(a) * .55);
-    folhas.add(f);
-  }
-  const miolo = esfera(.17, COR.folha, 14); miolo.scale.set(.7, 1.3, .7); miolo.position.y = .32; folhas.add(miolo);
-  g.scale.setScalar(escala);
-  g.userData.folhas = folhas; g.userData.fase = fase;
-  return g;
-}
-function monitor({ larg = .84, alt = .52 } = {}){
-  const g = new THREE.Group();
-  g.add(cilindro(.16, .19, .025, COR.tinta));
-  const haste = bloco(.05, .2, .08, .01, COR.tinta); haste.position.y = .02; g.add(haste);
-  const corpo = bloco(.05, alt, larg, .03, COR.tinta); corpo.position.y = .2; g.add(corpo);
-  /* a tela olha para -x (para quem senta); o brilho pisca mesmo visto de lado */
-  const tela = new THREE.Mesh(new THREE.PlaneGeometry(larg - .08, alt - .08),
-    new THREE.MeshStandardMaterial({ color: COR.tela, emissive: MARCA.azul, emissiveIntensity: .3, roughness: .4 }));
-  tela.rotation.y = -Math.PI / 2; tela.position.set(-.027, .2 + alt / 2, 0); g.add(tela);
-  g.userData.tela = tela;
-  return g;
-}
-function cadeira(){
-  const g = new THREE.Group();
-  g.add(cilindro(.3, .3, .04, COR.grafite));
-  const haste = cilindro(.035, .035, .4, COR.grafite); g.add(haste);
-  const assento = bloco(.64, .1, .64, .05, COR.branco); assento.position.y = .4; g.add(assento);
-  const encosto = bloco(.09, .58, .6, .045, COR.branco); encosto.position.set(-.3, .48, 0); g.add(encosto);
-  return g;
-}
-function luminaria(){
-  const g = new THREE.Group();
-  g.add(cilindro(.12, .13, .03, COR.tinta));
-  const haste = cilindro(.02, .02, .55, COR.tinta, 10); g.add(haste);
-  const braco = bloco(.4, .03, .03, .01, COR.tinta); braco.position.set(-.17, .55, 0); braco.rotation.z = .35; g.add(braco);
-  const cabeca = cilindro(.05, .13, .17, COR.tinta, 18); cabeca.position.set(-.36, .42, 0); cabeca.rotation.z = Math.PI + .5; g.add(cabeca);
-  return g;
-}
-function caneca(){
-  const g = new THREE.Group();
-  g.add(cilindro(.055, .05, .11, COR.branco, 16));
-  const alca = new THREE.Mesh(new THREE.TorusGeometry(.035, .012, 8, 16), mat(COR.branco));
-  alca.position.set(.06, .06, 0); g.add(alca);
-  return g;
-}
-function livros(cores, deitados = true){
-  const g = new THREE.Group();
-  let y = 0;
-  cores.forEach((cor, i) => {
-    const l = deitados ? bloco(.34 - i * .02, .055, .25, .012, cor) : bloco(.05, .3 - (i % 2) * .04, .22, .01, cor);
-    if (deitados){ l.position.set((i % 2) * .03, y, 0); l.rotation.y = (i % 2 ? -1 : 1) * .12; y += .055; }
-    else l.position.set(i * .06, 0, 0);
-    g.add(l);
-  });
-  return g;
-}
-
-/* ── personagem: corpo em cápsula, cabeça redonda, cabelo simples, camisa
-      branca e crachá na cor do agente. Olha para +x (para o monitor). ── */
-function personagem({ agente, pele, cabelo: corCabelo, cracha: corCracha }){
-  const g = new THREE.Group(); g.name = 'personagem-' + agente; g.userData.agente = agente;
-  const tronco = new THREE.Group(); tronco.position.y = .42; g.add(tronco);
-  const corpo = sombra(new THREE.Mesh(new THREE.CapsuleGeometry(.27, .34, 6, 18), mat(COR.branco, { roughness: .95 })));
-  corpo.position.y = .38; tronco.add(corpo);
-  const cordao = bloco(.02, .22, .03, .005, COR.grafite); cordao.position.set(.27, .4, .06); cordao.rotation.y = -.25; tronco.add(cordao);
-  const cracha = sombra(new THREE.Mesh(new THREE.BoxGeometry(.04, .17, .14), mat(corCracha, { roughness: .55 })));
-  cracha.position.set(.275, .31, .1); cracha.rotation.y = -.4; tronco.add(cracha);
-  const bracos = [-1, 1].map(lado => {
-    const b = new THREE.Group(); b.position.set(.1, .62, lado * .29);
-    const gb = new THREE.CapsuleGeometry(.075, .28, 4, 12); gb.translate(0, -.19, 0);
-    b.add(sombra(new THREE.Mesh(gb, mat(COR.branco, { roughness: .95 }))));
-    const mao = esfera(.08, pele, 12); mao.position.y = -.4; b.add(mao);
-    b.rotation.z = 1.15; b.rotation.y = lado * .12;
-    tronco.add(b); return b;
-  });
-  const pescoco = new THREE.Group(); pescoco.position.y = .76; tronco.add(pescoco);
-  const cabeca = esfera(.3, pele, 26); cabeca.position.y = .26; pescoco.add(cabeca);
-  const cab = sombra(new THREE.Mesh(new THREE.SphereGeometry(.318, 24, 12, 0, Math.PI * 2, 0, Math.PI * .56), mat(corCabelo)));
-  cab.position.set(-.02, .27, 0); cab.rotation.z = .42; pescoco.add(cab);
-  [-1, 1].forEach(lado => {
-    const olho = new THREE.Mesh(new THREE.SphereGeometry(.034, 10, 8), mat(COR.tinta, { roughness: .4 }));
-    olho.position.set(.265, .27, lado * .105); olho.scale.set(.6, 1, 1); pescoco.add(olho);
-  });
-  const marca = new THREE.Object3D(); marca.position.y = 1.15; g.add(marca);
-  g.userData.partes = { tronco, pescoco, bracos, corpo, cabeca, cracha, marca };
-  return g;
-}
-
-/* ── mesa: tampo de madeira comprido em z, gaveteiro branco, monitor olhando
-      para quem senta (de costas para nós), teclado, e a cadeira atrás ── */
-function mesa({ id, ocupante, extras = [] }){
-  const g = new THREE.Group(); g.name = 'mesa-' + id; g.userData.mesa = id;
-  const tampo = bloco(1.15, .08, 2.3, .035, COR.madeira); tampo.position.y = .7; g.add(tampo);
-  const gav = bloco(.95, .66, .74, .05, COR.branco); gav.position.set(0, .04, .64); g.add(gav);
-  [-.3, .3].forEach(dx => { const p = cilindro(.045, .045, .66, COR.osso, 10); p.position.set(dx, .04, -1.0); g.add(p); });
-  const puxador = bloco(.02, .02, .3, .005, COR.grafite); puxador.position.set(.48, .5, .64); g.add(puxador);
-  const mon = monitor(); mon.position.set(.3, .78, 0); g.add(mon);
-  const teclado = bloco(.34, .03, .56, .012, COR.grafite); teclado.position.set(-.2, .78, 0); g.add(teclado);
-  const mouse = bloco(.1, .035, .07, .02, COR.branco); mouse.position.set(-.22, .78, .42); g.add(mouse);
-  const cad = cadeira(); cad.position.set(-1.0, 0, 0); g.add(cad);
-  if (ocupante){ ocupante.position.set(-.98, 0, 0); g.add(ocupante); }
-  extras.forEach(([obj, x, y, z]) => { obj.position.set(x, y, z); g.add(obj); });
-  const marca = new THREE.Object3D(); marca.position.y = .75; g.add(marca);
-  g.userData.marca = marca; g.userData.tela = mon.userData.tela;
-  return g;
-}
-
-/* ── recepção: balcão rodado 45° para a frente olhar a câmera; o "nó." é um
-      plano com a textura do SVG oficial, sem extrusão, sombra nem contorno ── */
-function recepcao(){
-  const g = new THREE.Group(); g.name = 'recepcao'; g.rotation.y = Math.PI / 4;
-  const corpo = bloco(2.1, 1.0, .9, .14, COR.branco); g.add(corpo);
-  const tampo = bloco(2.2, .06, 1.0, .03, COR.madeira); tampo.position.y = 1.0; g.add(tampo);
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1 * 964 / 1633),
-    new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, color: 0xFFFFFF }));
-  logo.name = 'logo-balcao'; logo.position.set(0, .5, .456);
-  logo.castShadow = false; logo.receiveShadow = false; logo.visible = false; g.add(logo);
-  const mon = monitor({ larg: .62, alt: .4 }); mon.position.set(.5, 1.06, -.05); mon.rotation.y = -Math.PI / 4 + .35; g.add(mon);
-  const pasta = bloco(.3, .03, .22, .01, COR.osso); pasta.position.set(-.5, 1.06, .1); pasta.rotation.y = .3; g.add(pasta);
-  const marca = new THREE.Object3D(); marca.position.y = .6; g.add(marca);
-  g.userData.marca = marca; g.userData.logo = logo; g.userData.tela = mon.userData.tela;
-  return g;
-}
-function sofa(){
-  const g = new THREE.Group();
-  const base = bloco(.9, .42, 1.9, .12, COR.sofa); g.add(base);
-  const enc = bloco(.24, .5, 1.9, .08, COR.sofa); enc.position.set(-.33, .4, 0); g.add(enc);
-  [-1, 1].forEach(l => { const b = bloco(.9, .24, .2, .07, COR.sofa); b.position.set(0, .42, l * .85); g.add(b); });
-  const almofada = bloco(.36, .3, .36, .09, COR.osso); almofada.position.set(-.1, .42, -.35); almofada.rotation.y = .25; g.add(almofada);
-  return g;
-}
-function mesinha(){
-  const g = new THREE.Group();
-  g.add(cilindro(.03, .03, .34, COR.grafite, 10));
-  const tampo = cilindro(.4, .4, .05, COR.madeiraEscura, 28); tampo.position.y = .34; g.add(tampo);
-  const base = cilindro(.18, .2, .025, COR.grafite, 20); g.add(base);
-  return g;
-}
-
-/* ── sala envidraçada "nó tech stack" ── */
-function salaTechStack(){
-  const g = new THREE.Group(); g.name = 'sala-tech-stack';
-  const W = 2.4, D = 2.2, H = 2.0;
-  const piso = bloco(W, .08, D, .04, COR.osso); g.add(piso);
-  const vidro = new THREE.Mesh(new THREE.BoxGeometry(W - .02, H, D - .02),
-    new THREE.MeshStandardMaterial({ color: COR.vidro, transparent: true, opacity: .3, roughness: .12, depthWrite: false, side: THREE.DoubleSide }));
-  vidro.position.y = .08 + H / 2; vidro.renderOrder = 5; g.add(vidro);
-  const pilar = (x, z) => { const p = bloco(.08, H, .08, .02, COR.metal); p.position.set(x, .08, z); g.add(p); };
-  [[-W / 2, -D / 2], [W / 2, -D / 2], [-W / 2, D / 2], [W / 2, D / 2]].forEach(([x, z]) => pilar(x, z));
-  const topoX = bloco(W + .08, .08, .08, .02, COR.metal), topoX2 = topoX.clone();
-  topoX.position.set(0, H + .04, -D / 2); topoX2.position.set(0, H + .04, D / 2); g.add(topoX, topoX2);
-  const topoZ = bloco(.08, .08, D + .08, .02, COR.metal), topoZ2 = topoZ.clone();
-  topoZ.position.set(-W / 2, H + .04, 0); topoZ2.position.set(W / 2, H + .04, 0); g.add(topoZ, topoZ2);
-  /* rack de servidores com luzes, uma mesa pequena e um monitor */
-  const rack = bloco(.55, 1.4, .45, .04, COR.tinta); rack.position.set(-.7, .08, -.6); g.add(rack);
-  const luzes = [];
-  for (let i = 0; i < 5; i++){
-    const l = new THREE.Mesh(new THREE.BoxGeometry(.03, .05, .05),
-      new THREE.MeshBasicMaterial({ color: i % 2 ? MARCA.verde : MARCA.azul, toneMapped: false }));
-    l.position.set(-.415, .4 + i * .2, -.6 + (i % 2 ? .1 : -.1)); g.add(l); luzes.push(l);
-  }
-  const mesaS = bloco(.65, .06, 1.0, .03, COR.madeira); mesaS.position.set(.6, .7, .25); g.add(mesaS);
-  const pe = bloco(.55, .64, .1, .02, COR.branco); pe.position.set(.6, .08, -.2); g.add(pe);
-  const mon = monitor({ larg: .56, alt: .38 }); mon.position.set(.72, .76, .25); mon.rotation.y = Math.PI; g.add(mon);
-  const pl = planta(.5, 2); pl.position.set(-.8, .08, .75); g.add(pl);
-  /* ponto azul onde as linhas chegam */
-  const no = new THREE.Mesh(new THREE.SphereGeometry(.14, 18, 14), new THREE.MeshBasicMaterial({ color: MARCA.azul, toneMapped: false }));
-  no.position.set(-.1, 1.0, .85); g.add(no);
-  const placa = placaTechStack(); placa.position.set(0, H + .55, 0); g.add(placa);
-  const marca = new THREE.Object3D(); marca.position.y = 1.0; g.add(marca);
-  g.userData = { marca, placa, no, luzes, tela: mon.userData.tela, planta: pl };
-  return g;
-}
-
-/* ── câmera isométrica: direção fixa, alvo e altura do quadro animados ── */
-const ELEV = 35 * Math.PI / 180, AZ = Math.PI / 4;
-const DIR_CAM = new THREE.Vector3(Math.cos(ELEV) * Math.sin(AZ), Math.sin(ELEV), Math.cos(ELEV) * Math.cos(AZ)).normalize();
+/* enquadramentos em coordenadas de tela: centro e largura de mundo visível.
+   A Tela 1 foi composta para o canvas da página (375:520) e só ganha altura
+   em canvas mais altos (375×812); o fecho guarda a proporção da Tela 3. */
+const TELA1 = { centro: [0, .2], largura: 5.6, alturaMin: 7.75 };
+const FECHO = { centro: [3.1, .45], largura: 10.5, proporcao: 440 / 375 };
 
 export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const progresso = p => { try { if (typeof aoProgresso === 'function') aoProgresso(clamp01(p)); } catch (e) {} };
@@ -326,7 +59,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   progresso(.08);
 
@@ -341,89 +75,167 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 200);
-  /* intensidades na escala física do three (π = albedo cheio): o piso sai
-     perto da própria cor, as sombras ficam leves */
-  scene.add(new THREE.HemisphereLight(0xFFFBF3, 0xE3D9CB, 2.0));
-  const sol = new THREE.DirectionalLight(0xFFF3E3, 1.4);
-  sol.position.set(-7, 14, 4); sol.castShadow = true;
-  sol.shadow.mapSize.set(2048, 2048); sol.shadow.bias = -.0006; sol.shadow.normalBias = .02;
-  Object.assign(sol.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 60 });
+  /* luz: ambiente de estúdio (reflexos suaves) + céu quente + sol baixo com sombra macia */
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const ambiente = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+  scene.environment = ambiente; scene.environmentIntensity = .45;
+  pmrem.dispose();
+  scene.add(new THREE.HemisphereLight(0xFFF7EC, 0xCDBEA8, .7));
+  const sol = new THREE.DirectionalLight(0xFFF0DE, 2.9);
+  sol.castShadow = true;
+  sol.shadow.mapSize.set(2048, 2048); sol.shadow.bias = -.0004; sol.shadow.normalBias = .025;
   scene.add(sol); scene.add(sol.target);
-  const contra = new THREE.DirectionalLight(0xFFF6EA, .5); contra.position.set(10, 5, 3); scene.add(contra);
+  const preenche = new THREE.DirectionalLight(0xF2F4FF, .5); preenche.position.set(6, 7, 12); scene.add(preenche);
 
-  /* ── piso e paredes ── */
   const raiz = new THREE.Group(); scene.add(raiz);
-  const X0 = -6.4, X1 = 12, Z0 = -8.4, Z1 = 12;
-  const piso = bloco(X1 - X0, .3, Z1 - Z0, .14, COR.piso);
-  piso.position.set((X0 + X1) / 2, -.3, (Z0 + Z1) / 2); raiz.add(piso);
-  const paredeEsq = bloco(.24, 2.2, Z1 - Z0, .05, COR.parede); paredeEsq.position.set(X0 + .12, 0, (Z0 + Z1) / 2); raiz.add(paredeEsq);
-  const paredeFundo = bloco(X1 - X0, 2.2, .24, .05, COR.parede); paredeFundo.position.set((X0 + X1) / 2, 0, Z0 + .12); raiz.add(paredeFundo);
-  const rodape = bloco(.3, .12, Z1 - Z0, .02, COR.osso); rodape.position.set(X0 + .15, 0, (Z0 + Z1) / 2); raiz.add(rodape);
-  const rodape2 = bloco(X1 - X0, .12, .3, .02, COR.osso); rodape2.position.set((X0 + X1) / 2, 0, Z0 + .15); raiz.add(rodape2);
+  const P = (sx, sy, y = 0) => naTela(sx, sy, y);
+  const poe = (obj, p, ry = 0) => { obj.position.set(p.x, obj.position.y, p.z); obj.rotation.y = ry; raiz.add(obj); return obj; };
 
-  /* prateleira na parede da esquerda, acima da mesa do fiscal */
-  const prateleira = new THREE.Group(); prateleira.position.set(X0 + .4, 1.45, -4.3); raiz.add(prateleira);
-  prateleira.add(bloco(.34, .04, 1.6, .01, COR.madeira));
-  const lv = livros([COR.osso, 0x9FB4E8, COR.tinta, COR.osso, 0xE8C98E], false); lv.position.set(-.1, .04, -.55); lv.rotation.y = Math.PI / 2; prateleira.add(lv);
-  const plPrat = planta(.42, 1); plPrat.position.set(0, .04, .5); prateleira.add(plPrat);
-  const quadro = bloco(.04, .7, .9, .01, COR.branco); quadro.position.set(X0 + .26, 1.1, -1.6); raiz.add(quadro);
-  const quadroMiolo = bloco(.02, .5, .7, .005, 0xD6DEF3); quadroMiolo.position.set(X0 + .29, 1.2, -1.6); raiz.add(quadroMiolo);
+  /* ── mesas, compostas pela Tela 1 (o centro de cada mesa no quadro) ── */
+  const infos = {
+    fiscal: mesa('fiscal', { variante: 0 }),
+    auditor: mesa('auditor', { variante: 1 }),
+    vaga: mesa('vaga', { variante: 2, ocupada: false })
+  };
+  const mesas = { fiscal: infos.fiscal.grupo, auditor: infos.auditor.grupo, vaga: infos.vaga.grupo };
+  poe(mesas.fiscal, P(.05, 1.95, MESA.alt));
+  poe(mesas.auditor, P(.6, .33, MESA.alt));
+  poe(mesas.vaga, P(1.15, -1.28, MESA.alt));
+  const zParede = mesas.fiscal.position.z - 2.15;
 
-  /* ── personagens e mesas ── */
+  /* objetos de cada mesa */
+  const naMesa = (id, obj, x, z, ry = 0, y = MESA.alt) => { obj.position.set(x, y, z); obj.rotation.y = ry; mesas[id].add(obj); return obj; };
+  naMesa('fiscal', luminaria(), .95, .22, -.4);
+  naMesa('fiscal', pilhaLivros([0xF4EFE6, 0xE9E1D3, 0xF6F2EA], 1), -.95, -.18, .2);
+  naMesa('fiscal', planta('suculenta', 1.15, 1, 'branco'), .6, .3);
+  naMesa('fiscal', papeis(3, 1), .35, -.22, .3);
+  naMesa('auditor', caixaPreta(), -1.0, .1, .25);
+  naMesa('auditor', caneca(0xF3EFE8, 0x3A2416), .7, -.15);
+  naMesa('auditor', planta('suculenta', 1.05, 2, 'creme'), .55, .32);
+  naMesa('auditor', papeis(2, 2), .25, -.25, -.2);
+  naMesa('vaga', planta('suculenta', 1.15, 3, 'branco'), .75, .28);
+  naMesa('vaga', papeis(2, 4), -.15, -.28, .25);
+  naMesa('vaga', caneca(0xE9E1D3), .35, .05);
+
+  /* ── as duas pessoas: tronco em cápsula, cabeça em esfera, crachá na cor do agente ── */
   const personagens = {
-    fiscal: personagem({ agente: 'fiscal', pele: COR.pele1, cabelo: COR.cabelo1, cracha: MARCA.verde }),
-    auditor: personagem({ agente: 'auditor', pele: COR.pele2, cabelo: COR.cabelo2, cracha: MARCA.azul })
+    fiscal: criarPessoa({ agente: 'fiscal', pele: 0xF0C7A4, cabelo: 0x2E2019, estilo: 'liso', calca: 0x3D4350, sapato: 0x3A2E26, cracha: MARCA.verde, fase: 0, ritmo: 1 }),
+    auditor: criarPessoa({ agente: 'auditor', pele: 0x7A4B33, cabelo: 0x16110E, estilo: 'crespo', calca: 0x2F3A4C, sapato: 0x1E1B19, cracha: MARCA.azul, fase: 11.3, ritmo: .93 })
   };
-  const mesas = {
-    fiscal: mesa({ id: 'fiscal', ocupante: personagens.fiscal, extras: [[luminaria(), .25, .78, -.9], [planta(.5, 0), .15, .78, .95]] }),
-    auditor: mesa({ id: 'auditor', ocupante: personagens.auditor, extras: [[caneca(), -.3, .78, -.75], [planta(.45, 3), .2, .78, -.95]] }),
-    vaga: mesa({ id: 'vaga', extras: [[planta(.5, 5), .2, .78, .95], [livros([COR.osso, 0x9FB4E8]), -.2, .78, -.8]] })
-  };
-  emUV(mesas.fiscal, -5.6, -.1); emUV(mesas.auditor, -2.1, .75); emUV(mesas.vaga, 1.4, 1.6);
-  Object.values(mesas).forEach(m => raiz.add(m));
+  personagens.auditor.userData.ladoOlhar = -1;
+  for (const id of ['fiscal', 'auditor']){
+    const p = personagens[id], A = MESA.assento, info = infos[id];
+    p.position.copy(A); mesas[id].add(p);
+    const ms = mouse(), cn = caneca(id === 'fiscal' ? 0xFFFFFF : 0xEDE6DA);
+    ms.position.copy(info.mouseLocal).sub(A); cn.position.copy(info.canecaLocal).sub(A);
+    p.add(ms, cn);
+    p.userData.ambiente({ teclado: info.teclado, mouse: ms, mouseBase: ms.position.clone(), caneca: cn, canecaBase: cn.position.clone() });
+  }
+
+  /* ── etiquetas das mesas ── */
   const chips = {
-    fiscal: chip({ texto: 'nó.fiscal', cor: MARCA.verde, mesa: 'fiscal' }),
-    auditor: chip({ texto: 'Auditor', cor: MARCA.azul, mesa: 'auditor' }),
-    vaga: chip({ texto: 'um problema\nseu aqui?', cor: MARCA.ambar, mesa: 'vaga', tam: 26, ancora: [.5, .5] })
+    fiscal: chip({ texto: 'nó.fiscal', cor: MARCA.verde, mesa: 'fiscal', alturaMundo: .44 }),
+    auditor: chip({ texto: 'Auditor', cor: MARCA.azul, mesa: 'auditor', alturaMundo: .44 }),
+    vaga: chip({ texto: 'um problema\nseu aqui?', cor: MARCA.ambar, mesa: 'vaga', tam: 26, alturaMundo: .44, ancora: [.5, .5] })
   };
-  chips.fiscal.position.set(.1, 1.45, -.4); mesas.fiscal.add(chips.fiscal);
-  chips.auditor.position.set(.1, 1.45, -.4); mesas.auditor.add(chips.auditor);
-  chips.vaga.position.set(.1, 1.4, -.6); mesas.vaga.add(chips.vaga);
+  chips.fiscal.position.set(-.05, 1.95, -.55); mesas.fiscal.add(chips.fiscal);
+  chips.auditor.position.set(.05, 1.85, -.45); mesas.auditor.add(chips.auditor);
+  chips.vaga.position.set(.55, 1.55, -.4); mesas.vaga.add(chips.vaga);
 
-  /* ── recepção, estar e plantas ── */
-  const rec = recepcao(); emUV(rec, 4.7, -1.2); raiz.add(rec);
-  const sof = sofa(); emUV(sof, 5.1, 2.2); raiz.add(sof);
-  const mesinhaG = mesinha(); emUV(mesinhaG, 5.8, 1.1); raiz.add(mesinhaG);
-  const plantas = [];
-  const poePlanta = (u, v, esc, fase) => { const p = planta(esc, fase); emUV(p, u, v); raiz.add(p); plantas.push(p); return p; };
-  poePlanta(-7.4, 1.7, 1.5, 0); poePlanta(-3.6, -2.3, 1.3, 1); poePlanta(.3, 3.9, 1.4, 2);
-  poePlanta(3.3, -.3, 1.25, 3); poePlanta(6.5, -2.9, 1.5, 4); poePlanta(6.9, 3.4, 1.3, 5); poePlanta(2.4, 4.7, 1.2, 6);
-  const pilhaLivros = livros([COR.osso, COR.tinta, 0xE8C98E]); emUV(pilhaLivros, -3.9, -1.9); pilhaLivros.rotation.y = .4; raiz.add(pilhaLivros);
-  const tapete = bloco(2.6, .02, 2.6, .05, COR.osso, { roughness: 1 }); emUV(tapete, 5.4, 1.8, 0); tapete.castShadow = false; raiz.add(tapete);
-  plantas.push(mesas.fiscal.children.find(c => c.userData.folhas), mesas.auditor.children.find(c => c.userData.folhas), mesas.vaga.children.find(c => c.userData.folhas), plPrat);
+  /* ── chão, parede do fundo, rodapé, janela, estante e prateleira ── */
+  const texPiso = texturaPiso();
+  const piso = malha(geoCaixa(34, .3, 30, .05, 1), mat(COR.piso, { map: texPiso, roughness: .95, envMapIntensity: .3 }), false);
+  piso.position.set(2, -.3, zParede + 15 - .2); raiz.add(piso);
+  const XP0 = -9, XP1 = 15;
+  const parede = malha(geoCaixa(XP1 - XP0, 2.7, .26, .04, 2), mat(COR.parede, { roughness: .85 }));
+  parede.position.set((XP0 + XP1) / 2, 0, zParede - .13); parede.castShadow = false; raiz.add(parede);
+  const rodape = malha(geoCaixa(XP1 - XP0, .1, .04, .01, 1), mat(COR.rodape, { roughness: .6 }), false);
+  rodape.position.set((XP0 + XP1) / 2, 0, zParede + .02); raiz.add(rodape);
+  const xf = mesas.fiscal.position.x;
+  const jan = janela(1.7, 1.25); jan.position.set(xf + 2.55, .95, zParede); raiz.add(jan);
+  const est = estante(1.5, 1.0, .4); est.position.set(xf - .55, 0, zParede + .22); raiz.add(est);
+  const prat = prateleira(1.25); prat.position.set(xf - .55, 1.62, zParede + .13); raiz.add(prat);
+  const lumParede = planta('espada', 1.25, 12, 'terracota'); lumParede.position.set(xf + 1.25, 0, zParede + .35); raiz.add(lumParede);
 
-  /* ── sala "nó tech stack" e as três linhas azuis ── */
-  const sala = salaTechStack(); emUV(sala, -5.0, 4.8); raiz.add(sala);
-  plantas.push(sala.userData.planta);
-  const matLinha = new THREE.MeshBasicMaterial({ color: MARCA.azul, toneMapped: false });
-  const alvoLinhas = sala.userData.no.getWorldPosition(new THREE.Vector3());
+  /* ── escada e patamar à esquerda ── */
+  const esc = escada(7, 1.15, .34, .17);
+  esc.position.set(xf - 3.05, 0, zParede + 1.2 + 7 * .34 + .05); raiz.add(esc);
+  const plPatamar = planta('zz', 1.1, 14, 'branco'); plPatamar.position.set(xf - 3.0, 7 * .17, zParede + .55); raiz.add(plPatamar);
+
+  /* ── recepção, banco, estar e plantas ── */
+  const rec = recepcao(); poe(rec, P(-1.4, -2.35, .5), AZ * .6);
+  const ban = banco(1.35); poe(ban, P(1.7, -2.8), AZ * .3);
+  const tapBanco = tapete(1.9, 1.3, 0x8F8B85); poe(tapBanco, P(2.0, -3.05), AZ * .3);
+  const banq = mesinha(.22, .38); poe(banq, P(2.35, -3.35));
+  const plBanq = planta('suculenta', 1.1, 6, 'branco'); plBanq.position.set(0, .42, 0); banq.add(plBanq);
+
+  const plantas = [
+    ['zz', 1.5, P(-2.6, -.95), 'branco'], ['espada', 1.2, P(-.4, -.85), 'branco'], ['zz', 1.35, P(-.05, -2.25), 'creme'],
+    ['zz', 1.45, P(2.05, -.2), 'branco'], ['espada', 1.3, P(2.6, -1.85), 'terracota'], ['arbusto', 1.2, P(-2.55, 2.3), 'salvia'],
+    ['costela', 1.3, P(2.25, 2.45), 'branco'], ['zz', 1.3, P(-2.65, -3.6), 'branco'], ['espada', 1.25, P(.9, -4.1), 'creme'],
+    ['arbusto', 1.25, P(4.1, -2.3), 'terracota'], ['zz', 1.3, P(8.6, -1.6), 'branco'], ['espada', 1.3, P(8.4, -4.3), 'salvia'],
+    ['zz', 1.25, P(3.6, -5.4), 'branco'], ['costela', 1.2, P(-1.5, -4.9), 'creme']
+  ];
+  plantas.forEach(([tipo, esc2, p, vaso], i) => {
+    const pl = planta(tipo, esc2, 20 + i, vaso); pl.position.set(p.x, 0, p.z); raiz.add(pl);
+    const so = sombraContato(.75 * esc2, .75 * esc2, .2); so.position.set(p.x, .006, p.z); raiz.add(so);
+  });
+
+  /* ── sala "nó tech stack" e estar do fecho ── */
+  /* encostada na parede do fundo, com o canto de trás logo fora da borda direita da Tela 1 */
+  const SW = 4.4, SD = 3.3;
+  const sala = salaTechStack({ W: SW, D: SD, H: 2.5 });
+  const zSala = zParede + .3 + SD / 2;
+  const xSala = (3.05 - DIR_DIREITA.z * (zSala - SD / 2)) / DIR_DIREITA.x + SW / 2;
+  sala.position.set(xSala, 0, zSala); raiz.add(sala);
+  const tapEstar = tapete(3.2, 2.4, COR.tapete); poe(tapEstar, P(6.4, -3.75));
+  const sof = sofa(2.2); poe(sof, P(6.65, -3.3, .2));
+  const polt = poltrona(); poe(polt, P(5.05, -3.95), .9);
+  const mes2 = mesinha(.3, .4); poe(mes2, P(6.75, -4.35));
+  const pl2 = planta('suculenta', 1.2, 30, 'branco'); pl2.position.set(0, .44, 0); mes2.add(pl2);
+
+  /* ── as três linhas azuis: saem da borda de cada mesa, descem ao chão,
+        correm com curvas suaves e chegam juntas ao hub da sala ── */
   raiz.updateMatrixWorld(true);
-  sala.userData.no.getWorldPosition(alvoLinhas);
-  const linhas = ['fiscal', 'auditor', 'vaga'].map((id, i) => {
-    const ini = mesas[id].userData.marca.getWorldPosition(new THREE.Vector3()); ini.y = .95;
-    const fim = alvoLinhas.clone();
-    /* saem da mesa para a direita da tela (+x, -z) e chegam à sala por baixo (+x, +z) */
-    const c1 = ini.clone().add(new THREE.Vector3(1.5, .5 + i * .2, -1.5));
-    const c2 = fim.clone().add(new THREE.Vector3(1.2 + i * .4, .35, 1.2 + i * .4));
-    const curva = new THREE.CubicBezierCurve3(ini, c1, c2, fim);
-    const geo = new THREE.TubeGeometry(curva, 72, .055, 8, false);
-    const m = new THREE.Mesh(geo, matLinha); m.renderOrder = 6; m.frustumCulled = false; raiz.add(m);
+  const hubP = sala.userData.hub.getWorldPosition(new THREE.Vector3());
+  const matLinha = new THREE.MeshStandardMaterial({ color: MARCA.azul, emissive: MARCA.azul, emissiveIntensity: .28, roughness: .32, envMapIntensity: .8 });
+  const matPulso = new THREE.MeshBasicMaterial({ color: 0xBFD0FF, toneMapped: false });
+  const L = (id, x, y, z) => mesas[id].localToWorld(new THREE.Vector3(x, y, z));
+  const meia = MESA.larg / 2, Y = .03;
+  /* cada linha sai do tampo pela ponta direita da mesa, desce ao chão e corre até o hub
+     em curvas suaves desenhadas no plano da tela (como na Tela 3), depois projetadas no chão */
+  const ondas = { fiscal: [-.32, .14], auditor: [.22, -.12], vaga: [-.28, .1] };
+  const hubTela = tela(hubP.clone().setY(0));
+  const linhas = ['fiscal', 'auditor', 'vaga'].map(id => {
+    const s0 = L(id, meia - .3, MESA.alt + .012, .22), s1 = L(id, meia + .02, MESA.alt - .03, .22), d = L(id, meia + .3, Y, .32);
+    const dT = tela(d.clone().setY(0)), ex = hubTela[0] - dT[0], ey = hubTela[1] - dT[1], n = Math.hypot(ex, ey);
+    const px = -ey / n, py = ex / n, [A, B] = ondas[id];
+    const pts = [s0, s1, d];
+    for (const t of [.22, .45, .68, .86]){
+      const o = A * Math.sin(Math.PI * t) + B * Math.sin(2 * Math.PI * t);
+      pts.push(P(dT[0] + ex * t + px * o, dT[1] + ey * t + py * o, Y));
+    }
+    pts.push(hubP.clone().setY(.06));
+    const curva = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    const geo = new THREE.TubeGeometry(curva, 220, .034, 8, false);
+    const m = new THREE.Mesh(geo, matLinha); m.castShadow = true; m.frustumCulled = false; m.userData.vivo = true; raiz.add(m);
     geo.setDrawRange(0, 0);
-    const pulso = new THREE.Mesh(new THREE.SphereGeometry(.1, 12, 10), matLinha); pulso.visible = false; raiz.add(pulso);
-    const pino = new THREE.Mesh(new THREE.SphereGeometry(.09, 12, 10), matLinha); pino.position.copy(ini); pino.visible = false; raiz.add(pino);
+    const pulso = new THREE.Mesh(new THREE.SphereGeometry(.06, 12, 10), matPulso); pulso.visible = false; pulso.userData.vivo = true; raiz.add(pulso);
+    const pino = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, .02, 16), matLinha); pino.position.copy(pts[0]); pino.visible = false; pino.userData.vivo = true; raiz.add(pino);
     return { curva, geo, total: geo.index.count, mesh: m, pulso, pino };
   });
-  progresso(.5);
+  progresso(.45);
+
+  /* ── sol e sombra cobrindo a Tela 1 e o fecho ── */
+  const centroSombra = P(2.6, -.8);
+  sol.target.position.copy(centroSombra);
+  sol.position.copy(centroSombra).add(new THREE.Vector3(-9, 9.5, 2.2));
+  Object.assign(sol.shadow.camera, { left: -11.5, right: 11.5, top: 11.5, bottom: -11.5, near: 1, far: 40 });
+  sol.shadow.camera.updateProjectionMatrix();
+
+  /* ── assadura: o que não se mexe vira um punhado de malhas ── */
+  assar(raiz);
+  progresso(.55);
 
   /* logo do balcão: textura do SVG oficial */
   const logo = rec.userData.logo;
@@ -438,43 +250,47 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   progresso(.7);
 
   /* ── enquadramentos ── */
-  const upCam = new THREE.Vector3(), dirCam = new THREE.Vector3();
-  camera.position.copy(DIR_CAM).multiplyScalar(60); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
-  upCam.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
-  const uv = (u, v, y = 0) => new THREE.Vector3((u + v) * R2, y, (u - v) * R2);
-  const QUADROS = {
-    tela1: { alvo: uv(-1.1, .15, .9), altura: 13.4 },
-    fecho: { alvo: uv(-1.3, 2.3, 1.0), altura: 19.5 }
-  };
+  const upCam = DIR_CIMA.clone(), direitaCam = DIR_DIREITA.clone();
   const estado = { foco: null, alvoY: .2, tFecho: 0 };
-  const desejado = { alvo: QUADROS.tela1.alvo.clone(), altura: QUADROS.tela1.altura };
-  const atual = { alvo: QUADROS.tela1.alvo.clone(), altura: QUADROS.tela1.altura };
   let aspecto = 1;
-  /* A Tela 1 foi afinada em 375×812. Num canvas mais largo (a hero da página), a largura de
-     mundo visível é a mesma e a altura encolhe até o mínimo em que a coluna inteira cabe. */
-  const LARGURA_TELA1 = QUADROS.tela1.altura * 375 / 812;
-  const alturaTela1 = () => clamp(LARGURA_TELA1 / aspecto, 9.6, QUADROS.tela1.altura);
+  /* A Tela 1 guarda a largura de mundo e cresce em altura em canvas mais altos (375×812);
+     em canvas mais largos, a altura mínima segura a coluna inteira no quadro. */
+  const alturaTela1 = () => Math.max(TELA1.alturaMin, TELA1.largura / aspecto);
+  const alturaFecho = () => Math.max(FECHO.largura * FECHO.proporcao, FECHO.largura / aspecto);
+  /* A Tela 3 é uma janela 375:440. Num canvas alto (bancada e pôster, 375×812) ela fica no meio,
+     onde o recorte do pôster na página olha; no canvas da página (375:520), cujo topo fica sob a
+     navbar no fecho, ela desce para a parte de baixo do canvas. */
+  const deslocaFecho = () => {
+    const hJ = FECHO.largura * FECHO.proporcao, hC = alturaFecho();
+    const f = aspecto >= .6 ? 1 - hJ / (2 * hC) + .01 : .47;
+    return (f - .5) * hC;
+  };
+  const alvoTela1 = P(TELA1.centro[0], TELA1.centro[1]), alvoFecho = P(FECHO.centro[0], FECHO.centro[1]);
+  const desejado = { alvo: alvoTela1.clone(), altura: TELA1.alturaMin };
+  const atual = { alvo: alvoTela1.clone(), altura: TELA1.alturaMin };
   const tmp = new THREE.Vector3();
   function calculaDesejado(){
     const q = suave(clamp01(estado.tFecho));
     if (estado.foco && mesas[estado.foco]){
-      const altura = 8.0;
+      /* aproximação da Tela 2: a mesa ocupa quase toda a largura */
+      const altura = clamp(3.5 / aspecto, 4.2, 8.0);
       /* a marca da mesa é o mesmo ponto que inspecionar() projeta em mesa-<id> */
       mesas[estado.foco].userData.marca.getWorldPosition(desejado.alvo);
-      /* um tico para a direita, para a etiqueta da mesa caber no quadro (Tela 2) */
-      desejado.alvo.add(uv(0, .7, 0));
+      /* um tico para a direita, para a etiqueta da mesa caber no quadro */
+      desejado.alvo.addScaledVector(direitaCam, .25);
       /* o centro da mesa fica a alvoY × altura do canvas, a partir do topo */
       const ndcY = 1 - 2 * clamp01(estado.alvoY);
       tmp.copy(upCam).multiplyScalar(ndcY * altura / 2);
       desejado.alvo.sub(tmp);
       desejado.altura = altura;
     } else {
-      desejado.alvo.lerpVectors(QUADROS.tela1.alvo, QUADROS.fecho.alvo, q);
-      desejado.altura = lerp(alturaTela1(), QUADROS.fecho.altura, q);
+      desejado.alvo.lerpVectors(alvoTela1, tmp.copy(alvoFecho).addScaledVector(upCam, deslocaFecho()), q);
+      desejado.altura = lerp(alturaTela1(), alturaFecho(), q);
     }
   }
   function aplicaCamera(){
     camera.position.copy(atual.alvo).addScaledVector(DIR_CAM, 60);
+    camera.up.set(0, 1, 0);
     camera.lookAt(atual.alvo);
     const h = atual.altura, w = h * aspecto;
     camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
@@ -493,40 +309,38 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
 
   /* ── animação: nunca para enquanto há quadro ── */
   const amp = REDUZ ? 0 : 1;
-  const telas = [mesas.fiscal.userData.tela, mesas.auditor.userData.tela, mesas.vaga.userData.tela, rec.userData.tela, sala.userData.tela];
+  const telas = [infos.fiscal.tela, infos.auditor.tela, infos.vaga.tela, rec.userData.tela, sala.userData.tela];
+  const led = sala.userData.led, corLed = new THREE.Color(), apagado = new THREE.Color(0x202020);
   function anima(t){
-    ['fiscal', 'auditor'].forEach((id, i) => {
-      const p = personagens[id].userData.partes, f = i * 2.1;
-      p.tronco.scale.set(1, 1 + .022 * amp * Math.sin(t * 1.7 + f), 1);
-      p.tronco.rotation.z = -.07 + .035 * amp * Math.sin(t * .6 + f);
-      p.pescoco.rotation.z = .09 * amp * Math.sin(t * .85 + f);
-      p.pescoco.rotation.x = .1 * amp * Math.sin(t * 1.25 + f + 1);
-      p.pescoco.rotation.y = .12 * amp * Math.sin(t * .45 + f);
-      p.bracos.forEach((b, j) => {
-        b.rotation.z = 1.15 + .14 * amp * Math.sin(t * (9 + i) + j * Math.PI * .5 + f);
-        b.rotation.y = (j ? 1 : -1) * .12 + .05 * amp * Math.sin(t * 3 + j);
-      });
+    personagens.fiscal.userData.animar(t, amp);
+    personagens.auditor.userData.animar(t, amp);
+    telas.forEach((tl, i) => {
+      const pisca = .62 + .12 * Math.sin(t * 1.9 + i * 1.3) + (Math.sin(t * 6.3 + i) > .93 ? .1 : 0);
+      tl.material.emissiveIntensity = REDUZ ? .7 : pisca;
+      if (!REDUZ && tl.material.map) tl.material.map.offset.y = (Math.floor(t * 1.6 + i) % 6) * .012;
     });
-    telas.forEach((tela, i) => {
-      const pisca = .18 + .22 * (.5 + .5 * Math.sin(t * 2.2 + i * 1.3)) + (Math.sin(t * 7 + i) > .92 ? .18 : 0);
-      tela.material.emissiveIntensity = REDUZ ? .3 : pisca;
-    });
-    plantas.forEach((pl, i) => {
-      const f = pl.userData.folhas; if (!f) return;
-      f.rotation.z = .05 * amp * Math.sin(t * 1.1 + i * .9);
-      f.rotation.x = .04 * amp * Math.sin(t * .8 + i * 1.7);
-    });
-    sala.userData.luzes.forEach((l, i) => { l.visible = REDUZ || Math.sin(t * (2 + i * .7) + i) > -.6; });
+    if (!REDUZ){
+      for (let i = 0; i < led.count; i++){
+        const c = led.userData.cores[(i + Math.floor(i / 3)) % 3 === 0 ? 2 : i % 2];
+        led.setColorAt(i, Math.sin(t * (2 + (i % 7) * .45) + i * 1.7) > -.5 ? c : apagado);
+      }
+      led.instanceColor.needsUpdate = true;
+    }
     /* linhas azuis: aparecem conforme o fecho cresce */
     const q = suave(clamp01(estado.tFecho));
     linhas.forEach((l, i) => {
       const qi = suave(clamp01((q - i * .12) / .76));
       l.geo.setDrawRange(0, Math.floor(l.total * qi / 3) * 3);
+      l.mesh.visible = qi > 0;
       l.pino.visible = qi > 0;
       l.pulso.visible = qi >= 1 && !REDUZ;
-      if (l.pulso.visible) l.curva.getPointAt((t * .22 + i * .33) % 1, l.pulso.position);
+      if (l.pulso.visible) l.curva.getPointAt((t * .2 + i * .33) % 1, l.pulso.position);
     });
-    sala.userData.no.scale.setScalar(q >= 1 ? 1 + .12 * amp * Math.sin(t * 3) : 1);
+    sala.userData.hub.scale.setScalar(q >= 1 ? 1 + .08 * amp * Math.sin(t * 3) : 1);
+    sala.userData.entra.visible = q >= .97;
+    /* no recuo do fecho as etiquetas saem, como na Tela 3 da referência */
+    const op = 1 - suave(clamp01((q - .1) / .35));
+    for (const sp of Object.values(chips)) sp.material.opacity = op;
   }
 
   /* ── tamanho, laço, pausa ── */
@@ -590,8 +404,9 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   if (fino) canvas.addEventListener('pointermove', aoMover);
 
   /* ── primeiro quadro ── */
+  redimensiona();
   calculaDesejado(); atual.alvo.copy(desejado.alvo); atual.altura = desejado.altura;
-  redimensiona(); aplicaCamera();
+  aplicaCamera();
   progresso(.85);
   await new Promise(r => setTimeout(r, 0));
   renderer.compile(scene, camera);
@@ -646,7 +461,9 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     return {
       enquadramento, projetados, etiquetas, logoBalcao, personagens: pers,
       linhas: { cor: '#' + linhas[0].mesh.material.color.getHexString(), quantidade: linhas.length },
-      placaSala: sala.userData.placa.userData.texto
+      placaSala: sala.userData.placa.userData.texto,
+      /* aditivo: custo do último quadro, para acompanhar o desempenho no celular */
+      desenho: { chamadas: renderer.info.render.calls, triangulos: renderer.info.render.triangles }
     };
   }
 
@@ -659,9 +476,10 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     scene.traverse(o => {
       if (o.geometry) o.geometry.dispose();
       const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-      ms.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+      ms.forEach(m => { for (const k of ['map', 'alphaMap', 'emissiveMap']) if (m[k]) m[k].dispose(); m.dispose(); });
     });
-    materiais.clear();
+    ambiente.dispose();
+    limparCache();
     renderer.dispose();
   }
 
