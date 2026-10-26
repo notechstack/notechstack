@@ -1,50 +1,114 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Escritório nó · cena 3D isométrica de /agentes/
-   three.js puro, geometria feita aqui (sem GLB), seguindo as Telas 1 e 3
-   da referência: piso creme, paredes osso, carvalho claro e cerâmica branca;
-   três mesas em coluna (nó.fiscal, Auditor, mesa vaga), a escada à
-   esquerda, a recepção com o "nó." plano no balcão e o estar embaixo; no
-   recuo do fecho, a sala envidraçada "nó tech stack" à direita, ligada às
-   mesas por três linhas azuis que correm pelo chão.
+   Escritório nó · cena 3D de /agentes/ (Rodada 5)
+   Carrega agentes/escritorio/escritorio.glb, exportado da cena aprovada no
+   Blender (.tasks/blender/exportar_glb.py):
+   - o escritório estático vem com a luz assada no Cycles (dois atlas) e é
+     desenhado com MeshBasicMaterial, igual à prévia e leve no celular;
+   - as duas pessoas e os cabos têm luz em tempo real (céu + sol quente);
+   - os enquadramentos vêm das câmeras ortográficas do GLB: o fecho só
+     arrasta a câmera da Tela 1 até a sala (R11), e o foco usa a câmera da
+     Tela 2 da mesa;
+   - etiquetas, "nó." do balcão, contorno âmbar e pulsos dos cabos são
+     feitos aqui.
    Só as duas pessoas, móveis, plantas e objetos de trabalho: nada além disso.
-   Módulos: cena-materia.js (matéria e assadura), cena-moveis.js (móveis e
-   sala), cena-pessoas.js (as duas pessoas e o movimento delas).
    Contrato: .tasks/agentes-escritorio-frentes.md (montarEscritorio).
    ══════════════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { MARCA, COR, clamp01, clamp, suave, lerp, mat, malha, geoCaixa, texturaPiso, assar, limparCache } from './cena-materia.js';
-import {
-  MESA, mesa, recepcao, escada, estante, prateleira, janela, sofa, poltrona, banco, mesinha, tapete, planta,
-  salaTechStack, chip, luminaria, caneca, papeis, pilhaLivros, caixaPreta, mouse, sombraContato
-} from './cena-moveis.js';
-import { criarPessoa } from './cena-pessoas.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
+const GLB = '/agentes/escritorio/escritorio.glb';
+const TAMANHO_GLB = 2.3e6;            // estimativa do progresso quando o servidor não manda o tamanho
 const LOGO_BALCAO = '/brand/logo/svg/no-tinta-ponto-azul.svg';
+const FONTE = "'Sora', system-ui, sans-serif";
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const suave = t => t * t * (3 - 2 * t);
 
-/* ── câmera ortográfica: quase de frente, como na referência (as bordas das
-      mesas sobem um pouco para a direita; a coluna de mesas desce em diagonal) ── */
-const ELEV = 35 * Math.PI / 180, AZ = -18 * Math.PI / 180;
-const DIR_CAM = new THREE.Vector3(Math.sin(AZ) * Math.cos(ELEV), Math.sin(ELEV), Math.cos(AZ) * Math.cos(ELEV)).normalize();
-const DIR_DIREITA = new THREE.Vector3(Math.cos(AZ), 0, -Math.sin(AZ));
-const DIR_CIMA = new THREE.Vector3().crossVectors(DIR_CAM, DIR_DIREITA).normalize();
-/* ponto do mundo na altura y que cai em (sx, sy) do plano da tela (unidades de mundo) */
-function naTela(sx, sy, y = 0){
-  const r = DIR_DIREITA, u = DIR_CIMA, b = sy - u.y * y;
-  const det = r.x * u.z - r.z * u.x;
-  return new THREE.Vector3((sx * u.z - r.z * b) / det, y, (r.x * b - u.x * sx) / det);
+/* cores de marca lidas dos tokens da página (brand/tokens/tokens.css);
+   o valor entre parênteses é só o fallback quando o CSS não carregou */
+function token(id, padrao){
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(id).trim();
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v;
+  } catch (e) {}
+  return padrao;
 }
-const tela = p => [p.dot(DIR_DIREITA), p.dot(DIR_CIMA)];
+const MARCA = {
+  azul: token('--no-azul', '#3D63DB'), verde: token('--no-verde', '#30A46C'),
+  ambar: token('--no-ambar', '#EDA33B'), tinta: token('--no-tinta', '#141414')
+};
+const MESAS = ['fiscal', 'auditor', 'vaga'];
+const AGENTES = ['fiscal', 'auditor'];
 
-/* enquadramentos em coordenadas de tela: centro e largura de mundo visível.
-   A Tela 1 foi composta para o canvas da página (375:520) e só ganha altura
-   em canvas mais altos (375×812); o fecho guarda a proporção da Tela 3. */
-const TELA1 = { centro: [0, .02], largura: 4.85, alturaMin: 6.72 };
-const FECHO = { centro: [2.85, .3], largura: 9.7, proporcao: 440 / 375 };
+/* ── etiqueta: chip branco com contorno na cor do agente (R9, R10), círculo cheio
+      de 16 px (R4) e texto em Sora; medidas em px CSS para 375 de largura ── */
+const PX_POR_MUNDO = 520 / 6.72;      // Tela 1 da página: 520 px de altura para 6,72 de mundo
+function desenhaChip({ texto, cor, soContorno = false, halo = false }){
+  const dpr = 3, alt = 34, circ = 16, borda = 2.5, pad = 11, entre = 8, fonte = '600 14px ' + FONTE, margem = 8;
+  const cv = document.createElement('canvas'), c = cv.getContext('2d', { willReadFrequently: true });
+  c.font = fonte;
+  const larg = pad + circ + entre + Math.ceil(c.measureText(texto).width) + pad + 4;
+  const W = larg + margem * 2, H = alt + margem * 2;
+  cv.width = Math.ceil(W * dpr); cv.height = Math.ceil(H * dpr);
+  c.scale(dpr, dpr); c.translate(margem, margem);
+  const r = alt / 2, cx = pad + circ / 2, cy = alt / 2;
+  if (halo){
+    c.fillStyle = cor; c.globalAlpha = .28;
+    c.beginPath(); c.arc(cx, cy, circ / 2 + 6, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+  } else if (soContorno){
+    c.lineWidth = borda + 1; c.strokeStyle = cor;
+    c.beginPath(); c.roundRect(0, 0, larg, alt, r); c.stroke();
+  } else {
+    c.save(); c.shadowColor = 'rgba(40,30,20,.18)'; c.shadowBlur = 8; c.shadowOffsetY = 2;
+    c.beginPath(); c.roundRect(0, 0, larg, alt, r); c.fillStyle = '#FFFFFF'; c.fill(); c.restore();
+    c.lineWidth = borda; c.strokeStyle = cor;
+    c.beginPath(); c.roundRect(borda / 2, borda / 2, larg - borda, alt - borda, r - borda / 2); c.stroke();
+    c.fillStyle = cor; c.beginPath(); c.arc(cx, cy, circ / 2, 0, Math.PI * 2); c.fill();
+    c.font = fonte; c.fillStyle = MARCA.tinta; c.textBaseline = 'middle';
+    c.fillText(texto, pad + circ + entre, cy + .5);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+  sp.renderOrder = soContorno ? 22 : halo ? 20 : 21;
+  sp.scale.set(W / PX_POR_MUNDO, H / PX_POR_MUNDO, 1);
+  /* o halo pulsa em volta do círculo: o centro do sprite fica no círculo */
+  if (halo) sp.center.set((margem + cx) / W, 1 - (margem + cy) / H);
+  sp.userData = { texto, ponto: { x: Math.round((margem + cx) * dpr), y: Math.round((margem + cy) * dpr) } };
+  return sp;
+}
+
+/* ── cabos: acendem da mesa à sala conforme o arrasto (UV0.u de 0 a 1) e levam
+      pulsos de luz correndo até a sala ── */
+function preparaCabo(malha, uniformes){
+  const g = malha.geometry, uv = g.attributes.uv, n = uv.count, u = new Float32Array(n);
+  for (let i = 0; i < n; i++) u[i] = uv.getX(i);
+  g.setAttribute('caboU', new THREE.BufferAttribute(u, 1));
+  const m = new THREE.MeshStandardMaterial({ color: malha.material.color.clone(), roughness: .28, metalness: 0,
+    emissive: malha.material.color.clone(), emissiveIntensity: .35 });
+  m.name = 'cabo';
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uProgresso = uniformes.progresso; sh.uniforms.uTempo = uniformes.tempo;
+    sh.vertexShader = 'attribute float caboU;\nvarying float vCaboU;\n' +
+      sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCaboU = caboU;');
+    sh.fragmentShader = 'uniform float uProgresso;\nuniform float uTempo;\nvarying float vCaboU;\n' +
+      sh.fragmentShader
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (vCaboU > uProgresso) discard;')
+        .replace('#include <emissivemap_fragment>', [
+          '#include <emissivemap_fragment>',
+          '  float fase = fract(vCaboU * 4.0 - uTempo * 0.45);',
+          '  float pulso = smoothstep(0.0, 0.025, fase) * (1.0 - smoothstep(0.025, 0.08, fase));',
+          '  float ponta = 1.0 - smoothstep(0.0, 0.04, uProgresso - vCaboU);',
+          '  totalEmissiveRadiance += vec3(0.62, 0.74, 1.0) * (pulso * 2.4 + ponta * 1.6);'
+        ].join('\n'));
+  };
+  malha.material = m;
+}
 
 export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const progresso = p => { try { if (typeof aoProgresso === 'function') aoProgresso(clamp01(p)); } catch (e) {} };
   const REDUZ = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  progresso(0);
 
   /* renderer: rejeita sem WebGL */
   let renderer;
@@ -59,188 +123,74 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  /* o atlas assado já vem com o tom da prévia (Khronos PBR Neutral); o resto usa o mesmo tom */
   renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  progresso(.08);
 
-  /* as etiquetas são desenhadas uma vez em canvas: esperam a Sora (até 2,5 s) */
+  /* GLB e fontes em paralelo: o download vai de 0 a 0,8 no progresso */
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const fontes = Promise.race([
+    document.fonts.load("600 14px 'Sora'").catch(() => {}),
+    new Promise(r => setTimeout(r, 2500))
+  ]);
+  let gltf;
   try {
-    await Promise.race([
-      Promise.all([document.fonts.load("600 30px 'Sora'"), document.fonts.load("800 30px 'Sora'")]),
-      new Promise(r => setTimeout(r, 2500))
-    ]);
-  } catch (e) {}
-  progresso(.2);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 200);
-  /* luz: ambiente de estúdio (reflexos suaves) + céu quente + sol baixo com sombra macia */
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const ambiente = pmrem.fromScene(new RoomEnvironment(), .04).texture;
-  scene.environment = ambiente; scene.environmentIntensity = .45;
-  pmrem.dispose();
-  scene.add(new THREE.HemisphereLight(0xFFF7EC, 0xCDBEA8, .7));
-  const sol = new THREE.DirectionalLight(0xFFF0DE, 2.9);
-  sol.castShadow = true;
-  sol.shadow.mapSize.set(2048, 2048); sol.shadow.bias = -.0004; sol.shadow.normalBias = .025;
-  scene.add(sol); scene.add(sol.target);
-  const preenche = new THREE.DirectionalLight(0xF2F4FF, .5); preenche.position.set(6, 7, 12); scene.add(preenche);
-
-  const raiz = new THREE.Group(); scene.add(raiz);
-  const P = (sx, sy, y = 0) => naTela(sx, sy, y);
-  /* composição da Tela 1, desenhada num quadro de 5,6 de largura e apertada para o quadro final */
-  const K1 = .86, T1 = (sx, sy, y = 0) => sx < 3 ? naTela(sx * K1, .2 + (sy - .2) * K1, y) : naTela(sx, sy, y);
-  const poe = (obj, p, ry = 0) => { obj.position.set(p.x, obj.position.y, p.z); obj.rotation.y = ry; raiz.add(obj); return obj; };
-
-  /* ── mesas, compostas pela Tela 1 (o centro de cada mesa no quadro) ── */
-  const infos = {
-    fiscal: mesa('fiscal', { variante: 0 }),
-    auditor: mesa('auditor', { variante: 1 }),
-    vaga: mesa('vaga', { variante: 2, ocupada: false })
-  };
-  const mesas = { fiscal: infos.fiscal.grupo, auditor: infos.auditor.grupo, vaga: infos.vaga.grupo };
-  poe(mesas.fiscal, T1(.05, 1.95, MESA.alt));
-  poe(mesas.auditor, T1(.6, .33, MESA.alt));
-  poe(mesas.vaga, T1(1.15, -1.28, MESA.alt));
-  const zParede = mesas.fiscal.position.z - 2.15;
-
-  /* objetos de cada mesa */
-  const naMesa = (id, obj, x, z, ry = 0, y = MESA.alt) => { obj.position.set(x, y, z); obj.rotation.y = ry; mesas[id].add(obj); return obj; };
-  naMesa('fiscal', luminaria(), .95, .22, -.4);
-  naMesa('fiscal', pilhaLivros([0xF4EFE6, 0xE9E1D3, 0xF6F2EA], 1), -.95, -.18, .2);
-  naMesa('fiscal', planta('suculenta', 1.15, 1, 'branco'), .6, .3);
-  naMesa('fiscal', papeis(3, 1), .35, -.22, .3);
-  naMesa('auditor', caixaPreta(), -1.0, .1, .25);
-  naMesa('auditor', caneca(0xF3EFE8, 0x3A2416), .7, -.15);
-  naMesa('auditor', planta('suculenta', 1.05, 2, 'creme'), .55, .32);
-  naMesa('auditor', papeis(2, 2), .25, -.25, -.2);
-  naMesa('vaga', planta('suculenta', 1.15, 3, 'branco'), .75, .28);
-  naMesa('vaga', papeis(2, 4), -.15, -.28, .25);
-  naMesa('vaga', caneca(0xE9E1D3), .35, .05);
-
-  /* ── as duas pessoas: tronco em cápsula, cabeça em esfera, crachá na cor do agente ── */
-  const personagens = {
-    fiscal: criarPessoa({ agente: 'fiscal', pele: 0xF0C7A4, cabelo: 0x2E2019, estilo: 'liso', calca: 0x3D4350, sapato: 0x3A2E26, cracha: MARCA.verde, fase: 0, ritmo: 1 }),
-    auditor: criarPessoa({ agente: 'auditor', pele: 0x7A4B33, cabelo: 0x16110E, estilo: 'crespo', calca: 0x2F3A4C, sapato: 0x1E1B19, cracha: MARCA.azul, fase: 11.3, ritmo: .93 })
-  };
-  personagens.auditor.userData.ladoOlhar = -1;
-  for (const id of ['fiscal', 'auditor']){
-    const p = personagens[id], A = MESA.assento, info = infos[id];
-    p.position.copy(A); mesas[id].add(p);
-    const ms = mouse(), cn = caneca(id === 'fiscal' ? 0xFFFFFF : 0xEDE6DA);
-    ms.position.copy(info.mouseLocal).sub(A); cn.position.copy(info.canecaLocal).sub(A);
-    p.add(ms, cn);
-    p.userData.ambiente({ teclado: info.teclado, mouse: ms, mouseBase: ms.position.clone(), caneca: cn, canecaBase: cn.position.clone() });
+    gltf = await loader.loadAsync(GLB, e => {
+      const total = e.lengthComputable && e.total ? e.total : TAMANHO_GLB;
+      progresso(.8 * Math.min(.99, e.loaded / total));
+    });
+  } catch (e) {
+    renderer.dispose();
+    throw new Error('escritório não carregou: ' + (e && e.message || e));
   }
+  progresso(.8);
+  await fontes;
 
-  /* ── etiquetas das mesas ── */
-  const chips = {
-    fiscal: chip({ texto: 'nó.fiscal', cor: MARCA.verde, mesa: 'fiscal', alturaMundo: .44 }),
-    auditor: chip({ texto: 'Auditor', cor: MARCA.azul, mesa: 'auditor', alturaMundo: .44 }),
-    vaga: chip({ texto: 'um problema\nseu aqui?', cor: MARCA.ambar, mesa: 'vaga', tam: 26, alturaMundo: .44, ancora: [.5, .5] })
-  };
-  chips.fiscal.position.set(-.05, 1.95, -.55); mesas.fiscal.add(chips.fiscal);
-  chips.auditor.position.set(.05, 1.85, -.45); mesas.auditor.add(chips.auditor);
-  chips.vaga.position.set(.45, 1.3, -.35); mesas.vaga.add(chips.vaga);
-
-  /* ── chão, parede do fundo, rodapé, janela, estante e prateleira ── */
-  const texPiso = texturaPiso();
-  const piso = malha(geoCaixa(34, .3, 30, .05, 1), mat(COR.piso, { map: texPiso, roughness: .95, envMapIntensity: .3 }), false);
-  piso.position.set(2, -.3, zParede + 15 - .2); raiz.add(piso);
-  const XP0 = -9, XP1 = 15;
-  const parede = malha(geoCaixa(XP1 - XP0, 2.7, .26, .04, 2), mat(COR.parede, { roughness: .85 }));
-  parede.position.set((XP0 + XP1) / 2, 0, zParede - .13); parede.castShadow = false; raiz.add(parede);
-  const rodape = malha(geoCaixa(XP1 - XP0, .1, .04, .01, 1), mat(COR.rodape, { roughness: .6 }), false);
-  rodape.position.set((XP0 + XP1) / 2, 0, zParede + .02); raiz.add(rodape);
-  const xf = mesas.fiscal.position.x;
-  const jan = janela(1.7, 1.25); jan.position.set(xf + 2.55, .95, zParede); raiz.add(jan);
-  const est = estante(1.5, 1.0, .4); est.position.set(xf - .55, 0, zParede + .22); raiz.add(est);
-  const prat = prateleira(1.25); prat.position.set(xf - .55, 1.62, zParede + .13); raiz.add(prat);
-  const lumParede = planta('espada', 1.25, 12, 'terracota'); lumParede.position.set(xf + 1.25, 0, zParede + .35); raiz.add(lumParede);
-
-  /* ── escada e patamar à esquerda ── */
-  const esc = escada(7, 1.15, .34, .17);
-  esc.position.set(xf - 2.75, 0, zParede + 1.2 + 7 * .34 + .05); raiz.add(esc);
-  const plPatamar = planta('zz', 1.1, 14, 'branco'); plPatamar.position.set(xf - 2.7, 7 * .17, zParede + .55); raiz.add(plPatamar);
-
-  /* ── recepção, banco, estar e plantas ── */
-  const rec = recepcao(); poe(rec, T1(-1.4, -2.35, .5), AZ * .6);
-  const ban = banco(1.35); poe(ban, T1(1.7, -2.8), AZ * .3);
-  const tapBanco = tapete(1.9, 1.3, 0x8F8B85); poe(tapBanco, T1(2.0, -3.05), AZ * .3);
-  const banq = mesinha(.22, .38); poe(banq, T1(2.35, -3.35));
-  const plBanq = planta('suculenta', 1.1, 6, 'branco'); plBanq.position.set(0, .42, 0); banq.add(plBanq);
-
-  const plantas = [
-    ['zz', 1.5, T1(-2.6, -.95), 'branco'], ['espada', 1.2, T1(-.4, -.85), 'branco'], ['zz', 1.35, T1(-.05, -2.25), 'creme'],
-    ['zz', 1.45, T1(2.35, -.6), 'branco'], ['espada', 1.3, T1(2.6, -1.85), 'terracota'], ['arbusto', 1.2, T1(-2.55, 2.3), 'salvia'],
-    ['costela', 1.3, T1(2.25, 2.45), 'branco'], ['zz', 1.3, T1(-2.65, -3.6), 'branco'], ['espada', 1.25, T1(.9, -4.1), 'creme'],
-    ['arbusto', 1.25, P(3.75, -2.0), 'terracota'], ['zz', 1.3, P(7.9, -1.3), 'branco'], ['espada', 1.3, P(7.7, -3.9), 'salvia'],
-    ['zz', 1.25, P(3.4, -4.6), 'branco'], ['costela', 1.2, T1(-1.5, -4.9), 'creme']
-  ];
-  plantas.forEach(([tipo, esc2, p, vaso], i) => {
-    const pl = planta(tipo, esc2, 20 + i, vaso); pl.position.set(p.x, 0, p.z); raiz.add(pl);
-    const so = sombraContato(.75 * esc2, .75 * esc2, .2); so.position.set(p.x, .006, p.z); raiz.add(so);
-  });
-
-  /* ── sala "nó tech stack" e estar do fecho ── */
-  /* encostada na parede do fundo, com o canto de trás logo fora da borda direita da Tela 1 */
-  const SW = 4.4, SD = 3.3;
-  const sala = salaTechStack({ W: SW, D: SD, H: 2.5 });
-  const zSala = zParede + .3 + SD / 2;
-  const xSala = (2.75 - DIR_DIREITA.z * (zSala - SD / 2)) / DIR_DIREITA.x + SW / 2;
-  sala.position.set(xSala, 0, zSala); raiz.add(sala);
-  const tapEstar = tapete(3.2, 2.4, COR.tapete); poe(tapEstar, P(5.9, -3.35));
-  const sof = sofa(2.2); poe(sof, P(6.15, -2.9, .2));
-  const polt = poltrona(); poe(polt, P(4.55, -3.55), .9);
-  const mes2 = mesinha(.3, .4); poe(mes2, P(6.25, -3.95));
-  const pl2 = planta('suculenta', 1.2, 30, 'branco'); pl2.position.set(0, .44, 0); mes2.add(pl2);
-
-  /* ── as três linhas azuis: saem da borda de cada mesa, descem ao chão,
-        correm com curvas suaves e chegam juntas ao hub da sala ── */
+  /* ── montagem ── */
+  const scene = new THREE.Scene();
+  const raiz = gltf.scene; scene.add(raiz);
   raiz.updateMatrixWorld(true);
-  const hubP = sala.userData.hub.getWorldPosition(new THREE.Vector3());
-  const matLinha = new THREE.MeshStandardMaterial({ color: MARCA.azul, emissive: MARCA.azul, emissiveIntensity: .28, roughness: .32, envMapIntensity: .8 });
-  const matPulso = new THREE.MeshBasicMaterial({ color: 0xBFD0FF, toneMapped: false });
-  const L = (id, x, y, z) => mesas[id].localToWorld(new THREE.Vector3(x, y, z));
-  const meia = MESA.larg / 2, Y = .03;
-  /* cada linha sai do tampo pela ponta direita da mesa, desce ao chão e corre até o hub
-     em curvas suaves desenhadas no plano da tela (como na Tela 3), depois projetadas no chão */
-  const ondas = { fiscal: [-.32, .14], auditor: [.22, -.12], vaga: [-.28, .1] };
-  const hubTela = tela(hubP.clone().setY(0));
-  const linhas = ['fiscal', 'auditor', 'vaga'].map(id => {
-    const s0 = L(id, meia - .3, MESA.alt + .012, .22), s1 = L(id, meia + .02, MESA.alt - .03, .22), d = L(id, meia + .3, Y, .32);
-    const dT = tela(d.clone().setY(0)), ex = hubTela[0] - dT[0], ey = hubTela[1] - dT[1], n = Math.hypot(ex, ey);
-    const px = -ey / n, py = ex / n, [A, B] = ondas[id];
-    const pts = [s0, s1, d];
-    for (const t of [.22, .45, .68, .86]){
-      const o = A * Math.sin(Math.PI * t) + B * Math.sin(2 * Math.PI * t);
-      pts.push(P(dT[0] + ex * t + px * o, dT[1] + ey * t + py * o, Y));
+  const no = nome => { const o = raiz.getObjectByName(nome); if (!o) throw new Error('nó ausente no GLB: ' + nome); return o; };
+  const uniformesCabo = { progresso: { value: -1 }, tempo: { value: 0 } };
+  const cabos = [], toques = [];
+  raiz.traverse(o => {
+    const ex = o.userData || {};
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = false;
+    if (ex.assado){
+      /* luz assada: a cor do atlas vai direto para a tela */
+      o.material = new THREE.MeshBasicMaterial({ map: o.material.map, toneMapped: false, side: THREE.DoubleSide });
+    } else if (ex.toque){
+      o.visible = false;
+    } else if (ex.cabo){
+      preparaCabo(o, uniformesCabo); cabos.push(o);
+    } else if (o.name.startsWith('placa-tech-stack')){
+      o.material = new THREE.MeshBasicMaterial({ map: o.material.emissiveMap, transparent: true, toneMapped: false, side: THREE.DoubleSide });
+    } else if (o.material && o.material.name === 'vidro'){
+      o.material.depthWrite = false; o.renderOrder = 5;
+    } else if (o.material && /^cracha-(fiscal|auditor)$/.test(o.material.name)){
+      o.material.alphaTest = .5;
+    } else if (o.material && o.material.name.startsWith('cabelo-mechas-')){
+      /* cabelo: a cor (raiz escura, pontas claras) vem por vértice; o sheen e a anisotropia
+         do Blender acinzentam as mechas no three.js */
+      o.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .55, metalness: 0 });
     }
-    pts.push(hubP.clone().setY(.06));
-    const curva = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    const geo = new THREE.TubeGeometry(curva, 220, .034, 8, false);
-    const m = new THREE.Mesh(geo, matLinha); m.castShadow = true; m.frustumCulled = false; m.userData.vivo = true; raiz.add(m);
-    geo.setDrawRange(0, 0);
-    const pulso = new THREE.Mesh(new THREE.SphereGeometry(.06, 12, 10), matPulso); pulso.visible = false; pulso.userData.vivo = true; raiz.add(pulso);
-    const pino = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, .02, 16), matLinha); pino.position.copy(pts[0]); pino.visible = false; pino.userData.vivo = true; raiz.add(pino);
-    return { curva, geo, total: geo.index.count, mesh: m, pulso, pino };
   });
-  progresso(.45);
+  for (const id of MESAS){ const t = no('toque-mesa-' + id); t.userData.mesa = id; t.visible = false; toques.push(t); }
+  cabos.sort((a, b) => a.name.localeCompare(b.name));
 
-  /* ── sol e sombra cobrindo a Tela 1 e o fecho ── */
-  const centroSombra = P(2.6, -.8);
-  sol.target.position.copy(centroSombra);
-  sol.position.copy(centroSombra).add(new THREE.Vector3(-9, 9.5, 2.2));
-  Object.assign(sol.shadow.camera, { left: -11.5, right: 11.5, top: 11.5, bottom: -11.5, near: 1, far: 40 });
-  sol.shadow.camera.updateProjectionMatrix();
+  /* luz em tempo real para pessoas e cabos, calibrada com o assado: céu quente + sol da esquerda */
+  scene.add(new THREE.HemisphereLight(0xFFF1E2, 0x9C8466, 1.25));
+  const sol = new THREE.DirectionalLight(0xFFE6C6, 2.4);
+  sol.position.set(-9, 9.5, 2.2); scene.add(sol);
+  const contraluz = new THREE.DirectionalLight(0xEAF0FF, .35); contraluz.position.set(6, 7, 12); scene.add(contraluz);
 
-  /* ── assadura: o que não se mexe vira um punhado de malhas ── */
-  assar(raiz);
-  progresso(.55);
-
-  /* logo do balcão: textura do SVG oficial */
-  const logo = rec.userData.logo;
+  /* "nó." do balcão: plano com a textura do SVG oficial, no marcador do GLB (R14) */
+  const marcaLogo = no('marca-logo-balcao');
+  const geoLogo = new THREE.PlaneGeometry(1, 1); geoLogo.rotateX(-Math.PI / 2);   // o plano XY do Blender vira XZ no glTF
+  const logo = new THREE.Mesh(geoLogo, new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, color: 0xFFFFFF, polygonOffset: true, polygonOffsetFactor: -2 }));
+  logo.name = 'logo-balcao'; logo.castShadow = false; logo.receiveShadow = false; logo.visible = false;
+  marcaLogo.add(logo);
   try {
     const tex = await Promise.race([
       new Promise((res, rej) => new THREE.TextureLoader().load(LOGO_BALCAO, res, undefined, rej)),
@@ -249,100 +199,117 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
     logo.material.map = tex; logo.material.needsUpdate = true; logo.visible = true;
   } catch (e) { console.warn('[escritorio] logo do balcão não carregou', e); }
-  progresso(.7);
+  progresso(.86);
 
-  /* ── enquadramentos ── */
-  const upCam = DIR_CIMA.clone(), direitaCam = DIR_DIREITA.clone();
-  const estado = { foco: null, alvoY: .2, tFecho: 0 };
-  let aspecto = 1;
-  /* A Tela 1 guarda a largura de mundo e cresce em altura em canvas mais altos (375×812);
-     em canvas mais largos, a altura mínima segura a coluna inteira no quadro. */
-  const alturaTela1 = () => Math.max(TELA1.alturaMin, TELA1.largura / aspecto);
-  const alturaFecho = () => Math.max(FECHO.largura * FECHO.proporcao, FECHO.largura / aspecto);
-  /* A Tela 3 é uma janela 375:440. Num canvas alto (bancada e pôster, 375×812) ela fica no meio,
-     onde o recorte do pôster na página olha; no canvas da página (375:520), cujo topo fica sob a
-     navbar no fecho, ela desce para a parte de baixo do canvas. */
-  const deslocaFecho = () => {
-    const hJ = FECHO.largura * FECHO.proporcao, hC = alturaFecho();
-    const f = aspecto >= .6 ? .68 : .47;
-    return (f - .5) * hC;
+  /* ── etiquetas: chip, halo que pulsa (R4) e, na vaga, contorno âmbar que pisca (R10) ── */
+  const DEF = {
+    fiscal: { texto: 'nó.fiscal', cor: MARCA.verde },
+    auditor: { texto: 'nó.auditor', cor: MARCA.azul },
+    vaga: { texto: 'criar uma automação', cor: MARCA.ambar }
   };
-  const alvoTela1 = P(TELA1.centro[0], TELA1.centro[1]), alvoFecho = P(FECHO.centro[0], FECHO.centro[1]);
-  const desejado = { alvo: alvoTela1.clone(), altura: TELA1.alturaMin };
-  const atual = { alvo: alvoTela1.clone(), altura: TELA1.alturaMin };
-  const tmp = new THREE.Vector3();
+  const chips = {}, halos = {}, extras = [];
+  for (const id of MESAS){
+    const m = no('marca-etiqueta-' + id);
+    const sp = desenhaChip(DEF[id]); sp.userData.mesa = id; m.add(sp); chips[id] = sp;
+    const h = desenhaChip({ ...DEF[id], halo: true });
+    /* o halo usa o centro no círculo; desloca o sprite para o círculo cair no mesmo lugar */
+    const W = sp.scale.x, H = sp.scale.y;
+    h.position.set(-W / 2 + (h.center.x) * W, (h.center.y - .5) * H, 0);
+    h.userData.base = h.scale.clone();
+    m.add(h); halos[id] = h; extras.push(h);
+  }
+  const contornoVaga = desenhaChip({ ...DEF.vaga, soContorno: true }); no('marca-etiqueta-vaga').add(contornoVaga); extras.push(contornoVaga);
+
+  /* ── câmeras do GLB: posição, orientação e ymag ── */
+  const cams = {};
+  for (const nome of ['camera-tela1', 'camera-tela2-fiscal', 'camera-tela2-auditor', 'camera-fecho']){
+    const c = no(nome);
+    const cam = c.isCamera ? c : (c.getObjectByProperty('isCamera', true) || c);
+    cam.updateMatrixWorld(true);
+    const pos = new THREE.Vector3(), q = new THREE.Quaternion(), esc = new THREE.Vector3();
+    cam.matrixWorld.decompose(pos, q, esc);
+    cams[nome] = { pos, q, ymag: cam.isOrthographicCamera ? cam.top : 3.36 };
+  }
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 200);
+  camera.quaternion.copy(cams['camera-tela1'].q);
+  const upCam = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  progresso(.9);
+
+  /* ── animação: um clip por pessoa, em laço de 8 s ── */
+  const mixer = new THREE.AnimationMixer(raiz);
+  for (const ag of AGENTES){
+    const clip = gltf.animations.find(a => a.name === 'laco-' + ag);
+    if (clip){ const acao = mixer.clipAction(clip); acao.setLoop(THREE.LoopRepeat, Infinity); acao.play(); }
+  }
+  if (REDUZ) mixer.timeScale = 0;
+
+  const marcas = {
+    'mesa-fiscal': no('marca-mesa-fiscal'), 'mesa-auditor': no('marca-mesa-auditor'), 'mesa-vaga': no('marca-mesa-vaga'),
+    'recepcao': no('marca-recepcao'), 'personagem-fiscal': no('marca-pessoa-fiscal'), 'personagem-auditor': no('marca-pessoa-auditor'),
+    'sala-tech-stack': no('marca-sala')
+  };
+  const placa = raiz.getObjectByName('placa-tech-stack');
+  const piso = no('marca-piso');
+
+  /* ── enquadramentos: Tela 1, Tela 2 (foco) e o arrasto até a sala ── */
+  const estado = { foco: null, alvoY: .2, tFecho: 0 };
+  const desejado = { pos: cams['camera-tela1'].pos.clone(), ymag: cams['camera-tela1'].ymag };
+  const atual = { pos: desejado.pos.clone(), ymag: desejado.ymag };
+  let aspecto = 1;
+  const v = new THREE.Vector3();
   function calculaDesejado(){
-    const q = suave(clamp01(estado.tFecho));
-    if (estado.foco && mesas[estado.foco]){
-      /* aproximação da Tela 2: a mesa ocupa quase toda a largura */
-      const altura = clamp(3.5 / aspecto, 4.2, 8.0);
-      /* a marca da mesa é o mesmo ponto que inspecionar() projeta em mesa-<id> */
-      mesas[estado.foco].userData.marca.getWorldPosition(desejado.alvo);
-      /* um tico para a direita, para a etiqueta da mesa caber no quadro */
-      desejado.alvo.addScaledVector(direitaCam, .25);
-      /* o centro da mesa fica a alvoY × altura do canvas, a partir do topo */
-      const ndcY = 1 - 2 * clamp01(estado.alvoY);
-      tmp.copy(upCam).multiplyScalar(ndcY * altura / 2);
-      desejado.alvo.sub(tmp);
-      desejado.altura = altura;
+    if (estado.foco && cams['camera-tela2-' + estado.foco]){
+      const c2 = cams['camera-tela2-' + estado.foco];
+      /* a câmera da Tela 2 desliza no próprio eixo vertical até o centro da mesa
+         ficar a alvoY × altura do canvas, a partir do topo */
+      marcas['mesa-' + estado.foco].getWorldPosition(v);
+      const ndcDesejado = 1 - 2 * clamp01(estado.alvoY);
+      const d = v.sub(c2.pos).dot(upCam) - ndcDesejado * c2.ymag;
+      desejado.pos.copy(c2.pos).addScaledVector(upCam, d);
+      desejado.ymag = c2.ymag;
     } else {
-      desejado.alvo.lerpVectors(alvoTela1, tmp.copy(alvoFecho).addScaledVector(upCam, deslocaFecho()), q);
-      desejado.altura = lerp(alturaTela1(), alturaFecho(), q);
+      /* R11: mesmo ângulo e mesmo ymag; a câmera só é arrastada até a sala */
+      const q = suave(clamp01(estado.tFecho));
+      desejado.pos.lerpVectors(cams['camera-tela1'].pos, cams['camera-fecho'].pos, q);
+      desejado.ymag = cams['camera-tela1'].ymag + (cams['camera-fecho'].ymag - cams['camera-tela1'].ymag) * q;
     }
   }
   function aplicaCamera(){
-    camera.position.copy(atual.alvo).addScaledVector(DIR_CAM, 60);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(atual.alvo);
-    const h = atual.altura, w = h * aspecto;
-    camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+    camera.position.copy(atual.pos);
+    const h = atual.ymag, w = h * aspecto;
+    camera.left = -w; camera.right = w; camera.top = h; camera.bottom = -h;
     camera.updateProjectionMatrix(); camera.updateMatrixWorld();
   }
   function passoCamera(dt){
     calculaDesejado();
     const k = 1 - Math.exp(-dt * 6);
-    atual.alvo.lerp(desejado.alvo, k);
-    atual.altura += (desejado.altura - atual.altura) * k;
-    if (atual.alvo.distanceTo(desejado.alvo) < .002 && Math.abs(desejado.altura - atual.altura) < .002){
-      atual.alvo.copy(desejado.alvo); atual.altura = desejado.altura;
+    atual.pos.lerp(desejado.pos, k);
+    atual.ymag += (desejado.ymag - atual.ymag) * k;
+    if (atual.pos.distanceTo(desejado.pos) < .002 && Math.abs(desejado.ymag - atual.ymag) < .0005){
+      atual.pos.copy(desejado.pos); atual.ymag = desejado.ymag;
     }
     aplicaCamera();
   }
 
-  /* ── animação: nunca para enquanto há quadro ── */
+  /* ── laço ── */
   const amp = REDUZ ? 0 : 1;
-  const telas = [infos.fiscal.tela, infos.auditor.tela, infos.vaga.tela, rec.userData.tela, sala.userData.tela];
-  const led = sala.userData.led, corLed = new THREE.Color(), apagado = new THREE.Color(0x202020);
-  function anima(t){
-    personagens.fiscal.userData.animar(t, amp);
-    personagens.auditor.userData.animar(t, amp);
-    telas.forEach((tl, i) => {
-      const pisca = .62 + .12 * Math.sin(t * 1.9 + i * 1.3) + (Math.sin(t * 6.3 + i) > .93 ? .1 : 0);
-      tl.material.emissiveIntensity = REDUZ ? .7 : pisca;
-      if (!REDUZ && tl.material.map) tl.material.map.offset.y = (Math.floor(t * 1.6 + i) % 6) * .012;
+  let progressoCabo = 0;
+  function anima(t, dt){
+    mixer.update(Math.min(dt, .1));
+    /* os cabos acendem durante o arrasto e chegam inteiros à sala no fim */
+    const alvoCabo = estado.foco ? 0 : clamp01((estado.tFecho - .05) / .8);
+    progressoCabo += (alvoCabo - progressoCabo) * (dt > 0 ? 1 - Math.exp(-dt * 5) : 1);
+    uniformesCabo.progresso.value = progressoCabo < .002 ? -1 : progressoCabo > .995 ? 1.01 : progressoCabo;
+    uniformesCabo.tempo.value = REDUZ ? 0 : t;
+    /* no fim do arrasto as etiquetas saem (a Tela 3 não tem etiquetas) */
+    const op = 1 - suave(clamp01((estado.tFecho - .45) / .4));
+    MESAS.forEach((id, i) => {
+      chips[id].material.opacity = op;
+      const h = halos[id], p = .5 + .5 * Math.sin(t * 2.6 + i);
+      h.scale.copy(h.userData.base).multiplyScalar(1 + .22 * p * amp);
+      h.material.opacity = (1 - .65 * p * amp) * op;
     });
-    if (!REDUZ){
-      for (let i = 0; i < led.count; i++){
-        const c = led.userData.cores[(i + Math.floor(i / 3)) % 3 === 0 ? 2 : i % 2];
-        led.setColorAt(i, Math.sin(t * (2 + (i % 7) * .45) + i * 1.7) > -.5 ? c : apagado);
-      }
-      led.instanceColor.needsUpdate = true;
-    }
-    /* linhas azuis: aparecem conforme o fecho cresce */
-    const q = suave(clamp01(estado.tFecho));
-    linhas.forEach((l, i) => {
-      const qi = suave(clamp01((q - i * .12) / .76));
-      l.geo.setDrawRange(0, Math.floor(l.total * qi / 3) * 3);
-      l.mesh.visible = qi > 0;
-      l.pino.visible = qi > 0;
-      l.pulso.visible = qi >= 1 && !REDUZ;
-      if (l.pulso.visible) l.curva.getPointAt((t * .2 + i * .33) % 1, l.pulso.position);
-    });
-    sala.userData.hub.scale.setScalar(q >= 1 ? 1 + .08 * amp * Math.sin(t * 3) : 1);
-    sala.userData.entra.visible = q >= .97;
-    /* no recuo do fecho as etiquetas saem, como na Tela 3 da referência */
-    const op = 1 - suave(clamp01((q - .1) / .35));
-    for (const sp of Object.values(chips)) sp.material.opacity = op;
+    contornoVaga.material.opacity = (REDUZ ? 1 : .25 + .75 * (.5 + .5 * Math.sin(t * Math.PI / .7))) * op;
   }
 
   /* ── tamanho, laço, pausa ── */
@@ -359,8 +326,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   }
   let nQuadros = 0, rodando = false, raf = 0, visivel = false, pausado = false, destruido = false, ultimo = 0;
   const oculta = () => document.hidden || document.visibilityState === 'hidden';
-  function desenha(agora){
-    anima(agora / 1000);
+  function desenha(agora, dt){
+    anima(agora / 1000, dt);
     renderer.render(scene, camera);
     nQuadros++;
   }
@@ -368,7 +335,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     if (!rodando) { raf = 0; return; }
     const dt = Math.min((agora - ultimo) / 1000, .1); ultimo = agora;
     passoCamera(dt);
-    desenha(agora);
+    desenha(agora, dt);
     raf = requestAnimationFrame(laco);
   }
   function liga(){
@@ -383,7 +350,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const ro = new ResizeObserver(() => { redimensiona(); });
   ro.observe(canvas);
 
-  /* ── toque nas mesas ── */
+  /* ── toque nas mesas: o raio só testa as caixas toque-mesa-* ── */
   const raycaster = new THREE.Raycaster(), ponteiro = new THREE.Vector2();
   const ouvintes = [];
   function mesaEm(ev){
@@ -391,13 +358,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     if (!r.width || !r.height) return null;
     ponteiro.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ponteiro, camera);
-    const hits = raycaster.intersectObjects(Object.values(mesas), true);
-    for (const h of hits){
-      let o = h.object;
-      while (o && !o.userData.mesa) o = o.parent;
-      if (o) return o.userData.mesa;
-    }
-    return null;
+    const hit = raycaster.intersectObjects(toques, false)[0];
+    return hit ? hit.object.userData.mesa : null;
   }
   const aoClicar = ev => { const m = mesaEm(ev); if (m) ouvintes.forEach(fn => { try { fn(m); } catch (e) { console.error(e); } }); };
   canvas.addEventListener('click', aoClicar);
@@ -407,13 +369,12 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
 
   /* ── primeiro quadro ── */
   redimensiona();
-  calculaDesejado(); atual.alvo.copy(desejado.alvo); atual.altura = desejado.altura;
+  calculaDesejado(); atual.pos.copy(desejado.pos); atual.ymag = desejado.ymag;
   aplicaCamera();
-  progresso(.85);
   await new Promise(r => setTimeout(r, 0));
   renderer.compile(scene, camera);
-  progresso(.95);
-  desenha(performance.now());
+  progresso(.96);
+  desenha(performance.now(), 0);
   progresso(1);
 
   /* ── inspeção: tudo lido dos objetos reais ── */
@@ -430,25 +391,22 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     const d = img.getContext('2d').getImageData(px.x, px.y, 1, 1).data;
     return '#' + [d[0], d[1], d[2]].map(n => n.toString(16).padStart(2, '0')).join('');
   }
+  function corFaixa(ag){
+    let cor = null;
+    no('cracha-' + ag).traverse(o => {
+      const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of ms) if (m.name === 'cracha-faixa-' + ag) cor = '#' + m.color.getHexString();
+    });
+    return cor;
+  }
+  const caixa = new THREE.Box3();
   function inspecionar(){
     camera.updateMatrixWorld();
     const enquadramento = estado.foco ? estado.foco : (estado.tFecho >= .5 ? 'fecho' : 'tela1');
-    const projetados = {
-      'mesa-fiscal': projeta(mesas.fiscal.userData.marca),
-      'mesa-auditor': projeta(mesas.auditor.userData.marca),
-      'mesa-vaga': projeta(mesas.vaga.userData.marca),
-      'recepcao': projeta(rec.userData.marca),
-      'personagem-fiscal': projeta(personagens.fiscal.userData.partes.marca),
-      'personagem-auditor': projeta(personagens.auditor.userData.partes.marca),
-      'sala-tech-stack': projeta(sala.userData.marca),
-      'etiqueta-fiscal': projeta(chips.fiscal),
-      'etiqueta-auditor': projeta(chips.auditor),
-      'etiqueta-vaga': projeta(chips.vaga)
-    };
-    const etiquetas = ['fiscal', 'auditor', 'vaga'].map(id => {
-      const sp = chips[id];
-      return { mesa: sp.userData.mesa, texto: sp.userData.texto, cor: corPixel(sp.material.map.image, sp.userData.ponto) };
-    });
+    const projetados = {};
+    for (const [k, o] of Object.entries(marcas)) projetados[k] = projeta(o);
+    for (const id of MESAS) projetados['etiqueta-' + id] = projeta(chips[id]);
+    const etiquetas = MESAS.map(id => ({ mesa: id, texto: chips[id].userData.texto, cor: corPixel(chips[id].material.map.image, chips[id].userData.ponto) }));
     const mapa = logo.material.map && logo.material.map.image && logo.material.map.image.src
       ? new URL(logo.material.map.image.src, location.href).pathname : null;
     const logoBalcao = {
@@ -456,15 +414,16 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
       contorno: logo.children.some(c => c.isLine || c.isLineSegments) || !!logo.material.wireframe,
       mapa
     };
-    const pers = ['fiscal', 'auditor'].map(id => {
-      const p = personagens[id].userData.partes;
-      return { agente: personagens[id].userData.agente, corpo: p.corpo.geometry.type, cabeca: p.cabeca.geometry.type, cracha: '#' + p.cracha.material.color.getHexString() };
-    });
+    const personagens = AGENTES.map(ag => ({ agente: ag, no: no('pessoa-' + ag).name, cracha: corFaixa(ag) }));
     return {
-      enquadramento, projetados, etiquetas, logoBalcao, personagens: pers,
-      linhas: { cor: '#' + linhas[0].mesh.material.color.getHexString(), quantidade: linhas.length },
-      placaSala: sala.userData.placa.userData.texto,
-      /* aditivo: custo do último quadro, para acompanhar o desempenho no celular */
+      enquadramento, projetados, etiquetas, logoBalcao, personagens,
+      linhas: { cor: '#' + cabos[0].material.color.getHexString(), quantidade: cabos.length },
+      placaSala: placa ? placa.userData.texto : null,
+      /* aditivos: quadro da câmera, cabos sobre o piso (R12) e custo do último quadro */
+      camera: { altura: 2 * atual.ymag, largura: 2 * atual.ymag * aspecto },
+      cabos: cabos.map(c => ({ no: c.name, cor: '#' + c.material.color.getHexString(), yMin: caixa.setFromObject(c).min.y })),
+      pisoY: piso.getWorldPosition(v3).y,
+      cabosAcesos: uniformesCabo.progresso.value,
       desenho: { chamadas: renderer.info.render.calls, triangulos: renderer.info.render.triangles }
     };
   }
@@ -475,13 +434,12 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     document.removeEventListener('visibilitychange', aoVisib);
     canvas.removeEventListener('click', aoClicar);
     if (fino) canvas.removeEventListener('pointermove', aoMover);
+    mixer.stopAllAction();
     scene.traverse(o => {
       if (o.geometry) o.geometry.dispose();
       const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-      ms.forEach(m => { for (const k of ['map', 'alphaMap', 'emissiveMap']) if (m[k]) m[k].dispose(); m.dispose(); });
+      ms.forEach(m => { for (const k of ['map', 'alphaMap', 'emissiveMap', 'normalMap', 'roughnessMap']) if (m[k]) m[k].dispose(); m.dispose(); });
     });
-    ambiente.dispose();
-    limparCache();
     renderer.dispose();
   }
 
@@ -496,7 +454,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     retomar(){ pausado = false; liga(); },
     quadros(){ return nQuadros; },
     /* os pôsteres saem sem os chips: na versão estática as etiquetas são os botões HTML */
-    mostrarEtiquetas(v){ for (const sp of Object.values(chips)) sp.visible = !!v; },
+    mostrarEtiquetas(v){ for (const sp of [...Object.values(chips), ...extras]) sp.visible = !!v; },
     destruir,
     inspecionar
   };
