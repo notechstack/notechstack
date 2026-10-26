@@ -125,6 +125,20 @@ Com a mudança, quem abre `/agentes/` no celular vê um escritório 3D isométri
 31. Em 375×812, a gaveta ocupa no máximo 75% da altura da tela, e a mesa aproximada continua visível acima dela, como na Tela 2.
 32. Em 1440×900 não há rolagem horizontal, a navbar e o rodapé aparecem como em `/contato/` e a cena tem no máximo 720 px de largura, centralizada.
 
+## Rodada 3 · renegociado por Lucca em 26/10/2026
+
+Lucca testou a versão `cd1f41fe` e pediu as mudanças abaixo, comparando com a referência. Onde um item
+abaixo conflita com um critério acima, vale o item abaixo.
+
+- **R1 · nome** (resolve o Unresolved 6): `nó.auditor` substitui `Auditor` no botão e na etiqueta da mesa (critérios 1 e 6), no cartão (2) e no título da gaveta, que passa a ser "nó.auditor — seu relatório semanal no WhatsApp" (16).
+- **R2 · cena integrada à tela** (critérios 6 e 32): a cena vai de borda a borda no celular, sem caixa, borda nem fundo de outra cor. O topo dela se funde ao fundo da página num degradê de pelo menos 64 px logo abaixo do subtítulo, e a base se funde do mesmo jeito antes do conteúdo seguinte. Na Tela 2, a cena ocupa o topo, logo abaixo da navbar, e a gaveta sobe por cima com cantos arredondados, como na referência.
+- **R3 · luz e cor:** a cena fica mais quente e menos clara, com sombras projetadas visíveis sob mesas, cadeiras, pessoas e plantas, e sombra de contato no chão. Na Tela 1, em 375×812, a mediana RGB da área da cena fica a no máximo ±12 por canal de `[220, 199, 170]` (medida da Tela 1 da referência), e a luminância média, em no máximo 190 (a referência dá 183; a `cd1f41fe` dava 202).
+- **R4 · etiqueta em destaque:** a etiqueta de cada mesa tem um círculo cheio na cor do agente, com pelo menos 16 px em 375 de largura, e um halo dessa cor pulsando em volta, em laço. Verde no fiscal, azul no nó.auditor, âmbar na vaga.
+- **R5 · crachás:** o crachá é um cartão retangular com faixa na cor do agente e o "nó." da marca, preso a um cordão da mesma cor, e fica legível na Tela 2.
+- **R6 · gaveta:** antes do mockup, a gaveta mostra uma explicação breve do agente, com no máximo 2 frases e 180 caracteres, tirada da LP dele, sem afirmação nova. O mockup fica compacto: continua reconhecível como WhatsApp (cabeçalho verde, fundo com rabiscos, balões e ✓✓), mas sem ocupar a tela. Em 375×812, a gaveta inteira ocupa **no máximo 62%** da altura (substitui os 75% do critério 31), e a conversa rola dentro de uma janela de no máximo 300 px.
+- **R7 · rolagem** (substitui o critério 11): rolar até o fecho **não** afasta a câmera para mostrar o escritório inteiro. A câmera viaja até a sala envidraçada "nó tech stack" e a enquadra em destaque: a sala ocupa pelo menos 45% da largura do canvas, e a altura do quadro varia no máximo 15% entre a Tela 1 e o fecho. As três linhas azuis `#3D63DB` acendem das mesas até a sala durante a viagem. Ao rolar de volta, a câmera volta à Tela 1.
+- Continua valendo: nada de polvo, mascote ou animal.
+
 ## States
 
 ```mermaid
