@@ -139,6 +139,16 @@ abaixo conflita com um critério acima, vale o item abaixo.
 - **R7 · rolagem** (substitui o critério 11): rolar até o fecho **não** afasta a câmera para mostrar o escritório inteiro. A câmera viaja até a sala envidraçada "nó tech stack" e a enquadra em destaque: a sala ocupa pelo menos 45% da largura do canvas, e a altura do quadro varia no máximo 15% entre a Tela 1 e o fecho. As três linhas azuis `#3D63DB` acendem das mesas até a sala durante a viagem. Ao rolar de volta, a câmera volta à Tela 1.
 - Continua valendo: nada de polvo, mascote ou animal.
 
+## Rodada 4 · ajustes de Lucca sobre as prévias do Blender (26/10/2026)
+
+Vale sobre a rodada 3 onde houver conflito.
+
+- **R8 · contraste:** a cena fica mais escura e os elementos se separam uns dos outros: mesas, balcão, escada, piso, paredes e o corpo das pessoas ganham tons e valores distintos, e não "tudo meio da mesma cor". Na Tela 1, a luminância média fica em no máximo 165 (a prévia `74023d6d` dava 178) e o desvio-padrão da luminância, em pelo menos 62 (a prévia dava 55; a referência, 56).
+- **R9 · etiquetas com contorno:** a etiqueta do `nó.fiscal` tem contorno verde (`--no-verde`), a do `nó.auditor`, contorno azul (`--no-azul`), ambos com pelo menos 2 px em 375 de largura, e o círculo cheio da R4 continua.
+- **R10 · terceira mesa:** a etiqueta e o botão "um problema seu aqui?" passam a dizer **"criar uma automação"** (substitui esse texto nos critérios 1 e 6), com contorno âmbar (`--no-ambar`) piscando em laço. O toque continua levando a `/contato/` (critério 19).
+- **R11 · rolagem** (substitui a R7): a câmera mantém o mesmo zoom e o mesmo ângulo da Tela 1 e só desliza para a direita, como se fosse arrastada, até enquadrar a sala "nó tech stack". A altura do quadro varia no máximo 3% entre a Tela 1 e o fecho; a câmera não se afasta.
+- **R12 · cabos:** as três linhas `#3D63DB` passam sempre **acima** do piso, sem atravessá-lo. Correm organizadas, lado a lado, em curvas suaves, sem se cruzar, cada uma da sua mesa até a sala. São cabos com volume e acabamento (tubo arredondado com pulsos de luz correndo até a sala), e não traços simples.
+
 ## States
 
 ```mermaid
