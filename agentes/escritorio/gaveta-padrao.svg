@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!-- Padrão de rabiscos do fundo da conversa (máscara: só o alfa conta; a cor vem do CSS). -->
+  <g fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- coração -->
+    <path d="M28 44c-7-5-12-9-12-15a6 6 0 0 1 12-2a6 6 0 0 1 12 2c0 6-5 10-12 15z"/>
+    <!-- estrela -->
+    <path d="M118 12l3.6 7.6 8.4 1.1-6.1 5.8 1.5 8.3-7.4-4-7.4 4 1.5-8.3-6.1-5.8 8.4-1.1z"/>
+    <!-- nota musical -->
+    <path d="M196 46V24l16-4v22"/>
+    <circle cx="192" cy="47" r="4"/><circle cx="208" cy="43" r="4"/>
+    <!-- nuvem -->
+    <path d="M58 96h26a8 8 0 0 0 0-16 11 11 0 0 0-21-3 8 8 0 0 0-5 19z"/>
+    <!-- telefone -->
+    <path d="M140 76c2-2 5-2 7 0l5 5c2 2 2 5 0 7l-3 3c3 6 8 11 14 14l3-3c2-2 5-2 7 0l5 5c2 2 2 5 0 7l-3 3c-3 3-8 3-12 1-11-6-20-15-26-26-2-4-2-9 1-12z"/>
+    <!-- xícara -->
+    <path d="M18 160h30v14a10 10 0 0 1-10 10H28a10 10 0 0 1-10-10z"/>
+    <path d="M48 164h4a5 5 0 0 1 0 10h-4M26 150c0-3 2-3 2-6M34 150c0-3 2-3 2-6"/>
+    <!-- carinha -->
+    <circle cx="116" cy="164" r="13"/>
+    <path d="M110 169c3 3 9 3 12 0"/>
+    <circle cx="111" cy="160" r="1.2" fill="white" stroke="none"/><circle cx="121" cy="160" r="1.2" fill="white" stroke="none"/>
+    <!-- envelope -->
+    <rect x="178" y="152" width="34" height="24" rx="4"/>
+    <path d="M178 156l17 11 17-11"/>
+    <!-- aviãozinho -->
+    <path d="M72 222l44-20-34 32-2-12z"/>
+    <path d="M82 234l34-32"/>
+    <!-- folha -->
+    <path d="M212 216c-14 0-24-10-24-24 14 0 24 10 24 24z"/>
+    <path d="M188 192l24 24"/>
+    <!-- lâmpada -->
+    <path d="M150 220a10 10 0 1 1 20 0c0 5-4 7-4 11h-12c0-4-4-6-4-11z"/>
+    <path d="M156 236h8"/>
+    <!-- balão de fala -->
+    <path d="M12 102h30a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H26l-8 7v-7h-6a6 6 0 0 1-6-6v-12a6 6 0 0 1 6-6z"/>
+    <!-- câmera -->
+    <path d="M104 100h8l3-4h12l3 4h8a4 4 0 0 1 4 4v18a4 4 0 0 1-4 4h-34a4 4 0 0 1-4-4v-18a4 4 0 0 1 4-4z"/>
+    <circle cx="121" cy="113" r="6"/>
+    <!-- brilhos e pontos -->
+    <path d="M70 24l0 12M64 30l12 0"/>
+    <path d="M226 100l0 10M221 105l10 0"/>
+    <circle cx="90" cy="140" r="2"/>
+    <circle cx="170" cy="130" r="2"/>
+    <circle cx="48" cy="204" r="2"/>
+    <circle cx="232" cy="68" r="2"/>
+  </g>
+</svg>
