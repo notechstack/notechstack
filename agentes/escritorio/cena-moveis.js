@@ -211,11 +211,10 @@ export function mesa(id, { variante = 0, ocupada = true } = {}){
   const { larg, prof, alt } = MESA, A = MESA.assento;
   const tampo = malha(geoPlaca(larg, prof, .16, .055, .012, 8), madeira()); tampo.position.y = alt - .055; g.add(tampo);
   const branco = mat(COR.branco, { roughness: .6 });
-  const gav = malha(geoCaixa(.62, alt - .07, prof - .14, .05, 3), branco); gav.position.set(larg / 2 - .4, .015, 0); g.add(gav);
-  [.18, .42].forEach(y => {
-    const fr = malha(geoCaixa(.012, .008, .2, .003, 1), mat(COR.cinza, { roughness: .4, metalness: .4 })); fr.position.set(larg / 2 - .4, y + .1, -(prof - .14) / 2 - .004); fr.rotation.y = PI / 2; g.add(fr);
-    const linha = malha(geoCaixa(.56, .004, .004, .001, 1), mat(0xD8D2C8)); linha.position.set(larg / 2 - .4, y + .22, -(prof - .14) / 2 - .002); g.add(linha);
-  });
+  /* pedestal branco largo sob a metade direita do tampo, como na referência */
+  const pw = larg * .55, px = larg / 2 - pw / 2 - .07;
+  const ped = malha(geoCaixa(pw, alt - .06, prof - .12, .07, 3), branco); ped.position.set(px, .005, 0); g.add(ped);
+  const fresta = malha(geoCaixa(pw - .1, .006, .006, .002, 1), mat(0xE2DBD0)); fresta.position.set(px, alt * .55, -(prof - .12) / 2 - .002); g.add(fresta);
   [[-larg / 2 + .12, -prof / 2 + .12], [-larg / 2 + .12, prof / 2 - .12]].forEach(([x, z]) => {
     const pe = malha(geoCilindro(.022, .018, alt - .05, 10), branco); pe.position.set(x, 0, z); g.add(pe);
   });
@@ -236,11 +235,11 @@ export function mesa(id, { variante = 0, ocupada = true } = {}){
   g.userData.marca = marca; g.userData.tela = mon.userData.tela;
   /* alvo de toque: caixa invisível em volta da mesa, da cadeira e de quem senta */
   /* justa na silhueta: alta e funda demais, a caixa da mesa da frente cobriria a de trás na tela */
-  const alvo = new THREE.Mesh(new THREE.BoxGeometry(larg + .1, 1.6, prof + .75), new THREE.MeshBasicMaterial());
-  alvo.position.set(0, .8, -.36); alvo.visible = false; alvo.userData.vivo = true; alvo.userData.mesa = id; g.add(alvo);
+  const alvo = new THREE.Mesh(new THREE.BoxGeometry(larg + .1, 1.25, prof + .6), new THREE.MeshBasicMaterial());
+  alvo.position.set(0, .625, -.3); alvo.visible = false; alvo.userData.vivo = true; alvo.userData.mesa = id; g.add(alvo);
   if (!ocupada){
     const ms = mouse(); ms.position.copy(info.mouseLocal); g.add(ms);
-    cad.rotation.y = .5; cad.position.x -= .1; cad.position.z -= .15;
+    cad.rotation.y = .22; cad.position.z -= .08;
   }
   return info;
 }
@@ -404,7 +403,7 @@ function placaLockup(){
     tex.needsUpdate = true;
   };
   img.src = LOCKUP;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 2.1 * H / W), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2.5 * H / W), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
   m.userData.vivo = true; m.userData.texto = 'nó tech stack';
   return m;
 }
@@ -469,7 +468,9 @@ export function salaTechStack({ W = 4.0, D = 3.0, H = 2.35 } = {}){
   hub.position.set(-W / 2 - .22, 0, D / 2 - .6); hub.userData.vivo = true; g.add(hub);
   const entra = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(-W / 2 - .1, .06, D / 2 - .6), V(-W / 2 + .3, .06, D / 2 - .7), V(-W / 2 + .9, .06, -D / 2 + .9)]), 24, .03, 8), hub.material);
   entra.userData.vivo = true; entra.visible = false; g.add(entra);
-  const placa = placaLockup(); placa.position.set(.2, .08 + H + .34, D / 2 + .08); g.add(placa);
+  const placa = placaLockup(); placa.position.set(.35, .08 + H - .05, D / 2 + .09); g.add(placa);
+  /* luz quente acesa lá dentro, como na Tela 3 */
+  const quente = new THREE.PointLight(0xFFC98A, 5, 4.2, 1.6); quente.position.set(.2, 1.9, -.2); g.add(quente);
   g.add(sombraContato(W + 1.2, D + 1.2, .18));
   const marca = new THREE.Object3D(); marca.position.set(0, 1.1, 0); g.add(marca);
   g.userData = { marca, placa, hub, entra, led, tela: mon.userData.tela };

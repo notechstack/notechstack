@@ -39,8 +39,8 @@ const tela = p => [p.dot(DIR_DIREITA), p.dot(DIR_CIMA)];
 /* enquadramentos em coordenadas de tela: centro e largura de mundo visível.
    A Tela 1 foi composta para o canvas da página (375:520) e só ganha altura
    em canvas mais altos (375×812); o fecho guarda a proporção da Tela 3. */
-const TELA1 = { centro: [0, .2], largura: 5.6, alturaMin: 7.75 };
-const FECHO = { centro: [3.1, .45], largura: 10.5, proporcao: 440 / 375 };
+const TELA1 = { centro: [0, .02], largura: 4.85, alturaMin: 6.72 };
+const FECHO = { centro: [2.85, .3], largura: 9.7, proporcao: 440 / 375 };
 
 export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const progresso = p => { try { if (typeof aoProgresso === 'function') aoProgresso(clamp01(p)); } catch (e) {} };
@@ -89,6 +89,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
 
   const raiz = new THREE.Group(); scene.add(raiz);
   const P = (sx, sy, y = 0) => naTela(sx, sy, y);
+  /* composição da Tela 1, desenhada num quadro de 5,6 de largura e apertada para o quadro final */
+  const K1 = .86, T1 = (sx, sy, y = 0) => sx < 3 ? naTela(sx * K1, .2 + (sy - .2) * K1, y) : naTela(sx, sy, y);
   const poe = (obj, p, ry = 0) => { obj.position.set(p.x, obj.position.y, p.z); obj.rotation.y = ry; raiz.add(obj); return obj; };
 
   /* ── mesas, compostas pela Tela 1 (o centro de cada mesa no quadro) ── */
@@ -98,9 +100,9 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     vaga: mesa('vaga', { variante: 2, ocupada: false })
   };
   const mesas = { fiscal: infos.fiscal.grupo, auditor: infos.auditor.grupo, vaga: infos.vaga.grupo };
-  poe(mesas.fiscal, P(.05, 1.95, MESA.alt));
-  poe(mesas.auditor, P(.6, .33, MESA.alt));
-  poe(mesas.vaga, P(1.15, -1.28, MESA.alt));
+  poe(mesas.fiscal, T1(.05, 1.95, MESA.alt));
+  poe(mesas.auditor, T1(.6, .33, MESA.alt));
+  poe(mesas.vaga, T1(1.15, -1.28, MESA.alt));
   const zParede = mesas.fiscal.position.z - 2.15;
 
   /* objetos de cada mesa */
@@ -140,7 +142,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   };
   chips.fiscal.position.set(-.05, 1.95, -.55); mesas.fiscal.add(chips.fiscal);
   chips.auditor.position.set(.05, 1.85, -.45); mesas.auditor.add(chips.auditor);
-  chips.vaga.position.set(.55, 1.55, -.4); mesas.vaga.add(chips.vaga);
+  chips.vaga.position.set(.45, 1.3, -.35); mesas.vaga.add(chips.vaga);
 
   /* ── chão, parede do fundo, rodapé, janela, estante e prateleira ── */
   const texPiso = texturaPiso();
@@ -159,22 +161,22 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
 
   /* ── escada e patamar à esquerda ── */
   const esc = escada(7, 1.15, .34, .17);
-  esc.position.set(xf - 3.05, 0, zParede + 1.2 + 7 * .34 + .05); raiz.add(esc);
-  const plPatamar = planta('zz', 1.1, 14, 'branco'); plPatamar.position.set(xf - 3.0, 7 * .17, zParede + .55); raiz.add(plPatamar);
+  esc.position.set(xf - 2.75, 0, zParede + 1.2 + 7 * .34 + .05); raiz.add(esc);
+  const plPatamar = planta('zz', 1.1, 14, 'branco'); plPatamar.position.set(xf - 2.7, 7 * .17, zParede + .55); raiz.add(plPatamar);
 
   /* ── recepção, banco, estar e plantas ── */
-  const rec = recepcao(); poe(rec, P(-1.4, -2.35, .5), AZ * .6);
-  const ban = banco(1.35); poe(ban, P(1.7, -2.8), AZ * .3);
-  const tapBanco = tapete(1.9, 1.3, 0x8F8B85); poe(tapBanco, P(2.0, -3.05), AZ * .3);
-  const banq = mesinha(.22, .38); poe(banq, P(2.35, -3.35));
+  const rec = recepcao(); poe(rec, T1(-1.4, -2.35, .5), AZ * .6);
+  const ban = banco(1.35); poe(ban, T1(1.7, -2.8), AZ * .3);
+  const tapBanco = tapete(1.9, 1.3, 0x8F8B85); poe(tapBanco, T1(2.0, -3.05), AZ * .3);
+  const banq = mesinha(.22, .38); poe(banq, T1(2.35, -3.35));
   const plBanq = planta('suculenta', 1.1, 6, 'branco'); plBanq.position.set(0, .42, 0); banq.add(plBanq);
 
   const plantas = [
-    ['zz', 1.5, P(-2.6, -.95), 'branco'], ['espada', 1.2, P(-.4, -.85), 'branco'], ['zz', 1.35, P(-.05, -2.25), 'creme'],
-    ['zz', 1.45, P(2.05, -.2), 'branco'], ['espada', 1.3, P(2.6, -1.85), 'terracota'], ['arbusto', 1.2, P(-2.55, 2.3), 'salvia'],
-    ['costela', 1.3, P(2.25, 2.45), 'branco'], ['zz', 1.3, P(-2.65, -3.6), 'branco'], ['espada', 1.25, P(.9, -4.1), 'creme'],
-    ['arbusto', 1.25, P(4.1, -2.3), 'terracota'], ['zz', 1.3, P(8.6, -1.6), 'branco'], ['espada', 1.3, P(8.4, -4.3), 'salvia'],
-    ['zz', 1.25, P(3.6, -5.4), 'branco'], ['costela', 1.2, P(-1.5, -4.9), 'creme']
+    ['zz', 1.5, T1(-2.6, -.95), 'branco'], ['espada', 1.2, T1(-.4, -.85), 'branco'], ['zz', 1.35, T1(-.05, -2.25), 'creme'],
+    ['zz', 1.45, T1(2.35, -.6), 'branco'], ['espada', 1.3, T1(2.6, -1.85), 'terracota'], ['arbusto', 1.2, T1(-2.55, 2.3), 'salvia'],
+    ['costela', 1.3, T1(2.25, 2.45), 'branco'], ['zz', 1.3, T1(-2.65, -3.6), 'branco'], ['espada', 1.25, T1(.9, -4.1), 'creme'],
+    ['arbusto', 1.25, P(3.75, -2.0), 'terracota'], ['zz', 1.3, P(7.9, -1.3), 'branco'], ['espada', 1.3, P(7.7, -3.9), 'salvia'],
+    ['zz', 1.25, P(3.4, -4.6), 'branco'], ['costela', 1.2, T1(-1.5, -4.9), 'creme']
   ];
   plantas.forEach(([tipo, esc2, p, vaso], i) => {
     const pl = planta(tipo, esc2, 20 + i, vaso); pl.position.set(p.x, 0, p.z); raiz.add(pl);
@@ -186,12 +188,12 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const SW = 4.4, SD = 3.3;
   const sala = salaTechStack({ W: SW, D: SD, H: 2.5 });
   const zSala = zParede + .3 + SD / 2;
-  const xSala = (3.05 - DIR_DIREITA.z * (zSala - SD / 2)) / DIR_DIREITA.x + SW / 2;
+  const xSala = (2.75 - DIR_DIREITA.z * (zSala - SD / 2)) / DIR_DIREITA.x + SW / 2;
   sala.position.set(xSala, 0, zSala); raiz.add(sala);
-  const tapEstar = tapete(3.2, 2.4, COR.tapete); poe(tapEstar, P(6.4, -3.75));
-  const sof = sofa(2.2); poe(sof, P(6.65, -3.3, .2));
-  const polt = poltrona(); poe(polt, P(5.05, -3.95), .9);
-  const mes2 = mesinha(.3, .4); poe(mes2, P(6.75, -4.35));
+  const tapEstar = tapete(3.2, 2.4, COR.tapete); poe(tapEstar, P(5.9, -3.35));
+  const sof = sofa(2.2); poe(sof, P(6.15, -2.9, .2));
+  const polt = poltrona(); poe(polt, P(4.55, -3.55), .9);
+  const mes2 = mesinha(.3, .4); poe(mes2, P(6.25, -3.95));
   const pl2 = planta('suculenta', 1.2, 30, 'branco'); pl2.position.set(0, .44, 0); mes2.add(pl2);
 
   /* ── as três linhas azuis: saem da borda de cada mesa, descem ao chão,
@@ -262,7 +264,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
      navbar no fecho, ela desce para a parte de baixo do canvas. */
   const deslocaFecho = () => {
     const hJ = FECHO.largura * FECHO.proporcao, hC = alturaFecho();
-    const f = aspecto >= .6 ? 1 - hJ / (2 * hC) + .01 : .47;
+    const f = aspecto >= .6 ? .68 : .47;
     return (f - .5) * hC;
   };
   const alvoTela1 = P(TELA1.centro[0], TELA1.centro[1]), alvoFecho = P(FECHO.centro[0], FECHO.centro[1]);
