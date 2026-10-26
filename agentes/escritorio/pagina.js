@@ -127,6 +127,10 @@ async function montarGaveta(estatico) {
   if (estado.gaveta) return;
   estado.gaveta = modulo.montarGaveta(raizGaveta, { estatico });
   estado.gaveta.aoMudar(aoMudarGaveta);
+  // A gaveta cresce conforme a conversa entra (até 75% da tela): a câmera reenquadra a mesa
+  // a cada mudança de altura, para ela continuar acima da gaveta (critério 31).
+  const painel = raizGaveta.querySelector('[role="dialog"]');
+  if (painel && 'ResizeObserver' in window) new ResizeObserver(reenquadrarMesa).observe(painel);
   for (const [mesa, el] of mesas) {
     if (mesa === 'vaga') continue;
     el.setAttribute('role', 'button');
@@ -174,6 +178,15 @@ function calcularAlvoY() {
   return clamp(faixa / 2 / altura, 0.06, 0.5);
 }
 
+let reenquadrar = 0;
+function reenquadrarMesa() {
+  if (reenquadrar || !estado.aberta || !estado.cena) return;
+  reenquadrar = requestAnimationFrame(() => {
+    reenquadrar = 0;
+    if (estado.aberta && estado.cena) estado.cena.focar(estado.aberta, { alvoY: calcularAlvoY() });
+  });
+}
+
 function aoMudarGaveta({ aberta, agente } = {}) {
   if (aberta) {
     estado.aberta = agente;
@@ -210,12 +223,13 @@ for (const [mesa, el] of mesas) {
 }
 
 // ── Rolagem → cena.fecho(t) e etiquetas sobre a cena ──
-// t = 0 enquanto o canvas ainda cabe inteiro sob a navbar (inclui o topo da página) e
-// 1 quando o h2 do fecho chega a FIM_FECHO da viewport.
+// t = 1 assim que o canvas encosta na navbar ou o h2 do fecho chega a FIM_FECHO da viewport,
+// o que vier primeiro: assim o recuo (Tela 3) acontece com a cena inteira à vista, com o h2
+// logo abaixo, também no desktop. O recuo ocupa os 60% de altura do canvas anteriores a isso.
 function progressoFecho() {
-  const inicio = Math.max(0, topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV);
-  const fim = topoNoDocumento(tituloFecho) - innerHeight * FIM_FECHO;
-  if (fim <= inicio) return scrollY >= fim ? 1 : 0;
+  const encosta = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
+  const fim = Math.max(1, Math.min(encosta, topoNoDocumento(tituloFecho) - innerHeight * FIM_FECHO));
+  const inicio = Math.max(0, fim - escritorio.clientHeight * 0.6);
   return clamp((scrollY - inicio) / (fim - inicio), 0, 1);
 }
 

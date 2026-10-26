@@ -66,7 +66,7 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--no-ambar-tint) 55%, var(--no-osso));
 }
-@media (min-width: 769px) { .ag-escritorio { border-radius: 20px; } }
+@media (min-width: 769px) { .ag-escritorio { border-radius: 20px; max-height: calc(100svh - 240px); } }
 /* Estática e sem JS: o quadro tem a proporção do pôster (750×1624), sem corte, para os
    botões das mesas caírem exatamente onde a cena desenha as etiquetas. */
 html:not(.carregando):not(.animada) .ag-escritorio {

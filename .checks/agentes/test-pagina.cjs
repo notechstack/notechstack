@@ -649,23 +649,35 @@ async function principal() {
   }
 
   // ── C31: gaveta ≤ 75% da altura e mesa aproximada acima dela ──
+  // Mede logo após abrir e de novo com a conversa inteira na tela (a gaveta cresce até 75%).
   {
-    await rolarPara(p, 0);
-    await p.waitForTimeout(300);
-    await p.locator('[data-mesa="fiscal"]').click();
-    assert(await esperarPara(() => gavetaAberta(p)));
-    await p.waitForTimeout(1400);
-    const g = await caixaDaGaveta(p);
-    assert(g.height <= 0.75 * 812 + 0.5, `C31: gaveta com ${g.height}px`);
-    const caixa = await p.locator('#escritorio-canvas').boundingBox();
-    const m = (await inspecionar(p)).projetados['mesa-fiscal'];
-    const yMesa = caixa.y + m.y;
-    const fundoNav = await p.evaluate(() => document.querySelector('.no-card-top').getBoundingClientRect().bottom);
-    assert(yMesa < g.top, `C31: mesa em ${yMesa.toFixed(0)}px, gaveta começa em ${g.top.toFixed(0)}px`);
-    assert(yMesa > fundoNav, `C31: mesa escondida sob a navbar (${yMesa.toFixed(0)} ≤ ${fundoNav.toFixed(0)})`);
-    await p.screenshot({ path: path.join(CAPTURAS, 'pagina-gaveta-375.png') });
-    ok(naBancada('C31'), `(gaveta ${g.height.toFixed(0)}px; mesa em y=${yMesa.toFixed(0)}, gaveta em y=${g.top.toFixed(0)})`);
-    await fecharComEsc();
+    const medirC31 = async (mesa, rotulo) => {
+      const g = await caixaDaGaveta(p);
+      assert(g.height <= 0.75 * 812 + 0.5, `C31 ${rotulo}: gaveta com ${g.height}px`);
+      const caixa = await p.locator('#escritorio-canvas').boundingBox();
+      const m = (await inspecionar(p)).projetados[`mesa-${mesa}`];
+      const yMesa = caixa.y + m.y;
+      const fundoNav = await p.evaluate(() => document.querySelector('.no-card-top').getBoundingClientRect().bottom);
+      assert(yMesa < g.top, `C31 ${rotulo}: mesa em ${yMesa.toFixed(0)}px, gaveta começa em ${g.top.toFixed(0)}px`);
+      assert(yMesa > fundoNav, `C31 ${rotulo}: mesa escondida sob a navbar (${yMesa.toFixed(0)} ≤ ${fundoNav.toFixed(0)})`);
+      return `${rotulo}: gaveta ${g.height.toFixed(0)}px, mesa y=${yMesa.toFixed(0)}, gaveta y=${g.top.toFixed(0)}`;
+    };
+    const notas = [];
+    for (const [mesa, esperas] of [['fiscal', [1400, 9000]], ['auditor', [7000]]]) {
+      await rolarPara(p, 0);
+      await p.waitForTimeout(300);
+      await p.locator(`[data-mesa="${mesa}"]`).click();
+      assert(await esperarPara(() => gavetaAberta(p)));
+      let decorrido = 0;
+      for (const espera of esperas) {
+        await p.waitForTimeout(espera - decorrido);
+        decorrido = espera;
+        notas.push(await medirC31(mesa, `${mesa} ${espera / 1000}s`));
+        if (mesa === 'fiscal' && espera === 9000) await p.screenshot({ path: path.join(CAPTURAS, 'pagina-gaveta-375.png') });
+      }
+      await fecharComEsc();
+    }
+    ok(naBancada('C31'), `(${notas.join(' · ')})`);
   }
 
   // ── C30: 375×812 e 390×844 ──
