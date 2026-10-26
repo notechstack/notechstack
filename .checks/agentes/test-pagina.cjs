@@ -247,7 +247,7 @@ async function principal() {
       'Por assinatura. Toque numa mesa para ver o agente trabalhando.',
       'data-mesa="fiscal"', 'nó.fiscal',
       'data-mesa="auditor"', 'nó.auditor',
-      'data-mesa="vaga"', 'um problema seu aqui?',
+      'data-mesa="vaga"', 'criar uma automação',
       '<h2', 'Quando forem vários, a gente une tudo num sistema só.',
       'class="ag-cartao" href="/agentes/fiscal/"', 'class="ag-cartao" href="/agentes/auditor/"',
       'href="/contato/">Conte sua ideia<',
@@ -261,7 +261,7 @@ async function principal() {
     const { contexto, pagina } = await abrir({ js: false });
     const h1 = (await pagina.locator('h1').innerText()).trim();
     assert.equal(h1, 'Cada agente resolve um problema da sua empresa.');
-    for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'nó.auditor'], ['vaga', 'um problema seu aqui?']]) {
+    for (const [mesa, texto] of [['fiscal', 'nó.fiscal'], ['auditor', 'nó.auditor'], ['vaga', 'criar uma automação']]) {
       assert.equal((await pagina.locator(`[data-mesa="${mesa}"]`).innerText()).trim(), texto, `C1: texto da mesa ${mesa}`);
     }
     assert.equal(await pagina.locator('.ag-cartao').count(), 2, 'C1: dois cartões');

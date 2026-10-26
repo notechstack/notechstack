@@ -157,7 +157,16 @@ html.animada .ag-fecho-poster { display: none; }
   white-space: nowrap;
   transition: transform .2s ease;
 }
-.ag-mesa[data-mesa="vaga"] .ag-mesa-pilula { max-width: 140px; white-space: normal; border-radius: 16px; }
+/* Rodada 4 (R4, R9, R10): círculo cheio de 16 px e contorno na cor do agente; a mesa
+   "criar uma automação" tem contorno âmbar piscando. */
+.ag-mesa-pilula .ag-ponto { width: 16px; height: 16px; }
+.ag-mesa[data-mesa="fiscal"]  .ag-mesa-pilula { border: 2px solid var(--no-verde); }
+.ag-mesa[data-mesa="auditor"] .ag-mesa-pilula { border: 2px solid var(--no-azul); }
+.ag-mesa[data-mesa="vaga"]    .ag-mesa-pilula { border: 2px solid var(--no-ambar); animation: ag-pisca-ambar 1.4s ease-in-out infinite; }
+@keyframes ag-pisca-ambar {
+  50% { border-color: color-mix(in srgb, var(--no-ambar) 25%, transparent); box-shadow: var(--no-shadow-card), 0 0 0 4px color-mix(in srgb, var(--no-ambar) 30%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .ag-mesa[data-mesa="vaga"] .ag-mesa-pilula { animation: none; } }
 .ag-mesa:hover .ag-mesa-pilula { transform: translateY(-2px); }
 .ag-mesa:focus-visible { outline: none; }
 .ag-mesa:focus-visible .ag-mesa-pilula { outline: 3px solid var(--no-azul); outline-offset: 2px; }
