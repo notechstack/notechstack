@@ -149,6 +149,15 @@ Vale sobre a rodada 3 onde houver conflito.
 - **R11 · rolagem** (substitui a R7): a câmera mantém o mesmo zoom e o mesmo ângulo da Tela 1 e só desliza para a direita, como se fosse arrastada, até enquadrar a sala "nó tech stack". A altura do quadro varia no máximo 3% entre a Tela 1 e o fecho; a câmera não se afasta.
 - **R12 · cabos:** as três linhas `#3D63DB` passam sempre **acima** do piso, sem atravessá-lo. Correm organizadas, lado a lado, em curvas suaves, sem se cruzar, cada uma da sua mesa até a sala. São cabos com volume e acabamento (tubo arredondado com pulsos de luz correndo até a sala), e não traços simples.
 
+## Rodada 5 · cena vinda do Blender (26/10/2026)
+
+Lucca aprovou levar ao site a cena de `.tasks/blender/escritorio.blend` (commit `e804351b`).
+
+- **R13 · critério 7:** deixa de exigir `CapsuleGeometry` e `SphereGeometry`. Passa a exigir: duas pessoas, os nós `pessoa-fiscal` e `pessoa-auditor`, cada uma com o crachá `cracha-<agente>` cuja faixa tem a cor do token do agente (`--no-verde` e `--no-azul`); nenhum nó com nome de pessoa; nada de *The Office*; nenhum mascote ou animal.
+- **R14 · critério 8 continua igual:** o "nó." do balcão é criado pelo three.js como `PlaneGeometry` com a textura de `/brand/logo/svg/no-tinta-ponto-azul.svg`, posicionado no marcador `marca-logo-balcao` do GLB.
+- **R15 · pôsteres** (critério 26): passam a ter 750×1040 (375:520 @2x, a proporção do canvas da página), nos quadros `tela1` e `fecho`, renderizados da cena do site.
+- **R16 · peso:** um único `agentes/escritorio/escritorio.glb` de no máximo 3 MB, com meshopt e texturas WebP.
+
 ## States
 
 ```mermaid
