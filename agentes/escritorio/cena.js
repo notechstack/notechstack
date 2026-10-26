@@ -207,9 +207,12 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     auditor: { texto: 'nó.auditor', cor: MARCA.azul },
     vaga: { texto: 'criar uma automação', cor: MARCA.ambar }
   };
-  const chips = {}, halos = {}, extras = [];
+  /* cada etiqueta vive num grupo escalado pelo zoom: o chip tem o mesmo tamanho em px em
+     qualquer enquadramento (o da Tela 1) */
+  const chips = {}, halos = {}, grupos = {}, extras = [];
+  const opEtiqueta = { fiscal: 1, auditor: 1, vaga: 1 };
   for (const id of MESAS){
-    const m = no('marca-etiqueta-' + id);
+    const m = new THREE.Group(); no('marca-etiqueta-' + id).add(m); grupos[id] = m;
     const sp = desenhaChip(DEF[id]); sp.userData.mesa = id; m.add(sp); chips[id] = sp;
     const h = desenhaChip({ ...DEF[id], halo: true });
     /* o halo usa o centro no círculo; desloca o sprite para o círculo cair no mesmo lugar */
@@ -218,7 +221,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     h.userData.base = h.scale.clone();
     m.add(h); halos[id] = h; extras.push(h);
   }
-  const contornoVaga = desenhaChip({ ...DEF.vaga, soContorno: true }); no('marca-etiqueta-vaga').add(contornoVaga); extras.push(contornoVaga);
+  const contornoVaga = desenhaChip({ ...DEF.vaga, soContorno: true }); grupos.vaga.add(contornoVaga); extras.push(contornoVaga);
 
   /* ── câmeras do GLB: posição, orientação e ymag ── */
   const cams = {};
@@ -233,6 +236,8 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 200);
   camera.quaternion.copy(cams['camera-tela1'].q);
   const upCam = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  const direitaCam = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const YMAG_T1 = cams['camera-tela1'].ymag;
   progresso(.9);
 
   /* ── animação: um clip por pessoa, em laço de 8 s ── */
@@ -248,11 +253,27 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     'recepcao': no('marca-recepcao'), 'personagem-fiscal': no('marca-pessoa-fiscal'), 'personagem-auditor': no('marca-pessoa-auditor'),
     'sala-tech-stack': no('marca-sala')
   };
+  /* Tela 2: o conjunto pessoa + cadeira + mesa + monitor de cada mesa, lido do GLB em repouso:
+     a caixa de toque (mesa, cadeira e pessoa sentada) unida à caixa da pessoa (topo do cabelo) */
+  /* Do tampo para cima (como a Tela 2 da referência): pés, pedestal e sapatos ficam sob a gaveta. */
+  const caixaFoco = {};
+  for (const ag of AGENTES){
+    const pts = [], t = no('toque-mesa-' + ag), bp = new THREE.Box3().setFromObject(no('pessoa-' + ag));
+    const yTampo = no('marca-mesa-' + ag).getWorldPosition(new THREE.Vector3()).y - .06;
+    t.geometry.computeBoundingBox();
+    const bt = t.geometry.boundingBox;
+    for (const [b, m] of [[bt, t.matrixWorld], [bp, null]])
+      for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]){
+        const q = new THREE.Vector3(x, y, z); if (m) q.applyMatrix4(m);
+        q.y = Math.max(q.y, yTampo); pts.push(q);
+      }
+    caixaFoco[ag] = pts;
+  }
   const placa = raiz.getObjectByName('placa-tech-stack');
   const piso = no('marca-piso');
 
   /* ── enquadramentos: Tela 1, Tela 2 (foco) e o arrasto até a sala ── */
-  const estado = { foco: null, alvoY: .2, tFecho: 0 };
+  const estado = { foco: null, alvoY: .2, alturaVisivel: 0, tFecho: 0 };
   const desejado = { pos: cams['camera-tela1'].pos.clone(), ymag: cams['camera-tela1'].ymag };
   const atual = { pos: desejado.pos.clone(), ymag: desejado.ymag };
   let aspecto = 1;
@@ -260,13 +281,30 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   function calculaDesejado(){
     if (estado.foco && cams['camera-tela2-' + estado.foco]){
       const c2 = cams['camera-tela2-' + estado.foco];
-      /* a câmera da Tela 2 desliza no próprio eixo vertical até o centro da mesa
-         ficar a alvoY × altura do canvas, a partir do topo */
-      marcas['mesa-' + estado.foco].getWorldPosition(v);
       const ndcDesejado = 1 - 2 * clamp01(estado.alvoY);
-      const d = v.sub(c2.pos).dot(upCam) - ndcDesejado * c2.ymag;
-      desejado.pos.copy(c2.pos).addScaledVector(upCam, d);
-      desejado.ymag = c2.ymag;
+      if (estado.alturaVisivel > 0){
+        /* a faixa visível acima da gaveta (alturaVisivel do canvas, centrada em alvoY) recebe
+           a pessoa, a cadeira, a mesa e o monitor inteiros, com 8% de folga */
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const q of caixaFoco[estado.foco]){
+          const sx = q.dot(direitaCam), sy = q.dot(upCam);
+          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        }
+        const FOLGA = 1.08, faixa = Math.min(1, Math.max(.05, estado.alturaVisivel));
+        const ymag = Math.max((y1 - y0) * FOLGA / (2 * faixa), (x1 - x0) * FOLGA / (2 * aspecto));
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        desejado.pos.copy(c2.pos)
+          .addScaledVector(direitaCam, cx - c2.pos.dot(direitaCam))
+          .addScaledVector(upCam, cy - ndcDesejado * ymag - c2.pos.dot(upCam));
+        desejado.ymag = ymag;
+      } else {
+        /* sem a faixa: a câmera da Tela 2 desliza no próprio eixo vertical até o centro da mesa
+           ficar a alvoY × altura do canvas, a partir do topo */
+        marcas['mesa-' + estado.foco].getWorldPosition(v);
+        const d = v.sub(c2.pos).dot(upCam) - ndcDesejado * c2.ymag;
+        desejado.pos.copy(c2.pos).addScaledVector(upCam, d);
+        desejado.ymag = c2.ymag;
+      }
     } else {
       /* R11: mesmo ângulo e mesmo ymag; a câmera só é arrastada até a sala */
       const q = suave(clamp01(estado.tFecho));
@@ -301,15 +339,24 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     progressoCabo += (alvoCabo - progressoCabo) * (dt > 0 ? 1 - Math.exp(-dt * 5) : 1);
     uniformesCabo.progresso.value = progressoCabo < .002 ? -1 : progressoCabo > .995 ? 1.01 : progressoCabo;
     uniformesCabo.tempo.value = REDUZ ? 0 : t;
-    /* no fim do arrasto as etiquetas saem (a Tela 3 não tem etiquetas) */
-    const op = 1 - suave(clamp01((estado.tFecho - .45) / .4));
+    /* no fim do arrasto as etiquetas saem (a Tela 3 não tem etiquetas); no foco só fica a da
+       mesa aproximada; o tamanho na tela é sempre o da Tela 1 */
+    const opFecho = 1 - suave(clamp01((estado.tFecho - .45) / .4));
+    const kOp = dt > 0 ? 1 - Math.exp(-dt * 7) : 1;
+    const escala = atual.ymag / YMAG_T1;
     MESAS.forEach((id, i) => {
+      const alvo = estado.foco ? (id === estado.foco ? 1 : 0) : opFecho;
+      opEtiqueta[id] += (alvo - opEtiqueta[id]) * kOp;
+      if (Math.abs(alvo - opEtiqueta[id]) < .005) opEtiqueta[id] = alvo;
+      const op = opEtiqueta[id];
+      grupos[id].scale.setScalar(escala);
       chips[id].material.opacity = op;
       const h = halos[id], p = .5 + .5 * Math.sin(t * 2.6 + i);
       h.scale.copy(h.userData.base).multiplyScalar(1 + .22 * p * amp);
       h.material.opacity = (1 - .65 * p * amp) * op;
+      grupos[id].visible = op > .002;
     });
-    contornoVaga.material.opacity = (REDUZ ? 1 : .25 + .75 * (.5 + .5 * Math.sin(t * Math.PI / .7))) * op;
+    contornoVaga.material.opacity = (REDUZ ? 1 : .25 + .75 * (.5 + .5 * Math.sin(t * Math.PI / .7))) * opEtiqueta.vaga;
   }
 
   /* ── tamanho, laço, pausa ── */
@@ -421,6 +468,11 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
       placaSala: placa ? placa.userData.texto : null,
       /* aditivos: quadro da câmera, cabos sobre o piso (R12) e custo do último quadro */
       camera: { altura: 2 * atual.ymag, largura: 2 * atual.ymag * aspecto },
+      etiquetasTela: MESAS.map(id => ({
+        mesa: id, opacidade: Math.round(chips[id].material.opacity * 1000) / 1000,
+        visivel: chips[id].visible && grupos[id].visible && chips[id].material.opacity > .05,
+        alturaPx: Math.round(chips[id].scale.y * grupos[id].scale.y * (canvas.clientHeight || ultH) / (2 * atual.ymag) * 10) / 10
+      })),
       cabos: cabos.map(c => ({ no: c.name, cor: '#' + c.material.color.getHexString(), yMin: caixa.setFromObject(c).min.y })),
       pisoY: piso.getWorldPosition(v3).y,
       cabosAcesos: uniformesCabo.progresso.value,
@@ -444,9 +496,12 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   }
 
   return {
-    focar(mesa, { alvoY = .2 } = {}){
+    /* alturaVisivel (aditivo): fração da altura do canvas visível acima da gaveta, centrada em
+       alvoY; a pessoa e a mesa cabem inteiras nela. Sem ela, vale o enquadramento da Tela 2. */
+    focar(mesa, { alvoY = .2, alturaVisivel } = {}){
       estado.foco = mesa === 'fiscal' || mesa === 'auditor' ? mesa : null;
       estado.alvoY = alvoY;
+      estado.alturaVisivel = Number(alturaVisivel) > 0 ? Number(alturaVisivel) : 0;
     },
     fecho(t){ estado.tFecho = clamp01(Number(t) || 0); },
     aoTocarMesa(fn){ if (typeof fn === 'function') ouvintes.push(fn); },

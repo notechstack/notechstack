@@ -271,6 +271,40 @@ print('%.1f %.1f' % (s.mean[0], s.stddev[0]))`, path.join(AQUI, 'cena-tela1.png'
     assert.equal((await page.evaluate(() => cena.inspecionar())).enquadramento, 'tela1');
     console.log('PASS contrato aoTocarMesa por clique no canvas e focar(mesa, { alvoY }) a 20% da altura');
 
+    /* ── C12-foco · Tela 2 com a gaveta aberta: focar(mesa, { alvoY, alturaVisivel }) põe a pessoa e
+          a mesa inteiras na faixa visível; o chip da mesa focada tem o tamanho da Tela 1 (±10%) e os
+          outros somem ── */
+    const chipTela1 = Object.fromEntries(i1.etiquetasTela.map(e => [e.mesa, e.alturaPx]));
+    const FAIXA = { alvoY: .21, alturaVisivel: .42 };
+    const [faixaTopo, faixaBase] = [(FAIXA.alvoY - FAIXA.alturaVisivel / 2) * ALTURA, (FAIXA.alvoY + FAIXA.alturaVisivel / 2) * ALTURA];
+    const resumoFoco = [];
+    for (const m of ['fiscal', 'auditor']){
+      await page.evaluate(([m, f]) => cena.focar(m, f), [m, FAIXA]);
+      await assentar(page);
+      await ESPERA(1200);
+      const i4 = await page.evaluate(() => cena.inspecionar());
+      assert.equal(i4.enquadramento, m);
+      for (const k of ['personagem-' + m, 'mesa-' + m]){
+        const y = i4.projetados[k].y;
+        assert(i4.projetados[k].visivel && y >= faixaTopo && y <= faixaBase, `C12-foco: ${k} em y=${y}, fora da faixa [${faixaTopo}, ${faixaBase}]`);
+      }
+      const et4 = Object.fromEntries(i4.etiquetasTela.map(e => [e.mesa, e]));
+      const razao = et4[m].alturaPx / chipTela1[m];
+      assert(et4[m].visivel && Math.abs(razao - 1) <= .1, `C12-foco: chip de ${m} com ${et4[m].alturaPx} px (Tela 1: ${chipTela1[m]} px)`);
+      for (const o of ['fiscal', 'auditor', 'vaga'].filter(x => x !== m)) assert.equal(et4[o].visivel, false, `C12-foco: chip de ${o} visível no foco de ${m}`);
+      await page.addStyleTag({ content: 'html,body{background:var(--no-osso)!important}' });
+      await canvas.screenshot({ path: path.join(AQUI, `cena-foco-${m}.png`) });
+      resumoFoco.push(`${m}: pessoa y=${i4.projetados['personagem-' + m].y}, mesa y=${i4.projetados['mesa-' + m].y}, chip ${et4[m].alturaPx} px (Tela 1: ${chipTela1[m]})`);
+    }
+    await page.evaluate(() => cena.focar(null));
+    await assentar(page);
+    await ESPERA(1200);
+    const i5 = await page.evaluate(() => cena.inspecionar());
+    assert.equal(i5.enquadramento, 'tela1');
+    assert(i5.etiquetasTela.every(e => e.visivel), 'C12-foco: as etiquetas não voltaram ao sair do foco');
+    assert(Math.abs(i5.camera.altura - i1.camera.altura) < .01, 'C12-foco: o quadro não voltou ao da Tela 1');
+    console.log(`PASS C12-foco faixa [${faixaTopo}, ${faixaBase}] px · ${resumoFoco.join(' · ')}; focar(null) volta à Tela 1`);
+
     /* ── C26-posteres (R15) · 750×1040, renderizados da própria cena ──
        Os WebP são gerados num diretório temporário a cada execução; os arquivos
        versionados em agentes/escritorio/ só são regravados com --posteres (ou
