@@ -1,0 +1,58 @@
+/* STUB da gaveta (frente C) só para a bancada da frente A. Sem cor hex. */
+.stub-gaveta-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  background: color-mix(in srgb, var(--no-tinta) 30%, transparent);
+}
+.stub-gaveta {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1260;
+  max-width: 720px;
+  margin-inline: auto;
+  height: 56vh;
+  padding: 20px 20px 28px;
+  border-radius: 22px 22px 0 0;
+  background: var(--no-osso);
+  box-shadow: var(--no-shadow-card);
+  font-family: var(--no-font-sans);
+}
+.stub-gaveta[hidden], .stub-gaveta-fundo[hidden] { display: none; }
+.stub-gaveta-fechar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--no-borda);
+  font-size: 22px;
+  cursor: pointer;
+}
+.stub-gaveta-selo {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--no-azul);
+  border-radius: 6px;
+  color: var(--no-azul);
+  font: 500 11px var(--no-font-mono);
+  letter-spacing: .12em;
+}
+.stub-gaveta h2 { margin: 14px 0 8px; font-size: 22px; line-height: 1.2; }
+.stub-gaveta-texto { color: var(--no-cinza); font-size: 13px; }
+.stub-gaveta-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  margin-top: 18px;
+  border-radius: 12px;
+  background: var(--no-azul);
+  color: var(--no-osso);
+  font-weight: 600;
+  text-decoration: none;
+}
