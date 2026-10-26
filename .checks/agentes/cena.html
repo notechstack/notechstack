@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bancada · cena do Escritório nó (375×812)</title>
+<link rel="stylesheet" href="/brand/tokens/tokens.css">
+<link rel="stylesheet" href="/brand/fonts/fonts.css">
+<style>
+  html { background: var(--no-osso); }
+  body { margin: 0; font-family: var(--no-font-sans); color: var(--no-tinta); }
+  #palco { display: block; width: 375px; height: 812px; margin: 0 auto; touch-action: pan-y; }
+  #controles { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px; justify-content: center; flex-wrap: wrap; z-index: 2; }
+  #controles button { font: 600 12px var(--no-font-sans); padding: 8px 10px; border: 1px solid var(--no-borda); border-radius: 999px; background: #fff; color: var(--no-tinta); }
+  #controles.oculto { display: none; }
+  #espaco { height: 1600px; }
+  #estado { position: fixed; top: 6px; left: 6px; font: 500 11px var(--no-font-mono); color: var(--no-cinza); z-index: 2; }
+  #estado.oculto { display: none; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="palco"></canvas>
+<div id="estado" class="oculto"></div>
+<div id="controles" class="oculto">
+  <button data-acao="tela1">tela 1</button>
+  <button data-acao="fiscal">fiscal</button>
+  <button data-acao="auditor">auditor</button>
+  <button data-acao="fecho">fecho</button>
+  <button data-acao="pausar">pausar</button>
+  <button data-acao="retomar">retomar</button>
+</div>
+<div id="espaco"></div>
+<script type="module">
+  import { montarEscritorio } from '/agentes/escritorio/cena.js';
+  const canvas = document.getElementById('palco');
+  const params = new URLSearchParams(location.search);
+  window.progresso = [];
+  window.toques = [];
+  try {
+    window.cena = await montarEscritorio(canvas, { aoProgresso: p => window.progresso.push(p) });
+    window.cena.aoTocarMesa(m => { window.toques.push(m); });
+    if (params.get('tela') === 'fecho') window.cena.fecho(1);
+    if (params.get('tela') === 'fiscal' || params.get('tela') === 'auditor') window.cena.focar(params.get('tela'));
+    window.pronto = true;
+  } catch (e) {
+    window.erro = String(e && e.message || e);
+    console.error('[bancada] cena não montou', e);
+  }
+  /* controles só quando pedidos (?controles=1), para não entrar nas capturas */
+  if (params.get('controles') === '1'){
+    document.getElementById('controles').classList.remove('oculto');
+    document.getElementById('estado').classList.remove('oculto');
+    document.getElementById('controles').addEventListener('click', ev => {
+      const a = ev.target.dataset.acao; if (!a || !window.cena) return;
+      if (a === 'tela1'){ window.cena.focar(null); window.cena.fecho(0); }
+      else if (a === 'fecho'){ window.cena.focar(null); window.cena.fecho(1); }
+      else if (a === 'fiscal' || a === 'auditor') window.cena.focar(a);
+      else window.cena[a]();
+    });
+    setInterval(() => {
+      if (!window.cena) return;
+      const i = window.cena.inspecionar();
+      document.getElementById('estado').textContent = i.enquadramento + ' · quadros ' + window.cena.quadros() + ' · toques ' + window.toques.join(',');
+    }, 500);
+  }
+</script>
+</body>
+</html>
