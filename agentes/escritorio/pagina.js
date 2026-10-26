@@ -1,0 +1,489 @@
+// /agentes/ — "Escritório nó": página (frente A).
+// Liga a tela de carregamento, decide entre a versão animada e a estática, monta a cena
+// (cena.js, frente B) e a gaveta (gaveta.js, frente C) e liga rolagem, toques e câmera.
+// Contrato: .tasks/agentes-escritorio-frentes.md + "Landing" de .checks/agentes-escritorio.md.
+
+// Caminhos dos módulos e pôsteres. A bancada de provas (.checks/agentes/test-pagina.cjs)
+// troca por stubs via window.__agentesModulos antes de este arquivo rodar.
+const PADRAO = {
+  three: 'three',
+  cena: '/agentes/escritorio/cena.js',
+  gaveta: '/agentes/escritorio/gaveta.js',
+  gavetaCss: '/agentes/escritorio/gaveta.css',
+  posterEscritorio: '/agentes/escritorio/poster-escritorio.webp',
+  posterFecho: '/agentes/escritorio/poster-fecho.webp',
+};
+const cfg = Object.assign({}, PADRAO, window.__agentesModulos || {});
+
+const ESPERA_BOTAO_MS = 4000;  // "Ver sem animações" (critério 24)
+const FOLGA_NAV = 8;           // px entre a navbar e o topo do canvas ao abrir a gaveta
+const FIM_FECHO = 0.6;         // t = 1 quando o h2 do fecho chega a 60% da altura da viewport
+// Pesos do progresso de 0 a 100%.
+const PESOS = { fontes: 0.1, three: 0.3, gaveta: 0.1, gavetaCss: 0.05, cena: 0.45 };
+
+const html = document.documentElement;
+const $ = (sel, raiz = document) => raiz.querySelector(sel);
+const canvas = $('#escritorio-canvas');
+const escritorio = canvas.closest('.ag-escritorio');
+const poster = $('#escritorio-poster');
+const posterFecho = $('#fecho-poster');
+const raizGaveta = $('#gaveta');
+const tituloFecho = $('#ag-fecho-titulo');
+const titulo = $('#ag-titulo');
+const navTopo = $('.no-card-top');
+const listaMesas = $('.ag-mesas');
+const tela = $('.ag-carregamento');
+const botaoSemAnimacoes = $('.ag-sem-animacoes', tela);
+const pctTexto = $('.ag-progresso-pct', tela);
+const barra = $('.ag-progresso', tela);
+const mesas = new Map([...document.querySelectorAll('[data-mesa]')].map((el) => [el.dataset.mesa, el]));
+const movimentoReduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+const topoNoDocumento = (el) => el.getBoundingClientRect().top + scrollY;
+const fundoDaNav = () => (navTopo ? navTopo.getBoundingClientRect().bottom : 0);
+
+// Estado lido pelas provas e útil para depurar no console.
+const estado = {
+  fase: 'decidindo', // decidindo | carregando | animada | estatica
+  motivo: null,      // pediu | falha | sem-webgl | movimento-reduzido
+  cena: null,
+  gaveta: null,
+  aberta: null,
+};
+window.__agentesPagina = estado;
+
+// ── Medição (rodada 7, skill gtm-meta-google-tracking) ──
+// Tudo passa por window.track (shared/telemetria.js): dataLayer → GTM (GA4, tags em
+// tracking/gtm-agentes-escritorio.json) e a fila do painel de percurso. A Meta recebe só o
+// ViewContent da página, no Pixel (vindo do GTM) e na CAPI (função meta-capi) com o MESMO
+// event_id, para a Meta deduplicar. Fora do domínio de produção (marketing-host.js) a CAPI não
+// sai do navegador: o corpo fica em estado.medicao.capi, para as provas.
+//
+//   agentes_view_content ..... página carregada               Meta ViewContent (Pixel + CAPI)
+//   agentes_mesa_aberta ...... gaveta aberta (agente, origem)  -
+//   agentes_cta .............. CTA para LP, simulador ou contato -
+//   agentes_sala_vista ....... rolou até a sala (1× por sessão) -
+//   agentes_versao_estatica .. caiu na versão estática (motivo) -
+const FN_CAPI = 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/meta-capi';
+const producao = () => typeof window.noMarketingHostAllowed === 'function' && window.noMarketingHostAllowed(location.hostname);
+estado.medicao = { capi: [] };
+
+function medir(nome, dados, chave) {
+  const p = Object.assign({ pagina: location.pathname }, dados);
+  if (typeof window.track === 'function') { window.track(nome, p, chave); return; }
+  (window.dataLayer = window.dataLayer || []).push(Object.assign({ event: nome }, p));
+}
+function idEvento(prefixo) {
+  const c = window.crypto;
+  const u = c && typeof c.randomUUID === 'function' ? c.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  return `${prefixo}-${u}`;
+}
+function cookie(nome) {
+  const m = String(document.cookie || '').match(new RegExp(`(?:^|; )${nome}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function fbcAtual() {
+  const c = cookie('_fbc');
+  if (c) return c;
+  let id = '';
+  try { id = new URLSearchParams(location.search).get('fbclid') || ''; } catch { id = ''; }
+  return id ? `fb.1.${Date.now()}.${id}` : '';
+}
+// O Pixel chega pelo GTM e pode demorar: tenta por até 5 s.
+function fbqQuandoPronto(args, tentativas = 0) {
+  if (typeof window.fbq === 'function') { window.fbq(...args); return; }
+  if (tentativas >= 20) return;
+  setTimeout(() => fbqQuandoPronto(args, tentativas + 1), 250);
+}
+function enviarCapi(eventName, eventId) {
+  const corpo = {
+    event_name: eventName,
+    event_id: eventId,
+    event_source_url: location.origin + location.pathname, // sem query: nada além da página vai à Meta
+    fbp: cookie('_fbp') || undefined,
+    fbc: fbcAtual() || undefined,
+  };
+  estado.medicao.capi.push(corpo);
+  if (!producao()) return;
+  try {
+    fetch(FN_CAPI, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), keepalive: true })
+      .catch(() => {}); // medição não pode derrubar a página
+  } catch { /* idem */ }
+}
+function verPagina() {
+  const eventId = idEvento('agentes-vc');
+  medir('agentes_view_content', { event_id: eventId });
+  fbqQuandoPronto(['track', 'ViewContent', {}, { eventID: eventId }]);
+  enviarCapi('ViewContent', eventId);
+}
+
+// CTAs: os links da página e os botões da gaveta (montados por gaveta.js) saem por delegação,
+// sem segurar a navegação.
+const CTA_POR_HREF = new Map([
+  ['/agentes/fiscal/#simulador', 'simular_emissao'],
+  ['/agentes/auditor/', 'diagnosticar'],
+]);
+function ctaDoLink(a) {
+  if (a.dataset.cta) return a.dataset.cta;
+  if (a.dataset.mesa === 'vaga') return 'criar_automacao';
+  if (raizGaveta.contains(a)) {
+    const href = a.getAttribute('href') || '';
+    return CTA_POR_HREF.get(href) || null;
+  }
+  return null;
+}
+document.addEventListener('click', (ev) => {
+  try {
+    const a = ev.target instanceof Element ? ev.target.closest('a[href]') : null;
+    if (!a) return;
+    const cta = ctaDoLink(a);
+    if (!cta) return;
+    // A mesa vaga no modo animado é tratada em abrirMesa (canvas) ou pelo link comum (botão).
+    medir('agentes_cta', { cta, destino: a.getAttribute('href'), origem: raizGaveta.contains(a) ? 'gaveta' : 'pagina' });
+  } catch { /* medição não pode segurar o clique */ }
+}, true);
+
+let timerBotao = 0;
+let rolagemAntesDaGaveta = null;
+let ultimoT = -1;
+
+// ── Carga de módulos (memoizada: a estática reaproveita o que a animada já pediu) ──
+let promGavetaJs = null;
+let promGavetaCss = null;
+const importarGaveta = () => (promGavetaJs ??= import(cfg.gaveta));
+const carregarGavetaCss = () => (promGavetaCss ??= new Promise((ok, falhou) => {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = cfg.gavetaCss;
+  link.onload = () => ok();
+  link.onerror = () => falhou(new Error(`não carregou ${cfg.gavetaCss}`));
+  document.head.append(link);
+}));
+
+function temWebGL() {
+  try {
+    const teste = document.createElement('canvas');
+    const gl = teste.getContext('webgl2') || teste.getContext('webgl');
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Enquanto a tela de carregamento cobre a página, nada atrás dela recebe foco.
+function travarPagina(travar) {
+  for (const el of document.body.children) {
+    if (el === tela || el.tagName === 'SCRIPT' || el.tagName === 'NOSCRIPT') continue;
+    el.inert = travar;
+  }
+}
+
+// ── Versão estática (critérios 24–27 e 29) ──
+function entrarEstatica(motivo) {
+  if (estado.fase === 'estatica') return;
+  const estavaCarregando = estado.fase === 'carregando';
+  estado.fase = 'estatica';
+  estado.motivo = motivo;
+  console.info(`[agentes] versão estática: ${motivo}`);
+  medir('agentes_versao_estatica', { motivo }, 'estatica');
+  clearTimeout(timerBotao);
+  if (estado.cena) {
+    try { estado.cena.destruir(); } catch { /* a cena já pode ter caído */ }
+    estado.cena = null;
+  }
+  for (const [img, src] of [[poster, cfg.posterEscritorio], [posterFecho, cfg.posterFecho]]) {
+    if (!img) continue;
+    if (img.getAttribute('src') !== src) img.src = src;
+    if (img === poster) img.loading = 'eager';
+  }
+  html.classList.remove('carregando', 'saindo', 'animada');
+  html.classList.add('estatica');
+  travarPagina(false);
+  if (estavaCarregando && motivo === 'pediu') titulo?.focus({ preventScroll: true });
+  montarGaveta(true);
+}
+
+// ── Gaveta (frente C) ──
+async function montarGaveta(estatico) {
+  let modulo;
+  try {
+    [modulo] = await Promise.all([importarGaveta(), carregarGavetaCss()]);
+  } catch (erro) {
+    // Sem gaveta, os botões das mesas continuam links para as páginas dos agentes.
+    console.warn('[agentes] gaveta indisponível; as mesas levam às páginas dos agentes.', erro);
+    return;
+  }
+  if (estado.gaveta) return;
+  estado.gaveta = modulo.montarGaveta(raizGaveta, { estatico });
+  estado.gaveta.aoMudar(aoMudarGaveta);
+  // A gaveta cresce conforme a conversa entra (até 75% da tela): a câmera reenquadra a mesa
+  // a cada mudança de altura, para ela continuar acima da gaveta (critério 31).
+  const painel = raizGaveta.querySelector('[role="dialog"]');
+  if (painel && 'ResizeObserver' in window) new ResizeObserver(reenquadrarMesa).observe(painel);
+  for (const [mesa, el] of mesas) {
+    if (mesa === 'vaga') continue;
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-haspopup', 'dialog');
+    el.setAttribute('aria-controls', 'gaveta');
+  }
+}
+
+function abrirMesa(mesa, origem) {
+  if (mesa === 'vaga') {
+    const destino = mesas.get('vaga')?.getAttribute('href') || '/contato/';
+    medir('agentes_cta', { cta: 'criar_automacao', destino, origem: 'cena' });
+    location.assign(destino);
+    return;
+  }
+  origemAbertura = tocouCena ? 'cena' : 'botao';
+  tocouCena = false;
+  if (!estado.gaveta || !origem) return;
+  if (estado.cena) {
+    // Celular: o canvas sobe para logo abaixo da navbar e a mesa aproximada fica acima da gaveta.
+    if (rolagemAntesDaGaveta === null) rolagemAntesDaGaveta = scrollY;
+    const alvo = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
+    scrollTo({ top: Math.max(0, alvo), behavior: movimentoReduzido ? 'instant' : 'smooth' });
+  }
+  estado.gaveta.abrir(mesa, origem);
+}
+
+// O painel da gaveta é o [role=dialog] (ou a própria raiz) com altura menor que a viewport.
+function folhaDaGaveta() {
+  const candidatos = [...raizGaveta.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"]'), raizGaveta];
+  return candidatos.find((el) => el.offsetHeight > 0 && el.offsetHeight < innerHeight * 0.95) || null;
+}
+
+// alvoY: fração da altura do canvas onde fica o centro da mesa aproximada, no meio da faixa
+// visível entre a navbar e o topo da gaveta (critério 31). Conta com o canvas já rolado.
+function calcularAlvoY() {
+  const altura = canvas.clientHeight || 1;
+  const topoCanvas = fundoDaNav() + FOLGA_NAV;
+  const folha = folhaDaGaveta();
+  let topoGaveta = innerHeight * 0.4;
+  const quadroCanvas = canvas.getBoundingClientRect();
+  const meioCanvas = quadroCanvas.left + quadroCanvas.width / 2;
+  if (folha) {
+    const caixa = folha.getBoundingClientRect();
+    // Painel ao lado (desktop, R23): não cobre a coluna da mesa, então a faixa vai até o fim do canvas.
+    if (caixa.left >= meioCanvas + 120 || caixa.right <= meioCanvas - 120) {
+      const faixaLivre = clamp(Math.min(innerHeight, quadroCanvas.bottom), topoCanvas + 40, topoCanvas + altura) - topoCanvas;
+      return clamp(faixaLivre / 2 / altura, 0.06, 0.5);
+    }
+    // Folha presa embaixo: offsetHeight ignora a animação de subida (transform).
+    topoGaveta = caixa.bottom >= innerHeight - 2 || caixa.top > innerHeight * 0.5
+      ? innerHeight - folha.offsetHeight
+      : caixa.top;
+  }
+  const faixa = clamp(topoGaveta, topoCanvas + 40, topoCanvas + altura) - topoCanvas;
+  return clamp(faixa / 2 / altura, 0.06, 0.5);
+}
+
+// Enquadramento da mesa aproximada: centro em alvoY e altura visível (fração do canvas entre
+// a navbar e o topo da gaveta), para a cena caber a pessoa e a mesa inteiras nessa faixa.
+function quadroFoco() {
+  const alvoY = calcularAlvoY();
+  // No desktop a faixa livre é o canvas inteiro: limitar a 0,6 garante a aproximação da mesa
+  // (critério 12) em vez de um quadro quase igual ao da Tela 1.
+  return { alvoY, alturaVisivel: clamp(alvoY * 2, 0.12, 0.6) };
+}
+
+let reenquadrar = 0;
+function reenquadrarMesa() {
+  if (reenquadrar || !estado.aberta || !estado.cena) return;
+  reenquadrar = requestAnimationFrame(() => {
+    reenquadrar = 0;
+    if (estado.aberta && estado.cena) estado.cena.focar(estado.aberta, quadroFoco());
+  });
+}
+
+let origemAbertura = 'botao';
+let tocouCena = false;
+function aoMudarGaveta({ aberta, agente } = {}) {
+  if (aberta) {
+    if (estado.aberta !== agente) {
+      medir('agentes_mesa_aberta', { agente, origem: origemAbertura, versao: estado.fase === 'estatica' ? 'estatica' : 'animada' });
+    }
+    estado.aberta = agente;
+    if (!estado.cena) return;
+    requestAnimationFrame(() => {
+      if (estado.cena && estado.aberta === agente) estado.cena.focar(agente, quadroFoco());
+    });
+    return;
+  }
+  estado.aberta = null;
+  if (!estado.cena) return;
+  estado.cena.focar(null);
+  if (rolagemAntesDaGaveta !== null) {
+    scrollTo({ top: rolagemAntesDaGaveta, behavior: movimentoReduzido ? 'instant' : 'smooth' });
+    rolagemAntesDaGaveta = null;
+  }
+  ultimoT = -1;
+  agendarQuadro();
+}
+
+// Botões das mesas: na animada e na estática abrem a gaveta; sem gaveta, seguem o link.
+for (const [mesa, el] of mesas) {
+  if (mesa === 'vaga') continue; // link comum para /contato/
+  el.addEventListener('click', (ev) => {
+    if (!estado.gaveta) return;
+    ev.preventDefault();
+    abrirMesa(mesa, el);
+  });
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key !== ' ' || !estado.gaveta) return;
+    ev.preventDefault();
+    abrirMesa(mesa, el);
+  });
+}
+
+// ── Rolagem → cena.fecho(t) e etiquetas sobre a cena ──
+// t = 1 assim que o canvas encosta na navbar ou o h2 do fecho chega a FIM_FECHO da viewport,
+// o que vier primeiro: assim o recuo (Tela 3) acontece com a cena inteira à vista, com o h2
+// logo abaixo, também no desktop. O recuo ocupa os 60% de altura do canvas anteriores a isso,
+// depois de uma zona morta (ZONA_MORTA px ou metade do caminho): rolar de leve mantém a Tela 1.
+const ZONA_MORTA = 80;
+function progressoFecho() {
+  const encosta = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
+  const fim = Math.max(1, Math.min(encosta, topoNoDocumento(tituloFecho) - innerHeight * FIM_FECHO));
+  const inicio = Math.max(Math.min(ZONA_MORTA, fim / 2), fim - escritorio.clientHeight * 0.6);
+  return clamp((scrollY - inicio) / (fim - inicio), 0, 1);
+}
+
+let quadroAgendado = 0;
+function agendarQuadro() {
+  if (!quadroAgendado) quadroAgendado = requestAnimationFrame(atualizarRolagem);
+}
+function atualizarRolagem() {
+  quadroAgendado = 0;
+  if (estado.fase !== 'animada' || !estado.cena) return;
+  const t = progressoFecho();
+  listaMesas.classList.toggle('ag-mesas--longe', t > 0.5 && !estado.aberta);
+  if (estado.aberta) return; // com a gaveta aberta a câmera é da mesa
+  if (Math.abs(t - ultimoT) < 0.001) return;
+  ultimoT = t;
+  estado.cena.fecho(t);
+  if (t >= 0.95) medir('agentes_sala_vista', {}, 'sala');
+}
+
+let cenaNaTela = true;
+let ultimaEtiqueta = 0;
+function posicionarEtiquetas(agora) {
+  if (estado.fase !== 'animada' || !estado.cena) return;
+  requestAnimationFrame(posicionarEtiquetas);
+  if (!cenaNaTela || agora - ultimaEtiqueta < 50) return;
+  ultimaEtiqueta = agora;
+  let info;
+  try { info = estado.cena.inspecionar?.(); } catch { return; }
+  const pontos = info?.projetados;
+  if (!pontos) return;
+  const largura = escritorio.clientWidth;
+  const altura = escritorio.clientHeight;
+  // Área de toque transparente centrada na mesa. Em px inteiros e só quando muda: a câmera
+  // assenta devagar, e uma posição que oscila décimos de px nunca fica parada sob o dedo.
+  for (const [mesa, el] of mesas) {
+    const p = pontos[`mesa-${mesa}`];
+    if (!p) continue;
+    const meia = el.offsetWidth / 2;
+    const x = Math.round(clamp(p.x, meia, Math.max(meia, largura - meia)));
+    const y = Math.round(clamp(p.y, el.offsetHeight * 0.62, altura));
+    if (el.dataset.mx !== String(x)) { el.dataset.mx = x; el.style.setProperty('--mx', `${x}px`); }
+    if (el.dataset.my !== String(y)) { el.dataset.my = y; el.style.setProperty('--my', `${y}px`); }
+    el.classList.toggle('ag-mesa--oculta', !p.visivel);
+  }
+}
+
+// ── Versão animada (critérios 22 e 23) ──
+function mostrarProgresso(valor) {
+  const pct = Math.round(valor * 100);
+  if (pctTexto.textContent !== `${pct}%`) pctTexto.textContent = `${pct}%`;
+  barra.setAttribute('aria-valuenow', String(pct));
+  barra.style.setProperty('--ag-progresso', String(pct));
+}
+
+async function iniciarAnimada() {
+  estado.fase = 'carregando';
+  html.classList.add('carregando');
+  travarPagina(true);
+  mostrarProgresso(0);
+
+  timerBotao = setTimeout(() => {
+    if (estado.fase === 'carregando') botaoSemAnimacoes.hidden = false;
+  }, ESPERA_BOTAO_MS);
+  botaoSemAnimacoes.addEventListener('click', () => entrarEstatica('pediu'), { once: true });
+
+  const partes = { fontes: 0, three: 0, gaveta: 0, gavetaCss: 0, cena: 0 };
+  let mostrado = 0;
+  const marcar = (parte, valor = 1) => {
+    partes[parte] = Math.max(partes[parte], clamp(valor, 0, 1));
+    const total = Object.entries(PESOS).reduce((soma, [k, peso]) => soma + peso * partes[k], 0);
+    mostrado = Math.max(mostrado, Math.min(total, 0.99)); // 100% só quando tudo terminar
+    if (estado.fase === 'carregando') mostrarProgresso(mostrado);
+  };
+
+  const fontes = Promise.all([
+    document.fonts.load('800 1em Sora'),
+    document.fonts.load('500 1em "JetBrains Mono"'),
+  ]).catch(() => {}).then(() => marcar('fontes'));
+  const three = import(cfg.three).then(() => marcar('three'));
+  const gavetaJs = importarGaveta().then(() => marcar('gaveta'));
+  const gavetaCss = carregarGavetaCss().then(() => marcar('gavetaCss'));
+  const cena = import(cfg.cena)
+    .then((modulo) => modulo.montarEscritorio(canvas, { aoProgresso: (p) => marcar('cena', p) }))
+    .then((montada) => {
+      // "Ver sem animações" já foi tocado (ou outra falha decidiu): a cena não entra.
+      if (estado.fase !== 'carregando') { montada.destruir(); return; }
+      estado.cena = montada;
+      montada.pausar(); // parada enquanto a tela de carregamento está aberta
+      marcar('cena');
+    });
+
+  try {
+    await Promise.all([fontes, three, gavetaJs, gavetaCss, cena]);
+  } catch (erro) {
+    if (estado.fase === 'carregando') {
+      console.warn('[agentes] a cena não carregou', erro);
+      entrarEstatica('falha');
+    }
+    return;
+  }
+  if (estado.fase !== 'carregando' || !estado.cena) return;
+  mostrarProgresso(1);
+  await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+  if (estado.fase !== 'carregando') return;
+  revelar();
+}
+
+function revelar() {
+  clearTimeout(timerBotao);
+  estado.fase = 'animada';
+  const cena = estado.cena;
+  html.classList.add('animada', 'saindo');
+  cena.retomar();
+  setTimeout(() => {
+    html.classList.remove('carregando', 'saindo');
+    travarPagina(false);
+  }, 260);
+
+  // Com a gaveta aberta, a mesa aproximada ocupa quase toda a cena acima dela: tocar nela é
+  // "tocar fora" e fecha (critério 20); tocar em outra mesa troca a gaveta (critério 21).
+  cena.aoTocarMesa((mesa) => {
+    if (estado.aberta && estado.aberta === mesa) estado.gaveta?.fechar();
+    else { tocouCena = true; abrirMesa(mesa, mesas.get(mesa)); }
+  });
+  montarGaveta(false);
+
+  addEventListener('scroll', agendarQuadro, { passive: true });
+  addEventListener('resize', () => { ultimoT = -1; agendarQuadro(); });
+  new IntersectionObserver(([entrada]) => { cenaNaTela = entrada.isIntersecting; }).observe(escritorio);
+  atualizarRolagem();
+  requestAnimationFrame(posicionarEtiquetas);
+}
+
+// ── Decisão inicial ──
+verPagina();
+if (movimentoReduzido) entrarEstatica('movimento-reduzido');
+else if (!temWebGL()) entrarEstatica('sem-webgl');
+else iniciarAnimada();

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Bancada · gaveta do Escritório nó</title>
+<link rel="stylesheet" href="/brand/fonts/fonts.css">
+<link rel="stylesheet" href="/brand/tokens/tokens.css">
+<link rel="stylesheet" href="/shared/brand-derived.css">
+<link rel="stylesheet" href="/shared/site.css">
+<link rel="stylesheet" href="/agentes/escritorio/gaveta.css">
+<style>
+  /* só a bancada: um "escritório" de mentira para a gaveta subir por cima */
+  .bancada { min-height: 100vh; padding: 16px 24px; display: flex; flex-direction: column; gap: 10px; background: var(--st-bege); }
+  .bancada h1 { margin: 0; font-size: 20px; line-height: 1.2; font-weight: var(--no-weight-display); letter-spacing: -.03em; }
+  .bancada p { margin: 0 0 4px; color: var(--no-cinza); font-size: 13px; line-height: 1.4; }
+  .mesa { min-height: 48px; padding: 10px 16px; border: 0; border-radius: 999px; background: var(--no-osso); font: var(--no-weight-subtitulo) 15px var(--no-font-sans); text-align: left; cursor: pointer; box-shadow: var(--no-shadow-card); display: flex; align-items: center; gap: 10px; }
+  .mesa::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .mesa[data-mesa="fiscal"] { --c: var(--no-verde); }
+  .mesa[data-mesa="auditor"] { --c: var(--no-azul); }
+  .mesa[data-mesa="vaga"] { --c: var(--no-ambar); }
+  .estado { margin-top: auto; font: 400 11px/1.5 var(--no-font-mono); color: var(--no-cinza); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main class="bancada">
+  <h1>Bancada da gaveta</h1>
+  <p>375×812. Toque numa mesa. <code>?estatico=1</code> mostra a conversa inteira.</p>
+  <button type="button" class="mesa" data-mesa="fiscal">nó.fiscal</button>
+  <button type="button" class="mesa" data-mesa="auditor">Auditor</button>
+  <button type="button" class="mesa" data-mesa="vaga">um problema seu aqui?</button>
+  <pre class="estado" id="estado">fechada</pre>
+</main>
+<div id="gaveta"></div>
+<script type="module">
+  import { montarGaveta } from '/agentes/escritorio/gaveta.js';
+  const estatico = new URLSearchParams(location.search).get('estatico') === '1';
+  const gaveta = montarGaveta(document.getElementById('gaveta'), { estatico });
+  window.gaveta = gaveta;
+  window.mudancas = [];
+  gaveta.aoMudar((m) => {
+    window.mudancas.push({ ...m, t: performance.now() });
+    document.getElementById('estado').textContent = m.aberta ? `aberta: ${m.agente}` : 'fechada';
+  });
+  document.querySelectorAll('[data-mesa]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const mesa = b.dataset.mesa;
+      if (mesa === 'vaga') return; // na página, a frente A manda para /contato/
+      gaveta.abrir(mesa, b);
+    });
+  });
+  window.gavetaPronta = true;
+</script>
+</body>
+</html>

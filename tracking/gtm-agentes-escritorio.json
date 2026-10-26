@@ -1,0 +1,567 @@
+{
+ "exportFormatVersion": 2,
+ "exportTime": "2026-10-26 19:00:00",
+ "containerVersion": {
+  "path": "accounts/6348281513/containers/248523885/versions/0",
+  "accountId": "6348281513",
+  "containerId": "248523885",
+  "containerVersionId": "0",
+  "container": {
+   "path": "accounts/6348281513/containers/248523885",
+   "accountId": "6348281513",
+   "containerId": "248523885",
+   "name": "Nó Teck Stack",
+   "publicId": "GTM-NK87FH8W",
+   "usageContext": [
+    "WEB"
+   ],
+   "fingerprint": "1761160000000",
+   "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/6348281513/containers/248523885/workspaces?apiLink=container",
+   "features": {
+    "supportUserPermissions": true,
+    "supportEnvironments": true,
+    "supportWorkspaces": true,
+    "supportGtagConfigs": false,
+    "supportBuiltInVariables": true,
+    "supportClients": false,
+    "supportFolders": true,
+    "supportTags": true,
+    "supportTemplates": true,
+    "supportTriggers": true,
+    "supportVariables": true,
+    "supportVersions": true,
+    "supportZones": true,
+    "supportTransformations": false
+   },
+   "tagIds": [
+    "GTM-NK87FH8W"
+   ]
+  },
+  "tag": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "1021",
+    "name": "GA4 - select_content (nó.agentes gaveta)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "select_content"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "content_type"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "agente"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "content_id"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.agente}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "origem"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.origem}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "versao"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.versao}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "1011"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "1022",
+    "name": "GA4 - agentes_cta (nó.agentes)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "agentes_cta"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "cta"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.cta}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "destino"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.destino}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "origem"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.origem}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "1012"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "1023",
+    "name": "GA4 - agentes_sala_vista (nó.agentes)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "agentes_sala_vista"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     }
+    ],
+    "firingTriggerId": [
+     "1013"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "1024",
+    "name": "GA4 - agentes_versao_estatica (nó.agentes)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "agentes_versao_estatica"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "motivo"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.motivo}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "1014"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1761500000000"
+   }
+  ],
+  "trigger": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "1011",
+    "name": "ce.agentes_mesa_aberta (nó.agentes gaveta aberta)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "agentes_mesa_aberta"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "1012",
+    "name": "ce.agentes_cta (nó.agentes CTA)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "agentes_cta"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "1013",
+    "name": "ce.agentes_sala_vista (nó.agentes rolou até a sala)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "agentes_sala_vista"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761500000000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "1014",
+    "name": "ce.agentes_versao_estatica (nó.agentes versão estática)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "agentes_versao_estatica"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1761500000000"
+   }
+  ],
+  "variable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1001",
+    "name": "dl.agente",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "agente"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1002",
+    "name": "dl.origem",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "origem"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1003",
+    "name": "dl.versao",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "versao"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1004",
+    "name": "dl.cta",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "cta"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1005",
+    "name": "dl.destino",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "destino"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "1006",
+    "name": "dl.motivo",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "motivo"
+     }
+    ],
+    "fingerprint": "1761500000000",
+    "formatValue": {}
+   }
+  ],
+  "builtInVariable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "type": "EVENT",
+    "name": "Event"
+   }
+  ],
+  "fingerprint": "1761500000000",
+  "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/6348281513/containers/248523885/versions/0?apiLink=version"
+ }
+}
