@@ -573,6 +573,14 @@ async function principal() {
     await p.waitForTimeout(600);
   };
   {
+    // A câmera ainda desliza de volta do fecho (C11-pagina): espera o botão parar antes do toque.
+    let caixaAntes = null;
+    assert(await esperarPara(async () => {
+      const agora = JSON.stringify(await p.locator('[data-mesa="fiscal"]').boundingBox());
+      const parado = agora === caixaAntes;
+      caixaAntes = agora;
+      return parado;
+    }, 6000, 300), 'C12-pagina: botão do fiscal não parou');
     await p.locator('[data-mesa="fiscal"]').click();
     assert(await esperarPara(() => gavetaAberta(p)), 'C12-pagina: gaveta não abriu');
     assert.equal(await esperarPara(async () => ((await enquadramento(p)) === 'fiscal' ? 'fiscal' : null)), 'fiscal', 'C12-pagina: câmera fora da mesa (botão)');

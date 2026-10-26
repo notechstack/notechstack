@@ -195,3 +195,20 @@ o Verifier (frente D) sobre `9a12aecb..HEAD`.
   - Tela 1 na página: o canvas da hero é 375:520, e a altura de mundo passa a ser `clamp(largura da Tela 1 / aspecto, 9.6, 13.4)`. Em 375×812 continua 13.4 (C6 e pôsteres iguais).
   - `gaveta.css`: `.gv-painel[hidden], .gv-fundo[hidden] { display: none }`. O `display:flex` vencia o `[hidden]`, e a gaveta fechada ficava fora da tela, mas com os botões alcançáveis pelo Tab (achado pelo C26a real).
 - Abandonado: nada.
+
+## Rodadas 3–5 (renegociadas por Lucca em 26/10/2026; ver `.tasks/agentes-escritorio.md`)
+
+| Item | Prova |
+| --- | --- |
+| R1 `nó.auditor` | `test-pagina.cjs` → `PASS C1`, `C2`, `C16-pagina`; `test-gaveta.mjs` → `PASS C16`; `test-cena.mjs` → `PASS C6` |
+| R2 cena fundida (degradê 64 px) | captura `pagina-tela1-375.png` (sem asserção automática: ponto para o Verifier) |
+| R3/R8 tom e contraste | `test-cena.mjs` → `PASS R8` (luminância ≤ 165, desvio ≥ 62) |
+| R4/R9/R10 etiquetas | `test-cena.mjs` → `PASS C6`; `test-pagina.cjs` → `PASS C1` ("criar uma automação") |
+| R5/R13 crachás e pessoas | `test-cena.mjs` → `PASS C7` |
+| R6 gaveta compacta | `test-gaveta.mjs` → `PASS R6 fiscal`, `PASS R6 auditor`, `PASS C12`; `test-pagina.cjs` → `PASS C31` (≤ 62%) |
+| R11 arrasto até a sala | `test-cena.mjs` → `PASS C11`; `test-pagina.cjs` → `PASS C11-pagina` |
+| R12 cabos acima do piso | `test-cena.mjs` → `PASS R12` |
+| R14 logo plano | `test-cena.mjs` → `PASS C8` |
+| R15 pôsteres 750×1040 | `test-cena.mjs` → `PASS C26-posteres`; `test-pagina.cjs` → `PASS C26a` |
+| R16 GLB ≤ 3 MB | `test-cena.mjs` → `PASS R16` |
+| Tela 2 enquadrada acima da gaveta | `test-cena.mjs` → `PASS C12-foco`; `test-pagina.cjs` → `PASS C31` |
