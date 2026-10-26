@@ -263,8 +263,15 @@ function calcularAlvoY() {
   const topoCanvas = fundoDaNav() + FOLGA_NAV;
   const folha = folhaDaGaveta();
   let topoGaveta = innerHeight * 0.4;
+  const quadroCanvas = canvas.getBoundingClientRect();
+  const meioCanvas = quadroCanvas.left + quadroCanvas.width / 2;
   if (folha) {
     const caixa = folha.getBoundingClientRect();
+    // Painel ao lado (desktop, R23): não cobre a coluna da mesa, então a faixa vai até o fim do canvas.
+    if (caixa.left >= meioCanvas + 160 || caixa.right <= meioCanvas - 160) {
+      const faixaLivre = clamp(Math.min(innerHeight, quadroCanvas.bottom), topoCanvas + 40, topoCanvas + altura) - topoCanvas;
+      return clamp(faixaLivre / 2 / altura, 0.06, 0.5);
+    }
     // Folha presa embaixo: offsetHeight ignora a animação de subida (transform).
     topoGaveta = caixa.bottom >= innerHeight - 2 || caixa.top > innerHeight * 0.5
       ? innerHeight - folha.offsetHeight

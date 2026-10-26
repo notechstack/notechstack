@@ -789,6 +789,42 @@ async function principal() {
     ok('C32', `(canvas ${c.width}×${c.height.toFixed(0)}, centro ${(c.x + c.width / 2).toFixed(1)} / ${meio})`);
   }
 
+  // ── C31-desktop (R23): em 1440×900 a mesa aproximada fica visível ao lado do painel ──
+  {
+    const s = await abrir({ largura: 1440, altura: 900 });
+    const pg = s.pagina;
+    await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
+    const notas = [];
+    for (const mesa of ['fiscal', 'auditor']) {
+      await pg.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      let antes = null;
+      assert(await esperarPara(async () => { const agora = JSON.stringify(await pg.locator(`[data-mesa="${mesa}"]`).boundingBox()); const parado = agora === antes; antes = agora; return parado; }, 6000, 300));
+      await pg.locator(`[data-mesa="${mesa}"]`).click();
+      assert(await esperarPara(() => gavetaAberta(pg)), `C31-desktop: gaveta do ${mesa} não abriu`);
+      await pg.waitForTimeout(7000);
+      const g = await caixaDaGaveta(pg);
+      const painel = await pg.evaluate(() => { const d = document.querySelector('#gaveta [role="dialog"]').getBoundingClientRect(); return { left: d.left, right: d.right }; });
+      const c = await pg.locator('#escritorio-canvas').boundingBox();
+      const m = (await inspecionar(pg)).projetados[`mesa-${mesa}`];
+      const pessoa = (await inspecionar(pg)).projetados[`personagem-${mesa}`] || m;
+      const fundoNav = await pg.evaluate(() => document.querySelector('.no-card-top').getBoundingClientRect().bottom);
+      for (const [nome, ponto] of [['mesa', m], ['pessoa', pessoa]]) {
+        const x = c.x + ponto.x;
+        const y = c.y + ponto.y;
+        assert(y > fundoNav && y < 900, `C31-desktop ${mesa}: ${nome} fora da vista (y=${y.toFixed(0)}, navbar ${fundoNav.toFixed(0)})`);
+        assert(x < painel.left - 8, `C31-desktop ${mesa}: ${nome} sob o painel (x=${x.toFixed(0)}, painel em ${painel.left.toFixed(0)})`);
+      }
+      notas.push(`${mesa}: mesa (${(c.x + m.x).toFixed(0)}, ${(c.y + m.y).toFixed(0)}), painel x≥${painel.left.toFixed(0)}, ${g.height.toFixed(0)}px`);
+      if (mesa === 'fiscal') await pg.screenshot({ path: path.join(CAPTURAS, 'pagina-gaveta-1440.png') });
+      await pg.keyboard.press('Escape');
+      assert(await esperarPara(async () => !(await gavetaAberta(pg))));
+      await pg.waitForTimeout(600);
+    }
+    assert.deepEqual(s.erros, [], `erros na página: ${s.erros}`);
+    await s.contexto.close();
+    ok('C31-desktop', `(${notas.join(' · ')})`);
+  }
+
   // ── C33-medicao (rodada 7): dataLayer, Pixel e CAPI com o mesmo event_id ──
   {
     const s = await abrir({

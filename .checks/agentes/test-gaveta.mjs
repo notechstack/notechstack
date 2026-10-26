@@ -421,14 +421,14 @@ async function lados(page) {
       await p2.close();
     });
 
-    // captura de desktop (composição centralizada), só registro visual
+    // desktop (R23): painel encostado à direita, a 24 px da borda
     {
       const p3 = await navegador.newPage({ viewport: { width: 1440, height: 900 } });
       await p3.goto(URL_BANCADA, { waitUntil: 'load' });
       await p3.waitForFunction(() => window.gavetaPronta && document.fonts.status === 'loaded');
       await p3.click('[data-mesa="fiscal"]'); await esperar(9000);
       const r = await p3.evaluate(() => document.querySelector('[role="dialog"]').getBoundingClientRect().toJSON());
-      assert.ok(r.width >= 480 && r.width <= 560 && Math.abs(r.left + r.width / 2 - 720) <= 1, `desktop: ${r.width}px de largura, centralizada`);
+      assert.ok(r.width >= 480 && r.width <= 560 && Math.abs(r.right - (1440 - 24)) <= 1, `desktop: ${r.width}px de largura, direita em ${r.right}`);
       await p3.screenshot({ path: path.join(aqui, 'gaveta-desktop.png') }); capturas.push('gaveta-desktop.png');
       await p3.close();
     }

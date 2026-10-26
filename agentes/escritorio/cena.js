@@ -438,6 +438,36 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     const d = img.getContext('2d').getImageData(px.x, px.y, 1, 1).data;
     return '#' + [d[0], d[1], d[2]].map(n => n.toString(16).padStart(2, '0')).join('');
   }
+  /* Medidas lidas da textura do chip (R4, R9): diâmetro do círculo na linha do centro e
+     espessura do contorno no meio da borda de cima, em px CSS (a textura tem dpr 3 e, na Tela 1,
+     1 px CSS da textura = 1 px na tela). */
+  function medirChip(sp){
+    const img = sp.material.map.image, pt = sp.userData.ponto;
+    if (!img || !pt) return null;
+    const dpr = 3, W = img.width, H = img.height;
+    const d = img.getContext('2d').getImageData(0, 0, W, H).data;
+    const px = (x, y) => { const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2], d[i + 3]]; };
+    const ref = px(pt.x, pt.y);
+    const igual = (a) => a[3] > 200 && Math.abs(a[0] - ref[0]) + Math.abs(a[1] - ref[1]) + Math.abs(a[2] - ref[2]) < 60;
+    let e = pt.x, dd = pt.x;
+    while (e > 0 && igual(px(e - 1, pt.y))) e--;
+    while (dd < W - 1 && igual(px(dd + 1, pt.y))) dd++;
+    const xm = Math.round(W / 2);
+    let y0 = 0;
+    while (y0 < H / 2 && !igual(px(xm, y0))) y0++;
+    let y1 = y0;
+    while (y1 < H / 2 && igual(px(xm, y1))) y1++;
+    const hex = '#' + ref.slice(0, 3).map(n => n.toString(16).padStart(2, '0')).join('');
+    return { circuloPx: +((dd - e + 1) / dpr).toFixed(1), contornoPx: +((y1 - y0) / dpr).toFixed(1), corContorno: y1 > y0 ? hex : null };
+  }
+  function corBorda(sp){
+    const img = sp.material.map.image;
+    if (!img) return null;
+    const W = img.width, H = img.height, x = Math.round(W / 2);
+    const d = img.getContext('2d').getImageData(x, 0, 1, H).data;
+    for (let y = 0; y < H; y++) if (d[y * 4 + 3] > 200) return '#' + [d[y * 4], d[y * 4 + 1], d[y * 4 + 2]].map(n => n.toString(16).padStart(2, '0')).join('');
+    return null;
+  }
   function corFaixa(ag){
     let cor = null;
     no('cracha-' + ag).traverse(o => {
@@ -453,7 +483,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     const projetados = {};
     for (const [k, o] of Object.entries(marcas)) projetados[k] = projeta(o);
     for (const id of MESAS) projetados['etiqueta-' + id] = projeta(chips[id]);
-    const etiquetas = MESAS.map(id => ({ mesa: id, texto: chips[id].userData.texto, cor: corPixel(chips[id].material.map.image, chips[id].userData.ponto) }));
+    const etiquetas = MESAS.map(id => Object.assign({ mesa: id, texto: chips[id].userData.texto, cor: corPixel(chips[id].material.map.image, chips[id].userData.ponto) }, medirChip(chips[id])));
     const mapa = logo.material.map && logo.material.map.image && logo.material.map.image.src
       ? new URL(logo.material.map.image.src, location.href).pathname : null;
     const logoBalcao = {
@@ -464,6 +494,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     const personagens = AGENTES.map(ag => ({ agente: ag, no: no('pessoa-' + ag).name, cracha: corFaixa(ag) }));
     return {
       enquadramento, projetados, etiquetas, logoBalcao, personagens,
+      contornoVaga: { opacidade: +contornoVaga.material.opacity.toFixed(3), cor: corBorda(contornoVaga) },
       linhas: { cor: '#' + cabos[0].material.color.getHexString(), quantidade: cabos.length },
       placaSala: placa ? placa.userData.texto : null,
       /* aditivos: quadro da câmera, cabos sobre o piso (R12) e custo do último quadro */

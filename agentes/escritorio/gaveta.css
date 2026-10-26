@@ -316,11 +316,11 @@ html.gv-aberta { overflow: hidden; }
 .gv-cta:focus-visible { outline: 3px solid var(--no-tinta); outline-offset: 2px; }
 
 /* ── desktop: centralizada, altura pelo conteúdo ── */
-@media (min-width: 768px) {
-  /* centralizada por inset + margin auto (sem translate(-50%), que deixava uma emenda de meio
-     pixel entre o corpo rolável e o rodapé) */
+@media (min-width: 1024px) {
+  /* Desktop (R23): painel encostado à direita, para a mesa aproximada ficar livre à esquerda dele
+     (o canvas tem até 720 px, centralizado). Entre 768 e 1023 px vale a folha de baixo do celular. */
   .gv-painel {
-    inset: 0; margin: auto;
+    inset: auto 24px 24px auto; margin: 0;
     width: min(var(--gv-largura), calc(100vw - 48px));
     height: fit-content;
     max-height: min(84vh, 800px);

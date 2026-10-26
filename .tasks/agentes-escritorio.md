@@ -175,6 +175,12 @@ Resolve o Unresolved 4: sim, a página mede. Lucca pediu a instalação.
 - **R22 · GTM:** `tracking/gtm-agentes-escritorio.json` (importar com **mesclar** no container `GTM-NK87FH8W` e publicar): 4 tags GA4 (`select_content`, `agentes_cta`, `agentes_sala_vista`, `agentes_versao_estatica`), 4 gatilhos e 6 variáveis `dl.*`, com IDs 1001–1024. O PageView do GA4 e da Meta continuam pelas tags que já existem.
 - **Prova:** `test-pagina.cjs` → `PASS C33-medicao`.
 
+## Rodada 8 · correções da verificação 2 (26/10/2026)
+
+- **R23 · Tela 2 no desktop:** a partir de 1024 px, a gaveta é um painel encostado à direita (24 px da borda), e a mesa aproximada fica visível à esquerda dele, entre a navbar e o fim do canvas. De 768 a 1023 px vale a folha de baixo do celular. Substitui o "centralizada" da gaveta no desktop. Prova: `test-pagina.cjs` → `PASS C31-desktop`.
+- **R3 × R8:** a mediana RGB da R3 (`[220,199,170]` ±12) deixa de valer. A R8 mandou escurecer e separar os tons, e Lucca aprovou o resultado ("perfeito, aprovado", 26/10/2026). Vale a R8 (luminância ≤ 165 e desvio ≥ 62).
+- **R4/R9/R10 com asserção:** `test-cena.mjs` → `PASS C6` passa a afirmar, lendo os sprites reais, o círculo ≥ 16 px, o contorno ≥ 2 px na cor do agente e o âmbar da vaga piscando (opacidade do contorno muda em 1 s).
+
 ## States
 
 ```mermaid
@@ -266,7 +272,7 @@ This task is the record of decision. If a linked document diverges, ask before b
 | 1 | open | Depois de quanto tempo aparece "Ver sem animações"? | Escrito 4 s no critério 24. |
 | 2 | open | Quem pede movimento reduzido vai direto para a versão estática, apesar do "movimento constante"? | Escrito sim no critério 27, por acessibilidade. |
 | 3 | open | Texto do relatório semanal do Auditor: negócio, período, resumo e prioridades. | A frente C escreve no formato do critério 16. Usa só números que já aparecem na demonstração pública `agentes/auditor/retrospectiva/index.html` (por exemplo, 6.140 cliques) e nenhum número novo. Lucca revisa no PR. |
-| 4 | open | Medir no dataLayer o toque em cada mesa e os CTAs das gavetas? | Escrito não: só o que já existe (critério 3). Se for sim, ainda falta importar a configuração no GTM pela conta notechstack@gmail.com. |
+| 4 | resolvido (rodada 7) | Medir no dataLayer o toque em cada mesa e os CTAs das gavetas? | Escrito não: só o que já existe (critério 3). Se for sim, ainda falta importar a configuração no GTM pela conta notechstack@gmail.com. |
 | 5 | open | A escolha "Ver sem animações" fica lembrada na próxima visita? | Escrito não: vale só para a visita (Swept, data lifecycle). |
-| 6 | open | A etiqueta da mesa diz `Auditor`, como na imagem, ou `nó.auditor`, como na navbar? | Escrito `Auditor` nos critérios 1, 2, 6 e 16. |
-| 7 | open | Composição no desktop. | Escrita a mesma coluna do celular, com a cena centralizada de até 720 px (critério 32). |
+| 6 | resolvido (R1) | A etiqueta da mesa diz `Auditor`, como na imagem, ou `nó.auditor`, como na navbar? | Escrito `Auditor` nos critérios 1, 2, 6 e 16. |
+| 7 | resolvido (R23) | Composição no desktop. | Escrita a mesma coluna do celular, com a cena centralizada de até 720 px (critério 32). |

@@ -111,6 +111,20 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     assert.equal(et.fiscal.texto, 'nó.fiscal'); assert.equal(et.fiscal.cor, TOKEN.verde);
     assert.equal(et.auditor.texto, 'nó.auditor'); assert.equal(et.auditor.cor, TOKEN.azul);
     assert.equal(et.vaga.texto, 'criar uma automação'); assert.equal(et.vaga.cor, TOKEN.ambar);
+    /* R4 e R9: círculo ≥ 16 px e contorno ≥ 2 px na cor do agente, lidos da textura real */
+    for (const [id, cor] of [['fiscal', TOKEN.verde], ['auditor', TOKEN.azul], ['vaga', TOKEN.ambar]]){
+      assert(et[id].circuloPx >= 16, `R4 ${id}: círculo com ${et[id].circuloPx} px`);
+      assert(et[id].contornoPx >= 2, `R9 ${id}: contorno com ${et[id].contornoPx} px`);
+      assert.equal(et[id].corContorno, cor, `R9 ${id}: contorno ${et[id].corContorno}`);
+    }
+    /* R10: o contorno âmbar da vaga pisca (opacidade muda em 1 s) */
+    const op1 = i1.contornoVaga.opacidade;
+    await ESPERA(350);
+    const op2 = (await page.evaluate(() => cena.inspecionar())).contornoVaga.opacidade;
+    await ESPERA(350);
+    const op3 = (await page.evaluate(() => cena.inspecionar())).contornoVaga.opacidade;
+    assert.equal(i1.contornoVaga.cor, TOKEN.ambar, `R10: contorno ${i1.contornoVaga.cor}`);
+    assert(Math.max(op1, op2, op3) - Math.min(op1, op2, op3) > 0.1, `R10: contorno âmbar parado (${op1}, ${op2}, ${op3})`);
     assert.equal(i1.enquadramento, 'tela1');
     await canvas.screenshot({ path: path.join(AQUI, 'cena-tela1.png') });
     const pngTela1 = path.join(tmp, 'poster-escritorio.png');
@@ -120,7 +134,7 @@ im=Image.open(sys.argv[1]); print('%dx%d' % im.size)`, f);
     await ESPERA(250);
     await canvas.screenshot({ path: pngTela1, omitBackground: true });
     await page.evaluate(() => cena.mostrarEtiquetas(true));
-    console.log('PASS C6 mesas em coluna, etiquetas nó.fiscal/nó.auditor/"criar uma automação" em verde/azul/âmbar, enquadramento tela1');
+    console.log(`PASS C6 mesas em coluna, etiquetas nó.fiscal/nó.auditor/"criar uma automação" em verde/azul/âmbar, enquadramento tela1; R4 círculo ${et.fiscal.circuloPx} px, R9 contorno ${et.fiscal.contornoPx} px, R10 âmbar pisca (${op1} → ${op2} → ${op3})`);
 
     /* ── R8 · contraste na Tela 1 (canvas da página, 375×520): luminância ≤ 165, desvio ≥ 62 ── */
     const lum = py(`
