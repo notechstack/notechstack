@@ -1,24 +1,31 @@
-# Verificação da frente D — resumo
+# Verificação da frente D — resumo (rodada 2)
 
-Relatório completo: `.checks/agentes-escritorio.verified.md` (round 1, verificado em `e15bbc46`, faixa `9a12aecb..e15bbc46`, perfil `light` + passo 1 a pedido).
+Relatório completo: `.checks/agentes-escritorio.verified.md` (Round 2, verificado em `c54fbd54`, faixa `9a12aecb..c54fbd54`, perfil `light` + passo 1 a pedido).
 
-**Veredito: FAIL** · 31 de 32 critérios provados · 38/38 rótulos `PASS` nas três provas (EXIT 0) · faults não rodaram (perfil `light`)
+**Veredito: FAIL** · critérios 1–32 renegociados: 32/32 provados · 44/44 `PASS` nas três provas, rodadas uma de cada vez (EXIT 0) · R vigentes: 8 por asserção, 3 parciais, 3 só por inspeção, R3 em aberto · faults não rodaram (`light`)
 
 ## Lacunas, por gravidade
 
-1. **Alta — C31 falso em HEAD.** De ~3 a 6 s em diante, a gaveta cresce até 609 px (75%), com o topo em y=203, e cobre a mesa aproximada (y=246) em 375×812. Em 390×844 também, e no Auditor desde 3 s. A prova (`test-pagina.cjs:657-664`) mede só aos 1,4 s. Causa provável: o `alvoY` é calculado só na abertura (`pagina.js:181-183`). A Tela 2 deixa de ter a mesa em cima, como na referência. Ver `final-tela2-375.png` e `final-tela2-390.png`.
-2. **Média — arranjo da referência sem check.** Tela 3: cartões lado a lado, botão com contorno. Tela 2: alça, botão azul largo. Tela 1: cena abaixo do texto, na largura toda (o C6 é provado só na bancada). Hoje tudo confere, mas nenhuma prova trava.
-3. **Média-baixa — 1440.** Na Tela 2, o modal cobre a mesa aproximada. Na Tela 3, a sala fica sob a navbar quando o `h2` está visível. Na Tela 1, a placa da sala sai cortada na borda do canvas.
-4. **Baixa.** C6 e C7 (mascote) são provados abaixo do nível da página, mas valem nas medições e capturas. No C16, inteiros pequenos passam trivialmente. O C13 não afirma o fundo da conversa.
-5. **Baixa.** As provas regravam 12 PNGs versionados, e a árvore fica com `M`.
+1. **Alta — 1440, Tela 2:** o modal da gaveta cobre a mesa aproximada. No fiscal, a mesa está em y=163 com o topo do modal em 165; no Auditor, em y=152 com o topo em 131. Foi dado como corrigido e não está, e nenhum check cobre isso. Ver `final2-tela2-1440.png`.
+2. **Média-alta — R4, R9 e R10 sem asserção:** círculo ≥ 16 px, halo, contorno ≥ 2 px e âmbar piscando apontam para o `PASS C6`, que só afirma texto e cor. O código (`cena.js:47`, `:354-359`) e a imagem conferem. R5 (forma do crachá), R12 (lado a lado, sem cruzar, tubos com pulsos) e R16 (meshopt e WebP) também foram conferidos só à mão.
+3. **Média — R3:** a mediana `[220,199,170] ±12` ficou sem prova, e a cena dá `[204,154,108]`. A R8 manda escurecer, mas não retira a mediana de forma expressa.
+4. **Média-baixa:** o corpo do checklist (C1, C2, C6, C7, C16, C26a, C31) e o Unresolved 6 da task ainda trazem os valores antigos.
+5. **Baixa:** arranjo da referência sem check (cartões, CTA, alça, botão largo); "mesmo ângulo" (R11) não é afirmado; no C16, inteiros pequenos passam trivialmente; as provas regravam 16 PNGs versionados; na Tela 2, o `h1` aparece acima da navbar.
+
+## Fechado desde a rodada 1
+
+- O C31 agora mede com a conversa completa (9 s / 7 s): a gaveta tem 503 px (≤ 62%) e a mesa fica acima dela.
+- Em 1440, o fecho mostra a sala abaixo da navbar junto com o `h2`.
+- O C6 roda no canvas da página e o C7 varre os nomes do GLB.
 
 ## Conferido sem achado
 
-- Polvo, mascote e animal: nenhum, no código, na cena, nos pôsteres e nos assets carregados.
-- `agentes/fiscal/` e `agentes/auditor/`: nenhum arquivo mudou na faixa.
-- Telas 1 e 3 em 375 e 390: a composição confere com a referência.
-- O C25 passa por `carregando` antes de `estatica` quando o import falha, como o diagrama de States autoriza.
+- R2: cena de borda a borda, sem caixa, com degradê de 64 px.
+- Telas 1, 2 e 3 em 375 e 390.
+- Nenhum polvo, mascote ou animal no GLB (nós e texturas), nos pôsteres ou nas texturas do Blender.
+- `agentes/fiscal/` e `agentes/auditor/` intactos.
+- As provas que mudaram mudaram por renegociação registrada (R1, R6, R10, R11, R13, R15) ou só por tempo, sem enfraquecimento.
 
-## Capturas
+## Atenção
 
-`final-tela1-375.png`, `final-tela1-390.png`, `final-tela1-1440.png`, `final-tela2-375.png`, `final-tela2-390.png`, `final-tela2-1440.png`, `final-tela3-375.png`, `final-tela3-390.png`, `final-tela3-1440.png`
+A worktree recebeu a Rodada 6 (R17–R19) sem commit às 17:52–17:54, durante a verificação. Minhas provas e capturas terminaram antes (17:47 e 17:51) e valem para `c54fbd54`. A Rodada 6 não foi verificada.

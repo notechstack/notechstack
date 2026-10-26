@@ -1,113 +1,123 @@
 # /agentes/ como "Escritório nó" — Verification
 
 **Verdict**: FAIL
-**Profile**: light (nenhum `AGENTS.md` declara outro). Por pedido do orquestrador, o passo 1 (fonte vinculante) rodou mesmo assim. O passo 4 (faults) e a linha `Test policy` não rodaram: são de `standard`/`ui`, e o artefato não tem seção `Test policy`.
-**Diff range**: `9a12aecb..e15bbc46` (branch `feat/agentes-escritorio`)
-**Round**: 1 - full · verified at `e15bbc46`
-**Verifier**: frente D, sub-agente independente (author != verifier); não construiu nada da feature
+**Profile**: light (nenhum `AGENTS.md` declara outro). O passo 1 (fonte vinculante e composição) rodou a pedido do orquestrador. Faults e `Test policy` não rodaram: são de `standard`/`ui`, e o artefato não tem seção `Test policy`.
+**Diff range**: `9a12aecb..c54fbd54` (branch `feat/agentes-escritorio`)
+**Round**: 2 - scoped, mas com todas as provas rodadas de novo, em sequência, em HEAD · verified at `c54fbd54`. O que não foi medido de novo diz `carried from e15bbc46`.
+**Verifier**: frente D, independente (author != verifier)
 
 ## Resumo
 
-- As três provas rodaram em HEAD e saíram verdes: **38 rótulos `PASS`**, `EXIT 0` em todas.
-- **31 de 32 critérios provados.** O **C31 é falso em HEAD**, embora a prova esteja verde. Ela mede a gaveta 1,4 s depois de abrir, quando a conversa ainda é curta (402 px). De ~3 a 6 s em diante, a gaveta cresce até 609 px (75%) e cobre a mesa aproximada, tanto no fiscal quanto no auditor, em 375×812 e em 390×844. A Tela 2 deixa de ser a composição da referência: "mesa aproximada em cima, gaveta embaixo".
-- Polvo, mascote e animal: nenhum, nem no código, nem na cena, nem nos pôsteres (detalhes abaixo).
-- `agentes/fiscal/` e `agentes/auditor/`: nenhum arquivo mudou na faixa (`git diff --name-only 9a12aecb..e15bbc46 -- agentes/fiscal agentes/auditor` → vazio).
+- As três provas rodaram em `c54fbd54`, **uma de cada vez**, e passaram com EXIT 0: test-pagina 21 rótulos, test-gaveta 12 e test-cena 11 (mais a linha de contrato e uma `INFO`). São **44 `PASS` e nenhum `FAIL`**.
+- **Critérios 1–32, já com as renegociações: 32 de 32 provados.** O C31 da rodada 1 está fechado: a gaveta fica fixa em 503 px (≤ 62%), e a mesa aparece acima dela também com a conversa completa.
+- **Itens R vigentes (15; a R7 foi substituída pela R11):**
+  - provados por asserção: R1, R6, R8, R11, R13, R14, R15 e R16;
+  - parcialmente: R5, R10 e R12;
+  - só por inspeção minha, sem asserção: R2 (declarado no checklist como ponto do Verifier), R4 e R9;
+  - R3: a mediana de cor ficou sem prova e fora da faixa (ver lacuna 3).
+- **Por que FAIL:**
+  1. Em 1440, a gaveta continua cobrindo a mesa aproximada. O briefing desta rodada dizia que isso estava corrigido.
+  2. R4, R9 e R10 (círculo ≥ 16 px, halo pulsando, contorno ≥ 2 px, âmbar piscando) estão mapeados ao `PASS C6`, mas o C6 não afirma nenhum desses valores.
+- Polvo, mascote e animal: nenhum (detalhes abaixo). `agentes/fiscal/` e `agentes/auditor/`: nenhuma mudança na faixa.
+- **A worktree foi alterada por outra sessão durante a verificação.** Às 17:52–17:54 entraram, sem commit, `agentes/index.html`, `agentes/agentes.css`, `.checks/agentes/test-pagina.cjs` e `.tasks/agentes-escritorio.md` (Rodada 6, R17–R19), além de `brand/agentes/no-agentes-tinta-azul.webp`. Minhas provas terminaram às 17:47:50 e minhas capturas às 17:51:53, então tudo neste relatório vale para o conteúdo de `c54fbd54`. A Rodada 6 está fora desta faixa e não foi verificada.
 
 ## Binding sources
 
 | Source | Opened | Contradiction | Uncovered |
 |---|---|---|---|
-| `.tasks/refs/agentes-escritorio-referencia.webp` — Tela 1 | sim, a imagem foi aberta e comparada com `final-tela1-{375,390,1440}.png` | nenhuma. A navbar canônica com Home/Agentes/Contato difere do desenho (hambúrguer à direita, sem links), mas o critério 30 decide "como em `/contato/`" | **arranjo**: nenhum check afirma que a cena fica abaixo do subtítulo, na largura toda no celular, nem que a recepção aparece no primeiro viewport. O C6 é provado na bancada 375×812, não no canvas da página (375×520). Renderizado e não desenhado: a sala envidraçada aparece na borda direita do canvas na Tela 1. Em 1440, a placa sai cortada ("nó. t") e um nó azul fica solto (`final-tela1-1440.png`) |
-| idem — Tela 2 | sim, comparada com `final-tela2-{375,390,1440}.png` | nenhuma nos checks. **O C31 descreve a Tela 2 e falha no código** (ver Checks) | alça da gaveta (`.gv-alca` renderizada, sem check); botão azul **largo** (o C15 só afirma texto, href e ≥ 44 px, nem cor nem largura; medido: 343/375 px, `rgb(47,86,229)`). Renderizado e não desenhado: o ×, que o critério 20 decide, então ok |
-| idem — Tela 3 | sim, comparada com `final-tela3-{375,390,1440}.png` | nenhuma | **arranjo**: os dois cartões **lado a lado** não têm check (o C1 conta 2 cartões e a ordem; medido: mesmo `y`, x=20/193 em 375). O botão "Conte sua ideia" **com contorno** não tem check (medido: fundo transparente, borda 1px `rgb(61,99,219)`). Também sem check: o ponto colorido e a seta (›) dos cartões |
-| idem — desktop (não desenhado; Unresolved 7) | — | — | Em 1440, o C32 só mede largura e centro. Na Tela 2, o modal de 540 px cobre a mesa aproximada inteira. Na Tela 3, a sala "nó tech stack" fica sob a navbar sempre que o `h2` está visível: o fecho só entra depois de `scrollY` ≈ 500, e aí a marca da sala está em y=113 com a navbar terminando em 87. A metade de baixo do canvas fica só com piso (`tela3-1440` nas capturas da verificação) |
-| `.tasks/agentes-escritorio.md` (registro de decisão) | sim | nenhuma entre o checklist e a task. O texto do Auditor e a gaveta em passos da imagem são substituídos pela task de forma expressa | — |
+| `.tasks/refs/agentes-escritorio-referencia.webp` — Tela 1 | sim (rodada 1), comparada com `final2-tela1-{375,390,1440}.png` | nenhuma. Arranjo igual: rótulo, `h1`, subtítulo, cena logo abaixo e de borda a borda (R2), fiscal → nó.auditor → "criar uma automação" → recepção com "nó." | R2 só por inspeção (declarado). Medi: `.ag-escritorio` em x=0, largura = viewport (375/390), fundo transparente, borda 0, raio 0, sem sombra, `mask-image` de 64 px em cima e embaixo (`agentes.css:62-87`), topo da cena = base do subtítulo (299/302) |
+| idem — Tela 2 | sim, `final2-tela2-{375,390,1440}.png` e `final2-tela2-auditor-*.png` | **1440: a gaveta cobre a mesa aproximada** (ver lacuna 1). Em 375 e 390 confere: cena no topo, logo abaixo da navbar (topo do canvas 83, navbar 75); pessoa e mesa acima da gaveta; gaveta com alça, selo, título, explicação, WhatsApp compacto e botão azul largo | alça e botão azul largo continuam sem check (*carried from e15bbc46*). Resto de rolagem: a última linha do `h1` aparece acima da navbar flutuante na Tela 2, em todas as larguras |
+| idem — Tela 3 | sim, `final2-tela3-{375,390,1440}.png` | nenhuma diante das renegociações. A R11 troca o recuo da referência pelo arrasto até a sala, e o fecho mostra a sala com a placa, os três cabos e o `h2` | cartões lado a lado e botão com contorno continuam sem check, embora confiram (*carried*; a Rodada 6, sem commit, já mexe nessa seção) |
+| `.tasks/agentes-escritorio.md`, Rodadas 3–5 | sim | **o corpo do checklist está desatualizado**: C1, C2, C6, C16, C26a, C31 e C7 ainda falam em "Auditor", "um problema seu aqui?", 75%, 750×1624 e Capsule/Sphere. Só a tabela "Rodadas 3–5" aponta as provas novas. O Unresolved 6 da task ainda diz "Escrito `Auditor`", embora a R1 o resolva | ver lacunas 2 a 4 |
 
-## Checks
+## Checks (verified at `c54fbd54`)
 
-Provas rodadas em `e15bbc46`:
-`AGENTES_REAL=1 node .checks/agentes/test-pagina.cjs` → `# modo: real` … `# tudo verde (real)`, EXIT 0 ·
-`node .checks/agentes/test-gaveta.mjs` → EXIT 0 ·
-`node .checks/agentes/test-cena.mjs` (sem `--posteres`) → EXIT 0.
+Comandos, nesta ordem: `AGENTES_REAL=1 node .checks/agentes/test-pagina.cjs` (EXIT 0) → `node .checks/agentes/test-gaveta.mjs` (EXIT 0) → `node .checks/agentes/test-cena.mjs` (EXIT 0).
 
-| Check | Claim | Proof run | Evidence | Result |
+Asserções sem mudança desde a rodada 1 (C3, C4, C5, C9, C10, C13–C15, C17–C30, C32): o rótulo `PASS` apareceu de novo em HEAD. A evidência `file:line` é a da rodada 1, *carried from e15bbc46*, porque o diff dos testes não toca essas asserções. Abaixo, só o que mudou ou foi renegociado:
+
+| Check / R | Claim vigente | Proof run | Evidence | Result |
 |---|---|---|---|---|
-| C1 | ordem do conteúdo sem JS | `PASS C1` | `test-pagina.cjs:244-260`: `main.indexOf(trecho, i)` sobre a lista literal (rótulo → h1 → sub → 3 `data-mesa` → h2 → 2 cartões → `href="/contato/">Conte sua ideia<`); `:263` `assert.equal(h1, 'Cada agente resolve…')`; `:265` texto de cada mesa | PASS. Obs.: as mesas são `<a data-mesa>` e não `<button>`; o seletor do check é `[data-mesa]` |
-| C2 | textos dos cartões, sem "Revisa e organiza" | `PASS C2` | `:280` `includes('Emite a NFS-e pelo WhatsApp, para MEI e Simples.')`; `:282` `includes('Confere se o rastreamento…')`; `:284` `!servido.includes('Revisa e organiza')` | PASS |
-| C3 | head/GTM/sitemap iguais a `9e83de87` | `PASS C3` | `:306` `assert.deepEqual(n[k], a[k])` para title, description, canonical, og, twitter, telemetria, gtm e noscript, contra `git show 9e83de87`; `:308` telemetria antes do GTM; `:312` linha do sitemap igual | PASS |
-| C4 | sync não altera a página | `PASS C4` | `:319` `--check` não cita `agentes/index.html`; `:329` `Buffer.equals` depois do sync numa cópia | PASS |
-| C5 | sem `auditor.css`, 4 CSS, sem hex | `PASS C5` | `:336` `!includes('/agentes/auditor/auditor.css')`; `:338` regex de cada `<link>`; `:342`/`:345` `!hex.test(...)` em `agentes.css` e no `gaveta.css` real | PASS. A cena tem hex de material 3D, fora do alcance do critério 5; as cores de marca vêm dos tokens (`cena.js:24-31`) |
-| C6 | ordem e visibilidade das mesas, cor das etiquetas, `tela1` | `PASS C6` | `test-cena.mjs:104` `p[k].visivel`; `:105-107` `y` fiscal < auditor < vaga < recepção; `:109-111` `et.*.cor === TOKEN.*` e textos; `:112` `'tela1'` | PASS, com **lacuna de nível**: provado na bancada (canvas 375×812), não na página (375×520). Medi na página: 443 < 552 < 661 < 770 em 375 e 452 < 566 < 679 < 792 em 390, todos `visivel:true` |
-| C7 | 2 personagens cápsula+esfera, crachás, sem nomes/Office/mascote | `PASS C7` | `:125` `length === 2`; `:128` `'CapsuleGeometry'`/`'SphereGeometry'`; `:129` crachá = token; `:134-136` regex sem Office/mascote/`nome:` nos `cena*.js` | PASS. "Sem mascote" é provado só por regex no código-fonte; confirmei nas capturas e nos dois pôsteres que não há animal |
-| C8 | logo plano, sem sombra/contorno, mapa do SVG | `PASS C8` | `:142-143` `'PlaneGeometry'`, `castShadow:false`, `receiveShadow:false`, `contorno:false`, `mapa === '/brand/logo/svg/no-tinta-ponto-azul.svg'`. Os valores vêm do grafo (`cena.js:637-641`), não são fixos | PASS |
-| C9 | personagens mudam a 1 s e após 60 s | `PASS C9` (2219/2714 px e 2475/2090 px) | `:158` `assert(n > 40)` por região; `:164` `ESPERA(60000)` reais | PASS |
-| C10 | `quadros()` parado fora da tela e com a aba oculta; retoma | `PASS C10` | `:173` `q2 === q1`; `:177` `q3 > q2`; `:186` `q5 === q4`; `:194` `q6 > q5` | PASS |
-| C11 | fecho: sala visível, 3 linhas `#3d63db`, placa; volta a `tela1` | `PASS C11` | `:202` `'fecho'`; `:203` `sala.visivel`; `:204` `linhas.cor === '#3d63db'`; `:205` `quantidade === 3`; `:206` `'nó tech stack'`; `:219` `'tela1'` | PASS |
-| C11-pagina | rolar até o h2 → fecho; voltar → tela1 | `PASS C11-pagina [real]` | `test-pagina.cjs:553` `=== 'fecho'`; `:562` `=== 'tela1'` | PASS |
-| C12 | selo, título, mockup | `PASS C12` | `test-gaveta.mjs:133` `'DEMONSTRAÇÃO'`; `:135` `'nó.fiscal — sua NFS-e pelo WhatsApp'`; `:137` `.gv-wa-cab` + `.gv-wa-conversa` | PASS |
-| C12-pagina | câmera `fiscal` por botão e por canvas | `PASS C12-pagina [real]` | `test-pagina.cjs:575` e `:585` `=== 'fiscal'`; `:576` título | PASS |
-| C13 | cabeçalho, lados, hora/✓✓, 5 mensagens após "digitando…" | `PASS C13` | `test-gaveta.mjs:154` `'nó.fiscal'`; `:163-165` `seq[pos-1].tipo === 'digitando'`; `:168-180` textos 1–5, passos na ordem (`:176`) e um a um (`:177`); `:188-192` pessoa à direita, verde, `^\d\d:\d\d$`, `'✓✓'`; `:194-195` agente à esquerda, branco | PASS. "Fundo de conversa" (critério 13) não é afirmado; está visível nas capturas |
-| C14 | recomeço 4 s após a msg 5 (±300 ms) | `PASS C14` | `:210` `Math.abs(dt - 4000) <= 300`; `:213` primeira depois do recomeço é "nota pra Studio Lima" | PASS |
-| C15 | "Simular uma emissão" → `/agentes/fiscal/#simulador` | `PASS C15` | `:221` `texto === 'Simular uma emissão'`, `href === '/agentes/fiscal/#simulador'` | PASS |
-| C16 | gaveta do Auditor no formato `textoCopia`, números da retrospectiva | `PASS C16` | `:240` título; `:241` `'nó.'`/`'equipe nó'`; `:244` uma mensagem; `:247` digitando antes; `:250` regex da linha em negrito; `:260` `^n\. [^:]+: .+$`; `:261` `Relatório completo: https?://`; `:268` `faltam` vazio | PASS. Precisão: inteiros pequenos (1, 2, 3, 4) passam trivialmente no teste contra a retrospectiva |
-| C16-pagina | câmera `auditor` | `PASS C16-pagina [real]` | `test-pagina.cjs:592` `=== 'auditor'`; `:593` título | PASS |
-| C17 | nota abaixo do mockup | `PASS C17` | `test-gaveta.mjs:276` texto exato; `:277` `topo >= fimMockup - 1` | PASS |
-| C18 | "Diagnosticar grátis" → `/agentes/auditor/` | `PASS C18` | `:286` texto e `href` | PASS |
-| C19 | mesa vaga (botão e canvas) → `/contato/` sem gaveta | `PASS C19 [real]` | `test-pagina.cjs:639`/`:645` navegação contada; `:640`/`:646` `gavetaAberta === false` | PASS |
-| C20 | ×, Esc, fora; câmera, foco, Tab | `PASS C20 [real]` | `:600` três modos; `:611` foco dentro após Tab/Shift+Tab; `:621` `activeElement === [data-mesa=fiscal]`; `:622` `'tela1'` | PASS |
-| C20-gaveta | idem na bancada, × ≥ 44 | `PASS C20-gaveta` | `test-gaveta.mjs:296` `x.w >= 44 && x.h >= 44`; `:292` foco volta; `:313-314` Tab preso | PASS |
-| C21 | troca e toque duplo: uma gaveta, nada vaza em 15 s | `PASS C21` | `:325-326` uma gaveta, a do Auditor; `:332` `vazou` vazio após `esperar(15000)`; `:340-341` toque duplo → uma, a do fiscal; `:345` msg 1 uma vez | PASS |
-| C22 | tela de carregamento: cobre, logo, 4 pontos na ordem, texto, 0→100% | `PASS C22` (0% → … → 100%) | `test-pagina.cjs:486` cobre a viewport; `:488` logo `/brand/logo/svg/no-*.svg`; `:504` `deepEqual(cores, tokens azul,vermelho,âmbar,verde)`; `:507` delays crescentes; `:509` texto; `:514-515` `'0%'`…`'100%'` | PASS |
-| C23 | só some com fontes, three, cena, gaveta e quadros subindo | `PASS C23 [real]` | `:523` Sora e Mono; `:524-526` `responseEnd <= em`; `:527` cena; `:529` `quadros > 0`; `:533` `q2 > q1` | PASS |
-| C24 | botão aos 4 s; estática na hora; canvas nunca aparece | `PASS C24` | `:444` invisível aos 3,5 s; `:447` `3900 <= decorrido <= 6000`; `:452` `< 500` ms; `:458` canvas invisível após liberar o three; `:461` `cena === false` | PASS |
-| C25 | falha no import / sem WebGL → estática sem tela nem botão | `PASS C25` | `:422-426` após o abort: tela e botão invisíveis, pôster visível, console `falha`; `:431` `carregandoVisto === false` sem WebGL | PASS. Com o import abortado, a página passa por `carregando` antes de `estatica` (medido), o que o diagrama de States da task autoriza ("Carregando --> Estatica: falha no import") |
-| C26a | pôsteres 750×1624, mesas pelos botões | `PASS C26a` | `:392`/`:399` `deepEqual([w,h],[750,1624])`; `:391`/`:398` `src`; `:405` gaveta abre pelo botão na estática | PASS |
-| C26b | estática: conversa inteira, sem digitando | `PASS C26b` | `test-gaveta.mjs:357` 5 mensagens na hora, 0 digitando; `:358` 4 passos; `:362` HTML igual após 3 s; `:367` auditor | PASS |
-| C26-posteres | WebP 750×1624 | `PASS C26-posteres` | `test-cena.mjs:250`/`:254` `tamanhoWebp === '750x1624'` | PASS |
-| C27 | reduce → estática sem tela | `PASS C27` | `test-pagina.cjs:377` `carregandoVisto === false`; `:378` motivo | PASS |
-| C28 | sem JS: sem tela, conteúdo visível | `PASS C28` | `:352` tela invisível; `:356` cada seletor do C1 `isVisible` | PASS |
-| C29 | quatro motivos no console | `PASS C29` | `:468` `motivosVistos.has(m)` para os 4; regex `:35` | PASS |
-| C30 | 375/390: sem rolagem lateral, nav/rodapé, alvos ≥ 44 | `PASS C30` | `:676` `sw === cw`; `:681` dentro da largura; `:688` mesas, cartões e CTA ≥ 44; `:694` × ≥ 44 | PASS |
-| **C31** | 375×812, gaveta aberta: altura ≤ 0,75×812 **e mesa aproximada acima do topo da gaveta** | `PASS C31 [real]` (gaveta 402px; mesa y=247, gaveta y=410) | `test-pagina.cjs:659` `g.height <= 0.75*812+0.5`; `:664` `yMesa < g.top`, **medido uma vez, aos 1,4 s** (`:657` `waitForTimeout(1400)`) | **FAIL**: medição minha em HEAD, fiscal em 375×812 (click e tap): t=3 s topo 410 / mesa 246 ✓; **t=6, 9 e 12 s: topo 203 / mesa 246 ✗**. Em 390×844: topo 211 / mesa 263 ✗. Auditor em 375: ✗ desde t=3 s (topo 203 / mesa 221). Causa provável: `alvoY` calculado uma vez só, na abertura (`pagina.js:181-183`), enquanto a gaveta cresce com a conversa até `--gv-altura-max: 75vh` (`gaveta.css:7`, `:39`). Captura: `final-tela2-375.png`, `final-tela2-390.png` |
-| C32 | 1440: sem rolagem lateral, nav/rodapé como `/contato/`, canvas ≤ 720 centralizado | `PASS C32` (720×780, centro 720.0/720) | `:731` `sw === cw`; `:736-740` nav e rodapé contra `/contato/`; `:743` `c.width <= 720`; `:744` `\|centro - meio\| <= 1` | PASS |
+| C1 + R1 + R10 | mesas `nó.fiscal`, `nó.auditor`, "criar uma automação", na ordem | `PASS C1` | `test-pagina.cjs` (lista de ordem com `'nó.auditor'` e `'criar uma automação'`; `assert.equal(innerText, texto)` por mesa) | PASS |
+| C2 + R1 | cartão diz `nó.auditor` | `PASS C2` | `assert(... .includes('nó.auditor'))` | PASS |
+| C6 + R1/R10 | ordem e visibilidade, textos e cor da etiqueta, `tela1` | `PASS C6` | `test-cena.mjs`: `et.auditor.texto === 'nó.auditor'`, `et.vaga.texto === 'criar uma automação'`, `cor === TOKEN.*`. A bancada passou a ter o canvas da página (`caixa.height === 520`), o que **fecha a lacuna de nível da rodada 1** | PASS |
+| R4 / R9 / R10 (efeitos) | círculo ≥ 16 px, halo pulsando, contornos verde/azul ≥ 2 px, contorno âmbar piscando | mapeados ao `PASS C6` | **nenhuma asserção**: o C6 só lê `texto` e a cor do pixel do círculo (`cena.js:456`). No código: `circ = 16`, `borda = 2.5` (`cena.js:47`), halo em `sin(t·2,6)` (`cena.js:354-356`), contorno da vaga piscando (`cena.js:359`); visível em `final2-tela1-*.png` | **NÃO PROVADO** (o comportamento confere na inspeção) |
+| C7 + R13 + R5 | `pessoa-fiscal`/`pessoa-auditor`, faixa do crachá = token, sem nomes, Office ou mascote (no GLB também) | `PASS C7 (R13)` | `x.no === 'pessoa-' + x.agente`; `per.fiscal.cracha === TOKEN.verde` (lido do material `cracha-faixa-<agente>`, `cena.js:441-447`); varredura de nomes de nós, malhas, materiais e animações do GLB | PASS. R5 (cartão, cordão, "nó.", legível): só a cor é afirmada. Por inspeção em dpr 3 (`zoom-tela2-*.png`), confere: cordão, faixa colorida e "nó." legível, embora pequeno |
+| C8 + R14 | logo plano do SVG oficial | `PASS C8` | inalterado (`geometria`, sombras, `contorno`, `mapa`) | PASS. "Posicionado em `marca-logo-balcao`" não é afirmado |
+| R8 | luminância ≤ 165 e desvio ≥ 62 na Tela 1 | `PASS R8` (144,4 / 68,2) | `assert(lum[0] <= 165)`, `assert(lum[1] >= 62)` sobre `cena-tela1.png` | PASS. Minha medição na página (375, faixa interna da cena): média 144,1 e desvio 68,7 |
+| R3 (mediana) | mediana RGB a ±12 de `[220,199,170]` | sem prova | medi `[204,154,108]`: G −45, B −62 | **fora da faixa**. A R8 manda escurecer, e a luminância da R3 foi substituída. A mediana de cor não foi retirada de forma expressa (ver lacuna 3) |
+| C11 + R11 | só arrasta até a sala: altura do quadro varia ≤ 3%; sala visível; 3 cabos `#3d63db` acesos; placa | `PASS C11 (R11)` (0,0%) | `variacao <= .03`; `sala.visivel`; `linhas.quantidade === 3`; `cabos.every(cor === '#3d63db')`; `cabosAcesos >= 1` (progresso do shader, 1,01 = aceso até a sala) | PASS. "Mesmo ângulo" não é afirmado |
+| R12 | cabos acima do piso, lado a lado, sem cruzar, tubo com pulsos | `PASS R12` | `c.yMin > i3.pisoY` para os 3 (folga de 0,006 m) | parcial: só "acima do piso" é afirmado. Por inspeção (`zoom-cabos.png`), confere: três tubos com volume, lado a lado, em curvas suaves, sem se cruzar, com pulsos claros até a caixa azul da sala |
+| C12-foco | no foco, pessoa e mesa na faixa acima da gaveta; chip no tamanho da Tela 1; os outros chips somem | `PASS C12-foco` | faixa `[0, 218.4]`; `y` da pessoa e da mesa dentro dela; `\|razão − 1\| <= .1`; `et4[o].visivel === false` | PASS |
+| C12 / C16 / C16-pagina + R1 | título "nó.auditor — seu relatório semanal no WhatsApp" | `PASS C12`, `PASS C16`, `PASS C16-pagina` | `assert.equal(info.titulo, 'nó.auditor — …')` | PASS |
+| R6 fiscal / auditor | explicação ≤ 2 frases e ≤ 180 caracteres, copiada da LP; gaveta ≤ 62%; janela ≤ 300 px; CTA à vista | `PASS R6 fiscal` (96 c.), `PASS R6 auditor` (121 c.) | `texto.length <= 180`; `frases <= 2`; `lps[agente].includes(texto)`; `dlg.height <= 0.62*812`; `wa.height <= 300.5`; ordem selo → título → explicação → janela → CTA | PASS. Cabeçalho verde e fundo com rabiscos: por inspeção, conferem |
+| **C31** (R6) | 375×812: gaveta ≤ 62% e mesa acima dela, **também com a conversa completa** | `PASS C31 [real]` | `test-pagina.cjs`: `g.height <= 0.62*812+0.5` e `yMesa < g.top`, aos 1,4 s e 9 s (fiscal) e aos 7 s (auditor). Saída: gaveta 503 px, mesa y=247, gaveta y=309 nas três medições | **PASS: lacuna 1 da rodada 1 fechada.** Minha medição em 375/390 aos 9 s (fiscal) e 7 s (auditor) dá topo 309/321 e mesa 247/256 |
+| C26a / C26-posteres + R15 | pôsteres 750×1040 | `PASS C26a`, `PASS C26-posteres (R15)` | `deepEqual([w,h],[750,1040])`; `tamanhoWebp === '750x1040'` | PASS |
+| R16 | um GLB ≤ 3 MB, com meshopt e WebP | `PASS R16` (1,98 MB) | `tamGlb <= 3*1024*1024`; `deepEqual(globs, ['escritorio.glb'])` | PASS em tamanho e unicidade. Meshopt e WebP não são afirmados; conferi `extensionsUsed`: `EXT_meshopt_compression` e `EXT_texture_webp`, as duas em `extensionsRequired`, e as 5 imagens em `image/webp` |
+| C12-pagina, C19, C22 | inalterados na substância | `PASS` | mudança no teste = esperar o botão parar de mover antes do clique (C12-pagina e C19) e atrasar o `cena.js` em 1,8 s para conseguir ler a tela de carregamento (C22). O C23 continua exigindo cena montada e quadros subindo | PASS, sem enfraquecimento |
 
-Rótulos que apareceram: test-pagina 21 (C1–C5, C11-pagina, C12-pagina, C16-pagina, C19, C20, C22–C25, C26a, C27–C32), test-gaveta 10 (C12–C18, C20-gaveta, C21, C26b), test-cena 7 (C6–C11, C26-posteres). Total: 38, nenhum `FAIL`.
+## As provas que mudaram nas rodadas 3–5: renegociação ou enfraquecimento?
+
+Diff `e15bbc46..c54fbd54` dos três testes:
+- **Valores trocados, todos registrados na task:**
+  - `Auditor` → `nó.auditor` (R1);
+  - "um problema seu aqui?" → "criar uma automação" (R10);
+  - 75% → 62% (R6);
+  - 750×1624 → 750×1040 (R15);
+  - Capsule/Sphere → `pessoa-<agente>` (R13);
+  - o C11 passa de "recuo" a "variação ≤ 3%" (R11, que substitui R7 e o critério 11).
+- **Asserções novas:** R6 ×2, R8, R12, R16, C12-foco, a varredura de nomes no GLB e a medição do C31 em estado estável (9 s e 7 s), com as duas mesas.
+- **Mudanças só de tempo:** a espera pelo botão parado (C12-pagina, C19) e o atraso do `cena.js` (C22) não tiram nenhuma asserção.
+- **Nada removido sem registro.** A única perda é a do C7 (cápsula e esfera), que a R13 retira de forma expressa.
+
+## Lacunas da rodada 1: estado
+
+| Lacuna (rodada 1) | Estado em `c54fbd54` |
+|---|---|
+| 1. C31 falso com a conversa completa | **fechada**: prova aos 9 s e 7 s, e minha medição confere |
+| 2. arranjo sem check (cartões lado a lado, contorno do CTA, alça, botão largo, cena abaixo do texto) | **aberta**: o comportamento confere, mas não há asserção. A R2 está declarada como ponto do Verifier e conferi por inspeção |
+| 3a. 1440: sala sob a navbar no fecho | **fechada**: há rolagens (`scrollY` 300–600) com fecho ativo, sala abaixo da navbar (y=183 com o `h2` a 62%) e `h2` na tela; ver `final2-tela3-1440.png` |
+| 3b. 1440: gaveta cobre a mesa aproximada | **ABERTA**: fiscal aos 9 s com modal 540 px em x=450–990, topo 165; mesa em (724, 163), na borda do modal. Auditor aos 7 s com topo 131 e mesa em y=152, sob o modal. Acima do modal só aparecem a etiqueta e uma faixa da cena (`final2-tela2-1440.png`, `final2-tela2-auditor-1440.png`) |
+| 3c. 1440: placa da sala cortada na Tela 1 | resolvida pela cena nova: a sala aparece na borda direita com fusão lateral, sem placa cortada |
+| 4. C6 e mascote abaixo do nível da página | **fechada**: o C6 roda no canvas 375×520 e o C7 varre os nomes do GLB. Seguem abertos o C16 (inteiros pequenos passam trivialmente) e o fundo da conversa no C13 (confere na inspeção) |
+| 5. provas regravam PNGs versionados | **aberta**: 16 PNGs ficaram com `M` depois das minhas execuções |
 
 ## Mascote, polvo, animal
 
-- Código entregue: `rg -i "polvo|octo|mascote|mascot|animal|gato|cachorro|cat|dog|pássaro|bird|peixe|fish|tentácul"` em `agentes/index.html`, `agentes/agentes.css` e `agentes/escritorio/**` → nenhuma ocorrência.
-- Assets que a página carrega: só `/brand/logo/`, `/brand/lockup/`, `/brand/favicon/`, `/brand/fonts/`, `/brand/tokens/` e os dois pôsteres. Nada de `/brand/mascote/`.
-- Visual: `final-tela{1,2,3}-*.png`, `poster-escritorio.webp` e `poster-fecho.webp` mostram dois personagens, mesas, cadeiras, monitores, plantas, sofá, balcão e sala de servidor. Nenhum animal.
-- Task: `b4a452dc` retirou o polvo dos critérios 6, 7 e 9 e das Sources. Restam menções só como proibição (task, checklist e regex do `test-cena.mjs:135`).
+- Nomes do GLB (133 nós, 33 malhas, 35 materiais, 2 animações `laco-*`, 5 imagens): nenhum suspeito. Varri polvo, octo, mascote, tentáculo, animal, bicho, gato, cachorro, pet, pássaro, peixe, lula, criatura e nomes de *The Office*. Os nós são pessoas, móveis, plantas, marcadores e câmeras.
+- Texturas embutidas no GLB (extraídas e vistas): `assado-a/b` são atlas de luz assada, com sombras de móveis e plantas; também estão `cracha-fiscal/auditor` e `placa`.
+- `.tasks/blender/texturas/*.png` (14) e os dois pôsteres, vistos numa folha de contato: etiquetas, crachás, logo, placa, livros, rack, teclado, telas e cenas. Nenhum animal.
+- Busca de texto em `agentes/index.html`, `agentes.css`, `escritorio/*.{js,css,svg}` e nos scripts do Blender: nenhuma ocorrência.
 
 ## Escopo
 
-- `git diff --name-only 9a12aecb..e15bbc46 -- agentes/fiscal agentes/auditor` → vazio.
-- A faixa toca `agentes/index.html`, `agentes/agentes.css`, `agentes/escritorio/*`, `.checks/**` e `.tasks/agentes-escritorio.md` + a imagem de referência. Isso confere com o `Landing`.
-
-## Test policy rows
-
-Não há seção `## Test policy` no artefato, e o perfil é `light`. Não se aplica.
+`git diff --name-only 9a12aecb..c54fbd54 -- agentes/fiscal agentes/auditor` → vazio.
 
 ## Faults injected
 
-Não rodou: o passo 4 é de `standard`/`ui`. O C31 mostra o risco que ele cobriria: uma asserção que passa com uma implementação errada em estado estável.
+Não rodou (perfil `light`).
 
 ## Gate
 
-- `AGENTES_REAL=1 node .checks/agentes/test-pagina.cjs` → 21 PASS, 0 FAIL, EXIT 0
-- `node .checks/agentes/test-gaveta.mjs` → 10 PASS, 0 FAIL, EXIT 0
-- `node .checks/agentes/test-cena.mjs` → 7 PASS (+ contrato), 0 FAIL, EXIT 0
+- `AGENTES_REAL=1 node .checks/agentes/test-pagina.cjs` → 21 PASS, EXIT 0 (17:42–17:44)
+- `node .checks/agentes/test-gaveta.mjs` → 12 PASS, EXIT 0 (até 17:45)
+- `node .checks/agentes/test-cena.mjs` → 11 PASS, EXIT 0 (até 17:47:50)
 
 ## Lacunas, por gravidade
 
-1. **Alta — C31 falso em HEAD; a Tela 2 diverge da referência.** Com a conversa já carregada (≥ 3–6 s), a gaveta ocupa 75% da altura e cobre a mesa aproximada, no fiscal e no auditor, em 375 e 390. A prova só olha aos 1,4 s. Corrigir o código e fazer a prova medir também em estado estável (por exemplo, após a mensagem 5). Precisão do checklist: o C31 deve dizer "durante todo o tempo em que a gaveta está aberta".
-2. **Média — arranjo sem check (passo 1).** Tela 3: cartões lado a lado, botão com contorno, ponto e seta nos cartões. Tela 2: alça e botão azul largo. Tela 1: cena abaixo do texto, na largura toda, com a recepção no primeiro viewport (o C6 é provado só na bancada). Hoje tudo isso confere (medido), mas nada impede uma regressão.
-3. **Média-baixa — desktop 1440, fora da referência e sem check além do C32.** Na Tela 2, o modal cobre a mesa aproximada inteira. Na Tela 3, a sala fica sob a navbar sempre que o `h2` está visível. Na Tela 1, a placa da sala sai cortada ("nó. t") na borda do canvas e um nó azul fica solto.
-4. **Baixa — nível e precisão.** O C6 é provado só na bancada (vale na página, conforme medido). O "sem mascote" do C7 é provado só por regex de fonte (vale nas capturas). No C16, inteiros pequenos passam trivialmente. O C13 não afirma o "fundo de conversa".
-5. **Baixa — higiene das provas.** Cada execução regrava 12 PNGs versionados em `.checks/agentes/` (`git status` mostra `M`). A verificação deixou esses arquivos modificados e não os restaurou. Novos e não versionados: os 9 `final-tela*-*.png`.
+1. **Alta: Tela 2 em 1440 com a gaveta sobre a mesa aproximada.** Não é a composição da coluna do celular (Unresolved 7) e foi dada como corrigida no briefing desta rodada. Nenhum check cobre a Tela 2 no desktop (o C31 só mede 375).
+2. **Média-alta: R4, R9 e R10 sem asserção.** Círculo ≥ 16 px, halo pulsando, contorno ≥ 2 px e âmbar piscando estão mapeados ao `PASS C6`, que só afirma texto e cor. O código e a imagem conferem, mas pelo protocolo uma linha sem `file:line` que afirme o valor conta como não provada. O mesmo vale, em menor grau, para a forma do crachá (R5) e para "lado a lado, sem cruzar, tubo com pulsos" (R12), e para meshopt/WebP (R16), que conferi à mão.
+3. **Média: falta precisão na R3.** A mediana `[220,199,170] ±12` não tem prova, e a cena dá `[204,154,108]`. Como a R8 manda escurecer, a mediana parece substituída, mas a task não diz isso. Retirar a mediana de forma expressa ou prová-la.
+4. **Média-baixa: checklist e task desatualizados.** O corpo dos C1, C2, C6, C7, C16, C26a e C31 ainda traz os valores antigos, e só a tabela final aponta as novas provas. O Unresolved 6 da task ainda diz "Escrito `Auditor`".
+5. **Baixa:**
+   - arranjo da referência ainda sem check (cartões lado a lado, contorno do CTA, alça, botão largo);
+   - "mesmo ângulo" (R11) e "posicionado em `marca-logo-balcao`" (R14) não são afirmados;
+   - no C16, inteiros pequenos passam trivialmente;
+   - as provas regravam 16 PNGs versionados;
+   - na Tela 2, a última linha do `h1` aparece acima da navbar flutuante.
+6. **Processo:** a worktree recebeu a Rodada 6 sem commit enquanto eu verificava. Para a rodada 3 desta verificação, congele a árvore (commit) antes de despachar.
 
-## Artefatos da verificação
+## Artefatos
 
-- Capturas: `.checks/agentes/final-tela{1,2,3}-{375,390,1440}.png`
-- Scripts e medições (fora do repositório): `%TEMP%/verif-agentes/` (`captura.cjs`, `c31-tempo.cjs`, `c31-auditor.cjs`, `c6-pagina.cjs`, `tela3-1440*.cjs`, `c25.cjs`, `medidas.json`)
+- Capturas: `.checks/agentes/final2-tela{1,2,3}-{375,390,1440}.png` e `final2-tela2-auditor-{375,390,1440}.png`
+- Fora do repositório (`%TEMP%/verif-agentes/r2/`): `captura2.cjs`, `zoom.cjs`, `medidas2.json`, `zoom-tela2-{fiscal,auditor}.png`, `zoom-cabos.png`, `folha-texturas.png`, `glb/*.png` (texturas extraídas) e `tela3-melhor-*.png`
