@@ -68,7 +68,7 @@ begin;
 -- 0. PARÂMETROS (set_config(..., true) vale só dentro desta transação) --------
 
 -- >>>>>>>>>>>>>>>> SUBSTITUA pelo id da V2 (project_versions.id) <<<<<<<<<<<<<<<<
-select set_config('esm_v2.version_id', '00000000-0000-0000-0000-000000000000', true);
+select set_config('esm_v2.version_id', 'ccdd90bb-30d7-4741-b453-6a460e6c4cfb', true);
 
 -- Allowlist alvo: cópia literal do data-components da cópia de preview
 -- (app/public/prototipos/espaco-saudemental/index.html). Não mexer.
