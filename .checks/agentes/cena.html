@@ -42,11 +42,12 @@
   const params = new URLSearchParams(location.search);
   window.progresso = [];
   window.toques = [];
-  /* ?altura=812 troca a altura do canvas (a largura fica em 375) */
+  /* ?altura=812 troca a altura do canvas (a largura fica em 375); ?parado=1 monta a cena congelada
+     no quadro do pôster, como a página faz (gerar-posteres.mjs) */
   if (params.get('altura')) canvas.style.height = Number(params.get('altura')) + 'px';
   try {
     const t0 = performance.now();
-    window.cena = await montarEscritorio(canvas, { aoProgresso: p => window.progresso.push(p) });
+    window.cena = await montarEscritorio(canvas, { aoProgresso: p => window.progresso.push(p), parado: params.get('parado') === '1' });
     window.tempoMontagem = Math.round(performance.now() - t0);
     window.cena.aoTocarMesa(m => { window.toques.push(m); });
     if (params.get('tela') === 'fecho') window.cena.fecho(1);

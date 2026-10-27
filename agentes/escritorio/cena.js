@@ -105,7 +105,9 @@ function preparaCabo(malha, uniformes){
   malha.material = m;
 }
 
-export async function montarEscritorio(canvas, { aoProgresso } = {}){
+/* parado (aditivo): a cena monta congelada no quadro do pôster (relógio da animação em 0) e só
+   anda depois de acordar(): é o que deixa a troca pôster → cena sem corte na página. */
+export async function montarEscritorio(canvas, { aoProgresso, parado = false } = {}){
   const progresso = p => { try { if (typeof aoProgresso === 'function') aoProgresso(clamp01(p)); } catch (e) {} };
   const REDUZ = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   progresso(0);
@@ -332,8 +334,13 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   /* ── laço ── */
   const amp = REDUZ ? 0 : 1;
   let progressoCabo = 0;
-  function anima(t, dt){
-    mixer.update(Math.min(dt, .1));
+  /* relógio da animação (pessoas, halos, contorno e pulsos): anda a dt × velocidade. Com a cena
+     parada a velocidade é 0; acordar() a leva a 1 numa curva suave. Rolagem, foco e etiquetas
+     seguem o dt real. */
+  let relogio = 0, velocidade = parado ? 0 : 1;
+  const acordando = { de: 0, inicio: 0, duracao: 0 };
+  function anima(t, dt, dtAnim){
+    mixer.update(Math.min(dtAnim, .1));
     /* os cabos acendem durante o arrasto e chegam inteiros à sala no fim */
     const alvoCabo = estado.foco ? 0 : clamp01((estado.tFecho - .05) / .8);
     progressoCabo += (alvoCabo - progressoCabo) * (dt > 0 ? 1 - Math.exp(-dt * 5) : 1);
@@ -374,7 +381,14 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
   let nQuadros = 0, rodando = false, raf = 0, visivel = false, pausado = false, destruido = false, ultimo = 0;
   const oculta = () => document.hidden || document.visibilityState === 'hidden';
   function desenha(agora, dt){
-    anima(agora / 1000, dt);
+    if (acordando.duracao){
+      const k = clamp01((agora - acordando.inicio) / acordando.duracao);
+      velocidade = acordando.de + (1 - acordando.de) * suave(k);
+      if (k >= 1) acordando.duracao = 0;
+    }
+    const dtAnim = dt * velocidade;
+    relogio += dtAnim;
+    anima(relogio, dt, dtAnim);
     renderer.render(scene, camera);
     nQuadros++;
   }
@@ -476,6 +490,17 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     });
     return cor;
   }
+  /* só as posições na tela das mesas e etiquetas: é o que a página lê a cada quadro (inspecionar
+     lê texturas e percorre a cena, e fica para as provas) */
+  function projetar(){
+    camera.updateMatrixWorld();
+    const projetados = {};
+    for (const id of MESAS){
+      projetados['mesa-' + id] = projeta(marcas['mesa-' + id]);
+      projetados['etiqueta-' + id] = projeta(chips[id]);
+    }
+    return projetados;
+  }
   const caixa = new THREE.Box3();
   function inspecionar(){
     camera.updateMatrixWorld();
@@ -540,9 +565,15 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}){
     pausar(){ pausado = true; liga(); },
     retomar(){ pausado = false; liga(); },
     quadros(){ return nQuadros; },
+    /* tira a cena do quadro parado: a animação ganha velocidade aos poucos (duracao em ms) */
+    acordar(duracao = 1600){
+      if (velocidade >= 1) return;
+      Object.assign(acordando, { de: velocidade, inicio: performance.now(), duracao: Math.max(1, duracao) });
+    },
     /* os pôsteres saem sem os chips: na versão estática as etiquetas são os botões HTML */
     mostrarEtiquetas(v){ for (const sp of [...Object.values(chips), ...extras]) sp.visible = !!v; },
     destruir,
+    projetar,
     inspecionar
   };
 }

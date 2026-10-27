@@ -1,10 +1,11 @@
-/* /agentes/ — "Escritório nó" (frente A: página, carregamento e versão estática).
+/* /agentes/ — "Escritório nó" (frente A: página, prévia com pôster e versão estática).
    Cores só por variáveis de /brand/tokens/tokens.css e color-mix(): nenhuma cor hex aqui.
    Celular primeiro; no desktop é a mesma coluna, com a cena de até 720 px, centralizada.
 
-   Estados no <html> (postos por agentes/escritorio/pagina.js):
-   - sem classe  → sem JS: pôsteres e botões das mesas, sem tela de carregamento;
-   - .carregando → tela de carregamento cobrindo a viewport, canvas montando por baixo;
+   Estados no <html> (o .previa vem do script curto do <head>; o resto, de pagina.js):
+   - sem classe  → sem JS: pôsteres e botões das mesas;
+   - .previa     → layout da cena com o pôster no lugar do canvas e as etiquetas em HTML;
+   - .revelando  → (com .previa) o canvas entra por cima do pôster num fade;
    - .animada    → canvas no lugar do pôster;
    - .estatica   → pôsteres, sem canvas. */
 
@@ -73,11 +74,13 @@
   overflow: hidden;
   background: transparent;
 }
-/* Trilho da rolagem (só na animada): a cena fica presa logo abaixo da navbar enquanto o trilho
-   passa; pagina.js mapeia esse trecho para a Tela 1 parada e, depois, o recuo até a sala.
+/* Trilho da rolagem (prévia e animada): a cena fica presa logo abaixo da navbar enquanto o
+   trilho passa; pagina.js mapeia esse trecho para a Tela 1 parada e, depois, o recuo até a sala.
    --ag-topo-pino vem de pagina.js (fundo real da navbar + folga). */
 /* Espaçador, não padding: o sticky só anda dentro da caixa de conteúdo do trilho. */
+html.previa .ag-trilho::after,
 html.animada .ag-trilho::after { content: ''; display: block; height: 100svh; }
+html.previa .ag-escritorio,
 html.animada .ag-escritorio {
   position: sticky;
   top: var(--ag-topo-pino, 94px);
@@ -85,14 +88,14 @@ html.animada .ag-escritorio {
 
 /* O degradê vale para a imagem da cena (canvas e pôster), não para os botões das mesas. */
 .ag-escritorio > .ag-canvas,
-.ag-escritorio > .ag-poster {
+.ag-escritorio .ag-poster {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
 }
 @media (min-width: 769px) {
   .ag-escritorio { max-height: calc(100svh - 240px); }
   .ag-escritorio > .ag-canvas,
-  .ag-escritorio > .ag-poster {
+  .ag-escritorio .ag-poster {
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
     -webkit-mask-composite: source-in;
     mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%), linear-gradient(to right, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
@@ -102,7 +105,7 @@ html.animada .ag-escritorio {
 
 /* Estática e sem JS: o quadro tem a proporção do pôster (750×1040 = a do canvas, R15),
    sem corte, para os botões das mesas caírem exatamente onde a cena desenha as etiquetas. */
-html:not(.carregando):not(.animada) .ag-escritorio {
+html:not(.previa):not(.animada) .ag-escritorio {
   aspect-ratio: 750 / 1040;
   max-height: none;
   min-height: 0;
@@ -115,14 +118,19 @@ html:not(.carregando):not(.animada) .ag-escritorio {
   width: 100%;
   height: 100%;
 }
-.ag-canvas { display: none; touch-action: pan-y; }
+.ag-canvas { display: none; z-index: 1; touch-action: pan-y; }
 .ag-poster { object-fit: cover; object-position: 50% 50%; max-width: none; }
 
-html.carregando .ag-canvas,
+/* Prévia → animada: o canvas existe desde a prévia (transparente, já com o tamanho certo) e entra
+   por cima do pôster em .revelando. O pôster usa contain: a cena mantém a altura do mundo e só
+   ganha laterais quando o quadro é mais largo, então o centro dos dois coincide. */
+html.previa .ag-canvas,
 html.animada .ag-canvas { display: block; }
-html.carregando .ag-poster,
+html.previa .ag-canvas { opacity: 0; transition: opacity .6s cubic-bezier(.4, 0, .2, 1); }
+html.previa.revelando .ag-canvas { opacity: 1; }
+html.previa .ag-poster { object-fit: contain; }
 html.animada .ag-poster,
-html.carregando .ag-fecho-poster,
+html.previa .ag-fecho-poster,
 html.animada .ag-fecho-poster { display: none; }
 
 /* Botões das mesas: viram as etiquetas sobre a cena (alvo de toque ≥ 44×44).
@@ -135,6 +143,7 @@ html.animada .ag-fecho-poster { display: none; }
   margin: 0;
   padding: 0;
   list-style: none;
+  z-index: 2;
   pointer-events: none;
   transition: opacity .3s ease;
 }
@@ -163,25 +172,29 @@ html.animada .ag-fecho-poster { display: none; }
 .ag-mesa[data-mesa="auditor"] { --mx: 74.8%; --my: 29.6%; }
 .ag-mesa[data-mesa="vaga"]    { --mx: 63.3%; --my: 56.8%; }
 
+/* Mesmo desenho do chip da cena (cena.js, desenhaChip): 34 px de altura, contorno de 2,5 px,
+   círculo de 16 px a 11 px da borda e Sora 600 14 px, para a troca pôster → cena não pular. */
 .ag-mesa-pilula {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 13px 7px 11px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12.5px 0 8.5px;
   border-radius: 999px;
   background: var(--no-osso);
-  box-shadow: var(--no-shadow-card);
-  border: 1px solid color-mix(in srgb, var(--no-borda) 70%, transparent);
-  font: 600 13px/1.2 var(--no-font-sans);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--no-tinta) 18%, transparent);
+  border: 2.5px solid color-mix(in srgb, var(--no-borda) 70%, transparent);
+  font: 600 14px/1 var(--no-font-sans);
   white-space: nowrap;
-  transition: transform .2s ease;
+  transition: transform .2s ease, opacity .6s cubic-bezier(.4, 0, .2, 1);
 }
 /* Rodada 4 (R4, R9, R10): círculo cheio de 16 px e contorno na cor do agente; a mesa
    "criar uma automação" tem contorno âmbar piscando. */
 .ag-mesa-pilula .ag-ponto { width: 16px; height: 16px; }
-.ag-mesa[data-mesa="fiscal"]  .ag-mesa-pilula { border: 2px solid var(--no-verde); }
-.ag-mesa[data-mesa="auditor"] .ag-mesa-pilula { border: 2px solid var(--no-azul); }
-.ag-mesa[data-mesa="vaga"]    .ag-mesa-pilula { border: 2px solid var(--no-ambar); animation: ag-pisca-ambar 1.4s ease-in-out infinite; }
+.ag-mesa[data-mesa="fiscal"]  .ag-mesa-pilula { border-color: var(--no-verde); }
+.ag-mesa[data-mesa="auditor"] .ag-mesa-pilula { border-color: var(--no-azul); }
+.ag-mesa[data-mesa="vaga"]    .ag-mesa-pilula { border-color: var(--no-ambar); animation: ag-pisca-ambar 1.4s ease-in-out infinite; }
 @keyframes ag-pisca-ambar {
   50% { border-color: color-mix(in srgb, var(--no-ambar) 25%, transparent); box-shadow: var(--no-shadow-card), 0 0 0 4px color-mix(in srgb, var(--no-ambar) 30%, transparent); }
 }
@@ -189,6 +202,17 @@ html.animada .ag-fecho-poster { display: none; }
 .ag-mesa:hover .ag-mesa-pilula { transform: translateY(-2px); }
 .ag-mesa:focus-visible { outline: none; }
 .ag-mesa:focus-visible .ag-mesa-pilula { outline: 3px solid var(--no-azul); outline-offset: 2px; }
+
+/* Na prévia as etiquetas ficam no centro dos chips da cena, na escala do pôster (pagina.js põe
+   --mx/--my em px e --ag-escala); em .revelando elas somem enquanto a cena aparece. */
+html.previa .ag-mesa[data-mesa] { transform: translate(-50%, -50%) scale(var(--ag-escala, 1)); }
+/* o mesmo degradê do topo e da base da cena: a etiqueta do nó.fiscal, junto da borda de cima,
+   fica tão clara quanto o chip dela vai ficar no canvas */
+html.previa .ag-mesas {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, black var(--ag-fade), black calc(100% - var(--ag-fade)), transparent 100%);
+}
+html.previa.revelando .ag-mesa-pilula { opacity: 0; }
 
 /* Na animada as etiquetas são as da própria cena (critério 6): os botões viram áreas de toque
    transparentes sobre cada mesa, que seguem a câmera, e a pílula só aparece no foco do teclado. */
@@ -290,93 +314,8 @@ html.animada .ag-mesa:focus-visible .ag-mesa-pilula { opacity: 1; }
 
 .ag-cartao:focus-visible { outline: 3px solid var(--no-azul); outline-offset: 2px; }
 
-/* ── Tela de carregamento (critérios 22–24) ── */
-.ag-carregamento {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--no-osso);
-  text-align: center;
-  transition: opacity .25s ease;
-}
-html.carregando .ag-carregamento { display: flex; }
-html.carregando.saindo .ag-carregamento { opacity: 0; }
-html.carregando body { overflow: hidden; }
-
-.ag-carregamento-miolo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.ag-carregamento-logo { width: 116px; height: auto; }
-.ag-pontos { display: flex; gap: 10px; margin: 22px 0 18px; }
-.ag-pontos i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  opacity: .3;
-  animation: ag-ponto 1.4s ease-in-out infinite;
-}
-/* ordem da assinatura: azul → vermelho → âmbar → verde */
-.ag-pontos i:nth-child(1) { background: var(--no-azul);     animation-delay: 0s; }
-.ag-pontos i:nth-child(2) { background: var(--no-vermelho); animation-delay: .175s; }
-.ag-pontos i:nth-child(3) { background: var(--no-ambar);    animation-delay: .35s; }
-.ag-pontos i:nth-child(4) { background: var(--no-verde);    animation-delay: .525s; }
-@keyframes ag-ponto {
-  0%, 55%, 100% { opacity: .3; transform: translateY(0); }
-  22% { opacity: 1; transform: translateY(-6px); }
-}
-
-.ag-carregamento-texto {
-  margin: 0;
-  font-weight: var(--no-weight-subtitulo);
-  font-size: 15px;
-}
-.ag-progresso {
-  width: 168px;
-  height: 4px;
-  margin: 16px 0 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--no-borda);
-}
-.ag-progresso-barra {
-  display: block;
-  width: calc(var(--ag-progresso, 0) * 1%);
-  height: 100%;
-  border-radius: inherit;
-  background: var(--no-tinta);
-  transition: width .2s ease;
-}
-.ag-progresso-pct {
-  margin: 0;
-  font: 500 12px/1.4 var(--no-font-mono);
-  letter-spacing: .08em;
-  color: var(--no-cinza);
-  font-variant-numeric: tabular-nums;
-}
-.ag-sem-animacoes {
-  min-height: 44px;
-  margin-top: 22px;
-  padding: 0 22px;
-  border: 1px solid var(--no-tinta);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--no-tinta);
-  font: 600 14px/1 var(--no-font-sans);
-  cursor: pointer;
-}
-.ag-sem-animacoes[hidden] { display: none; }
-.ag-sem-animacoes:hover { background: color-mix(in srgb, var(--no-tinta) 6%, transparent); }
-.ag-sem-animacoes:focus-visible { outline: 3px solid var(--no-azul); outline-offset: 2px; }
-
 @media (prefers-reduced-motion: reduce) {
-  .ag-pontos i { animation: none; opacity: 1; }
-  .ag-mesa, .ag-mesa-pilula, .ag-mesas, .ag-carregamento { transition: none; }
+  .ag-mesa, .ag-mesa-pilula, .ag-mesas { transition: none; }
 }
 
 /* ── Logo nó.agentes no lugar do rótulo (rodada 6, R17) ── */

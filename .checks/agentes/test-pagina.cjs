@@ -1,5 +1,6 @@
 // Prova da frente A de .checks/agentes-escritorio.md: C1–C5, C11-pagina, C12-pagina, C16-pagina,
-// C19, C20, C22–C25, C26a, C27–C32.
+// C19, C20, C22–C25, C26a, C27–C33. Desde a prévia (pôster primeiro), C22–C24 provam a prévia,
+// a troca pôster → cena no primeiro gesto e que nada da cena roda antes dele.
 //
 //   node .checks/agentes/test-pagina.cjs                 → bancada: cena, gaveta e pôsteres de .checks/agentes/stubs/
 //   AGENTES_REAL=1 node .checks/agentes/test-pagina.cjs  → módulos e pôsteres reais de /agentes/escritorio/ (depois do merge de B e C)
@@ -32,13 +33,13 @@ const MODULOS_STUB = {
   posterFecho: `${STUBS}/poster-fecho.webp`,
 };
 const CAPTURAS = __dirname;
-const MOTIVO = /^\[agentes\] versão estática: (pediu|falha|sem-webgl|movimento-reduzido)$/;
+const MOTIVO = /^\[agentes\] versão estática: (falha|sem-webgl|movimento-reduzido)$/;
 
 // ── servidor estático ──
 const tipos = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webp': 'image/webp',
-  '.png': 'image/png', '.ico': 'image/x-icon', '.xml': 'application/xml', '.txt': 'text/plain',
+  '.png': 'image/png', '.ico': 'image/x-icon', '.xml': 'application/xml', '.txt': 'text/plain', '.avif': 'image/avif',
 };
 function arquivoDe(rota) {
   if (rota.split('/').some((p) => p.startsWith('.') && p !== '.checks')) return null;
@@ -61,16 +62,21 @@ const servidor = http.createServer((req, res) => {
 });
 
 // ── three.js: baixa uma vez e serve da memória (o C24 segura e o C25 aborta a rota) ──
-const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
 const cacheCdn = new Map();
 async function servirCdn(route) {
   const url = route.request().url();
-  if (!cacheCdn.has(url)) {
-    const r = await route.fetch();
-    cacheCdn.set(url, { status: r.status(), body: await r.body(), contentType: r.headers()['content-type'] || 'text/javascript' });
+  try {
+    if (!cacheCdn.has(url)) {
+      const r = await route.fetch();
+      cacheCdn.set(url, { status: r.status(), body: await r.body(), contentType: r.headers()['content-type'] || 'text/javascript' });
+    }
+    const c = cacheCdn.get(url);
+    await route.fulfill({ status: c.status, body: c.body, contentType: c.contentType, headers: { 'access-control-allow-origin': '*' } });
+  } catch (erro) {
+    // O pré-carregamento pode estar no ar quando a prova fecha a página.
+    if (!/closed|disposed/i.test(String(erro && erro.message))) throw erro;
   }
-  const c = cacheCdn.get(url);
-  await route.fulfill({ status: c.status, body: c.body, contentType: c.contentType, headers: { 'access-control-allow-origin': '*' } });
 }
 
 let base;
@@ -118,42 +124,40 @@ async function abrir({ largura = 375, altura = 812, js = true, reduzido = 'no-pr
       });
     }
     await pagina.addInitScript(() => {
-      const prova = { classes: [], pct: [], revelado: null, carregandoVisto: false };
+      const prova = { classes: [], previaVista: false, revelando: null, revelado: null };
       window.__prova = prova;
+      const centro = (el, ref) => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2 - ref.x, r.y + r.height / 2 - ref.y]; };
       const registrar = () => {
         const c = document.documentElement.className;
         if (prova.classes[prova.classes.length - 1] === c) return;
         prova.classes.push(c);
-        if (/\bcarregando\b/.test(c)) prova.carregandoVisto = true;
-        // Instantâneo do momento em que a tela de carregamento deixa de existir.
-        if (prova.carregandoVisto && !/\bcarregando\b/.test(c) && /\banimada\b/.test(c) && !prova.revelado) {
+        if (/\bprevia\b/.test(c)) prova.previaVista = true;
+        const pagina = window.__agentesPagina;
+        // Início do fade: o pôster ainda está na tela e as etiquetas estão sobre os chips da cena.
+        if (/\brevelando\b/.test(c) && !prova.revelando) {
+          const caixa = document.querySelector('.ag-escritorio').getBoundingClientRect();
+          let chips = null;
+          try { chips = pagina && pagina.cena && pagina.cena.projetar(); } catch { chips = null; }
+          prova.revelando = {
+            em: performance.now(),
+            poster: getComputedStyle(document.getElementById('escritorio-poster')).display !== 'none',
+            pilulas: Object.fromEntries(['fiscal', 'auditor', 'vaga'].map((m) => [m, centro(document.querySelector(`[data-mesa="${m}"] .ag-mesa-pilula`), caixa)])),
+            chips: chips && Object.fromEntries(['fiscal', 'auditor', 'vaga'].map((m) => [m, [chips[`etiqueta-${m}`].x, chips[`etiqueta-${m}`].y]])),
+          };
+        }
+        // Fim do fade: o pôster sai só com o canvas já opaco (sem piscar).
+        if (/\banimada\b/.test(c) && !prova.revelado) {
           const recurso = (fim) => performance.getEntriesByType('resource').find((e) => e.name.split('?')[0].endsWith(fim));
-          const cfg = window.__agentesModulos || {};
-          const pagina = window.__agentesPagina;
           prova.revelado = {
             em: performance.now(),
-            sora: document.fonts.check('800 16px Sora'),
-            mono: document.fonts.check('500 16px "JetBrains Mono"'),
-            three: recurso('three.module.js')?.responseEnd ?? null,
-            gaveta: recurso(cfg.gaveta || '/agentes/escritorio/gaveta.js')?.responseEnd ?? null,
-            gavetaCss: recurso(cfg.gavetaCss || '/agentes/escritorio/gaveta.css')?.responseEnd ?? null,
+            opacidadeCanvas: getComputedStyle(document.getElementById('escritorio-canvas')).opacity,
+            three: recurso('three.module.min.js')?.responseEnd ?? null,
             cenaMontada: Boolean(pagina && pagina.cena),
-            stubCena: window.__stubCena ? window.__stubCena.resolvidoEm : null,
             quadros: pagina && pagina.cena ? pagina.cena.quadros() : null,
           };
         }
       };
       new MutationObserver(registrar).observe(document, { attributes: true, attributeFilter: ['class'], subtree: true });
-      const lerPct = () => {
-        const el = document.querySelector('.ag-progresso-pct');
-        if (el && /\bcarregando\b/.test(document.documentElement.className)) {
-          const v = el.textContent.trim();
-          if (prova.pct[prova.pct.length - 1] !== v) prova.pct.push(v);
-        }
-        if (!prova.revelado) requestAnimationFrame(lerPct);
-      };
-      requestAnimationFrame(lerPct);
-      new MutationObserver(lerPct).observe(document, { childList: true, characterData: true, subtree: true });
     });
   }
   if (antes) await antes(pagina);
@@ -162,7 +166,17 @@ async function abrir({ largura = 375, altura = 812, js = true, reduzido = 'no-pr
   return { contexto, pagina, consoles, erros, inicio, liberarThree: () => liberarThree && liberarThree() };
 }
 
-const esperarAnimada = (pagina) => pagina.waitForFunction(() => document.documentElement.classList.contains('animada') && !document.documentElement.classList.contains('carregando'), null, { timeout: 30000 });
+const esperarPrevia = (pagina) => pagina.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'previa', null, { timeout: 15000 });
+// O primeiro gesto (aqui, o mouse) é o que monta a cena.
+async function gesto(pagina) {
+  await pagina.mouse.move(4, 300);
+  await pagina.mouse.move(8, 304);
+}
+async function esperarAnimada(pagina) {
+  await esperarPrevia(pagina);
+  await gesto(pagina);
+  await pagina.waitForFunction(() => document.documentElement.classList.contains('animada'), null, { timeout: 30000 });
+}
 const esperarEstatica = (pagina, timeout = 8000) => pagina.waitForFunction(() => document.documentElement.classList.contains('estatica'), null, { timeout });
 const inspecionar = (pagina) => pagina.evaluate(() => window.__agentesPagina.cena.inspecionar());
 const enquadramento = async (pagina) => (await inspecionar(pagina)).enquadramento;
@@ -242,7 +256,7 @@ async function principal() {
     const main = servido.slice(servido.indexOf('<main'), servido.indexOf('</main>'));
     assert(main.length > 0, 'C1: <main> não encontrado');
     const ordem = [
-      'src="/brand/agentes/no-agentes-tinta-azul.webp" alt="nó.agentes"',
+      'src="/brand/agentes/no-agentes-tinta-azul-400w.webp" alt="nó.agentes"',
       '<h1', 'Encontre soluções já mapeadas que transformamos em agentes.',
       'Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.',
       'data-mesa="fiscal"', 'nó.fiscal',
@@ -378,7 +392,7 @@ async function principal() {
     const { pagina, consoles } = sessao;
     await esperarEstatica(pagina);
     const prova = await pagina.evaluate(() => window.__prova);
-    assert.equal(prova.carregandoVisto, false, 'C27: houve tela de carregamento');
+    assert.equal(prova.previaVista, false, 'C27: houve prévia com movimento reduzido');
     assert(consoles.includes('[agentes] versão estática: movimento-reduzido'), 'C27: console sem o motivo');
     assert.equal(await pagina.locator('#escritorio-canvas').isVisible(), false);
     paginaEstatica = sessao;
@@ -392,7 +406,7 @@ async function principal() {
     assert(await img.isVisible(), 'C26a: pôster invisível');
     await pagina.waitForFunction(() => document.getElementById('escritorio-poster').complete);
     const p1 = await img.evaluate((el) => ({ src: el.currentSrc || el.src, w: el.naturalWidth, h: el.naturalHeight }));
-    assert(/\/poster-escritorio\.webp$/.test(p1.src), `C26a: src ${p1.src}`);
+    assert(/\/poster-escritorio\.(avif|webp)$/.test(p1.src), `C26a: src ${p1.src}`);
     assert.deepEqual([p1.w, p1.h], [750, 1040], 'C26a: pôster do escritório não é 750×1040 (R15)');
     const fecho = pagina.locator('#fecho-poster');
     await fecho.scrollIntoViewIfNeeded();
@@ -418,127 +432,129 @@ async function principal() {
     ok('C26a');
   }
 
-  // ── C25: import do three abortado; WebGL negado ──
+  // ── C25: import do three abortado; WebGL negado (os dois só aparecem no gesto) ──
   {
     const { contexto, pagina, consoles } = await abrir({ three: 'abortar' });
+    await esperarPrevia(pagina);
+    await gesto(pagina);
     await esperarEstatica(pagina, 5000);
     await pagina.waitForTimeout(300);
-    assert.equal(await pagina.locator('.ag-carregamento').isVisible(), false, 'C25: tela de carregamento visível após a falha');
-    assert.equal(await pagina.locator('.ag-sem-animacoes').isVisible(), false, 'C25: botão visível');
     assert.equal(await pagina.locator('#escritorio-canvas').isVisible(), false);
     assert(await pagina.locator('#escritorio-poster').isVisible());
+    assert(!/previa|revelando|animada/.test(await pagina.evaluate(() => document.documentElement.className)), 'C25: classes da prévia ficaram');
     assert(consoles.includes('[agentes] versão estática: falha'), 'C25: console sem "falha"');
     await contexto.close();
     const s2 = await abrir({ semWebGL: true });
+    await esperarPrevia(s2.pagina);
+    await gesto(s2.pagina);
     await esperarEstatica(s2.pagina, 5000);
-    const prova = await s2.pagina.evaluate(() => window.__prova);
-    assert.equal(prova.carregandoVisto, false, 'C25: tela de carregamento sem WebGL');
-    assert.equal(await s2.pagina.locator('.ag-sem-animacoes').isVisible(), false);
+    assert.equal(await s2.pagina.locator('#escritorio-canvas').isVisible(), false);
     assert(s2.consoles.includes('[agentes] versão estática: sem-webgl'), 'C25: console sem "sem-webgl"');
     await s2.contexto.close();
     ok('C25');
   }
 
-  // ── C24: three segurado → "Ver sem animações" aos 4 s ──
+  // ── C24: sem gesto nada da cena roda; o pré-carregamento só baixa; a mesa abre antes da cena ──
   {
-    const s = await abrir({ three: 'segurar' });
-    const { pagina, consoles } = s;
-    await pagina.waitForFunction(() => document.documentElement.classList.contains('carregando'));
-    await pagina.waitForTimeout(Math.max(0, 3500 - (Date.now() - s.inicio)));
-    assert.equal(await pagina.locator('.ag-sem-animacoes').isVisible(), false, 'C24: botão antes de 4 s');
-    await pagina.locator('.ag-sem-animacoes').waitFor({ state: 'visible', timeout: 3000 });
-    const decorrido = Date.now() - s.inicio;
-    assert(decorrido >= 3900 && decorrido <= 6000, `C24: botão em ${decorrido} ms`);
-    await pagina.screenshot({ path: path.join(CAPTURAS, 'pagina-carregando-botao-375.png') });
-    await pagina.locator('.ag-sem-animacoes').click();
-    const t0 = Date.now();
-    await esperarEstatica(pagina, 500);
-    assert(Date.now() - t0 < 500, 'C24: estática demorou');
-    assert.equal(await pagina.locator('.ag-carregamento').isVisible(), false);
-    assert(await pagina.locator('#escritorio-poster').isVisible());
-    assert(consoles.includes('[agentes] versão estática: pediu'), 'C24: console sem "pediu"');
-    s.liberarThree();
-    await pagina.waitForTimeout(REAL ? 6000 : 3000);
-    assert.equal(await pagina.locator('#escritorio-canvas').isVisible(), false, 'C24: canvas apareceu depois');
-    const fim = await pagina.evaluate(() => ({ cls: document.documentElement.className, cena: Boolean(window.__agentesPagina.cena), stub: window.__stubCena || null }));
-    assert(!/animada|carregando/.test(fim.cls), `C24: classes ${fim.cls}`);
-    assert.equal(fim.cena, false, 'C24: cena ficou ligada');
-    if (!REAL) assert.equal(fim.stub && fim.stub.destruido, true, 'C24: cena montada depois não foi destruída');
+    const s = await abrir();
+    const { pagina } = s;
+    await esperarPrevia(pagina);
+    await pagina.waitForTimeout(1500);
+    const cedo = await pagina.evaluate(() => ({
+      fase: window.__agentesPagina.fase,
+      cena: Boolean(window.__agentesPagina.cena),
+      stub: Boolean(window.__stubCena),
+      three: performance.getEntriesByType('resource').some((e) => /three\.module/.test(e.name)),
+      canvas: getComputedStyle(document.getElementById('escritorio-canvas')).opacity,
+    }));
+    assert.equal(cedo.fase, 'previa', `C24: fase ${cedo.fase}`);
+    assert.equal(cedo.cena || cedo.stub, false, 'C24: a cena montou sem gesto');
+    assert.equal(cedo.three, false, 'C24: three pedido antes do pré-carregamento');
+    assert.equal(cedo.canvas, '0', 'C24: canvas visível na prévia');
+    // Pré-carregamento: depois do pôster e de alguns segundos, baixa sem executar.
+    await pagina.waitForFunction(() => document.querySelectorAll('link[rel="modulepreload"]').length > 0, null, { timeout: 12000 });
+    await pagina.waitForFunction(() => window.__agentesPagina.gaveta, null, { timeout: 8000 }).catch(() => {});
+    const depois = await pagina.evaluate(() => ({ fase: window.__agentesPagina.fase, cena: Boolean(window.__agentesPagina.cena), stub: Boolean(window.__stubCena), gaveta: Boolean(window.__agentesPagina.gaveta) }));
+    assert.equal(depois.fase, 'previa');
+    assert.equal(depois.cena || depois.stub, false, 'C24: o pré-carregamento executou a cena');
+    assert(depois.gaveta, 'C24: a gaveta não montou no pré-carregamento');
     await s.contexto.close();
-    ok('C24');
+    // Toque na mesa antes de qualquer pré-carregamento: abre a gaveta (não navega) e a cena vem.
+    const s2 = await abrir();
+    await esperarPrevia(s2.pagina);
+    await s2.pagina.locator('[data-mesa="fiscal"]').click();
+    assert(await esperarPara(() => gavetaAberta(s2.pagina), 6000), 'C24: a mesa tocada na prévia não abriu a gaveta');
+    assert.equal(new URL(s2.pagina.url()).pathname, '/agentes/', 'C24: a mesa navegou');
+    await s2.pagina.waitForFunction(() => document.documentElement.classList.contains('animada'), null, { timeout: 30000 });
+    assert.equal(await s2.pagina.evaluate(() => window.__agentesPagina.aberta), 'fiscal');
+    assert.deepEqual(s2.erros, [], `C24: erros ${s2.erros}`);
+    await s2.contexto.close();
+    ok('C24', '(sem gesto: sem three e sem cena; pré-carregamento só baixa; mesa abre antes da cena)');
   }
 
-  // ── C29: os quatro motivos ──
-  for (const m of ['pediu', 'falha', 'sem-webgl', 'movimento-reduzido']) assert(motivosVistos.has(m), `C29: faltou ${m}`);
+  // ── C29: os três motivos ──
+  for (const m of ['falha', 'sem-webgl', 'movimento-reduzido']) assert(motivosVistos.has(m), `C29: faltou ${m}`);
   ok('C29');
 
-  // ── C22 + C23: tela de carregamento e o que ela espera ──
+  // ── C22 + C23: prévia com pôster e troca pôster → cena no primeiro gesto ──
   {
-    const s = await abrir({
-      antes: async (pagina) => {
-        if (!REAL) await pagina.addInitScript(() => { window.__stubCenaAtraso = 1200; });
-        // gaveta.js e a JetBrains Mono chegam por último: a tela tem de esperar por eles.
-        await pagina.route(/\/gaveta\.js$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2200)); await r.continue(); });
-        // A montagem da cena real trava a thread principal por alguns segundos: ela só começa
-        // depois das leituras abaixo, senão a tela some antes de a prova conseguir olhá-la.
-        await pagina.route(/\/agentes\/escritorio\/cena\.js$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 1800)); await r.continue(); });
-        await pagina.route(/jetbrains-mono-latin-500-normal\.woff2$/, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2600)); await r.continue(); });
-      },
-    });
+    const s = await abrir({ antes: async (pagina) => { if (!REAL) await pagina.addInitScript(() => { window.__stubCenaAtraso = 600; }); } });
     const { pagina } = s;
-    await pagina.waitForFunction(() => document.documentElement.classList.contains('carregando'));
-    const tela = pagina.locator('.ag-carregamento');
-    assert(await tela.isVisible(), 'C22: tela invisível');
-    const caixa = await tela.boundingBox();
-    assert(caixa.x <= 0 && caixa.y <= 0 && caixa.width >= 375 && caixa.height >= 812, 'C22: não cobre a viewport');
-    const logo = await pagina.locator('.ag-carregamento img').evaluate((i) => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 }));
-    assert(/^\/brand\/logo\/svg\/no-[a-z-]+\.svg$/.test(logo.src), `C22: logo ${logo.src}`);
-    await pagina.waitForFunction(() => { const i = document.querySelector('.ag-carregamento img'); return i.complete && i.naturalWidth > 0; });
-    const pontos = await pagina.evaluate(() => {
-      const ref = document.createElement('i');
-      document.body.append(ref);
-      const tok = ['--no-azul', '--no-vermelho', '--no-ambar', '--no-verde'].map((v) => { ref.style.color = `var(${v})`; return getComputedStyle(ref).color; });
-      ref.remove();
-      const ds = [...document.querySelectorAll('.ag-pontos > *')];
+    await esperarPrevia(pagina);
+    assert.equal(await pagina.locator('.ag-carregamento').count(), 0, 'C22: ainda há tela de carregamento');
+    await pagina.waitForFunction(() => { const i = document.getElementById('escritorio-poster'); return i.complete && i.naturalWidth > 0; });
+    const previa = await pagina.evaluate(() => {
+      const caixa = document.querySelector('.ag-escritorio').getBoundingClientRect();
+      const img = document.getElementById('escritorio-poster');
       return {
-        tok,
-        cores: ds.map((d) => getComputedStyle(d).backgroundColor),
-        anim: ds.map((d) => d.getAnimations().map((a) => ({ delay: a.effect.getTiming().delay, estado: a.playState }))),
-        visiveis: ds.map((d) => d.getBoundingClientRect().width > 0),
+        cls: document.documentElement.className,
+        posterVisivel: getComputedStyle(img).display !== 'none',
+        ajuste: getComputedStyle(img).objectFit,
+        src: img.currentSrc,
+        canvas: getComputedStyle(document.getElementById('escritorio-canvas')).opacity,
+        pilulas: [...document.querySelectorAll('.ag-mesa-pilula')].map((el) => {
+          const r = el.getBoundingClientRect();
+          return { visivel: getComputedStyle(el).opacity === '1' && r.width > 0, dentro: r.top >= caixa.top - 1 && r.bottom <= caixa.bottom + 1 && r.left >= caixa.left - 1 && r.right <= caixa.right + 1 };
+        }),
       };
     });
-    assert.equal(pontos.cores.length, 4, 'C22: não são quatro pontos');
-    assert.deepEqual(pontos.cores, pontos.tok, 'C22: cores fora da ordem azul → vermelho → âmbar → verde');
-    assert(pontos.anim.every((a) => a.length > 0 && a[0].estado === 'running'), 'C22: pontos parados');
-    const atrasos = pontos.anim.map((a) => a[0].delay);
-    assert(atrasos.every((d, i) => i === 0 || d > atrasos[i - 1]), `C22: animação fora de ordem ${atrasos}`);
-    assert(pontos.visiveis.every(Boolean));
-    assert(await pagina.getByText('Montando o escritório…').isVisible(), 'C22: texto');
-    await pagina.waitForTimeout(500);
-    await pagina.screenshot({ path: path.join(CAPTURAS, 'pagina-carregando-375.png') });
-    await esperarAnimada(pagina);
-    const prova = await pagina.evaluate(() => window.__prova);
-    assert.equal(prova.pct[0], '0%', `C22: progresso começou em ${prova.pct[0]}`);
-    assert.equal(prova.pct[prova.pct.length - 1], '100%', `C22: progresso terminou em ${prova.pct[prova.pct.length - 1]}`);
-    const nums = prova.pct.map((v) => Number(v.replace('%', '')));
-    assert(nums.every((n, i) => i === 0 || n >= nums[i - 1]), `C22: progresso voltou ${prova.pct}`);
-    assert(nums.length >= 3, `C22: progresso pulou direto ${prova.pct}`);
-    ok('C22', `(progresso ${prova.pct.join(' → ')})`);
+    assert(/\bprevia\b/.test(previa.cls), `C22: classes ${previa.cls}`);
+    assert(previa.posterVisivel, 'C22: pôster invisível na prévia');
+    assert.equal(previa.ajuste, 'contain', 'C22: pôster sem contain');
+    assert(/\/poster-escritorio\.(avif|webp)$/.test(previa.src), `C22: pôster ${previa.src}`);
+    assert.equal(previa.canvas, '0', 'C22: canvas visível na prévia');
+    assert(previa.pilulas.length === 3 && previa.pilulas.every((x) => x.visivel && x.dentro), `C22: etiquetas ${JSON.stringify(previa.pilulas)}`);
+    assert(await pagina.locator('h1').isVisible());
+    await pagina.screenshot({ path: path.join(CAPTURAS, 'pagina-previa-375.png') });
+    ok('C22', '(pôster e etiquetas na hora, sem tela de carregamento)');
 
+    await gesto(pagina);
+    await pagina.waitForFunction(() => document.documentElement.classList.contains('animada'), null, { timeout: 30000 });
+    const prova = await pagina.evaluate(() => window.__prova);
+    const rv = prova.revelando;
+    assert(rv, 'C23: não houve fade (revelando)');
+    assert(rv.poster, 'C23: o pôster saiu antes do fade');
     const r = prova.revelado;
-    assert(r, 'C23: sem instantâneo do fim do carregamento');
-    assert(r.sora && r.mono, `C23: fontes ainda não prontas (Sora ${r.sora}, Mono ${r.mono})`);
-    assert(r.three !== null && r.three <= r.em, 'C23: three não tinha chegado');
-    assert(r.gaveta !== null && r.gaveta <= r.em, 'C23: gaveta.js não tinha chegado');
-    assert(r.gavetaCss !== null && r.gavetaCss <= r.em, 'C23: gaveta.css não tinha chegado');
-    assert(r.cenaMontada, 'C23: cena não montada');
-    if (!REAL) assert(r.stubCena !== null && r.stubCena <= r.em);
+    assert(r && r.cenaMontada, 'C23: cena não montada');
+    assert.equal(r.opacidadeCanvas, '1', `C23: o pôster saiu com o canvas em ${r.opacidadeCanvas}`);
+    assert(r.em - rv.em >= 450, `C23: fade de ${Math.round(r.em - rv.em)} ms`);
     assert(r.quadros > 0, 'C23: nenhum quadro desenhado');
+    if (REAL) {
+      assert(r.three !== null && r.three <= r.em, 'C23: three não tinha chegado');
+      for (const m of ['fiscal', 'auditor', 'vaga']) {
+        const [px, py] = rv.pilulas[m];
+        const [cx, cy] = rv.chips[m];
+        assert(Math.hypot(px - cx, py - cy) <= 3, `C23: etiqueta ${m} a ${Math.hypot(px - cx, py - cy).toFixed(1)} px do chip da cena`);
+      }
+    } else {
+      assert.equal(await pagina.evaluate(() => window.__stubCena.parado), true, 'C23: a cena não montou parada');
+      assert(await esperarPara(() => pagina.evaluate(() => window.__stubCena.acordou)), 'C23: a cena não acordou');
+    }
     const q1 = await pagina.evaluate(() => window.__agentesPagina.cena.quadros());
     await pagina.waitForTimeout(500);
     const q2 = await pagina.evaluate(() => window.__agentesPagina.cena.quadros());
     assert(q2 > q1 && q1 > 0, `C23: quadros não sobem (${q1} → ${q2})`);
-    ok(naBancada('C23'), `(gaveta.js e JetBrains Mono atrasadas; quadros ${q1} → ${q2})`);
+    ok(naBancada('C23'), `(fade de ${Math.round(r.em - rv.em)} ms com o pôster embaixo; quadros ${q1} → ${q2})`);
     await s.contexto.close();
   }
 
@@ -793,7 +809,8 @@ async function principal() {
   for (const [largura, altura] of [[1024, 768], [1280, 800], [1440, 900]]) {
     const s = await abrir({ largura, altura });
     const pg = s.pagina;
-    await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
+    await esperarAnimada(pg);
+    await pg.waitForFunction(() => window.__agentesPagina.gaveta, null, { timeout: 60000 });
     const notas = [];
     // Distância na tela entre a mesa e a pessoa na Tela 1: a aproximação tem de aumentá-la.
     const distancia = async (mesa) => { const q = (await inspecionar(pg)).projetados; return Math.hypot(q[`mesa-${mesa}`].x - q[`personagem-${mesa}`].x, q[`mesa-${mesa}`].y - q[`personagem-${mesa}`].y); };
@@ -843,7 +860,8 @@ async function principal() {
       },
     });
     const pg = s.pagina;
-    await pg.waitForFunction(() => window.__agentesPagina && window.__agentesPagina.fase === 'animada' && window.__agentesPagina.gaveta, null, { timeout: 60000 });
+    await esperarAnimada(pg);
+    await pg.waitForFunction(() => window.__agentesPagina.gaveta, null, { timeout: 60000 });
     const eventos = (nome) => pg.evaluate((n) => (window.dataLayer || []).filter((e) => e && e.event === n), nome);
     // ViewContent: dataLayer, Pixel e CAPI com o mesmo id; fora de produção a CAPI não sai da página.
     const [vc] = await eventos('agentes_view_content');

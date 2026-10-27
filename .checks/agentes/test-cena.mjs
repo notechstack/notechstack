@@ -2,7 +2,8 @@
    A cena vem de agentes/escritorio/escritorio.glb; a bancada tem o canvas da página (375×520).
    Uso: node .checks/agentes/test-cena.mjs            (prova inteira; C9 leva 60 s reais)
         node .checks/agentes/test-cena.mjs --capturas (só C6, C11 e as capturas, para iterar)
-        node .checks/agentes/test-cena.mjs --posteres (também regrava os WebP em agentes/escritorio/)
+        (os pôsteres de agentes/escritorio/ são regravados por gerar-posteres.mjs, no quadro parado
+         em que a cena nasce na página; aqui só se confere o tamanho)
    Sobe um servidor estático na raiz da worktree, abre .checks/agentes/cena.html (canvas 375×520)
    @2x com o Playwright e afirma o que o checklist .checks/agentes-escritorio.md diz. */
 import { createRequire } from 'node:module';
@@ -22,7 +23,7 @@ const { chromium } = pw;
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, '..', '..');
 const SO_CAPTURAS = process.argv.includes('--capturas');
-const REGRAVA_POSTERES = process.argv.includes('--posteres');
+const REGRAVA_POSTERES = false; // ver gerar-posteres.mjs
 const ESPERA = ms => new Promise(r => setTimeout(r, ms));
 const py = (codigo, ...args) => execFileSync('python', ['-I', '-c', codigo, ...args], { encoding: 'utf8' }).trim();
 

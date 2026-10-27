@@ -1,6 +1,7 @@
 // /agentes/ — "Escritório nó": página (frente A).
-// Liga a tela de carregamento, decide entre a versão animada e a estática, monta a cena
-// (cena.js, frente B) e a gaveta (gaveta.js, frente C) e liga rolagem, toques e câmera.
+// Decide entre a versão animada e a estática, abre com o pôster (prévia), monta a cena
+// (cena.js, frente B) no primeiro gesto e a gaveta (gaveta.js, frente C) e liga rolagem,
+// toques e câmera.
 // Contrato: .tasks/agentes-escritorio-frentes.md + "Landing" de .checks/agentes-escritorio.md.
 
 // Caminhos dos módulos e pôsteres. A bancada de provas (.checks/agentes/test-pagina.cjs)
@@ -10,20 +11,30 @@ const PADRAO = {
   cena: '/agentes/escritorio/cena.js',
   gaveta: '/agentes/escritorio/gaveta.js',
   gavetaCss: '/agentes/escritorio/gaveta.css',
+  glb: '/agentes/escritorio/escritorio.glb',
   posterEscritorio: '/agentes/escritorio/poster-escritorio.webp',
   posterFecho: '/agentes/escritorio/poster-fecho.webp',
 };
 const cfg = Object.assign({}, PADRAO, window.__agentesModulos || {});
 
-const ESPERA_BOTAO_MS = 4000;  // "Ver sem animações" (critério 24)
 const FOLGA_NAV = 8;           // px entre a navbar e o topo do canvas ao abrir a gaveta
 // Trilho da rolagem (animada): a cena fica presa sob a navbar enquanto o trilho passa.
 // Frações do trecho preso: até PINO_TELA1 a Tela 1 fica parada (dá para tocar nas mesas);
 // o recuo até a sala termina em PINO_FECHO e o resto segura a sala antes de soltar a cena.
 const PINO_TELA1 = 0.3;
 const PINO_FECHO = 0.85;
-// Pesos do progresso de 0 a 100%.
-const PESOS = { fontes: 0.1, three: 0.3, gaveta: 0.1, gavetaCss: 0.05, cena: 0.45 };
+// Prévia: a página abre com o pôster, que é o mesmo quadro em que a cena nasce (relógio da
+// animação em 0, etiquetas em HTML no lugar dos chips). Depois do load, módulos e GLB baixam em
+// segundo plano, sem rodar. No primeiro gesto (toque, rolagem, roda, tecla ou mouse) a cena monta
+// parada nesse quadro, entra por cima do pôster num fade e só então começa a se mexer, devagar.
+const FADE_MS = 600;      // pôster → cena (a transição de opacidade de .ag-canvas em agentes.css)
+const ACORDAR_MS = 1800;  // da cena parada à velocidade normal
+// Centro das etiquetas no pôster (fração da imagem 750×1040), os mesmos de agentes.css.
+const ETIQUETAS_POSTER = { fiscal: [0.608, 0.083], auditor: [0.748, 0.296], vaga: [0.633, 0.568] };
+const PROPORCAO_POSTER = 750 / 1040;
+const ALTURA_PROJETO = 520; // altura do quadro em que as etiquetas da cena têm 1 px = 1 px CSS
+const GESTOS = ['pointerdown', 'touchstart', 'wheel', 'keydown', 'scroll'];
+const ESPERA_PREAQUECER_MS = 4000; // depois do pôster na tela, antes de baixar módulos e GLB
 
 const html = document.documentElement;
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -36,10 +47,6 @@ const raizGaveta = $('#gaveta');
 const titulo = $('#ag-titulo');
 const navTopo = $('.no-card-top');
 const listaMesas = $('.ag-mesas');
-const tela = $('.ag-carregamento');
-const botaoSemAnimacoes = $('.ag-sem-animacoes', tela);
-const pctTexto = $('.ag-progresso-pct', tela);
-const barra = $('.ag-progresso', tela);
 const mesas = new Map([...document.querySelectorAll('[data-mesa]')].map((el) => [el.dataset.mesa, el]));
 const movimentoReduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -49,8 +56,8 @@ const fundoDaNav = () => (navTopo ? navTopo.getBoundingClientRect().bottom : 0);
 
 // Estado lido pelas provas e útil para depurar no console.
 const estado = {
-  fase: 'decidindo', // decidindo | carregando | animada | estatica
-  motivo: null,      // pediu | falha | sem-webgl | movimento-reduzido
+  fase: 'decidindo', // decidindo | previa | carregando | animada | estatica
+  motivo: null,      // falha | sem-webgl | movimento-reduzido
   cena: null,
   gaveta: null,
   aberta: null,
@@ -148,7 +155,6 @@ document.addEventListener('click', (ev) => {
   } catch { /* medição não pode segurar o clique */ }
 }, true);
 
-let timerBotao = 0;
 let rolagemAntesDaGaveta = null;
 let ultimoT = -1;
 
@@ -177,23 +183,14 @@ function temWebGL() {
   }
 }
 
-// Enquanto a tela de carregamento cobre a página, nada atrás dela recebe foco.
-function travarPagina(travar) {
-  for (const el of document.body.children) {
-    if (el === tela || el.tagName === 'SCRIPT' || el.tagName === 'NOSCRIPT') continue;
-    el.inert = travar;
-  }
-}
-
-// ── Versão estática (critérios 24–27 e 29) ──
+// ── Versão estática (critérios 25–27 e 29) ──
 function entrarEstatica(motivo) {
   if (estado.fase === 'estatica') return;
-  const estavaCarregando = estado.fase === 'carregando';
   estado.fase = 'estatica';
   estado.motivo = motivo;
   console.info(`[agentes] versão estática: ${motivo}`);
   medir('agentes_versao_estatica', { motivo }, 'estatica');
-  clearTimeout(timerBotao);
+  pararDeOuvirGestos();
   if (estado.cena) {
     try { estado.cena.destruir(); } catch { /* a cena já pode ter caído */ }
     estado.cena = null;
@@ -203,10 +200,18 @@ function entrarEstatica(motivo) {
     if (img.getAttribute('src') !== src) img.src = src;
     if (img === poster) img.loading = 'eager';
   }
-  html.classList.remove('carregando', 'saindo', 'animada');
+  html.classList.remove('previa', 'revelando', 'animada');
   html.classList.add('estatica');
-  travarPagina(false);
-  if (estavaCarregando && motivo === 'pediu') titulo?.focus({ preventScroll: true });
+  // As etiquetas voltam às posições do CSS (porcentagens do pôster).
+  for (const el of mesas.values()) {
+    el.style.removeProperty('--mx');
+    el.style.removeProperty('--my');
+    delete el.dataset.mx;
+    delete el.dataset.my;
+    el.classList.remove('ag-mesa--oculta');
+  }
+  listaMesas.style.removeProperty('--ag-escala');
+  listaMesas.classList.remove('ag-mesas--longe');
   montarGaveta(true);
 }
 
@@ -329,13 +334,18 @@ function aoMudarGaveta({ aberta, agente } = {}) {
   agendarQuadro();
 }
 
-// Botões das mesas: na animada e na estática abrem a gaveta; sem gaveta, seguem o link.
+// Botões das mesas: abrem a gaveta; sem gaveta, seguem o link. Na prévia o toque pode chegar
+// antes de a gaveta montar (ela monta junto do pré-carregamento): monta agora e abre.
 for (const [mesa, el] of mesas) {
   if (mesa === 'vaga') continue; // link comum para /contato/
   el.addEventListener('click', (ev) => {
-    if (!estado.gaveta) return;
+    if (estado.gaveta) { ev.preventDefault(); abrirMesa(mesa, el); return; }
+    if (estado.fase === 'estatica' || estado.fase === 'decidindo') return;
     ev.preventDefault();
-    abrirMesa(mesa, el);
+    montarGaveta(false).then(() => {
+      if (estado.gaveta) abrirMesa(mesa, el);
+      else location.assign(el.href);
+    });
   });
   el.addEventListener('keydown', (ev) => {
     if (ev.key !== ' ' || !estado.gaveta) return;
@@ -383,9 +393,8 @@ function posicionarEtiquetas(agora) {
   requestAnimationFrame(posicionarEtiquetas);
   if (!cenaNaTela || agora - ultimaEtiqueta < 50) return;
   ultimaEtiqueta = agora;
-  let info;
-  try { info = estado.cena.inspecionar?.(); } catch { return; }
-  const pontos = info?.projetados;
+  let pontos;
+  try { pontos = estado.cena.projetar(); } catch { return; }
   if (!pontos) return;
   const largura = escritorio.clientWidth;
   const altura = escritorio.clientHeight;
@@ -403,53 +412,98 @@ function posicionarEtiquetas(agora) {
   }
 }
 
-// ── Versão animada (critérios 22 e 23) ──
-function mostrarProgresso(valor) {
-  const pct = Math.round(valor * 100);
-  if (pctTexto.textContent !== `${pct}%`) pctTexto.textContent = `${pct}%`;
-  barra.setAttribute('aria-valuenow', String(pct));
-  barra.style.setProperty('--ag-progresso', String(pct));
+// ── Prévia: pôster primeiro (critérios 22 e 23) ──
+// O pôster ocupa o quadro com object-fit: contain (a cena mantém a altura do mundo e ganha
+// laterais quando o quadro é mais largo): as etiquetas seguem a área real da imagem e a escala
+// dela, para cair exatamente sobre os chips da cena na troca.
+function posicionarEtiquetasPoster() {
+  if (estado.fase !== 'previa' && estado.fase !== 'carregando') return;
+  const L = escritorio.clientWidth;
+  const A = escritorio.clientHeight;
+  if (!L || !A) return;
+  const largura = Math.min(L, A * PROPORCAO_POSTER);
+  const altura = largura / PROPORCAO_POSTER;
+  const x0 = (L - largura) / 2;
+  const y0 = (A - altura) / 2;
+  listaMesas.style.setProperty('--ag-escala', (altura / ALTURA_PROJETO).toFixed(4));
+  for (const [mesa, el] of mesas) {
+    const [fx, fy] = ETIQUETAS_POSTER[mesa];
+    el.style.setProperty('--mx', `${Math.round(x0 + fx * largura)}px`);
+    el.style.setProperty('--my', `${Math.round(y0 + fy * altura)}px`);
+  }
 }
 
-async function iniciarAnimada() {
+// Baixa sem executar: modulepreload compila fora da thread principal e o prefetch deixa o GLB no
+// cache; a gaveta já monta, para as mesas abrirem antes da cena.
+let preaquecido = false;
+function preaquecer() {
+  if (preaquecido || estado.fase === 'estatica') return;
+  preaquecido = true;
+  montarGaveta(false);
+  const resolver = (m) => { try { return import.meta.resolve(m); } catch { return null; } };
+  const modulos = [cfg.three, cfg.cena];
+  if (cfg.three === PADRAO.three) {
+    modulos.push('three/addons/loaders/GLTFLoader.js', 'three/addons/libs/meshopt_decoder.module.js', 'three/addons/utils/BufferGeometryUtils.js');
+  }
+  for (const m of modulos) {
+    const href = resolver(m);
+    if (!href) continue;
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = href;
+    document.head.append(link);
+  }
+  if (cfg.cena === PADRAO.cena) {
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = cfg.glb;
+    document.head.append(link);
+  }
+}
+// Só depois de o pôster estar na tela e de alguns segundos: o pré-carregamento não disputa a
+// carga inicial. Quem toca antes pede tudo no gesto (carregarCena).
+function agendarPreaquecer() {
+  const ocioso = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
+  const posterPronto = typeof poster.decode === 'function' ? poster.decode().catch(() => {}) : Promise.resolve();
+  posterPronto.then(() => setTimeout(() => ocioso(preaquecer, { timeout: 2000 }), ESPERA_PREAQUECER_MS));
+}
+
+function aoPrimeiroGesto(ev) {
+  if (ev.type === 'pointermove' && ev.pointerType !== 'mouse') return;
+  pararDeOuvirGestos();
+  carregarCena();
+}
+function ouvirGestos() {
+  for (const tipo of [...GESTOS, 'pointermove']) addEventListener(tipo, aoPrimeiroGesto, { passive: true, capture: true });
+}
+function pararDeOuvirGestos() {
+  for (const tipo of [...GESTOS, 'pointermove']) removeEventListener(tipo, aoPrimeiroGesto, { capture: true });
+}
+
+function iniciarPrevia() {
+  estado.fase = 'previa';
+  html.classList.add('previa');
+  ajustarTopoPino();
+  posicionarEtiquetasPoster();
+  addEventListener('scroll', agendarQuadro, { passive: true });
+  addEventListener('resize', () => { ajustarTopoPino(); posicionarEtiquetasPoster(); ultimoT = -1; agendarQuadro(); });
+  ouvirGestos();
+  if (document.readyState === 'complete') agendarPreaquecer();
+  else addEventListener('load', agendarPreaquecer, { once: true });
+}
+
+// ── Versão animada: a cena entra por cima do pôster ──
+async function carregarCena() {
+  if (estado.fase !== 'previa') return;
+  // O teste de WebGL cria um contexto: fica para o gesto, fora da carga da página. Sem WebGL a
+  // prévia já é igual à estática; só troca de layout.
+  if (!temWebGL()) { entrarEstatica('sem-webgl'); return; }
   estado.fase = 'carregando';
-  html.classList.add('carregando');
-  travarPagina(true);
-  mostrarProgresso(0);
-
-  timerBotao = setTimeout(() => {
-    if (estado.fase === 'carregando') botaoSemAnimacoes.hidden = false;
-  }, ESPERA_BOTAO_MS);
-  botaoSemAnimacoes.addEventListener('click', () => entrarEstatica('pediu'), { once: true });
-
-  const partes = { fontes: 0, three: 0, gaveta: 0, gavetaCss: 0, cena: 0 };
-  let mostrado = 0;
-  const marcar = (parte, valor = 1) => {
-    partes[parte] = Math.max(partes[parte], clamp(valor, 0, 1));
-    const total = Object.entries(PESOS).reduce((soma, [k, peso]) => soma + peso * partes[k], 0);
-    mostrado = Math.max(mostrado, Math.min(total, 0.99)); // 100% só quando tudo terminar
-    if (estado.fase === 'carregando') mostrarProgresso(mostrado);
-  };
-
-  const fontes = Promise.all([
-    document.fonts.load('800 1em Sora'),
-    document.fonts.load('500 1em "JetBrains Mono"'),
-  ]).catch(() => {}).then(() => marcar('fontes'));
-  const three = import(cfg.three).then(() => marcar('three'));
-  const gavetaJs = importarGaveta().then(() => marcar('gaveta'));
-  const gavetaCss = carregarGavetaCss().then(() => marcar('gavetaCss'));
-  const cena = import(cfg.cena)
-    .then((modulo) => modulo.montarEscritorio(canvas, { aoProgresso: (p) => marcar('cena', p) }))
-    .then((montada) => {
-      // "Ver sem animações" já foi tocado (ou outra falha decidiu): a cena não entra.
-      if (estado.fase !== 'carregando') { montada.destruir(); return; }
-      estado.cena = montada;
-      montada.pausar(); // parada enquanto a tela de carregamento está aberta
-      marcar('cena');
-    });
-
+  preaquecer(); // gesto antes do pré-carregamento: pede tudo agora
+  let montada;
   try {
-    await Promise.all([fontes, three, gavetaJs, gavetaCss, cena]);
+    const [, modulo] = await Promise.all([import(cfg.three), import(cfg.cena)]);
+    montada = await modulo.montarEscritorio(canvas, { parado: true });
   } catch (erro) {
     if (estado.fase === 'carregando') {
       console.warn('[agentes] a cena não carregou', erro);
@@ -457,42 +511,50 @@ async function iniciarAnimada() {
     }
     return;
   }
-  if (estado.fase !== 'carregando' || !estado.cena) return;
-  mostrarProgresso(1);
+  if (estado.fase !== 'carregando') { montada.destruir(); return; }
+  estado.cena = montada;
+  // O primeiro quadro (o do pôster) já está no canvas; a cena fica parada nele até o fim do fade,
+  // para nada disputar a thread principal com a troca. Espera esse quadro chegar à tela.
+  montada.pausar();
   await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
   if (estado.fase !== 'carregando') return;
   revelar();
 }
 
 function revelar() {
-  clearTimeout(timerBotao);
   estado.fase = 'animada';
   const cena = estado.cena;
-  html.classList.add('animada', 'saindo');
-  cena.retomar();
-  setTimeout(() => {
-    html.classList.remove('carregando', 'saindo');
-    travarPagina(false);
-  }, 260);
-
   // Com a gaveta aberta, a mesa aproximada ocupa quase toda a cena acima dela: tocar nela é
   // "tocar fora" e fecha (critério 20); tocar em outra mesa troca a gaveta (critério 21).
   cena.aoTocarMesa((mesa) => {
     if (estado.aberta && estado.aberta === mesa) estado.gaveta?.fechar();
     else { tocouCena = true; abrirMesa(mesa, mesas.get(mesa)); }
   });
-  montarGaveta(false);
-
-  ajustarTopoPino();
-  addEventListener('scroll', agendarQuadro, { passive: true });
-  addEventListener('resize', () => { ajustarTopoPino(); ultimoT = -1; agendarQuadro(); });
-  new IntersectionObserver(([entrada]) => { cenaNaTela = entrada.isIntersecting; }).observe(escritorio);
-  atualizarRolagem();
-  requestAnimationFrame(posicionarEtiquetas);
+  // Fade com a cena parada no quadro do pôster. O pôster só sai quando o fade termina de fato
+  // (transitionend): com a thread ocupada, um timer acabaria antes do fade e piscaria a página.
+  let concluido = false;
+  const concluir = () => {
+    if (concluido || estado.fase !== 'animada') return;
+    concluido = true;
+    canvas.removeEventListener('transitionend', aoTerminar);
+    html.classList.remove('previa', 'revelando');
+    html.classList.add('animada');
+    listaMesas.style.removeProperty('--ag-escala');
+    new IntersectionObserver(([entrada]) => { cenaNaTela = entrada.isIntersecting; }).observe(escritorio);
+    cena.retomar();
+    if (estado.aberta) cena.focar(estado.aberta, quadroFoco());
+    ultimoT = -1;
+    atualizarRolagem();
+    requestAnimationFrame(posicionarEtiquetas);
+    cena.acordar(ACORDAR_MS); // só agora a cena começa a se mexer, devagar
+  };
+  const aoTerminar = (ev) => { if (ev.target === canvas && ev.propertyName === 'opacity') concluir(); };
+  canvas.addEventListener('transitionend', aoTerminar);
+  html.classList.add('revelando');
+  setTimeout(concluir, FADE_MS * 5); // rede de segurança se o transitionend não vier
 }
 
 // ── Decisão inicial ──
 verPagina();
 if (movimentoReduzido) entrarEstatica('movimento-reduzido');
-else if (!temWebGL()) entrarEstatica('sem-webgl');
-else iniciarAnimada();
+else iniciarPrevia();
