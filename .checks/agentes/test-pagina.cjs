@@ -321,8 +321,10 @@ async function principal() {
     });
     const a = extrair(antigo);
     const n = extrair(htmlBruto);
-    for (const k of Object.keys(a)) assert.deepEqual(n[k], a[k], `C3: ${k} mudou`);
-    assert(a.gtm.includes('GTM-NK87FH8W') && a.gtm.includes('noMarketingHostAllowed'));
+    // o GTM mudou de propósito (27/10): entra depois que o pôster pinta, não junto com ele
+    for (const k of Object.keys(a)) if (k !== 'gtm') assert.deepEqual(n[k], a[k], `C3: ${k} mudou`);
+    assert(n.gtm.includes('GTM-NK87FH8W') && n.gtm.includes('noMarketingHostAllowed'));
+    assert(/largest-contentful-paint/.test(n.gtm) && /addEventListener\('load'/.test(n.gtm) &&/setTimeout\(vai,3000\)/.test(n.gtm), 'C3: GTM não espera o pôster');
     assert(htmlBruto.indexOf(n.telemetria) < htmlBruto.indexOf(n.gtm), 'C3: telemetria depois do GTM');
     const linhaSitemap = (s) => s.split('\n').find((l) => l.includes('/agentes/</loc>'));
     const sitemapAtual = fs.readFileSync(path.join(raiz, 'sitemap.xml'), 'utf8').replace(/\r\n/g, '\n');
