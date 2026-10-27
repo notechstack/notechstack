@@ -1,5 +1,5 @@
 {
-  "versionIdEsperado": "eb2ab04c-059e-4d70-8707-f9e7dc15384b",
+  "versionIdEsperado": "ccdd90bb-30d7-4741-b453-6a460e6c4cfb",
   "obs": "V2 regerada da fonte (espacosaudemental, branch feat/v2-foco-thais-sem-checkout, 27/10/2026): pedidos do Lucca + Base V1 (597eae29) + envio de 20/10 (5c40339f). No passo da troca do id, versionIdEsperado vira o da V2 e o item 24 usa o id da V1.",
   "itens": [
     { "n": 1, "id": "marca_topo", "field": "text", "expected": "Thaís de SantisPsicoterapia e psicanálise" },
@@ -25,6 +25,6 @@
     { "n": 21, "id": "auto:#root/div.1/footer.1/div.2/div.1/div.3/button.2", "selector": "#root > div:nth-of-type(1) > footer:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2)", "field": "text", "expected": "Precisa de ajuda? Entre em contato." },
     { "n": 22, "id": "auto:#como-funciona/div.2/div.3/button.2", "selector": "#como-funciona > div:nth-of-type(2) > div:nth-of-type(3) > button:nth-of-type(2)", "field": "text", "expected": "Se preferir esclarecer alguma dúvida antes de agendar, você também pode entrar em contato." },
     { "n": 23, "id": "hero_cta", "field": "size", "expected": "16px", "negativo": true, "obs": "size não está na allowlist de hero_cta (só text e color): a sonda NÃO pode aplicar" },
-    { "n": 24, "id": "hero_titulo", "field": "text", "negativo": true, "baseVersionId": "11111111-1111-4111-8111-111111111111", "obs": "baseVersionId diferente do data-version-id da cópia: o runtime descarta. Depois da troca do id, usar aqui o id da V1." }
+    { "n": 24, "id": "hero_titulo", "field": "text", "negativo": true, "baseVersionId": "eb2ab04c-059e-4d70-8707-f9e7dc15384b", "obs": "baseVersionId diferente do data-version-id da cópia: o runtime descarta. Depois da troca do id, usar aqui o id da V1." }
   ]
 }
