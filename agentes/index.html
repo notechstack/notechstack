@@ -46,12 +46,20 @@
 <script type="module" src="/agentes/escritorio/pagina.js?v=3"></script>
 <script src="/shared/card-nav.js" defer></script>
 <script src="/shared/telemetria.js?v=3"></script>
-<!-- Google Tag Manager (mesmo container da home) -->
+<!-- Google Tag Manager (mesmo container da home). Só nesta página, ele entra depois que o
+     pôster pinta: quando o navegador registra o pôster como LCP (sem essa API, load + dois
+     quadros), no máximo 3 s. Carregado junto, GA4/Ads/Pixel entravam no caminho do LCP.
+     O 'gtm.js' entra no dataLayer na hora, como antes, para a ordem dos eventos não mudar;
+     só o download do container espera. -->
 <script src="/shared/marketing-host.js?v=1"></script>
 <script>if(window.noMarketingHostAllowed&&window.noMarketingHostAllowed(location.hostname))(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+new Date().getTime(),event:'gtm.js'});var foi=false;function vai(){if(foi)return;foi=true;var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);}
+var P=w.PerformanceObserver,lcp=!!(P&&P.supportedEntryTypes&&P.supportedEntryTypes.indexOf('largest-contentful-paint')>-1);
+if(lcp)new P(function(lista){if(lista.getEntries().some(function(e){return /poster-escritorio/.test(e.url||'')}))setTimeout(vai,0)}).observe({type:'largest-contentful-paint',buffered:true});
+else{var raf=w.requestAnimationFrame||setTimeout,quadro=function(){raf(function(){raf(function(){setTimeout(vai,0)})})};if(d.readyState==='complete')quadro();else w.addEventListener('load',quadro,{once:true});}
+setTimeout(vai,3000);
 })(window,document,'script','dataLayer','GTM-NK87FH8W');</script>
 <!-- End Google Tag Manager -->
 <!-- Cursor com texto e ícone e notas do glossário (shared/texticon-cursor.js) -->
