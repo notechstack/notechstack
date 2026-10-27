@@ -298,3 +298,34 @@ Como foi aplicado, para a conferência:
 - **Limite conhecido:** x/y entram por folha de estilo (como o `editor.css`), então o
   Editor da V2 lê 0 como posição inicial desses dois elementos; se a Thaís arrastar de
   novo, eles partem de 0, não de 13 e 3.
+
+## V2 regerada da fonte (27/10/2026, Lucca + Claude Code)
+
+A V2 nunca foi publicada: depois do deploy 5a (PR #60) o projeto ficou em
+`V1_PUBLICADA`, só com a V1, e a Thaís mandou mais dois envios em 20/10 (o último,
+`5c40339f`, contém o Base V1 inteiro + 7 itens). Lucca pediu mudanças estruturais
+(tirar a seção "A clínica", o checkout e o bloco de curiosidade), que não cabem em
+troca de texto no bundle. Por isso a cópia **voltou a ser gerada da fonte**.
+
+- Fonte: `espacosaudemental`, branch `feat/v2-foco-thais-sem-checkout` (commits
+  `de77cb9` e `7f35380`), com os pedidos do Lucca, o Base V1 e o envio de 20/10 já no
+  código. O `<style id="no-base-v2">` saiu: nada dele é mais necessário.
+- Decisões de Lucca: os itens esvaziados saem de verdade (card de valor, título da
+  FAQ, 4 perguntas da FAQ, bloco de curiosidade); erros de digitação corrigidos
+  ("parar", espaço duplo, "· " do CRP); os deslocamentos de 13/2 px e 3/8 px não foram
+  levados (arrasto sem querer). A cor da marca fica no botão (`marca_topo`), e os
+  spans herdam.
+- Agenda sem checkout: horário de preferência → nome, WhatsApp e e-mail → "Falar com
+  a Thaís" abre o WhatsApp com nome, origem, horário e e-mail. **Número da Thaís
+  pendente:** `WHATSAPP_THAIS` cai no número do Espaço até Lucca informar.
+- Montagem: `vite build -c vite.prototipo.config.ts`, `noindex` e a ponte do Editor
+  com o mesmo `data-components` da V1 (conferido byte a byte). Mídias inalteradas.
+- Harness `checklist.v2-fonte.json` (24 itens: os 5 ids, 9 textos `auto:` e 2
+  negativos), Edge headless 1366×900: na cópia da `main`, `HARNESS FALHA 21/24:
+  n=17,18,19` (os itens que mudaram); na cópia nova, `HARNESS OK 24/24`.
+- Ids `auto:` mudam de caminho depois da V2 (seções saíram): o '*' cobre, e envios
+  novos partem dos caminhos da V2.
+- Ordem daqui em diante: a da seção "Ordem", passos 3 a 6, num período só. No passo 3,
+  ingerir o card do envio de 20/10 (`5c40339f`), que já contém o Base V1. Depois:
+  trocar o `data-version-id` e o placeholder do SQL, harness com o id da V2 (item 24
+  com o id da V1), PR/merge/deploy com OK do Lucca e o SQL.
