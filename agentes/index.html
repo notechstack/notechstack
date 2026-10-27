@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/agentes.css?v=1">
+<link rel="stylesheet" href="/agentes/agentes.css?v=2">
 <link rel="preload" href="/brand/fonts/jetbrains-mono/jetbrains-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <!-- three.js pelo mesmo importmap da home (lp-narrador/cenas-lp/lp-v8.html) -->
@@ -42,7 +42,7 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
 } }
 </script>
-<script type="module" src="/agentes/escritorio/pagina.js?v=1"></script>
+<script type="module" src="/agentes/escritorio/pagina.js?v=2"></script>
 <script src="/shared/card-nav.js" defer></script>
 <script src="/shared/telemetria.js?v=3"></script>
 <!-- Google Tag Manager (mesmo container da home) -->
@@ -82,14 +82,16 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <h1 id="ag-titulo" tabindex="-1">Encontre soluções já mapeadas que transformamos em agentes.</h1>
       <p class="ag-sub">Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.</p>
     </div>
-    <div class="ag-escritorio">
-      <canvas id="escritorio-canvas" class="ag-canvas" role="img" aria-label="Escritório da nó em 3D: os agentes trabalhando nas mesas"></canvas>
-      <img id="escritorio-poster" class="ag-poster" src="/agentes/escritorio/poster-escritorio.webp" alt="Escritório da nó: a mesa do nó.fiscal, a mesa do nó.auditor, uma mesa vaga e a recepção" width="750" height="1040" loading="lazy" decoding="async">
-      <ul class="ag-mesas" aria-label="Mesas do escritório">
-        <li><a class="ag-mesa" data-mesa="fiscal" href="/agentes/fiscal/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span></a></li>
-        <li><a class="ag-mesa" data-mesa="auditor" href="/agentes/auditor/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>nó.auditor</span></a></li>
-        <li><a class="ag-mesa" data-mesa="vaga" href="/contato/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--ambar" aria-hidden="true"></i>criar uma automação</span></a></li>
-      </ul>
+    <div class="ag-trilho">
+      <div class="ag-escritorio">
+        <canvas id="escritorio-canvas" class="ag-canvas" role="img" aria-label="Escritório da nó em 3D: os agentes trabalhando nas mesas"></canvas>
+        <img id="escritorio-poster" class="ag-poster" src="/agentes/escritorio/poster-escritorio.webp" alt="Escritório da nó: a mesa do nó.fiscal, a mesa do nó.auditor, uma mesa vaga e a recepção" width="750" height="1040" loading="lazy" decoding="async">
+        <ul class="ag-mesas" aria-label="Mesas do escritório">
+          <li><a class="ag-mesa" data-mesa="fiscal" href="/agentes/fiscal/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span></a></li>
+          <li><a class="ag-mesa" data-mesa="auditor" href="/agentes/auditor/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>nó.auditor</span></a></li>
+          <li><a class="ag-mesa" data-mesa="vaga" href="/contato/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--ambar" aria-hidden="true"></i>criar uma automação</span></a></li>
+        </ul>
+      </div>
     </div>
   </section>
 

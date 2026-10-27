@@ -28,6 +28,9 @@
 
 /* ── Hero (Tela 1) ── */
 .ag-hero { padding-top: 22px; }
+/* Respiro entre a headline e a cena 3D. */
+.ag-hero > .ag-coluna { margin-bottom: 40px; }
+@media (min-width: 769px) { .ag-hero > .ag-coluna { margin-bottom: 56px; } }
 .ag-rotulo {
   margin: 0 0 12px;
   font: 500 12px/1.4 var(--no-font-mono);
@@ -70,6 +73,16 @@
   overflow: hidden;
   background: transparent;
 }
+/* Trilho da rolagem (só na animada): a cena fica presa logo abaixo da navbar enquanto o trilho
+   passa; pagina.js mapeia esse trecho para a Tela 1 parada e, depois, o recuo até a sala.
+   --ag-topo-pino vem de pagina.js (fundo real da navbar + folga). */
+/* Espaçador, não padding: o sticky só anda dentro da caixa de conteúdo do trilho. */
+html.animada .ag-trilho::after { content: ''; display: block; height: 100svh; }
+html.animada .ag-escritorio {
+  position: sticky;
+  top: var(--ag-topo-pino, 94px);
+}
+
 /* O degradê vale para a imagem da cena (canvas e pôster), não para os botões das mesas. */
 .ag-escritorio > .ag-canvas,
 .ag-escritorio > .ag-poster {
