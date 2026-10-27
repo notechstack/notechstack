@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="color-scheme" content="only light">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- Prévia antes do primeiro paint: o quadro já nasce no tamanho da cena (pagina.js troca para .estatica sem WebGL) -->
+<script>if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('previa')</script>
 <title>Nó Agentes: nó.auditor e nó.fiscal | Nó Tech Stack</title>
 <meta name="description" content="Nó Agentes é a linha de produtos da Nó: o nó.auditor, que confere se o rastreamento do seu marketing está contando certo, e o nó.fiscal, que emite a NFS-e pelo WhatsApp.">
 <meta name="robots" content="index, follow, max-image-preview:large">
@@ -32,17 +34,16 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/agentes.css?v=2">
-<link rel="preload" href="/brand/fonts/jetbrains-mono/jetbrains-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/agentes/agentes.css?v=3">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <!-- three.js pelo mesmo importmap da home (lp-narrador/cenas-lp/lp-v8.html) -->
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
 } }
 </script>
-<script type="module" src="/agentes/escritorio/pagina.js?v=2"></script>
+<script type="module" src="/agentes/escritorio/pagina.js?v=3"></script>
 <script src="/shared/card-nav.js" defer></script>
 <script src="/shared/telemetria.js?v=3"></script>
 <!-- Google Tag Manager (mesmo container da home) -->
@@ -63,29 +64,20 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agentes/" aria-current="page">Agentes</a><a href="/contato/">Contato</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a nó</a><a href="/agencia/">Agência</a></div></div><div class="no-card"><b>Agentes</b><div><a href="/agentes/">Conheça os agentes</a><a href="/agentes/auditor/">nó.auditor</a><a href="/agentes/fiscal/">nó.fiscal</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a></div></div></div></div></div></nav>
 <!-- site-nav:end -->
 
-<!-- Tela de carregamento: só aparece quando pagina.js põe a classe "carregando" no <html>. -->
-<div class="ag-carregamento">
-  <div class="ag-carregamento-miolo">
-    <img class="ag-carregamento-logo" src="/brand/logo/svg/no-tinta-ponto-azul.svg" alt="nó." width="1633" height="964">
-    <div class="ag-pontos" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <p class="ag-carregamento-texto" role="status">Montando o escritório…</p>
-    <div class="ag-progresso" role="progressbar" aria-label="Carregando o escritório" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="ag-progresso-barra"></span></div>
-    <p class="ag-progresso-pct">0%</p>
-    <button class="ag-sem-animacoes" type="button" hidden>Ver sem animações</button>
-  </div>
-</div>
-
 <main class="ag-main" id="conteudo">
   <section class="ag-hero" aria-labelledby="ag-titulo">
     <div class="ag-coluna">
-      <p class="ag-rotulo"><img class="ag-logo-agentes" src="/brand/agentes/no-agentes-tinta-azul.webp" alt="nó.agentes" width="720" height="142"></p>
+      <p class="ag-rotulo"><img class="ag-logo-agentes" src="/brand/agentes/no-agentes-tinta-azul-400w.webp" alt="nó.agentes" width="400" height="79"></p>
       <h1 id="ag-titulo" tabindex="-1">Encontre soluções já mapeadas que transformamos em agentes.</h1>
       <p class="ag-sub">Toque numa mesa para entender mais sobre a função de cada um. Teste grátis antes de assinar.</p>
     </div>
     <div class="ag-trilho">
       <div class="ag-escritorio">
         <canvas id="escritorio-canvas" class="ag-canvas" role="img" aria-label="Escritório da nó em 3D: os agentes trabalhando nas mesas"></canvas>
-        <img id="escritorio-poster" class="ag-poster" src="/agentes/escritorio/poster-escritorio.webp" alt="Escritório da nó: a mesa do nó.fiscal, a mesa do nó.auditor, uma mesa vaga e a recepção" width="750" height="1040" loading="lazy" decoding="async">
+        <picture>
+          <source type="image/avif" srcset="/agentes/escritorio/poster-escritorio.avif">
+          <img id="escritorio-poster" class="ag-poster" src="/agentes/escritorio/poster-escritorio.webp" alt="Escritório da nó: a mesa do nó.fiscal, a mesa do nó.auditor, uma mesa vaga e a recepção" width="750" height="1040" fetchpriority="high">
+        </picture>
         <ul class="ag-mesas" aria-label="Mesas do escritório">
           <li><a class="ag-mesa" data-mesa="fiscal" href="/agentes/fiscal/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--verde" aria-hidden="true"></i>nó.fiscal</span></a></li>
           <li><a class="ag-mesa" data-mesa="auditor" href="/agentes/auditor/"><span class="ag-mesa-pilula"><i class="ag-ponto ag-ponto--azul" aria-hidden="true"></i>nó.auditor</span></a></li>

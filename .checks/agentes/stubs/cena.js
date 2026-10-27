@@ -17,7 +17,7 @@ const ROTULOS = { 'mesa-fiscal': 'fiscal', 'mesa-auditor': 'auditor', 'mesa-vaga
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const cor = (nome) => getComputedStyle(document.documentElement).getPropertyValue(nome).trim() || 'gray';
 
-export async function montarEscritorio(canvas, { aoProgresso } = {}) {
+export async function montarEscritorio(canvas, { aoProgresso, parado = false } = {}) {
   const atraso = window.__stubCenaAtraso ?? 900;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('sem contexto');
@@ -127,7 +127,7 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}) {
 
   desenhar(performance.now()); // primeiro quadro antes de resolver
   ligar();
-  window.__stubCena = { resolvidoEm: performance.now(), destruido: false, chamadasFecho: 0 };
+  window.__stubCena = { resolvidoEm: performance.now(), destruido: false, chamadasFecho: 0, parado, acordou: false };
 
   return {
     focar(mesa, opcoes = {}) {
@@ -142,6 +142,16 @@ export async function montarEscritorio(canvas, { aoProgresso } = {}) {
     pausar() { pausadoPelaPagina = true; },
     retomar() { pausadoPelaPagina = false; ligar(); },
     quadros: () => quadros,
+    acordar() { window.__stubCena.acordou = true; },
+    projetar() {
+      const projetados = {};
+      for (const id of ['fiscal', 'auditor', 'vaga']) {
+        const q = projetar(MESAS[`mesa-${id}`]);
+        projetados[`mesa-${id}`] = { x: q.x, y: q.y, visivel: true };
+        projetados[`etiqueta-${id}`] = { x: q.x, y: q.y - 40, visivel: true };
+      }
+      return projetados;
+    },
     inspecionar() {
       const projetados = {};
       const w = canvas.clientWidth;
