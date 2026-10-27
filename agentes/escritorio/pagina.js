@@ -17,7 +17,11 @@ const cfg = Object.assign({}, PADRAO, window.__agentesModulos || {});
 
 const ESPERA_BOTAO_MS = 4000;  // "Ver sem animações" (critério 24)
 const FOLGA_NAV = 8;           // px entre a navbar e o topo do canvas ao abrir a gaveta
-const FIM_FECHO = 0.6;         // t = 1 quando o h2 do fecho chega a 60% da altura da viewport
+// Trilho da rolagem (animada): a cena fica presa sob a navbar enquanto o trilho passa.
+// Frações do trecho preso: até PINO_TELA1 a Tela 1 fica parada (dá para tocar nas mesas);
+// o recuo até a sala termina em PINO_FECHO e o resto segura a sala antes de soltar a cena.
+const PINO_TELA1 = 0.3;
+const PINO_FECHO = 0.85;
 // Pesos do progresso de 0 a 100%.
 const PESOS = { fontes: 0.1, three: 0.3, gaveta: 0.1, gavetaCss: 0.05, cena: 0.45 };
 
@@ -25,10 +29,10 @@ const html = document.documentElement;
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 const canvas = $('#escritorio-canvas');
 const escritorio = canvas.closest('.ag-escritorio');
+const trilho = escritorio.closest('.ag-trilho') || escritorio;
 const poster = $('#escritorio-poster');
 const posterFecho = $('#fecho-poster');
 const raizGaveta = $('#gaveta');
-const tituloFecho = $('#ag-fecho-titulo');
 const titulo = $('#ag-titulo');
 const navTopo = $('.no-card-top');
 const listaMesas = $('.ag-mesas');
@@ -242,9 +246,10 @@ function abrirMesa(mesa, origem) {
   tocouCena = false;
   if (!estado.gaveta || !origem) return;
   if (estado.cena) {
-    // Celular: o canvas sobe para logo abaixo da navbar e a mesa aproximada fica acima da gaveta.
+    // Celular: o canvas sobe para logo abaixo da navbar (início do trilho, ainda na Tela 1) e
+    // a mesa aproximada fica acima da gaveta.
     if (rolagemAntesDaGaveta === null) rolagemAntesDaGaveta = scrollY;
-    const alvo = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
+    const alvo = topoNoDocumento(trilho) - fundoDaNav() - FOLGA_NAV;
     scrollTo({ top: Math.max(0, alvo), behavior: movimentoReduzido ? 'instant' : 'smooth' });
   }
   estado.gaveta.abrir(mesa, origem);
@@ -340,16 +345,19 @@ for (const [mesa, el] of mesas) {
 }
 
 // ── Rolagem → cena.fecho(t) e etiquetas sobre a cena ──
-// t = 1 assim que o canvas encosta na navbar ou o h2 do fecho chega a FIM_FECHO da viewport,
-// o que vier primeiro: assim o recuo (Tela 3) acontece com a cena inteira à vista, com o h2
-// logo abaixo, também no desktop. O recuo ocupa os 60% de altura do canvas anteriores a isso,
-// depois de uma zona morta (ZONA_MORTA px ou metade do caminho): rolar de leve mantém a Tela 1.
-const ZONA_MORTA = 80;
+// Na animada a cena é sticky dentro de .ag-trilho (agentes.css): ela encosta na navbar e fica
+// parada enquanto o trilho rola. t vai de 0 a 1 entre PINO_TELA1 e PINO_FECHO desse trecho,
+// então o recuo (Tela 3) acontece com a cena inteira à vista e sem disparar ao centralizá-la.
 function progressoFecho() {
-  const encosta = topoNoDocumento(escritorio) - fundoDaNav() - FOLGA_NAV;
-  const fim = Math.max(1, Math.min(encosta, topoNoDocumento(tituloFecho) - innerHeight * FIM_FECHO));
-  const inicio = Math.max(Math.min(ZONA_MORTA, fim / 2), fim - escritorio.clientHeight * 0.6);
+  const topoPino = topoNoDocumento(trilho) - fundoDaNav() - FOLGA_NAV;
+  const pino = Math.max(1, trilho.offsetHeight - escritorio.offsetHeight);
+  const inicio = topoPino + pino * PINO_TELA1;
+  const fim = topoPino + pino * PINO_FECHO;
   return clamp((scrollY - inicio) / (fim - inicio), 0, 1);
+}
+// O topo da cena presa acompanha o fundo real da navbar (muda com safe-area e breakpoints).
+function ajustarTopoPino() {
+  html.style.setProperty('--ag-topo-pino', `${Math.round(fundoDaNav() + FOLGA_NAV)}px`);
 }
 
 let quadroAgendado = 0;
@@ -475,8 +483,9 @@ function revelar() {
   });
   montarGaveta(false);
 
+  ajustarTopoPino();
   addEventListener('scroll', agendarQuadro, { passive: true });
-  addEventListener('resize', () => { ultimoT = -1; agendarQuadro(); });
+  addEventListener('resize', () => { ajustarTopoPino(); ultimoT = -1; agendarQuadro(); });
   new IntersectionObserver(([entrada]) => { cenaNaTela = entrada.isIntersecting; }).observe(escritorio);
   atualizarRolagem();
   requestAnimationFrame(posicionarEtiquetas);
