@@ -34,6 +34,7 @@ const AuditorContaPage = lazy(() => import('./auditor/AuditorPages').then(m => (
 const AuditorRota = lazy(() => import('./auditor/AuditorRota').then(m => ({ default: m.AuditorRota })))
 const AuditorPlanosPage = lazy(() => import('./auditor/PlanosPage').then(m => ({ default: m.PlanosPage })))
 const AuditorOperacaoPage = lazy(() => import('./auditor/OperacaoPage').then(m => ({ default: m.OperacaoPage })))
+const CentralConversasPage = lazy(() => import('./fiscal/CentralConversasPage').then(m => ({ default: m.CentralConversasPage })))
 const MarketingAccessPage = lazy(() => import('./marketing/MarketingAccessPage').then(m => ({ default: m.MarketingAccessPage })))
 
 const AgencyConsolePage = lazy(() => import('./agency/AgencyConsolePage').then(m => ({ default: m.AgencyConsolePage })))
@@ -99,6 +100,7 @@ export function AppRoutes() {
           <Route path="projetos" element={<AdminProjectsPage />} />
           <Route path="agencias" element={<AgencyManagementPage />} />
           <Route path="auditor" element={<AuditorOperacaoPage />} />
+          <Route path="fiscal/conversas" element={<CentralConversasPage />} />
           <Route path="projetos/:projectId" element={<AdminProjectDetailPage />} />
           <Route path="atividade" element={<AdminActivityPage />} />
           <Route path="saldos" element={<SaldosPage />} />

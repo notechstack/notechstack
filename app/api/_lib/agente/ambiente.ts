@@ -1,10 +1,11 @@
 // Configuração do agente a partir do ambiente da Vercel (nomes no Landing, lote B da v1 e lote C
 // da v2). Sem os segredos, o webhook recusa e o worker deixa o agente de fora. As URLs base têm
 // a URL oficial como padrão (critério 56): `WHATSAPP_GRAPH_URL`, `RESEND_API_URL`, `CNPJ_API_URL`.
-import { dbFromEnv } from '../db.js'
+import { dbFromEnv, type Queryable } from '../db.js'
 import { logEvent } from '../log.js'
 import type { EnviaWhatsApp } from './canais.js'
 import { catalogoDoSite } from './catalogo-servicos.js'
+import { whatsappGravado } from './central.js'
 import { consultaCnpjBrasilApi } from './consulta-cnpj.js'
 import { NUMERO_OFICIAL_DA_NO, type ConversaDeps } from './conversa.js'
 import { iaFromEnv } from '../ia/claude.js'
@@ -18,7 +19,8 @@ import { whatsappCloud } from './whatsapp-cloud.js'
 
 const variavel = (nome: string) => process.env[nome] || undefined
 
-function whatsappFromEnv(): EnviaWhatsApp | null {
+/** O cliente cru da Cloud API; quem envia em nome do robô ou da equipe o embrulha em `whatsappGravado`. */
+export function whatsappFromEnv(): EnviaWhatsApp | null {
   const token = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   return token && phoneNumberId ? whatsappCloud({ token, phoneNumberId, graphUrl: variavel('WHATSAPP_GRAPH_URL') }) : null
@@ -34,14 +36,15 @@ export function modelosFromEnv(): ModelosDoAgente {
   return { boasVindas: variavel('WHATSAPP_MODELO_BOAS_VINDAS'), resumo: variavel('WHATSAPP_MODELO_RESUMO') }
 }
 
-/** Conversa do webhook. Sem `ANTHROPIC_API_KEY`, o intérprete fica desligado (v1). */
+/** Conversa do webhook. Sem `ANTHROPIC_API_KEY`, o intérprete fica desligado (v1). Todo envio fica na central. */
 export function conversaFromEnv(): ConversaDeps {
   const whatsapp = whatsappFromEnv()
   if (!whatsapp) throw new Error('WHATSAPP_ACCESS_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurada')
   const links = linksFromEnv()
+  const db = dbFromEnv()
   return {
-    db: dbFromEnv(),
-    whatsapp,
+    db,
+    whatsapp: whatsappGravado(whatsapp, db),
     interprete: interpreteFromEnv(),
     links,
     consultaCnpj: consultaCnpjBrasilApi({ baseUrl: variavel('CNPJ_API_URL') }),
@@ -56,8 +59,8 @@ export function interpreteFromEnv(env: NodeJS.ProcessEnv = process.env): Interpr
   return ia ? interpreteClaude(ia) : interpreteNaoConfigurado()
 }
 
-/** Canais do agente no worker; `null` (e o log) quando falta configuração. */
-export function agenteFromEnv(): AgenteDeps | null {
+/** Canais do agente no worker; `null` (e o log) quando falta configuração. Com `db`, todo envio fica na central. */
+export function agenteFromEnv(db?: Queryable): AgenteDeps | null {
   const whatsapp = whatsappFromEnv()
   const apiKey = process.env.RESEND_API_KEY
   if (!whatsapp || !apiKey) {
@@ -65,7 +68,7 @@ export function agenteFromEnv(): AgenteDeps | null {
     return null
   }
   return {
-    whatsapp,
+    whatsapp: db ? whatsappGravado(whatsapp, db) : whatsapp,
     email: emailResend({ apiKey, from: variavel('AGENTE_FISCAL_EMAIL_FROM'), baseUrl: variavel('RESEND_API_URL') }),
     links: linksFromEnv(),
     modelos: modelosFromEnv(),
