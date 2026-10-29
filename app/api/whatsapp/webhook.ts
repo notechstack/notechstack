@@ -1,7 +1,7 @@
 // GET e POST /api/whatsapp/webhook: verificação e notificações da Meta (critérios 23 e 24 do
 // agente fiscal). Segredos: `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`; envio:
-// `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`; banco: `NOFISCAL_DATABASE_URL`
-// (papel `nofiscal_service`). Lidos a cada chamada.
+// `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (também filtra as mensagens: só as deste número);
+// banco: `NOFISCAL_DATABASE_URL` (papel `nofiscal_service`). Lidos a cada chamada.
 import { conversaFromEnv } from '../_lib/agente/ambiente.js'
 import { handleWhatsAppWebhook } from '../_lib/agente/webhook.js'
 import { errorResponse } from '../_lib/http.js'
@@ -13,6 +13,7 @@ export default {
       return await handleWhatsAppWebhook(request, {
         verifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
         appSecret: process.env.WHATSAPP_APP_SECRET,
+        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || undefined,
         conversa: conversaFromEnv,
       })
     } catch {

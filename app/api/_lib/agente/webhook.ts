@@ -12,6 +12,9 @@ import { comNonoDigito } from './normalizacao.js'
 export type WebhookDeps = {
   verifyToken: string | undefined
   appSecret: string | undefined
+  /** `WHATSAPP_PHONE_NUMBER_ID`: só as mensagens para este número entram na conversa. A assinatura do app vale
+   * para a conta inteira, e outro número da conta (o do atendimento, em coexistência) fica com a equipe. */
+  phoneNumberId?: string
   /** Montada só depois da assinatura conferida e só se houver mensagem. */
   conversa: () => ConversaDeps
 }
@@ -43,14 +46,21 @@ const obj = (v: unknown): Obj | null => (typeof v === 'object' && v !== null && 
 const lista = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 const textoOuNulo = (v: unknown) => (typeof v === 'string' ? v : null)
 
-/** `entry[].changes[].value.messages[]` → mensagens para a conversa. `statuses` é ignorado. */
-export function mensagensDaNotificacao(corpo: unknown): MensagemRecebida[] {
+/** `entry[].changes[].value.messages[]` → mensagens para a conversa. `statuses` é ignorado; com `phoneNumberId`,
+ * também as mensagens para outro número da conta (`value.metadata.phone_number_id`). */
+export function mensagensDaNotificacao(corpo: unknown, phoneNumberId?: string): MensagemRecebida[] {
   const raiz = obj(corpo)
   if (!raiz || raiz.object !== 'whatsapp_business_account') return []
   const mensagens: MensagemRecebida[] = []
   for (const entrada of lista(raiz.entry)) {
     for (const mudanca of lista(obj(entrada)?.changes)) {
-      for (const bruta of lista(obj(obj(mudanca)?.value)?.messages)) {
+      const valor = obj(obj(mudanca)?.value)
+      const brutas = lista(valor?.messages)
+      if (phoneNumberId && brutas.length && textoOuNulo(obj(valor?.metadata)?.phone_number_id) !== phoneNumberId) {
+        logEvent('agente.mensagem_ignorada', { motivo: 'outro número da conta', quantidade: brutas.length })
+        continue
+      }
+      for (const bruta of brutas) {
         const m = obj(bruta)
         const id = textoOuNulo(m?.id)
         const de = textoOuNulo(m?.from)?.replace(/\D/g, '')
@@ -92,7 +102,7 @@ export async function handleWhatsAppWebhook(request: Request, deps: WebhookDeps)
   } catch {
     return errorResponse('INVALID_JSON', 'corpo não é JSON')
   }
-  const mensagens = mensagensDaNotificacao(notificacao)
+  const mensagens = mensagensDaNotificacao(notificacao, deps.phoneNumberId)
   if (!mensagens.length) return json(200, { ok: true })
 
   const conversa = deps.conversa()
