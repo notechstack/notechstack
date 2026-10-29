@@ -79,7 +79,7 @@ describe('intérprete por Claude', () => {
     const antes = ia.chamadas.length
     const resultado = await interpreteFromEnv(ambienteComChave()).interpretar(PEDIDO)
     expect(resultado).toEqual({
-      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, intencao: 'emitir' },
+      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, descricao: null, intencao: 'emitir' },
       tokens: { entrada: 321, saida: 45 },
     })
     const chamada = ia.chamadas[antes]
@@ -89,7 +89,7 @@ describe('intérprete por Claude', () => {
     expect(chamada.corpo.messages).toEqual([{ role: 'user', content: PEDIDO }])
     expect(chamada.corpo.output_config?.format?.type).toBe('json_schema')
     expect(chamada.corpo.output_config?.format?.schema).toMatchObject({
-      required: ['tomador', 'documento', 'valor', 'modelo', 'intencao'],
+      required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'intencao'],
       additionalProperties: false,
     })
 
@@ -119,7 +119,7 @@ describe('intérprete por Claude', () => {
     expect(pedido).toMatchObject({
       kind: 'emitir',
       status: 'awaiting_confirmation',
-      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, intencao: 'emitir' },
+      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, descricao: null, intencao: 'emitir' },
       ai_input_tokens: 321,
       ai_output_tokens: 45,
     })

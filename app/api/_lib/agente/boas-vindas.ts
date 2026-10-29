@@ -269,7 +269,7 @@ async function clienteFrequente(ctx: Contexto, texto: string, estado: Estado): P
     return
   }
   const nome = texto.replace(/\s+/g, ' ').trim().slice(0, 60)
-  const parsed: Parsed = { tomador: nome, modelo: nome, documento: null, valor: null, intencao: 'outro' }
+  const parsed: Parsed = { tomador: nome, modelo: nome, documento: null, valor: null, descricao: null, intencao: 'outro' }
   const modelo = await resolverModelo(db, ctx.tenantId, parsed)
   if (modelo && 'ambiguos' in modelo) {
     await responder(ctx, `Achei mais de um modelo: ${modelo.ambiguos.join(', ')}. Qual deles?`)
