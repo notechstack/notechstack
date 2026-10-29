@@ -26,7 +26,7 @@ import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb, sefinDouble } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
-import { ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, type ConversaDeps } from './conversa.js'
+import { ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
 import { comNonoDigito } from './normalizacao.js'
 import { mensagensDaNotificacao } from './webhook.js'
@@ -437,6 +437,51 @@ describe('conversa no WhatsApp', () => {
     c.avancar(24 * 3600_000)
     await c.enviar(desconhecido, 'bom dia')
     expect(c.respostasPara(desconhecido)).toHaveLength(2)
+  })
+
+  it('número não autorizado: envio que falha não gasta a resposta do dia', async () => {
+    // 30/10/2026: o envio falhou (número errado na Cloud API) e a marca do dia ficou, então a pessoa não teve
+    // resposta nenhuma naquele dia. A resposta só conta se saiu.
+    const canais = canaisDouble()
+    let falhar = true
+    const whatsapp = {
+      ...canais.whatsapp,
+      async enviarTexto(para: string, texto: string) {
+        if (falhar) throw new Error('Cloud API fora')
+        await canais.whatsapp.enviarTexto(para, texto)
+      },
+    }
+    const c = conversa(ROTEIRO_PRONTIA, { whatsapp })
+    const desconhecido = randomPhone()
+
+    await c.enviar(desconhecido, 'oi')
+    expect(canais.whatsapps.filter((m) => m.para === desconhecido)).toHaveLength(0)
+
+    falhar = false
+    await c.enviar(desconhecido, 'oi de novo')
+    const respostas = canais.whatsapps.filter((m) => m.para === desconhecido).map((m) => m.texto)
+    expect(respostas).toHaveLength(1)
+    expect(respostas[0]).toContain('alguém da nossa equipe te responde por aqui')
+
+    // Com a resposta dada, o resto do dia continua quieto.
+    await c.enviar(desconhecido, 'obrigado!')
+    expect(canais.whatsapps.filter((m) => m.para === desconhecido)).toHaveLength(1)
+  })
+
+  it('número próprio do agente: quem não tem conta e quem pede atendente vão para o número oficial', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa(ROTEIRO_PRONTIA, { numeroProprio: true })
+    const desconhecido = randomPhone()
+
+    await c.enviar(desconhecido, 'oi')
+    const resposta = c.ultimaPara(desconhecido)
+    expect(resposta).toContain(WHATSAPP_COMERCIAL)
+    expect(resposta).toContain(LINKS_DE_TESTE.site)
+    expect(resposta).not.toContain('te responde por aqui')
+
+    await c.enviar(s.ownerPhone, 'atendente')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.chamouAEquipeNoOutroNumero)
   })
 
   it('assinante que pede atendente recebe o aviso e a equipe responde', async () => {
