@@ -51,10 +51,12 @@ describe('rotas do Nó Fiscal', () => {
     // autenticada e gravando por nofiscal.onboarding_set_certificate. O lote B acrescenta o
     // webhook da Meta (Landing, "Provas do motor que esta feature muda"). A v2 (.checks/agente-fiscal-v2.md)
     // acrescenta a ativação do WhatsApp (lote C), que não recebe A1, e a base de clientes do
-    // onboarding (lote D), que lê o A1 só por `read_certificate`, como o motor.
+    // onboarding (lote D), que lê o A1 só por `read_certificate`, como o motor. A central de conversas
+    // (29/10/2026) lê e manda mensagens do WhatsApp e não toca no A1.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
+      'api/v1/fiscal/central.ts',
       'api/v1/nfse.ts',
       'api/v1/onboarding/ativacao.ts',
       ONBOARDING_CERTIFICATE,

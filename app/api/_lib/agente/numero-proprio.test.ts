@@ -68,8 +68,8 @@ describe('numeroProprioFromEnv', () => {
 })
 
 describe('texto de atendimento no número próprio', () => {
-  it('manda a pessoa para o número oficial, sem prometer resposta por aqui', () => {
-    expect(TEXTOS.chamouAEquipeNoOutroNumero).toContain(WHATSAPP_COMERCIAL)
-    expect(TEXTOS.chamouAEquipeNoOutroNumero).not.toContain('te responde por aqui')
+  it('quem pede atendente é respondido no próprio número, pela central de conversas (29/10/2026)', () => {
+    expect(TEXTOS.chamouAEquipe).toContain('te responde por aqui')
+    expect(TEXTOS.chamouAEquipe).not.toContain(WHATSAPP_COMERCIAL)
   })
 })

@@ -13,6 +13,7 @@ import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
 import { textoComRetentativa, whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
 import type { CatalogoDeServicos } from './catalogo-servicos.js'
+import { conversaAssumida, registrarEvento } from './central.js'
 import { tratarComando } from './comandos.js'
 import { documentoNoTexto, emailNoTexto, formatarDocumento, formatarReais, tipoDoDocumento } from './documentos.js'
 import { validarParsed, type Interprete, type Parsed } from './interprete.js'
@@ -55,8 +56,8 @@ export type ConversaDeps = {
   consultaCnpj?: ConsultaCnpj
   /** Descrição do código de serviço na conferência das boas-vindas (v2, lote C). */
   catalogo?: CatalogoDeServicos
-  /** O agente tem número próprio, só do robô (Lucca, 29/10/2026): ninguém da equipe lê este número, então quem
-   * pede uma pessoa vai para o número oficial da Nó. Sem ele, agente e atendimento dividem o número. */
+  /** O agente tem número próprio, só do robô (Lucca, 29/10/2026): quem escreve sem conta é mandado ao número
+   * oficial da Nó. Quem tem conta e pede uma pessoa é atendido no próprio número, pela central de conversas. */
   numeroProprio?: boolean
   now?: () => Date
 }
@@ -79,7 +80,6 @@ export const TEXTOS = {
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
-  chamouAEquipeNoOutroNumero: `Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}. Os pedidos de nota continuam funcionando por aqui.`,
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   escolherAntes: 'Antes, me diga o número da nota que você quer cancelar.',
@@ -373,6 +373,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   // Janela de 24 h da Meta (v2, lote C): toda mensagem de um número cadastrado conta.
   await registrarJanela(deps.db, msg.de, agora)
 
+  // Conversa assumida na central (29/10/2026): a equipe responde e o robô fica quieto neste número.
+  if (await conversaAssumida(deps.db, msg.de, agora)) {
+    logEvent('agente.conversa_com_a_equipe', { message_id: msg.id })
+    return
+  }
+
   // Ativação do WhatsApp do dono (critérios 26 a 28): o número ainda não emite.
   if (await tratarAtivacao({ db: deps.db, whatsapp, links, agora, catalogo: deps.catalogo }, msg)) return
 
@@ -398,10 +404,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     enviadas: 0,
   }
   const texto = msg.texto.trim()
-  // Pedido de uma pessoa: a equipe responde no mesmo número; o pedido de nota aberto, se houver, continua valendo.
+  // Pedido de uma pessoa: a equipe responde no mesmo número, pela central (alerta por e-mail); o pedido de nota
+  // aberto, se houver, continua valendo.
   if (ehPedidoDeAtendimento(texto)) {
     logEvent('agente.atendimento_humano', { message_id: msg.id, tenant_id: ctx.tenantId, origem: 'assinante' })
-    await responder(ctx, deps.numeroProprio ? TEXTOS.chamouAEquipeNoOutroNumero : TEXTOS.chamouAEquipe)
+    await registrarEvento(deps.db, msg.de, 'pediu_atendente')
+    await responder(ctx, TEXTOS.chamouAEquipe)
     return
   }
   // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
@@ -602,6 +610,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     }
   } catch (error) {
     logEvent('agente.interprete_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+    await registrarEvento(ctx.deps.db, ctx.para, 'ia_falhou', { detalhe: 'na correção do pedido' })
     await responder(ctx, TEXTOS.naoEntendi)
     return true
   }
@@ -632,6 +641,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, valor))
     return true
   }
+  await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não entendi a correção do pedido' })
   await responder(ctx, TEXTOS.naoEntendiACorrecao)
   return true
 }
@@ -903,6 +913,7 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
     }
   } catch (error) {
     logEvent('agente.interprete_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+    await registrarEvento(ctx.deps.db, ctx.para, 'ia_falhou', { detalhe: 'na mensagem nova' })
     await responder(ctx, TEXTOS.naoEntendi)
     return
   }
@@ -914,6 +925,7 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   }
   if (parsed.intencao !== 'emitir') {
     semPedido()
+    await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não era pedido de nota; mandei a ajuda' })
     await responder(ctx, TEXTOS.ajuda)
     return
   }

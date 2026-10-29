@@ -17,18 +17,21 @@ export interface EnviaEmail {
   enviar(mensagem: MensagemEmail): Promise<void>
 }
 
+/** O que a Cloud API devolve de um envio aceito; os dublês e as camadas de cima podem não devolver nada. */
+export type Enviada = { wamid: string | null }
+
 export interface EnviaWhatsApp {
   /** `para` em E.164 (`+5511…`). */
-  enviarTexto(para: string, texto: string): Promise<void>
+  enviarTexto(para: string, texto: string): Promise<Enviada | void>
   /** Documento (o PDF da nota) com a legenda na mesma mensagem. */
-  enviarDocumento(para: string, anexo: AnexoEmail, legenda: string): Promise<void>
+  enviarDocumento(para: string, anexo: AnexoEmail, legenda: string): Promise<Enviada | void>
   /** Modelo aprovado na Meta, o único envio aceito fora da janela de 24 h (Landing v2, lote C). */
-  enviarModelo(para: string, nome: string, parametros: string[]): Promise<void>
+  enviarModelo(para: string, nome: string, parametros: string[]): Promise<Enviada | void>
 }
 
 export const TENTATIVAS_DE_ENVIO = 3
 
-async function tentar(canal: 'whatsapp' | 'email', envio: () => Promise<void>): Promise<boolean> {
+async function tentar(canal: 'whatsapp' | 'email', envio: () => Promise<unknown>): Promise<boolean> {
   for (let tentativa = 1; tentativa <= TENTATIVAS_DE_ENVIO; tentativa++) {
     try {
       await envio()
@@ -67,6 +70,11 @@ export function whatsappComRetentativa(whatsapp: EnviaWhatsApp): EnviaWhatsApp {
 /** Texto com as mesmas tentativas, dizendo se saiu: quem marca "uma vez" antes de enviar desfaz a marca quando não saiu. */
 export function textoComRetentativa(whatsapp: EnviaWhatsApp, para: string, texto: string): Promise<boolean> {
   return tentar('whatsapp', () => whatsapp.enviarTexto(para, texto))
+}
+
+/** E-mail com as mesmas tentativas, dizendo se saiu: quem marca "avisado" só marca o que saiu. */
+export function emailSaiu(email: EnviaEmail, mensagem: MensagemEmail): Promise<boolean> {
+  return tentar('email', () => email.enviar(mensagem))
 }
 
 export function emailComRetentativa(email: EnviaEmail): EnviaEmail {

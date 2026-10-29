@@ -8,6 +8,7 @@ import type { Queryable } from '../db.js'
 import type { FinalStatus } from '../emission.js'
 import { logEvent } from '../log.js'
 import { emailComRetentativa, whatsappComRetentativa, type AnexoEmail, type EnviaEmail, type EnviaWhatsApp } from './canais.js'
+import { registrarEvento } from './central.js'
 import { contarMensagens } from './conversa.js'
 import { formatarReais } from './documentos.js'
 import { linksDoSite, type Links } from './links.js'
@@ -202,6 +203,7 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
       oQueCorrigir(nota.last_error_code),
     ].join('\n')
     await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
+    await alertarRecusa(deps.db, nota, pedido, `nota para ${tomador.nome}`)
     return
   }
 
@@ -227,6 +229,16 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     'A nota continua valendo. Para cancelar, use o portal da prefeitura (Emissor Nacional) ou peça ao seu contador.',
   ].join('\n')
   await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
+  await alertarRecusa(deps.db, nota, pedido, `cancelamento da nota nº ${numero}`)
+}
+
+/** Recusa da Sefin na conversa de quem pediu (ou do dono): linha na central e alerta por e-mail. */
+async function alertarRecusa(db: Queryable, nota: NotaDoAgente, pedido: PedidoDaNota | null, oQue: string): Promise<void> {
+  const telefone = pedido?.phone ?? nota.dono_phone
+  if (!telefone) return
+  await registrarEvento(db, telefone, 'sefin_recusou', {
+    detalhe: `${oQue} · código ${nota.last_error_code ?? '-'}: ${nota.last_error ?? 'sem motivo informado'}`,
+  })
 }
 
 /** Critério 29: a nota sai; o dono é avisado uma vez por mês, e nunca durante o teste. */

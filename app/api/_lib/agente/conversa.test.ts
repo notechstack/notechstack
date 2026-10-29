@@ -472,7 +472,7 @@ describe('conversa no WhatsApp', () => {
     expect(canais.whatsapps.filter((m) => m.para === desconhecido)).toHaveLength(1)
   })
 
-  it('número próprio do agente: quem não tem conta e quem pede atendente vão para o número oficial', async () => {
+  it('número próprio do agente: quem não tem conta vai para o número oficial; quem pede atendente fica com a central', async () => {
     const s = await cenario()
     await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
     const c = conversa(ROTEIRO_PRONTIA, { numeroProprio: true })
@@ -485,7 +485,7 @@ describe('conversa no WhatsApp', () => {
     expect(resposta).not.toContain('te responde por aqui')
 
     await c.enviar(s.ownerPhone, 'atendente')
-    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.chamouAEquipeNoOutroNumero)
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.chamouAEquipe)
   })
 
   it('assinante que pede atendente recebe o aviso e a equipe responde', async () => {

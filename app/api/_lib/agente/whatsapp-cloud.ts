@@ -6,7 +6,7 @@
 // com `Authorization: Bearer <token>`. Versão v26.0 (changelog da Graph API, 29/07/2026).
 // A base vem de `WHATSAPP_GRAPH_URL` (padrão oficial; Landing v2, lote C), para a demonstração.
 // O token e o corpo das respostas nunca vão para o log.
-import type { AnexoEmail, EnviaWhatsApp } from './canais.js'
+import type { AnexoEmail, Enviada, EnviaWhatsApp } from './canais.js'
 
 export const GRAPH_API = 'https://graph.facebook.com'
 export const GRAPH_VERSION = 'v26.0'
@@ -16,10 +16,24 @@ const TIMEOUT_MS = 10_000
 type FetchLike = typeof fetch
 
 export class WhatsAppHttpError extends Error {
-  constructor(readonly status: number) {
+  /** `error.code` e o detalhe que a Meta devolve (sem o token): vão para a central de conversas, nunca para o log. */
+  constructor(
+    readonly status: number,
+    readonly codigo: number | null = null,
+    readonly detalhe: string | null = null,
+  ) {
     super(`Cloud API respondeu ${status}`)
     this.name = 'WhatsAppHttpError'
   }
+}
+
+async function erroDaResposta(res: Response): Promise<WhatsAppHttpError> {
+  const corpo = (await res.json().catch(() => null)) as {
+    error?: { code?: unknown; message?: unknown; error_data?: { details?: unknown } }
+  } | null
+  const erro = corpo?.error
+  const detalhe = erro?.error_data?.details ?? erro?.message
+  return new WhatsAppHttpError(res.status, typeof erro?.code === 'number' ? erro.code : null, typeof detalhe === 'string' ? detalhe.slice(0, 300) : null)
 }
 
 export function whatsappCloud(opcoes: {
@@ -36,14 +50,18 @@ export function whatsappCloud(opcoes: {
   // A Cloud API endereça o número só com dígitos, como chega em `messages[].from`.
   const destino = (para: string) => para.replace(/\D/g, '')
 
-  async function mensagem(corpo: Record<string, unknown>): Promise<void> {
+  /** A resposta traz o `wamid` em `messages[0].id`: é por ele que as marcas de entregue e lida acham a mensagem. */
+  async function mensagem(corpo: Record<string, unknown>): Promise<Enviada> {
     const res = await doFetch(`${base}/messages`, {
       method: 'POST',
       headers: { ...autorizacao, 'content-type': 'application/json' },
       body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', ...corpo }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
-    if (!res.ok) throw new WhatsAppHttpError(res.status)
+    if (!res.ok) throw await erroDaResposta(res)
+    const resposta = (await res.json().catch(() => null)) as { messages?: { id?: unknown }[] } | null
+    const wamid = resposta?.messages?.[0]?.id
+    return { wamid: typeof wamid === 'string' ? wamid : null }
   }
 
   async function subirMidia(anexo: AnexoEmail): Promise<string> {
@@ -57,26 +75,26 @@ export function whatsappCloud(opcoes: {
       body: form,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
-    if (!res.ok) throw new WhatsAppHttpError(res.status)
+    if (!res.ok) throw await erroDaResposta(res)
     const corpo = (await res.json().catch(() => null)) as { id?: unknown } | null
     if (typeof corpo?.id !== 'string') throw new WhatsAppHttpError(res.status)
     return corpo.id
   }
 
   return {
-    async enviarTexto(para, texto) {
-      await mensagem({ to: destino(para), type: 'text', text: { body: texto } })
+    enviarTexto(para, texto) {
+      return mensagem({ to: destino(para), type: 'text', text: { body: texto } })
     },
     async enviarDocumento(para, anexo, legenda) {
       const id = await subirMidia(anexo)
-      await mensagem({ to: destino(para), type: 'document', document: { id, filename: anexo.nome, caption: legenda } })
+      return mensagem({ to: destino(para), type: 'document', document: { id, filename: anexo.nome, caption: legenda } })
     },
-    async enviarModelo(para, nome, parametros) {
+    enviarModelo(para, nome, parametros) {
       const template: Record<string, unknown> = { name: nome, language: { code: IDIOMA_DOS_MODELOS } }
       if (parametros.length) {
         template.components = [{ type: 'body', parameters: parametros.map((text) => ({ type: 'text', text })) }]
       }
-      await mensagem({ to: destino(para), type: 'template', template })
+      return mensagem({ to: destino(para), type: 'template', template })
     },
   }
 }

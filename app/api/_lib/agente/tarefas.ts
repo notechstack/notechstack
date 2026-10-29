@@ -6,6 +6,7 @@ import type { FinalStatus } from '../emission.js'
 import { logEvent } from '../log.js'
 import { enviarListaDeAbandono } from './abandono.js'
 import type { EnviaEmail, EnviaWhatsApp } from './canais.js'
+import { enviarAlertasDaCentral, retencaoDaCentral } from './central.js'
 import { expirarPedidos } from './conversa.js'
 import { avisarCertificados, avisarFila, entregarTransicao } from './entregas.js'
 import type { ModelosDoAgente } from './janela.js'
@@ -20,7 +21,7 @@ export type AgenteDeps = {
   now?: () => Date
   /** Modelos aprovados na Meta (v2, lote C): reserva de boas-vindas e resumo fora da janela. */
   modelos?: ModelosDoAgente
-  /** `FISCAL_ALERTA_EMAIL`: destino da lista diária de abandono (v2, lote C). */
+  /** `FISCAL_ALERTA_EMAIL`: destino da lista diária de abandono (v2, lote C) e dos alertas da central de conversas. */
   alertaEmail?: string
 }
 
@@ -56,6 +57,8 @@ export async function tarefasDoAgente(
     ['pedidos_expirados', () => expirarPedidos(db, agora, { tenantIds })],
     ['reservas_de_boas_vindas', () => enviarReservaDeBoasVindas(deps, { tenantIds })],
     ['lista_de_abandono', () => enviarListaDeAbandono(deps, { tenantIds })],
+    ['alertas_da_central', () => enviarAlertasDaCentral(deps, { tenantIds })],
+    ['retencao_da_central', () => retencaoDaCentral(db, agora, { tenantIds })],
   ]
   for (const [nome, tarefa] of tarefas) {
     try {

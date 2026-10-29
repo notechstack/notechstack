@@ -569,11 +569,47 @@ select throws_ok(
   '23514', null, 'a cota de PDFs não passa de 30');
 reset role;
 
+-- ---------------------------------------------------------------------------------------
+-- Central de conversas (20261031090000): só o motor (nofiscal_service) grava e lê; apagar o telefone
+-- ("Apagar conta") apaga as mensagens, os eventos e o estado da conversa.
+insert into nofiscal.fiscal_phones (id, tenant_id, phone_e164, role)
+values ('f1800000-0000-4000-8000-000000000009', 'f1700000-0000-4000-8000-000000000001', '+5511900000099', 'authorized');
+
+set local role nofiscal_service;
+select lives_ok(
+  $$insert into nofiscal.fiscal_messages (phone_e164, endereco, tenant_id, direcao, autor, tipo, texto, wamid)
+    values ('+5511900000099', '+5511900000099', 'f1700000-0000-4000-8000-000000000001', 'entrada', 'cliente', 'text', 'oi', 'wamid.pgtap-central-1')$$,
+  'central: nofiscal_service grava a mensagem recebida');
+select lives_ok(
+  $$insert into nofiscal.fiscal_conversations (phone_e164, assumida_ate) values ('+5511900000099', now() + interval '2 hours')$$,
+  'central: nofiscal_service assume a conversa');
+select lives_ok(
+  $$insert into nofiscal.fiscal_conversation_events (phone_e164, tipo) values ('+5511900000099', 'pediu_atendente')$$,
+  'central: nofiscal_service registra o evento');
+select throws_ok(
+  $$insert into nofiscal.fiscal_messages (phone_e164, direcao, autor, tipo) values ('+5511900000099', 'entrada', 'robo', 'text')$$,
+  '23514', null, 'central: mensagem recebida é sempre do cliente');
+select throws_ok(
+  $$insert into nofiscal.fiscal_messages (phone_e164, direcao, autor, tipo, status) values ('+5511900000099', 'saida', 'robo', 'text', 'recebida')$$,
+  '23514', null, 'central: status só enviada, entregue, lida ou falhou');
+select ok(nofiscal.fiscal_status_ordem('lida') > nofiscal.fiscal_status_ordem('entregue'), 'central: lida vem depois de entregue');
+reset role;
+
+delete from nofiscal.fiscal_phones where id = 'f1800000-0000-4000-8000-000000000009';
+select is(
+  (select count(*)::int from nofiscal.fiscal_messages where phone_e164 = '+5511900000099')
+  + (select count(*)::int from nofiscal.fiscal_conversation_events where phone_e164 = '+5511900000099')
+  + (select count(*)::int from nofiscal.fiscal_conversations where phone_e164 = '+5511900000099'),
+  0, 'central: apagar o telefone apaga mensagens, eventos e o estado da conversa');
+select ok(not has_function_privilege('authenticated', 'nofiscal.fiscal_status_ordem(text)', 'execute')
+  and not has_function_privilege('anon', 'nofiscal.fiscal_status_ordem(text)', 'execute'),
+  'central: só o motor executa fiscal_status_ordem');
+
 -- Sentinela: anon e authenticated sem acesso a nenhuma tabela nova.
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  18, 'nofiscal tem as 5 tabelas do motor e as 13 do agente (cota de PDFs da v2, lote D; cupons e usos de cupom, 20261025090000)');
+  21, 'nofiscal tem as 5 tabelas do motor, as 13 do agente (cota de PDFs da v2, lote D; cupons e usos de cupom, 20261025090000) e as 3 da central de conversas (20261031090000)');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)
