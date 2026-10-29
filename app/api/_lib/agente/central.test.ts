@@ -19,8 +19,16 @@ import {
 } from '../../_tests/agente-fixtures.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import { supabaseAdminVerifier, type AdminVerifier } from '../session.js'
-import { whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
-import { apagarConversasAntigas, enviarAlertasDaCentral, PRAZO_DA_EQUIPE_MS, URL_DA_CENTRAL, whatsappGravado } from './central.js'
+import { whatsappComRetentativa, type EnviaEmail, type EnviaWhatsApp } from './canais.js'
+import {
+  apagarConversasAntigas,
+  conversaAssumida,
+  enviarAlertasDaCentral,
+  PRAZO_DA_EQUIPE_MS,
+  registrarEvento,
+  URL_DA_CENTRAL,
+  whatsappGravado,
+} from './central.js'
 import { TEXTOS, type ConversaDeps } from './conversa.js'
 import { handleCentral, TEXTO_AO_ASSUMIR, TEXTO_AO_DEVOLVER } from './rota-central.js'
 import { handleWhatsAppWebhook } from './webhook.js'
@@ -49,8 +57,8 @@ afterAll(async () => {
   await admin.pool.end()
 })
 
-async function cenario(): Promise<SelfServiceTenant> {
-  const s = await createSelfServiceTenant(admin.db, { razaoSocial: `Studio Central ${randomBytes(3).toString('hex')}` })
+async function cenario(razaoSocial = `Studio Central ${randomBytes(3).toString('hex')}`): Promise<SelfServiceTenant> {
+  const s = await createSelfServiceTenant(admin.db, { razaoSocial })
   tenants.push(s)
   await assinarTenant(admin.db, s.tenant.id, { status: 'paga' })
   return s
@@ -297,6 +305,22 @@ describe('guardar as mensagens', () => {
     await postar(corpo, r.deps)
     expect(await mensagensDo(telefone)).toEqual([expect.objectContaining({ status: 'enviada' })])
   })
+
+  it('a marca atrasada de uma conversa apagada não recria a conversa', async () => {
+    const telefone = avulso()
+    const r = robo()
+    await postar(notificacao(marcaDaMeta(`wamid.apagada-${randomBytes(6).toString('hex')}`, 'read', telefone)), r.deps)
+    expect(await mensagensDo(telefone)).toEqual([])
+  })
+
+  it('com a central fora do ar, o robô continua respondendo', async () => {
+    const quebrado = {
+      async query(): Promise<never> {
+        throw new Error('relation "nofiscal.fiscal_conversations" does not exist')
+      },
+    }
+    expect(await conversaAssumida(quebrado, avulso(), new Date())).toBe(false)
+  })
 })
 
 describe('assumir e responder', () => {
@@ -338,6 +362,33 @@ describe('assumir e responder', () => {
     ])
     expect(linhas.filter((l) => l.autor === 'equipe').every((l) => l.user_id === ADMIN_ID)).toBe(true)
     expect(await eventosDo(s.ownerPhone)).toEqual(['pediu_atendente', 'equipe_assumiu', 'equipe_devolveu', 'pediu_atendente'])
+  })
+
+  it('a resposta da equipe que não sai devolve o prazo ao que era: o robô continua atendendo', async () => {
+    const s = await cenario()
+    const r = robo()
+    await r.receber(s.ownerPhone, 'atendente')
+    const resposta = await naCentral({ acao: 'responder', telefone: s.ownerPhone, texto: 'Oi!' }, cloudDouble(3).whatsapp)
+    expect(resposta.status).toBe(502)
+    expect(resposta.corpo.error?.code).toBe('ENVIO_FALHOU')
+
+    await r.receber(s.ownerPhone, 'atendente')
+    expect(r.respostasPara(s.ownerPhone)).toEqual([TEXTOS.chamouAEquipe, TEXTOS.chamouAEquipe])
+    expect((await mensagensDo(s.ownerPhone)).filter((l) => l.autor === 'equipe')).toEqual([
+      expect.objectContaining({ texto: 'Oi!', status: 'falhou', erro: 'HTTP 400 · 131026 · Message undeliverable' }),
+    ])
+    expect(await eventosDo(s.ownerPhone)).toEqual(['pediu_atendente', 'pediu_atendente'])
+  })
+
+  it('com a conversa já assumida, a resposta que não sai mantém o robô quieto', async () => {
+    const s = await cenario()
+    const r = robo()
+    await r.receber(s.ownerPhone, 'atendente')
+    expect((await naCentral({ acao: 'assumir', telefone: s.ownerPhone }, cloudDouble().whatsapp)).status).toBe(200)
+    expect((await naCentral({ acao: 'responder', telefone: s.ownerPhone, texto: 'Oi!' }, cloudDouble(3).whatsapp)).status).toBe(502)
+
+    await r.receber(s.ownerPhone, 'atendente')
+    expect(r.respostasPara(s.ownerPhone)).toEqual([TEXTOS.chamouAEquipe])
   })
 
   it('o robô volta sozinho 2 horas depois da última mensagem da equipe', async () => {
@@ -445,8 +496,58 @@ describe('alertas, Apagar conta e retenção', () => {
     for (const trecho of ['pediu atendente', 'a IA falhou', 'o envio falhou · 131042 · Sem forma de pagamento', URL_DA_CENTRAL]) {
       expect(aviso.texto).toContain(trecho)
     }
+    // O detalhe do evento fica só na central.
+    expect(aviso.texto).not.toContain('na mensagem nova')
     expect(await enviarAlertasDaCentral(deps, { tenantIds: [s.tenant.id] })).toBe(0)
     expect(email.emails).toHaveLength(1)
+  })
+
+  it('e-mail que não sai deixa os alertas para a rodada seguinte, com a mesma chave de idempotência', async () => {
+    const s = await cenario()
+    const r = robo()
+    await r.receber(s.ownerPhone, 'atendente')
+    const chaves: string[] = []
+    let foraDoAr = true
+    const email: EnviaEmail = {
+      async enviar(mensagem) {
+        chaves.push(mensagem.idempotencia ?? '')
+        if (foraDoAr) throw new Error('Resend fora do ar')
+      },
+    }
+    const deps = { db: servico.db, email, alertaEmail: 'alertas@example.test' }
+    expect(await enviarAlertasDaCentral(deps, { tenantIds: [s.tenant.id] })).toBe(0)
+    expect(chaves).toHaveLength(3)
+
+    foraDoAr = false
+    expect(await enviarAlertasDaCentral(deps, { tenantIds: [s.tenant.id] })).toBe(1)
+    expect(new Set(chaves).size).toBe(1)
+    expect(await enviarAlertasDaCentral(deps, { tenantIds: [s.tenant.id] })).toBe(0)
+    expect(chaves).toHaveLength(4)
+  })
+
+  it('quem não tem conta aparece no e-mail só pelos 4 últimos dígitos', async () => {
+    const telefone = avulso()
+    await admin.db.query(
+      `insert into nofiscal.fiscal_messages (phone_e164, endereco, direcao, autor, tipo, texto, status, erro, updated_at)
+       values ($1, $1, 'saida', 'robo', 'text', 'oi', 'falhou', 'HTTP 400 · 131026', now() - interval '2 minutes')`,
+      [telefone],
+    )
+    // Sem filtro de empresa: pode haver alertas antigos do banco local na frente; esvazia a fila.
+    const email = canaisDouble()
+    while ((await enviarAlertasDaCentral({ db: servico.db, email: email.email, alertaEmail: 'alertas@example.test' })) > 0);
+    const texto = email.emails.map((e) => e.texto).join('\n')
+    expect(texto).toContain(`número terminado em ${telefone.slice(-4)} (sem conta) · o envio falhou · HTTP 400 · 131026`)
+    expect(texto).not.toContain(telefone)
+  })
+
+  it('o e-mail de alerta não leva o tomador, o texto da Sefin nem o CPF da razão social de MEI', async () => {
+    const s = await cenario('JOAO DA SILVA 12345678900')
+    await registrarEvento(servico.db, s.ownerPhone, 'sefin_recusou', { detalhe: 'nota para Maria Souza · código E0310: CPF do tomador inválido' })
+    const email = canaisDouble()
+    expect(await enviarAlertasDaCentral({ db: servico.db, email: email.email, alertaEmail: 'alertas@example.test' }, { tenantIds: [s.tenant.id] })).toBe(1)
+    const [aviso] = email.emails
+    expect(aviso.texto).toContain('JOAO DA SILVA · a Sefin recusou')
+    for (const dado of ['12345678900', 'Maria Souza', 'E0310', s.ownerPhone]) expect(aviso.texto).not.toContain(dado)
   })
 
   it('"Apagar conta" apaga as mensagens e os eventos do número', async () => {

@@ -72,6 +72,11 @@ export function textoComRetentativa(whatsapp: EnviaWhatsApp, para: string, texto
   return tentar('whatsapp', () => whatsapp.enviarTexto(para, texto))
 }
 
+/** E-mail com as mesmas tentativas, dizendo se saiu: quem marca "avisado" só marca o que saiu. */
+export function emailSaiu(email: EnviaEmail, mensagem: MensagemEmail): Promise<boolean> {
+  return tentar('email', () => email.enviar(mensagem))
+}
+
 export function emailComRetentativa(email: EnviaEmail): EnviaEmail {
   return {
     async enviar(mensagem) {

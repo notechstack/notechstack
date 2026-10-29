@@ -12,7 +12,7 @@ import { errorResponse, json } from '../http.js'
 import { logEvent } from '../log.js'
 import type { AdminVerifier } from '../session.js'
 import { textoComRetentativa, type EnviaWhatsApp } from './canais.js'
-import { conversaAssumida, PRAZO_DA_EQUIPE_MS, registrarEvento, whatsappGravado, type AutorDaSaida } from './central.js'
+import { PRAZO_DA_EQUIPE_MS, registrarEvento, whatsappGravado, type AutorDaSaida } from './central.js'
 import { EXEMPLO_DE_PEDIDO } from './conversa.js'
 import { JANELA_MS } from './janela.js'
 
@@ -202,7 +202,8 @@ async function agir(deps: RotaCentralDeps, adminId: string, pedido: Pedido, agor
   const fim = fimDaJanela(estado)
   const janelaAberta = Boolean(fim && fim > agora)
   const prazo = new Date(agora.getTime() + PRAZO_DA_EQUIPE_MS)
-  const jaAssumida = await conversaAssumida(deps.db, telefone, agora)
+  // Do estado já lido: um erro aqui vira 500, e não uma conversa assumida que parece livre.
+  const jaAssumida = Boolean(estado.assumida_ate && new Date(estado.assumida_ate) > agora)
 
   switch (pedido.acao) {
     case 'assumir': {
@@ -229,12 +230,21 @@ async function agir(deps: RotaCentralDeps, adminId: string, pedido: Pedido, agor
       if (!texto || texto.length > TAMANHO_DA_RESPOSTA) return errorResponse('VALIDATION_FAILED', `escreva de 1 a ${TAMANHO_DA_RESPOSTA} caracteres`)
       if (!janelaAberta) return recusa(409, 'JANELA_FECHADA', 'fora da janela de 24 horas só sai modelo aprovado')
       if (!deps.whatsapp) return recusa(503, 'WHATSAPP_NAO_CONFIGURADO', 'WhatsApp não configurado')
-      // Responder também assume (sem o aviso): o robô não responde por cima da equipe.
+      // Responder também assume (sem o aviso): o robô não responde por cima da equipe. Se a resposta não
+      // sai, o prazo volta ao que era: o cliente não fica 2 h sem robô e sem equipe.
       await assumirAte(deps.db, telefone, prazo, adminId, agora)
-      if (!jaAssumida) await registrarEvento(deps.db, telefone, 'equipe_assumiu', { userId: adminId })
       const saiu = await enviar(deps, estado, telefone, texto, 'equipe', adminId)
       logEvent('central.respondeu', { saiu })
-      if (!saiu) return recusa(502, 'ENVIO_FALHOU', 'a Meta não aceitou o envio; veja o erro na conversa')
+      if (!saiu) {
+        // Só se ninguém mexeu na conversa durante as tentativas (outra resposta, assumir ou devolver).
+        await deps.db.query(
+          `update nofiscal.fiscal_conversations set assumida_ate = $2, updated_at = $3
+            where phone_e164 = $1 and assumida_ate = $4 and assumida_por = $5`,
+          [telefone, jaAssumida ? estado.assumida_ate : null, agora, prazo, adminId],
+        )
+        return recusa(502, 'ENVIO_FALHOU', 'a Meta não aceitou o envio; veja o erro na conversa')
+      }
+      if (!jaAssumida) await registrarEvento(deps.db, telefone, 'equipe_assumiu', { userId: adminId })
       return json(200, { assumida_ate: prazo })
     }
     default:
