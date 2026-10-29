@@ -346,7 +346,7 @@
 
   function limite() {
     dl({ event: 'fiscal_simulacao_limite' });
-    var el = balao('fi-msg--agente fi-msg--limite', '<p>Você já usou seus ' + LIMITE + ' testes grátis por aqui. Para emitir de verdade, crie a sua conta: cadastro do CNPJ, certificado A1 e um plano de notas por mês, com as suas 5 primeiras emissões grátis.</p>' +
+    var el = balao('fi-msg--agente fi-msg--limite', '<p>Você já usou seus ' + LIMITE + ' testes grátis por aqui. Para emitir de verdade, crie a sua conta: cadastro do CNPJ, certificado A1 e um plano de notas por mês, com 7 dias grátis para começar.</p>' +
       botoes([{ acao: 'conta', rotulo: 'Criar minha conta', primario: true }, { acao: 'planos', rotulo: 'Ver os planos' }]));
     ctaFinal(el);
   }

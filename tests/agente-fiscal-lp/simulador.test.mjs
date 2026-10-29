@@ -83,7 +83,7 @@ test('limite de 3 simulações', async () => {
   const q = abrirPagina({ armazenamento: navegador });
   await q.enviar(PRONTIA);
   const aviso = q.mensagens().at(-1);
-  for (const termo of [/\bconta\b/, /CNPJ/, /\bA1\b/, /\bplano\b/, /5 primeiras emissões grátis/]) assert.match(aviso.texto, termo);
+  for (const termo of [/\bconta\b/, /CNPJ/, /\bA1\b/, /\bplano\b/, /7 dias grátis/]) assert.match(aviso.texto, termo);
   assert.equal(temNota(q), false, 'nenhuma nota nova depois do aviso');
   assert.ok(!q.botoes().includes('Confirmar emissão'), 'nem resumo para confirmar');
   assert.equal(restantes(q), 0);
@@ -91,7 +91,7 @@ test('limite de 3 simulações', async () => {
   // Na mesma aba, uma 4ª mensagem também para no aviso.
   const antes = p.mensagens().filter((m) => /danfse-/.test(m.texto)).length;
   await p.enviar(PRONTIA);
-  assert.match(p.mensagens().at(-1).texto, /5 primeiras emissões grátis/);
+  assert.match(p.mensagens().at(-1).texto, /7 dias grátis/);
   assert.equal(p.mensagens().filter((m) => /danfse-/.test(m.texto)).length, antes);
 });
 

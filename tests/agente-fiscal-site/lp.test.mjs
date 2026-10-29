@@ -16,8 +16,8 @@ test('lp leva ao cadastro', () => {
     const c = cartoes.find((x) => x.dataset.plano === plano);
     assert.ok(c, `cartão ${nome}`);
     const a = acoes(c);
-    // Lucca, 22/10/2026: o teste de 7 dias deu lugar às 5 primeiras emissões grátis.
-    assert.deepEqual(a, [{ rotulo: 'Começar com 5 notas grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
+    // Lucca, 30/10/2026: volta o teste de 7 dias com cartão (em 22/10 tinha virado "5 primeiras emissões grátis").
+    assert.deepEqual(a, [{ rotulo: 'Começar 7 dias grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
   }
   // Escritório (mais de 100 notas no próprio negócio) e Agência (vários CNPJs) vão ao WhatsApp comercial.
   for (const [plano, nome, texto] of [
