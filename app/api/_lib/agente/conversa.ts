@@ -69,14 +69,15 @@ export const TEXTOS = {
   expirou: 'Esse pedido expirou. Me mande o pedido de novo.',
   semPedido: `Não há pedido aguardando confirmação. Me mande o pedido da nota, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   descartado: 'Ok, descartei esse pedido. Quando quiser, é só mandar outro.',
-  oQueMuda: 'O que muda? Me mande o cliente ou o valor certo, por exemplo: valor 400 reais. Para desistir da nota, responda *descartar*.',
+  oQueMuda:
+    'O que muda? Me mande o cliente, o valor ou a descrição certa, por exemplo: valor 400 reais, ou descrição consultoria de outubro. Para desistir da nota, responda *descartar*.',
   naoEntendiACorrecao:
-    'Não entendi o que muda. Me mande o cliente ou o valor certo, responda *confirmar* para emitir como está ou *descartar* para desistir.',
+    'Não entendi o que muda. Me mande o cliente, o valor ou a descrição certa, responda *confirmar* para emitir como está ou *descartar* para desistir.',
   cancelamentoDesistido: 'Ok, nenhuma nota foi cancelada.',
   faltaValor: `Qual é o valor da nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
-  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   chamouAEquipeNoOutroNumero: `Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}. Os pedidos de nota continuam funcionando por aqui.`,
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
@@ -85,6 +86,8 @@ export const TEXTOS = {
   numeroConfirmado: 'Número confirmado. Você já pode pedir notas por aqui.',
   codigoRecusado: 'Esse código não vale (errado ou vencido). Peça um novo ao dono da conta no site da Nó.',
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
+  perguntaDeDescricao: `Como você quer descrever o serviço na nota? Me mande o texto, por exemplo: *Consultoria de marketing - outubro/2026*. Ou responda *padrão* para usar "${DESCRICAO_PADRAO}".`,
+  descricaoLonga: 'Essa descrição passou de 2.000 caracteres. Me mande um texto mais curto ou responda *padrão*.',
 } as const
 
 // Quem não tem conta recebe esta resposta uma vez por dia e, no resto do dia, o bot fica quieto. No número
@@ -169,6 +172,8 @@ type Conversa = {
   candidatas?: { id: string; numero: string }[]
   /** Depois de "corrigir": o resumo continua valendo e a próxima mensagem diz o que muda. */
   corrigindo?: boolean
+  /** Antes do resumo, com a descrição padrão: a próxima mensagem é a descrição da nota ou *padrão* (Lucca, 30/10/2026). */
+  pedindoDescricao?: boolean
 }
 
 type Pedido = {
@@ -491,6 +496,14 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
         }
         return false
       }
+      // A pergunta da descrição vem antes do resumo: a resposta é a descrição, *padrão* ou a desistência.
+      if (pedido.conversa.pedindoDescricao) {
+        if (ehDesistir(texto)) {
+          await descartar(ctx, pedido)
+          return true
+        }
+        return escolherDescricao(ctx, pedido, texto)
+      }
       if (ehConfirmar(texto)) {
         ctx.pedidoId = pedido.id
         await confirmar(ctx, pedido)
@@ -572,8 +585,9 @@ async function descartar(ctx: Contexto, pedido: Pedido, texto: string = TEXTOS.d
 }
 
 /**
- * A mensagem depois de "corrigir": a IA lê cliente e valor. Valor novo → o mesmo pedido com o valor trocado e o
- * resumo de novo. Cliente novo → este pedido sai e um novo nasce com o cliente novo e o valor (novo ou o de antes).
+ * A mensagem depois de "corrigir": a IA lê cliente, valor e descrição. Valor ou descrição novos → o mesmo pedido com
+ * eles trocados e o resumo de novo. Cliente novo → este pedido sai e um novo nasce com o cliente novo, o valor (novo
+ * ou o de antes) e a descrição que veio na correção.
  */
 async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
   ctx.pedidoId = pedido.id
@@ -608,11 +622,14 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null }, tokens)
     return true
   }
-  if (parsed.valor && atual.tomador && atual.servico) {
-    const conversa: Conversa = { ...atual, valor: parsed.valor, corrigindo: false }
+  const valor = parsed.valor ?? atual.valor
+  if ((parsed.valor || parsed.descricao) && valor && atual.tomador && atual.servico) {
+    const servico: ServicoDoPedido = parsed.descricao ? { ...atual.servico, descricao: parsed.descricao } : atual.servico
+    const conversa: Conversa = { ...atual, servico, valor, corrigindo: false }
     await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-    logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'valor' })
-    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, atual.servico, parsed.valor))
+    const mudou = parsed.valor && parsed.descricao ? 'valor e descricao' : parsed.valor ? 'valor' : 'descricao'
+    logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
+    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, valor))
     return true
   }
   await responder(ctx, TEXTOS.naoEntendiACorrecao)
@@ -725,8 +742,46 @@ async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): P
     const razao = await ctx.deps.consultaCnpj.razaoSocial(documento).catch(() => null)
     if (razao) tomador.nome = razao.trim().slice(0, 150)
   }
+  conversa.pedindoDescricao = precisaDeDescricao(conversa.servico)
   await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-  await responder(ctx, await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string))
+  await responder(
+    ctx,
+    conversa.pedindoDescricao
+      ? TEXTOS.perguntaDeDescricao
+      : await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string),
+  )
+  return true
+}
+
+// ---------------------------------------------------------------------------------------
+// Descrição da nota (Lucca, 30/10/2026): com a descrição padrão, o robô pergunta antes do resumo; quem já disse o
+// serviço no pedido, ou tem um modelo com descrição própria, vai direto ao resumo.
+
+const precisaDeDescricao = (servico: ServicoDoPedido | undefined) => !servico || servico.descricao === DESCRICAO_PADRAO
+
+/** "padrão", "pular", "não"…: fica a descrição padrão. "confirmar" também, mas só mostra o resumo, não emite. */
+export const ehDescricaoPadrao = (texto: string) =>
+  ehConfirmar(texto) ||
+  /^(padrao|pular|pula|nao|n|generica|pode usar a padrao|pode ser a padrao|usar a padrao|usa a padrao|tanto faz|sem descricao)$/.test(limpa(texto))
+
+async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
+  ctx.pedidoId = pedido.id
+  const atual = pedido.conversa
+  if (!atual.tomador || !atual.servico || !atual.valor) return false
+  let descricao = atual.servico.descricao
+  if (!ehDescricaoPadrao(texto)) {
+    const escrita = texto.trim().replace(/\s+/g, ' ')
+    // Mesmo limite do motor (servico.descricao em validation.ts).
+    if (escrita.length > 2000) {
+      await responder(ctx, TEXTOS.descricaoLonga)
+      return true
+    }
+    descricao = escrita.charAt(0).toUpperCase() + escrita.slice(1)
+  }
+  const servico: ServicoDoPedido = { ...atual.servico, descricao }
+  const conversa: Conversa = { ...atual, servico, pedindoDescricao: false }
+  await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
+  await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, atual.valor))
   return true
 }
 
@@ -891,20 +946,28 @@ async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada:
 
   if (modelo) {
     const tomador: TomadorDoPedido = { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email }
-    const servico: ServicoDoPedido = { codigo: modelo.codigo_servico_nacional, descricao: modelo.descricao }
-    await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa: { tomador, servico, valor, modelo_id: modelo.id } })
-    await responder(ctx, await resumo(ctx, tomador, servico, valor))
+    // A descrição escrita no pedido vale para esta nota; o modelo continua com a dele.
+    const servico: ServicoDoPedido = { codigo: modelo.codigo_servico_nacional, descricao: parsed.descricao ?? modelo.descricao }
+    const pedindoDescricao = precisaDeDescricao(servico)
+    await criarPedido(ctx, {
+      kind: 'emitir',
+      etapa: 'confirmar',
+      parsed,
+      tokens,
+      conversa: { tomador, servico, valor, modelo_id: modelo.id, pedindoDescricao },
+    })
+    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumo(ctx, tomador, servico, valor))
     return
   }
 
-  // Tomador novo (critério 18): código do tenant e descrição padrão; documento e e-mail pela conversa.
+  // Tomador novo (critério 18): código do tenant e a descrição do pedido (ou a padrão); documento e e-mail pela conversa.
   const { rows } = await ctx.deps.db.query<{ codigo: string }>(
     'select codigo_servico_nacional as codigo from nofiscal.fiscal_tenants where id = $1',
     [ctx.tenantId],
   )
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
-    servico: { codigo: rows[0].codigo, descricao: DESCRICAO_PADRAO },
+    servico: { codigo: rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO },
     valor,
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),

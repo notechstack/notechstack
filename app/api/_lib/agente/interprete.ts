@@ -11,6 +11,8 @@ export type Parsed = {
   documento: string | null
   valor: string | null
   modelo: string | null
+  /** O que foi o serviço, quando a pessoa diz (Lucca, 30/10/2026); sem ela, vale a descrição do modelo ou a padrão. */
+  descricao: string | null
   intencao: Intencao
 }
 
@@ -39,7 +41,7 @@ export function valorValido(valor: unknown): string | null {
 }
 
 /**
- * Revalida a saída da IA: só os cinco campos, cada um no formato que o código aceita. Campo
+ * Revalida a saída da IA: só os seis campos, cada um no formato que o código aceita. Campo
  * a mais é descartado; campo inválido vira `null` (e a conversa pergunta o que falta).
  */
 export function validarParsed(bruto: unknown): Parsed {
@@ -52,6 +54,8 @@ export function validarParsed(bruto: unknown): Parsed {
     documento,
     valor: valorValido(obj.valor),
     modelo: texto(obj.modelo, 60),
+    // Mesmo limite do motor (servico.descricao em validation.ts).
+    descricao: texto(obj.descricao, 2000),
     intencao,
   }
 }

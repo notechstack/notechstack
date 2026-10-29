@@ -13,9 +13,10 @@ export const SCHEMA_PARSED = {
     documento: TEXTO_OU_NULO,
     valor: TEXTO_OU_NULO,
     modelo: TEXTO_OU_NULO,
+    descricao: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'intencao'],
   additionalProperties: false,
 }
 
@@ -27,6 +28,7 @@ export const INSTRUCOES = [
   '- modelo: preencha com o mesmo nome do tomador quando a pessoa se refere a um cliente habitual pelo nome; senão null.',
   '- documento: CPF ou CNPJ do cliente, só os dígitos, quando aparecer na mensagem.',
   '- valor: o valor em reais com ponto decimal e duas casas, por exemplo "1500.00" para "mil e quinhentos" ou "1.500,00".',
+  '- descricao: o serviço prestado, quando a pessoa disser o que foi, para ir na descrição da nota (por exemplo "Consultoria de outubro" em "nota pra Studio Lima, 350, consultoria de outubro"). Sem o nome do cliente, o valor ou o CPF/CNPJ; primeira letra maiúscula; senão null.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

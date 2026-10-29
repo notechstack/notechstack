@@ -201,7 +201,7 @@ export function interpreteDouble(
         chamadas.push(texto)
         const resposta = respostas[texto]
         if (!resposta) throw new Error(`intérprete de teste sem resposta para: ${texto}`)
-        const parsed = { tomador: null, documento: null, valor: null, modelo: null, intencao: 'outro', ...resposta }
+        const parsed = { tomador: null, documento: null, valor: null, modelo: null, descricao: null, intencao: 'outro', ...resposta }
         return { parsed: parsed as unknown as Parsed, tokens }
       },
     },

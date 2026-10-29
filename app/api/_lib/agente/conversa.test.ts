@@ -26,7 +26,7 @@ import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb, sefinDouble } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
-import { ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
+import { DESCRICAO_PADRAO, ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
 import { comNonoDigito } from './normalizacao.js'
 import { mensagensDaNotificacao } from './webhook.js'
@@ -328,6 +328,9 @@ describe('conversa no WhatsApp', () => {
     expect(c.ultimaPara(s.ownerPhone)).not.toContain('Posso emitir?')
 
     await c.enviar(s.ownerPhone, '529.982.247-25')
+    // Sem descrição no pedido, a pergunta da descrição vem antes do resumo (Lucca, 30/10/2026).
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
+    await c.enviar(s.ownerPhone, 'padrão')
     const resumo = c.ultimaPara(s.ownerPhone)
     expect(resumo).toContain('Clínica Nova')
     expect(resumo).toContain('529.982.247-25')
@@ -338,6 +341,7 @@ describe('conversa no WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'nota pra Hospital Alfa, 80 reais')
     expect(c.ultimaPara(s.ownerPhone)).toContain('CPF ou CNPJ')
     await c.enviar(s.ownerPhone, 'CNPJ 11.444.777/0001-61, compras@alfa.test')
+    await c.enviar(s.ownerPhone, 'padrão')
     const resumoCnpj = c.ultimaPara(s.ownerPhone)
     expect(resumoCnpj).toContain('HOSPITAL ALFA LTDA')
     expect(resumoCnpj).toContain('11.444.777/0001-61')
@@ -528,7 +532,7 @@ describe('conversa no WhatsApp', () => {
     let pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0].status).toBe('awaiting_confirmation')
-    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['documento', 'intencao', 'modelo', 'tomador', 'valor'])
+    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['descricao', 'documento', 'intencao', 'modelo', 'tomador', 'valor'])
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     await c.enviar(s.ownerPhone, 'cancela a nota da Prontia já')
@@ -570,6 +574,7 @@ describe('conversa no WhatsApp', () => {
 
     await c.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais')
     await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
+    await c.enviar(s.ownerPhone, 'padrão')
     await c.enviar(s.ownerPhone, 'confirmar')
     // Antes de a nota sair, nenhuma oferta.
     expect(c.respostasPara(s.ownerPhone).some((t) => t.includes('para as próximas notas'))).toBe(false)
@@ -599,13 +604,92 @@ describe('conversa no WhatsApp', () => {
     ])
     expect(c.ia.chamadas).toEqual(['nota pra Clínica Nova, 150 reais'])
 
-    // Com o modelo salvo, o próximo pedido vai direto ao resumo e não oferece de novo.
+    // Com o modelo salvo, o próximo pedido não pede CPF nem e-mail e não oferece de novo. O modelo ficou com a
+    // descrição padrão, então a pergunta da descrição volta antes do resumo.
     const d = conversa({ 'nota pra Clínica Nova, 90 reais': { tomador: 'Clínica Nova', valor: '90.00', intencao: 'emitir' } })
     await d.enviar(s.ownerPhone, 'nota pra Clínica Nova, 90 reais')
+    expect(d.ultimaPara(s.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
+    await d.enviar(s.ownerPhone, 'padrão')
     expect(d.ultimaPara(s.ownerPhone)).toContain('Posso emitir?')
     await d.enviar(s.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin, tenantId: s.tenant.id, canais: d.canais, now: d.agora })
     expect(d.respostasPara(s.ownerPhone).some((t) => t.includes('para as próximas notas'))).toBe(false)
+  })
+
+  it('descrição da nota: perguntada antes do resumo, dita no pedido ou corrigida', async () => {
+    // Lucca, 30/10/2026: sem descrição no pedido, o robô pergunta antes do "Posso emitir?"; quem já disse o serviço
+    // no pedido vai direto ao resumo; e a descrição pode mudar no "corrigir".
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa({
+      'nota pra Clínica Nova, 150 reais': { tomador: 'Clínica Nova', valor: '150.00', intencao: 'emitir' },
+      'descrição revisão de contrato': { descricao: 'Revisão de contrato', intencao: 'outro' },
+      'nota pra Prontia, 10 reais, consultoria de outubro': {
+        tomador: 'Prontia Saúde', modelo: 'Prontia', valor: '10.00', descricao: 'Consultoria de outubro', intencao: 'emitir',
+      },
+    })
+
+    await c.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais')
+    await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
+    // A resposta é lida pelo código, sem a IA, e entra com a primeira letra maiúscula.
+    await c.enviar(s.ownerPhone, 'consultoria de marketing - outubro/2026')
+    let resumo = c.ultimaPara(s.ownerPhone)
+    expect(resumo).toContain('Descrição na nota: Consultoria de marketing - outubro/2026')
+    expect(resumo).toContain('Posso emitir?')
+
+    await c.enviar(s.ownerPhone, 'corrigir')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.oQueMuda)
+    await c.enviar(s.ownerPhone, 'descrição revisão de contrato')
+    resumo = c.ultimaPara(s.ownerPhone)
+    expect(resumo).toContain('Descrição na nota: Revisão de contrato')
+    expect(resumo).toContain('R$ 150,00')
+
+    await c.enviar(s.ownerPhone, 'confirmar')
+    const [nota] = await notasDoAgente(admin.db, s.tenant.id)
+    expect((nota.payload.servico as { descricao: string }).descricao).toBe('Revisão de contrato')
+
+    // Descrição dita no pedido: sem pergunta; o modelo continua com a descrição dele.
+    await c.enviar(s.ownerPhone, 'nota pra Prontia, 10 reais, consultoria de outubro')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Descrição na nota: Consultoria de outubro')
+    expect(c.respostasPara(s.ownerPhone).filter((t) => t === TEXTOS.perguntaDeDescricao)).toHaveLength(1)
+    const { rows } = await admin.db.query('select descricao from nofiscal.fiscal_models where tenant_id = $1', [s.tenant.id])
+    expect(rows).toEqual([{ descricao: PRONTIA_CNPJ.descricao }])
+
+    expect(c.ia.chamadas).toEqual([
+      'nota pra Clínica Nova, 150 reais',
+      'descrição revisão de contrato',
+      'nota pra Prontia, 10 reais, consultoria de outubro',
+    ])
+  })
+
+  it('descrição da nota: "padrão" e desistir na pergunta', async () => {
+    const s = await cenario()
+    const c = conversa({ 'nota pra Clínica Nova, 150 reais': { tomador: 'Clínica Nova', valor: '150.00', intencao: 'emitir' } })
+
+    for (const resposta of ['padrão', 'pode usar a padrão', 'não', 'pular']) {
+      await c.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais')
+      await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
+      expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
+      await c.enviar(s.ownerPhone, resposta)
+      expect(c.ultimaPara(s.ownerPhone), resposta).toContain(`Descrição na nota: ${DESCRICAO_PADRAO}`)
+      await c.enviar(s.ownerPhone, 'descartar')
+    }
+
+    // "confirmar" na pergunta usa a padrão e mostra o resumo, mas não emite.
+    await c.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais')
+    await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Posso emitir?')
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
+
+    // Desistir na pergunta descarta o pedido.
+    await c.enviar(s.ownerPhone, 'descartar')
+    await c.enviar(s.ownerPhone, 'nota pra Clínica Nova, 150 reais')
+    await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
+    await c.enviar(s.ownerPhone, 'descartar')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.descartado)
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
   })
 
   it('modelo repetido pergunta', async () => {
@@ -620,6 +704,7 @@ describe('conversa no WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'nota pra prontia, CPF 529.982.247-25, 50 reais')
     expect(c.ultimaPara(s.ownerPhone)).toContain('e-mail')
     await c.enviar(s.ownerPhone, 'filial@prontia.test')
+    await c.enviar(s.ownerPhone, 'padrão')
     expect(c.ultimaPara(s.ownerPhone)).toContain('529.982.247-25')
     await c.enviar(s.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin, tenantId: s.tenant.id, canais: c.canais, now: c.agora })
@@ -656,6 +741,7 @@ describe('conversa no WhatsApp', () => {
     })
     await c.enviar(s.ownerPhone, 'nota pra prontia, CPF 529.982.247-25, 50 reais')
     await c.enviar(s.ownerPhone, 'filial@prontia.test')
+    await c.enviar(s.ownerPhone, 'padrão')
     await c.enviar(s.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin: createSefinClient({ transport: fakeSefin().transport }), tenantId: s.tenant.id, canais: c.canais, now: c.agora })
     await c.enviar(s.ownerPhone, 'sim')
@@ -808,6 +894,7 @@ describe('conversa no WhatsApp', () => {
     // Tomador novo com CNPJ (nome dos dados públicos), tomador de modelo com CNPJ e, para comparar, um com CPF.
     await c.enviar(s.ownerPhone, 'nota pra Hospital Alfa, 80 reais')
     await c.enviar(s.ownerPhone, 'CNPJ 11.444.777/0001-61, compras@alfa.test')
+    await c.enviar(s.ownerPhone, 'padrão')
     await c.enviar(s.ownerPhone, 'confirmar')
     await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
     await c.enviar(s.ownerPhone, 'confirmar')
