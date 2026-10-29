@@ -64,6 +64,11 @@ export function whatsappComRetentativa(whatsapp: EnviaWhatsApp): EnviaWhatsApp {
   }
 }
 
+/** Texto com as mesmas tentativas, dizendo se saiu: quem marca "uma vez" antes de enviar desfaz a marca quando não saiu. */
+export function textoComRetentativa(whatsapp: EnviaWhatsApp, para: string, texto: string): Promise<boolean> {
+  return tentar('whatsapp', () => whatsapp.enviarTexto(para, texto))
+}
+
 export function emailComRetentativa(email: EnviaEmail): EnviaEmail {
   return {
     async enviar(mensagem) {

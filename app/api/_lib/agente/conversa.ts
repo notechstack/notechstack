@@ -11,7 +11,7 @@ import type { InvoicePayload } from '../validation.js'
 import { tratarAtivacao } from './ativacao.js'
 import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
-import { whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
+import { textoComRetentativa, whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
 import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import { tratarComando } from './comandos.js'
 import { documentoNoTexto, emailNoTexto, formatarDocumento, formatarReais, tipoDoDocumento } from './documentos.js'
@@ -454,9 +454,12 @@ async function numeroSemPermissao(
     }
   }
   logEvent('agente.numero_nao_autorizado', { message_id: msg.id })
-  if (!(await marcarUmaVez(deps.db, `atendimento:${msg.de}:${diaLocal(agora)}`))) return
+  const chave = `atendimento:${msg.de}:${diaLocal(agora)}`
+  if (!(await marcarUmaVez(deps.db, chave))) return
   logEvent('agente.atendimento_humano', { message_id: msg.id, origem: 'sem_conta' })
-  await responder(fora, recebidoPelaEquipe(links, deps.numeroProprio))
+  // A resposta do dia só conta se saiu (30/10/2026): com o envio falho, a próxima mensagem do dia tenta de novo.
+  const saiu = await textoComRetentativa(noEnderecoRecebido(deps.whatsapp, msg), msg.de, recebidoPelaEquipe(links, deps.numeroProprio))
+  if (!saiu) await desmarcar(deps.db, chave)
 }
 
 // ---------------------------------------------------------------------------------------
