@@ -51,8 +51,9 @@ test('a renovação do A1 nunca é pedida "por aqui"', () => {
   }
 });
 
-// Decisão de Lucca em 22/10/2026: sem o cartão "Teste"; 5 primeiras emissões grátis no lugar dos 7 dias; o
+// Decisão de Lucca em 22/10/2026: sem o cartão "Teste"; o
 // sob medida se divide em Escritório (mais de 100 notas no próprio negócio) e Agência (vários CNPJs).
+// Lucca, 30/10/2026: o grátis volta a ser o teste de 7 dias com cartão, o que o cadastro e a cobrança fazem.
 test('planos da decisão de 22/10', () => {
   const secao = /<section\b[^>]*id="planos"[^>]*>([\s\S]*?)<\/section>/.exec(HTML);
   assert.ok(secao, 'seção #planos');
@@ -66,13 +67,13 @@ test('planos da decisão de 22/10', () => {
   assert.match(inicial.txt, /R\$ 49(?![\d,])/);
   assert.match(inicial.txt, /até 20 notas/i);
   // Critério 51 da tarefa agente-fiscal-v2: o botão leva ao cadastro no site.
-  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Começar com 5 notas grátis' && a.href === '/agentes/fiscal/comecar/?plano=inicial'), 'Inicial: "Começar com 5 notas grátis"');
+  assert.ok(inicial.acoes.some((a) => a.rotulo === 'Começar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=inicial'), 'Inicial: "Começar 7 dias grátis"');
 
   assert.match(pro.txt, /R\$ 129(?![\d,])/);
   assert.match(pro.txt, /até 100 notas/i);
   assert.match(pro.txt, /cópia[^.]*cliente[^.]*contador/i);
   assert.match(pro.txt, /resumo das notas/i);
-  assert.ok(pro.acoes.some((a) => a.rotulo === 'Começar com 5 notas grátis' && a.href === '/agentes/fiscal/comecar/?plano=pro'), 'Pro: "Começar com 5 notas grátis"');
+  assert.ok(pro.acoes.some((a) => a.rotulo === 'Começar 7 dias grátis' && a.href === '/agentes/fiscal/comecar/?plano=pro'), 'Pro: "Começar 7 dias grátis"');
 
   for (const c of [escritorio, agencia]) {
     assert.match(c.txt, /sob medida/i);
@@ -82,8 +83,7 @@ test('planos da decisão de 22/10', () => {
   assert.match(agencia.txt, /certificado A1 por cliente/i);
 
   for (const c of [inicial, pro]) assert.ok(!c.acoes.some((a) => a.href && /pagar|checkout|app\./i.test(a.href)), `${c.nome}: sem link de assinatura`);
-  assert.match(texto(secao[1]), /5 emissões são gratuitas/);
-  assert.doesNotMatch(texto(secao[1]), /7 dias/);
+  assert.match(texto(secao[1]), /primeiros 7 dias são grátis/);
 });
 
 test('FAQ e JSON-LD coerentes', () => {
