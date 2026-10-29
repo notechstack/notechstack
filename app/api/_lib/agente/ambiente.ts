@@ -6,7 +6,7 @@ import { logEvent } from '../log.js'
 import type { EnviaWhatsApp } from './canais.js'
 import { catalogoDoSite } from './catalogo-servicos.js'
 import { consultaCnpjBrasilApi } from './consulta-cnpj.js'
-import type { ConversaDeps } from './conversa.js'
+import { NUMERO_OFICIAL_DA_NO, type ConversaDeps } from './conversa.js'
 import { iaFromEnv } from '../ia/claude.js'
 import { interpreteNaoConfigurado, type Interprete } from './interprete.js'
 import { interpreteClaude } from './interprete-claude.js'
@@ -22,6 +22,12 @@ function whatsappFromEnv(): EnviaWhatsApp | null {
   const token = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   return token && phoneNumberId ? whatsappCloud({ token, phoneNumberId, graphUrl: variavel('WHATSAPP_GRAPH_URL') }) : null
+}
+
+/** O agente tem número próprio quando `WHATSAPP_NUMERO_AGENTE` não é o número oficial da Nó (o do atendimento). */
+export function numeroProprioFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const agente = (env.WHATSAPP_NUMERO_AGENTE ?? '').replace(/\D/g, '')
+  return agente !== '' && agente !== NUMERO_OFICIAL_DA_NO
 }
 
 export function modelosFromEnv(): ModelosDoAgente {
@@ -40,6 +46,7 @@ export function conversaFromEnv(): ConversaDeps {
     links,
     consultaCnpj: consultaCnpjBrasilApi({ baseUrl: variavel('CNPJ_API_URL') }),
     catalogo: catalogoDoSite({ site: links.site }),
+    numeroProprio: numeroProprioFromEnv(),
   }
 }
 

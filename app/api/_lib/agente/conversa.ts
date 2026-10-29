@@ -55,6 +55,9 @@ export type ConversaDeps = {
   consultaCnpj?: ConsultaCnpj
   /** Descrição do código de serviço na conferência das boas-vindas (v2, lote C). */
   catalogo?: CatalogoDeServicos
+  /** O agente tem número próprio, só do robô (Lucca, 29/10/2026): ninguém da equipe lê este número, então quem
+   * pede uma pessoa vai para o número oficial da Nó. Sem ele, agente e atendimento dividem o número. */
+  numeroProprio?: boolean
   now?: () => Date
 }
 
@@ -75,6 +78,7 @@ export const TEXTOS = {
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
+  chamouAEquipeNoOutroNumero: `Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}. Os pedidos de nota continuam funcionando por aqui.`,
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   escolherAntes: 'Antes, me diga o número da nota que você quer cancelar.',
@@ -83,10 +87,13 @@ export const TEXTOS = {
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
 } as const
 
-// O número do agente é o mesmo do atendimento (Lucca, 22/10/2026): quem não tem conta recebe esta resposta uma vez
-// por dia e, no resto do dia, o bot fica quieto para a equipe conversar pelo WhatsApp Business no mesmo número.
-const recebidoPelaEquipe = (links: Links) =>
-  `Oi! Aqui é a Nó. Recebi sua mensagem e alguém da nossa equipe te responde por aqui. Se você quer emitir notas fiscais pelo WhatsApp, crie sua conta no site: ${links.site}`
+// Quem não tem conta recebe esta resposta uma vez por dia e, no resto do dia, o bot fica quieto. No número
+// dividido com o atendimento (Lucca, 22/10/2026), a equipe conversa pelo WhatsApp Business no mesmo número; no
+// número próprio do agente (29/10/2026), a resposta manda a pessoa para o número oficial da Nó.
+const recebidoPelaEquipe = (links: Links, numeroProprio = false) =>
+  numeroProprio
+    ? `Oi! Este é o número do nó.fiscal, que emite notas fiscais pelo WhatsApp para quem tem conta. Para criar a sua: ${links.site}. Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}.`
+    : `Oi! Aqui é a Nó. Recebi sua mensagem e alguém da nossa equipe te responde por aqui. Se você quer emitir notas fiscais pelo WhatsApp, crie sua conta no site: ${links.site}`
 
 const recusaDeCertificado = (links: Links) =>
   `Por segurança, eu não recebo certificado pelo WhatsApp e não guardei o arquivo. Apague a mensagem com o arquivo e envie o certificado A1 na página segura: ${links.certificado}`
@@ -389,7 +396,7 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   // Pedido de uma pessoa: a equipe responde no mesmo número; o pedido de nota aberto, se houver, continua valendo.
   if (ehPedidoDeAtendimento(texto)) {
     logEvent('agente.atendimento_humano', { message_id: msg.id, tenant_id: ctx.tenantId, origem: 'assinante' })
-    await responder(ctx, TEXTOS.chamouAEquipe)
+    await responder(ctx, deps.numeroProprio ? TEXTOS.chamouAEquipeNoOutroNumero : TEXTOS.chamouAEquipe)
     return
   }
   // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
@@ -449,7 +456,7 @@ async function numeroSemPermissao(
   logEvent('agente.numero_nao_autorizado', { message_id: msg.id })
   if (!(await marcarUmaVez(deps.db, `atendimento:${msg.de}:${diaLocal(agora)}`))) return
   logEvent('agente.atendimento_humano', { message_id: msg.id, origem: 'sem_conta' })
-  await responder(fora, recebidoPelaEquipe(links))
+  await responder(fora, recebidoPelaEquipe(links, deps.numeroProprio))
 }
 
 // ---------------------------------------------------------------------------------------
