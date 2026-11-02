@@ -294,7 +294,10 @@ Deno.serve(async (req) => {
     }
 
     /* ── 3. Meta CAPI ──────────────────────────────────────────────────── */
-    const capiStatus = await mandarLeadCapi({
+    /* Página com aviso de cookies (lista de espera do /agentes/auditor/) manda
+       `consent`; recusado, nada vai à Meta. Sem o campo (demais LPs), segue
+       como sempre. */
+    const capiStatus = b.consent === 'denied' ? 'sem_consentimento' : await mandarLeadCapi({
       sid, email, fone: whatsapp, fbp, fbc, valor, url: pagina, ip, ua, teste,
     })
     if (leadId && SUPABASE_KEY && capiStatus !== 'sem_token') {
