@@ -47,8 +47,6 @@
   var cookies = document.getElementById('au-cookies');
   var btnsPrefs = document.querySelectorAll('[data-consent-prefs]');
   var estadoConsent = document.getElementById('au-consent-estado');
-  if (!form || !input || !estado) return;
-
   /* ---------- utilidades ---------- */
   function cookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\\/+^]/g, '\\$&') + '=([^;]*)'));
@@ -140,6 +138,10 @@
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && cookies && !cookies.hidden) { ev.preventDefault(); fecharCookies(); }
   });
+
+  /* Sem o campo de URL (lista de espera no lugar, enquanto a Meta não aprova o app), o fluxo do diagnóstico
+     fica dormente; o aviso de cookies acima continua valendo. */
+  if (!form || !input || !estado) return;
 
   /* ---------- estados de tela ---------- */
   function render(html, busy) {

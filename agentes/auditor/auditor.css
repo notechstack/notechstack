@@ -105,6 +105,31 @@
 .au-consent-linha{margin:0;font-size:13px;line-height:1.5;color:var(--ag-texto-sec)}
 .au-link-btn{appearance:none;background:none;border:0;padding:0;margin:0;font:inherit;font-weight:600;color:var(--ag-link);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .au-link-btn:focus-visible{outline:2px solid var(--ag-link);outline-offset:2px;border-radius:2px}
+/* ── Lista de espera (enquanto a Meta não aprova o app): selo "Em breve", três campos e aviso com o ícone oficial
+   do WhatsApp. 1 coluna no celular, 3 a partir de 760px; botão abaixo dos campos. ── */
+.au-embreve{display:inline-flex;align-items:center;gap:8px;margin:6px 0 14px;padding:6px 12px;border-radius:999px;background:var(--ag-botao);color:var(--ag-botao-texto);font:600 11px/1.3 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.14em;text-transform:uppercase}
+.au-embreve-ponto{width:7px;height:7px;border-radius:50%;background:currentColor;animation:au-embreve 2s ease-in-out infinite}
+@keyframes au-embreve{0%,100%{opacity:1}50%{opacity:.25}}
+.au-consent-linha a{color:var(--ag-link);font-weight:600}
+.au-lista{max-width:none}
+.au-lista[hidden]{display:none}
+.au-lista-aviso{display:flex;align-items:center;gap:12px;margin:0;padding:12px 14px;border-radius:14px;background:var(--ag-vidro-forte);border:1px solid var(--ag-borda-suave);font-size:15px;line-height:1.45;font-weight:600}
+.au-wa{flex:none;width:28px;height:28px;display:block}
+.au-campos{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:760px){.au-campos{grid-template-columns:1fr 1.2fr 1fr}}
+.au-campo{display:flex;flex-direction:column;gap:6px;min-width:0}
+/* o rótulo centralizado do celular era do campo único de URL; aqui cada rótulo acompanha o seu campo */
+.au-lista .au-label{text-align:left}
+.au-lista .au-input{font-family:var(--font-core,'Sora',sans-serif)}
+.au-lista .au-submit{align-self:stretch}
+@media(min-width:640px){.au-lista .au-submit{align-self:flex-start}}
+.au-lista-ok{display:flex;align-items:flex-start;gap:16px;margin-top:22px;max-width:720px;padding:20px 22px;border-radius:18px;background:var(--ag-vidro-forte);border:1px solid var(--ag-acento-foco);box-shadow:var(--no-shadow-card)}
+.au-lista-ok[hidden]{display:none}
+.au-lista-ok:focus{outline:none}
+.au-lista-ok h2{margin:0 0 4px;font-size:clamp(19px,2.2vw,24px);line-height:1.2;letter-spacing:-.01em}
+.au-lista-ok p{margin:0;font-size:15px;line-height:1.5;color:var(--ag-texto-painel)}
+.au-wa--grande{width:40px;height:40px}
+@media(prefers-reduced-motion:reduce){.au-embreve-ponto{animation:none}}
 
 /* Pop-up de cookies: folha inferior compacta no mobile, card fixo no canto inferior direito no desktop.
    aria-modal="false": não bloqueia a página; z-index abaixo da nav (1100) e acima do conteúdo (1). */
