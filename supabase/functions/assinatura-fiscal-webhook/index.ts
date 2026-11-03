@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { log } from "../_shared/logger.ts";
+import { medirCobranca, type Reivindicacao } from "./compra.ts";
 import { processarAviso } from "./core.ts";
 
 const json = (status: number, body: unknown) =>
@@ -27,6 +28,29 @@ Deno.serve(async (request) => {
           return data as Record<string, unknown> | null;
         },
         log,
+        // Purchase da cobrança paga (compra.ts). Secrets opcionais: sem META_ACCESS_TOKEN não vai à Meta, sem
+        // GA4_API_SECRET não vai ao GA4; GA4_MEASUREMENT_ID só troca a propriedade (padrão G-1YEB89RVER).
+        medirCobranca: (args) => {
+          const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+          return medirCobranca(args, {
+            env: {
+              META_ACCESS_TOKEN: Deno.env.get("META_ACCESS_TOKEN"),
+              META_TEST_EVENT_CODE: Deno.env.get("META_TEST_EVENT_CODE"),
+              GA4_API_SECRET: Deno.env.get("GA4_API_SECRET"),
+              GA4_MEASUREMENT_ID: Deno.env.get("GA4_MEASUREMENT_ID"),
+            },
+            fetch: (url, init) => fetch(url, init),
+            reivindicar: async (a) => {
+              const { data, error } = await sb.rpc("fiscal_reivindicar_cobranca", a);
+              if (error) throw new Error("fiscal_reivindicar_cobranca_falhou");
+              return data as Reivindicacao | null;
+            },
+            registrarResultado: async (a) => {
+              const { error } = await sb.rpc("fiscal_registrar_resultado_cobranca", a);
+              if (error) throw new Error("fiscal_registrar_resultado_cobranca_falhou");
+            },
+          });
+        },
       },
     );
     return json(resultado.http, resultado.body);

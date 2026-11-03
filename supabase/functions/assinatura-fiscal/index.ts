@@ -131,6 +131,14 @@ Deno.serve(async (request) => {
       log,
       // Meta CAPI da compra: o mesmo segredo de meta-capi e pagarme-webhook-no. Sem ele, nada sai.
       enviarMeta: metaToken ? (corpo) => enviarParaMeta((url, init) => fetch(url, init), metaToken, corpo) : undefined,
+      registrarMedicao: async (assinaturaId, m) => {
+        await rpc("fiscal_registrar_medicao", {
+          p_subscription_id: assinaturaId,
+          p_consent: m.consent,
+          p_fbp: m.fbp,
+          p_fbc: m.fbc,
+        });
+      },
       cliente: {
         ip: (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null,
         ua: request.headers.get("user-agent"),

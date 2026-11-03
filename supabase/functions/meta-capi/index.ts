@@ -16,20 +16,90 @@
    Deploy: precisa de --no-verify-jwt. O browser chama sem Authorization; com
    verify_jwt ligado toda chamada volta 401 antes de entrar aqui.
 
-   POLÍTICA DA META: `custom_data` leva SÓ `value` e `currency`. Sem
-   content_name / content_category / content_ids / contents. Quatro das
-   dezenove folhas da árvore do CRT são saúde, e categoria de saúde em evento
-   Meta é violação de política, com risco de conta restrita. Cortar de todos
-   os eventos custa nada e tira o pé da armadilha. */
+   POLÍTICA DA META: em PageView e ViewContent, `custom_data` leva SÓ `value` e
+   `currency`. Sem content_name / content_category / content_ids / contents.
+   Quatro das dezenove folhas da árvore do CRT são saúde, e categoria de saúde
+   em evento Meta é violação de política, com risco de conta restrita.
+   EXCEÇÃO FECHADA (03/11/2026, funil do nó.fiscal): AddToCart e Lead aceitam
+   também content_name, content_ids, content_type e content_category, mas só
+   com valores do próprio nó.fiscal (nome "nó.fiscal …", ids "nofiscal-…",
+   categoria "nofiscal", tipo "product"). Qualquer outro valor é descartado,
+   então não há caminho para categoria de saúde entrar por aqui. */
 
 const PIXEL_ID = '1753619075655271';          // portfólio 990413650211777
 const GRAPH    = 'https://graph.facebook.com/v21.0';
 
 /* LISTA FECHADA: a função é pública (sem JWT), então só passam os eventos de
-   navegação que ela existe para cobrir. Lead e Purchase saem do servidor
-   (send-lead-email, pagarme-webhook-no) e DiagnosticoEntregue sai do
-   diagnostico-auditor; nenhum deles entra por aqui. */
-const EVENTOS_PERMITIDOS = new Set(['PageView', 'ViewContent']);
+   navegação que ela existe para cobrir. O Lead dos formulários e o Purchase
+   saem do servidor (send-lead-email, pagarme-webhook-no, assinatura-fiscal*)
+   e DiagnosticoEntregue sai do diagnostico-auditor; nenhum deles entra aqui.
+   AddToCart (plano escolhido) e Lead (Escritório e Agência pelo WhatsApp) do
+   nó.fiscal entram desde 03/11/2026, com as travas de EVENTOS_NOFISCAL. */
+const EVENTOS_PERMITIDOS = new Set(['PageView', 'ViewContent', 'AddToCart', 'Lead']);
+
+/* Travas dos eventos do nó.fiscal, que valem para otimização de campanha e
+   por isso não podem ser fáceis de forjar: Origin do site de produção (o
+   navegador sempre manda Origin num POST JSON entre origens; a página só
+   chama esta função nos hosts de shared/marketing-host.js), event_id no
+   formato do site (o mesmo do Pixel, para a Meta deduplicar) e custom_data só
+   com valores do nó.fiscal. PageView e ViewContent seguem como antes. */
+const EVENTOS_NOFISCAL = new Set(['AddToCart', 'Lead']);
+const HOSTS_DO_SITE = new Set(['www.notechstack.com.br', 'notechstack.com.br']);
+const EVENT_ID_NOFISCAL = /^nofiscal-[A-Za-z0-9_-]{6,100}$/;
+const CONTENT_ID_NOFISCAL = /^nofiscal-[a-z0-9-]{1,40}$/;
+const VALOR_MAXIMO = 100000;
+
+function origemDoSite(origin: string | null): boolean {
+  if (!origin) return false;
+  try {
+    const u = new URL(origin);
+    return u.protocol === 'https:' && HOSTS_DO_SITE.has(u.hostname) && !u.port;
+  } catch {
+    return false;
+  }
+}
+
+/* Só origem + caminho de uma página do site; qualquer outra coisa some. */
+function paginaDoSite(v: unknown): string | undefined {
+  if (typeof v !== 'string' || !v) return undefined;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && HOSTS_DO_SITE.has(u.hostname) ? `${u.origin}${u.pathname}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/* custom_data permitido. Aceita os campos no topo do corpo (formato de
+   sempre: value, currency) e dentro de `custom_data` (que vence). */
+function customData(eventName: string, body: Record<string, unknown>): Record<string, unknown> {
+  const aninhado = body.custom_data && typeof body.custom_data === 'object' && !Array.isArray(body.custom_data)
+    ? body.custom_data as Record<string, unknown>
+    : {};
+  const campo = (k: string) => (k in aninhado ? aninhado[k] : body[k]);
+
+  const valor = campo('value');
+  const moeda = typeof campo('currency') === 'string' ? String(campo('currency')).trim().toUpperCase() : '';
+  const out: Record<string, unknown> = {
+    value: typeof valor === 'number' && Number.isFinite(valor) && valor >= 0 && valor <= VALOR_MAXIMO ? valor : 0,
+    currency: /^[A-Z]{3}$/.test(moeda) ? moeda : 'BRL',
+  };
+  if (!EVENTOS_NOFISCAL.has(eventName)) return out;
+
+  const nome = campo('content_name');
+  if (typeof nome === 'string') {
+    const n = nome.normalize('NFC').trim();
+    if (n.length <= 60 && /^nó\.fiscal( [\p{L}\p{N} ]{1,40})?$/u.test(n)) out.content_name = n;
+  }
+  const ids = campo('content_ids');
+  if (Array.isArray(ids) && ids.length >= 1 && ids.length <= 5 &&
+      ids.every((i) => typeof i === 'string' && CONTENT_ID_NOFISCAL.test(i))) {
+    out.content_ids = ids;
+  }
+  if (campo('content_type') === 'product') out.content_type = 'product';
+  if (campo('content_category') === 'nofiscal') out.content_category = 'nofiscal';
+  return out;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,8 +140,7 @@ async function enviarCapi(opts: {
   event_source_url?: string;
   fbp?: string;
   fbc?: string;
-  value?: number;
-  currency?: string;
+  custom_data: Record<string, unknown>;
   email?: string;
   phone?: string;
   ip?: string;
@@ -98,10 +167,7 @@ async function enviarCapi(opts: {
       event_source_url: opts.event_source_url || undefined,
       action_source: 'website',
       user_data,
-      custom_data: {
-        value: typeof opts.value === 'number' ? opts.value : 0,
-        currency: opts.currency || 'BRL',
-      },
+      custom_data: opts.custom_data,
     }],
   };
   /* código de teste do Events Manager: quando presente, o evento aparece na
@@ -128,6 +194,7 @@ Deno.serve(async (req: Request) => {
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { body = {}; }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
 
   /* 400 com esta mensagem exata é o teste de fumaça do plano: quem responde
      isso já passou do verify_jwt e já enxergou o token. */
@@ -140,17 +207,30 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'evento_nao_permitido' }, 400);
   }
 
+  const nofiscal = EVENTOS_NOFISCAL.has(event_name);
+  const event_id = body.event_id ? String(body.event_id) : undefined;
+  if (nofiscal) {
+    if (!origemDoSite(req.headers.get('origin'))) {
+      console.warn('meta-capi: origem recusada para', event_name);
+      return json({ error: 'origem_nao_permitida' }, 403);
+    }
+    if (!event_id || !EVENT_ID_NOFISCAL.test(event_id)) return json({ error: 'event_id_invalido' }, 400);
+    /* action_source "website" exige a página; sem ela a Meta recusa o evento. */
+    if (!paginaDoSite(body.event_source_url)) return json({ error: 'event_source_url_invalido' }, 400);
+  }
+
   const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim();
   const ua = req.headers.get('user-agent') || '';
 
   const r = await enviarCapi({
     event_name,
-    event_id:         body.event_id ? String(body.event_id) : undefined,
-    event_source_url: body.event_source_url ? String(body.event_source_url) : undefined,
+    event_id,
+    event_source_url: nofiscal
+      ? paginaDoSite(body.event_source_url)
+      : body.event_source_url ? String(body.event_source_url) : undefined,
     fbp:              body.fbp ? String(body.fbp) : undefined,
     fbc:              body.fbc ? String(body.fbc) : undefined,
-    value:            typeof body.value === 'number' ? body.value : undefined,
-    currency:         body.currency ? String(body.currency) : undefined,
+    custom_data:      customData(event_name, body),
     email:            body.email ? String(body.email) : undefined,
     phone:            body.phone ? String(body.phone) : undefined,
     test_event_code:  body.test_event_code ? String(body.test_event_code) : undefined,
