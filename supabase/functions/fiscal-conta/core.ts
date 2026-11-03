@@ -4,7 +4,15 @@
 // plano" e "Apagar conta" (lote B), e o "Contrato E → B" (lote E). Dado de cartão nunca passa por
 // aqui: só o card_token. O banco é alcançado só pelas funções public.fiscal_* (deps).
 
-import { type CodigoPlano, lerConfig, lerEndereco, enderecoPagarme, PLANOS_PAGARME } from "../assinatura-fiscal/core.ts";
+import {
+  type Ciclo,
+  type CodigoPlano,
+  centavosDoCiclo,
+  enderecoPagarme,
+  lerConfig,
+  lerEndereco,
+  PLANOS_PAGARME,
+} from "../assinatura-fiscal/core.ts";
 
 type Nivel = "info" | "warn" | "error";
 
@@ -32,6 +40,8 @@ export type EstadoBanco = {
     cancelamento_origem: string | null;
     pagarme_subscription_id: string;
     periodo_fim: string | null;
+    /** Desde a migração 20261103090000; ausente é mensal. */
+    ciclo?: string | null;
   } | null;
   certificado: { subject: string; not_after: string } | null;
   fiscal: Record<string, unknown>;
@@ -77,6 +87,11 @@ export function ehCortesia(subscriptionId: string | null | undefined): boolean {
   return typeof subscriptionId === "string" && subscriptionId.startsWith("cortesia_");
 }
 
+/** Ciclo da assinatura no estado do banco: só "anual" muda alguma coisa. */
+export function cicloDaAssinatura(a: { ciclo?: string | null } | null | undefined): Ciclo {
+  return a && a.ciclo === "anual" ? "anual" : "mensal";
+}
+
 /** Estado para a página (contrato E → B): sem ids do Pagar.me nem campos internos. */
 export function estadoPublico(e: EstadoBanco): Record<string, unknown> {
   const a = e.assinatura;
@@ -94,6 +109,7 @@ export function estadoPublico(e: EstadoBanco): Record<string, unknown> {
         trial_ends_at: a.trial_ends_at,
         periodo_fim: cortesia ? null : a.periodo_fim,
         cortesia,
+        ciclo: cicloDaAssinatura(a),
         cancelamento_agendado_para: a.cancelamento_agendado_para,
       }
       : null,
@@ -373,6 +389,11 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     if (sub.cancelamento_agendado_para) {
       return erro(409, "CANCELAMENTO_AGENDADO", "A assinatura já tem cancelamento agendado. O plano não pode mudar.");
     }
+    // No anual o PUT do item só mudaria o preço da renovação, e a franquia mudaria na hora (ano pago
+    // de Inicial com franquia Pro, ou Pro pago sem crédito). Até existir troca com proporcional: com a equipe.
+    if (cicloDaAssinatura(sub) === "anual") {
+      return erro(409, "TROCA_ANUAL_INDISPONIVEL", "No plano anual, a troca de plano é feita com a nó. Fale com a gente pelo WhatsApp.");
+    }
     const itens = await chamar("fiscal_conta_plano_itens_falhou", "GET", `${caminhoAssinatura(sub.pagarme_subscription_id)}/items`);
     if (!itens || !itens.ok) return erro(502, "PAGARME_FALHOU", MSG_PAGARME);
     const lista = Array.isArray(obj(itens.json).data) ? obj(itens.json).data as unknown[] : [];
@@ -381,22 +402,23 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
       log("error", "fiscal_conta_plano_sem_item", { tenant_id: estado.tenant_id });
       return erro(502, "PAGARME_FALHOU", MSG_PAGARME);
     }
-    const p = PLANOS_PAGARME[plano];
+    const ciclo = cicloDaAssinatura(sub);
+    const nome = PLANOS_PAGARME[plano].nome;
     const r = await chamar(
       "fiscal_conta_plano_pagarme_falhou",
       "PUT",
       `${caminhoAssinatura(sub.pagarme_subscription_id)}/items/${encodeURIComponent(String(item.id))}`,
       {
-        name: p.nome,
-        description: `Assinatura ${p.nome} · nó tech stack`,
+        name: nome,
+        description: `Assinatura ${nome} · nó tech stack`,
         quantity: 1,
-        pricing_scheme: { scheme_type: "unit", price: p.centavos },
+        pricing_scheme: { scheme_type: "unit", price: centavosDoCiclo(plano, ciclo) },
       },
     );
     if (!r || !r.ok) return erro(502, "PAGARME_FALHOU", MSG_PAGARME);
     const banco = await deps.trocarPlano(userId, plano);
     if (!banco.ok) return resultadoDoBanco(banco);
-    log("info", "fiscal_conta_plano_trocado", { tenant_id: estado.tenant_id, plano });
+    log("info", "fiscal_conta_plano_trocado", { tenant_id: estado.tenant_id, plano, ciclo });
     return await estadoAtual(userId, deps);
   }
 

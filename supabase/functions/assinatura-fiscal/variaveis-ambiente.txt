@@ -9,11 +9,16 @@ PAGARME_ASSINATURA_API_URL=
 # sandbox (padrão) ou producao. Em sandbox recusa chave que não comece com sk_test_.
 # Em produção recusaria se TEXTO_ACEITE_PROVISORIO voltasse a true em core.ts (false desde 22/10/2026).
 PAGARME_ASSINATURA_AMBIENTE=sandbox
-# Ids plan_... dos quatro planos (corpoDoPlano em core.ts): os dois primeiros com trial_period_days = 7.
+# Ids plan_... dos planos (corpoDoPlano em core.ts): os "com teste" com trial_period_days = 7.
 PAGARME_PLANO_FISCAL_INICIAL_ID=
 PAGARME_PLANO_FISCAL_PRO_ID=
 PAGARME_PLANO_FISCAL_INICIAL_SEM_TESTE_ID=
 PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID=
+# Anuais (03/11/2026): interval = year, 12 mensalidades com 20% off. Sem os quatro, a página só oferece o mensal.
+PAGARME_PLANO_FISCAL_INICIAL_ANUAL_ID=
+PAGARME_PLANO_FISCAL_PRO_ANUAL_ID=
+PAGARME_PLANO_FISCAL_INICIAL_ANUAL_SEM_TESTE_ID=
+PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID=
 # "sim" libera o checkout.
 FISCAL_VENDA_ABERTA=
 # Sal do hash do teste grátis (o mesmo do app). Sem ele o checkout recusa.

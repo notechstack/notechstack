@@ -226,7 +226,7 @@ select ok(not exists (
      cross join (values
        ('public.fiscal_assinatura_contexto(uuid)'),
        ('public.fiscal_reivindicar_teste(uuid, jsonb)'),
-       ('public.fiscal_registrar_assinatura(uuid, text, boolean, timestamptz, text, text, text, text)'),
+       ('public.fiscal_registrar_assinatura(uuid, text, boolean, timestamptz, text, text, text, text, text)'),
        ('public.fiscal_aplicar_evento_assinatura(text, text, text, text, jsonb, timestamptz)')) f(fn)
      where has_function_privilege(r.role, f.fn, 'EXECUTE')),
   'estado da assinatura: só service_role executa as funções de public');

@@ -280,8 +280,8 @@ export async function preencherCartao(p, prefixo = 'fc', cartao = CARTAO) {
 }
 
 // Abre /comecar/ já com sessão, numa etapa do servidor (retomada).
-export async function abrirNaEtapa(onboarding_etapa, { estadoExtra = {}, respostas = {}, aba = {} } = {}) {
+export async function abrirNaEtapa(onboarding_etapa, { estadoExtra = {}, respostas = {}, aba = {}, local = {} } = {}) {
   const rede = superficie({ 'fiscal-conta:estado': () => ({ status: 200, corpo: estado({ onboarding_etapa, ...estadoExtra }) }), ...respostas });
-  const p = await abrir('/agentes/fiscal/comecar/', { rede, local: { 'nofiscal.sessao': sessaoValida() }, aba });
+  const p = await abrir('/agentes/fiscal/comecar/', { rede, local: { 'nofiscal.sessao': sessaoValida(), ...local }, aba });
   return p;
 }

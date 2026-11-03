@@ -23,6 +23,7 @@
   'use strict';
   var CONSENT_KEY = 'no_fiscal_consent';
   var PRECOS = { inicial: 49, pro: 129 }; // reais por mês (assinatura-fiscal/core.ts, PLANOS_PAGARME)
+  var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4 }; // reais por ano no anual (20% off, core.ts centavosAnuais)
 
   function consentido() {
     try { return localStorage.getItem(CONSENT_KEY) === 'granted'; } catch (e) { return false; }
@@ -59,7 +60,10 @@
     if ((tentativas || 0) >= 20) return;
     setTimeout(function () { fbqQuandoPronto(args, (tentativas || 0) + 1); }, 250);
   }
-  function precoDe(plano) { return Object.prototype.hasOwnProperty.call(PRECOS, plano) ? PRECOS[plano] : null; }
+  function precoDe(plano, ciclo) {
+    var tabela = ciclo === 'anual' ? PRECOS_ANUAIS : PRECOS;
+    return Object.prototype.hasOwnProperty.call(tabela, plano) ? tabela[plano] : null;
+  }
 
   function disparar(nome, dados, meta) {
     var eventId = (meta && meta.eventId) || 'nofiscal-' + uuid();
@@ -82,9 +86,10 @@
     verPagina: function () {
       return disparar('nofiscal_view_content', { pagina: location.pathname }, { evento: 'ViewContent' });
     },
-    planoEscolhido: function (plano, origem) {
-      var valor = precoDe(plano);
-      return disparar('nofiscal_plano_escolhido', { plano: plano, valor: valor, moeda: 'BRL', origem: origem },
+    planoEscolhido: function (plano, origem, ciclo) {
+      var valor = precoDe(plano, ciclo);
+      return disparar('nofiscal_plano_escolhido',
+        { plano: plano, valor: valor, moeda: 'BRL', origem: origem, ciclo: ciclo === 'anual' ? 'anual' : undefined },
         { evento: 'AddToCart', dados: valorMeta(valor) });
     },
     cadastroIniciado: function (plano) {
@@ -103,9 +108,10 @@
       if (!primeiraVez('cadastro')) return null;
       return disparar('nofiscal_cadastro', { plano: plano, metodo: 'email' }, { evento: 'CompleteRegistration', dados: {} });
     },
-    checkoutIniciado: function (plano, valor, cupom) {
-      if (!primeiraVez('checkout.' + plano + '.' + (cupom || ''))) return null;
-      return disparar('nofiscal_checkout', { plano: plano, valor: valor, moeda: 'BRL', cupom: cupom || undefined },
+    checkoutIniciado: function (plano, valor, cupom, ciclo) {
+      var anual = ciclo === 'anual';
+      if (!primeiraVez('checkout.' + plano + (anual ? '.anual' : '') + '.' + (cupom || ''))) return null;
+      return disparar('nofiscal_checkout', { plano: plano, valor: valor, moeda: 'BRL', cupom: cupom || undefined, ciclo: anual ? 'anual' : undefined },
         { evento: 'InitiateCheckout', dados: valorMeta(valor) });
     },
     pagamentoInfo: function (plano, valor) {
