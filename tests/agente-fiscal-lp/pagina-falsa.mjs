@@ -76,7 +76,7 @@ function no(tag, reg) {
     appendChild(c) { c.pai = this; this.filhos.push(c); return c; },
     remove() { if (this.pai) this.pai.filhos = this.pai.filhos.filter((x) => x !== this); this.pai = null; },
     querySelectorAll(sel) { return this._cache[sel] || (this._cache[sel] = buscar(this, sel)); },
-    closest() { return null; }, focus() {}, scrollIntoView() {}, setAttribute() {}, removeAttribute() {}
+    closest() { return null; }, focus() {}, scrollIntoView() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }
   };
 }
 
@@ -92,13 +92,17 @@ function doHtml(id, reg) {
 }
 
 // Abre a página: mesmo `armazenamento` entre duas chamadas = recarregar no mesmo navegador.
-export function abrirPagina({ armazenamento = new Map() } = {}) {
+// `seletores`: o que document.querySelectorAll devolve por seletor (padrão: nada). `extras`: entra no window antes dos
+// scripts (fetch, noMarketingHostAllowed, cookie...), para os testes de medição.
+export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras = {} } = {}) {
   const reg = { rede: [], criados: [], html: [], navegou: [] };
   const ids = {};
   const document = {
     cookie: '', activeElement: null, documentElement: { classList: lista() },
     getElementById(id) { if (!(id in ids)) ids[id] = doHtml(id, reg); return ids[id]; },
-    querySelectorAll: () => [], getElementsByTagName: () => [],
+    querySelectorAll: (sel) => seletores[sel] || [],
+    // um <script> qualquer, para o snippet do GTM ter onde se inserir quando o teste simula o domínio de produção
+    getElementsByTagName: () => [{ parentNode: { insertBefore() {} } }],
     createElement(tag) { reg.criados.push(String(tag).toLowerCase()); return no(tag, reg); },
     addEventListener() {}
   };
@@ -125,6 +129,8 @@ export function abrirPagina({ armazenamento = new Map() } = {}) {
   };
   ctx.window = ctx;
   ctx.self = ctx;
+  Object.assign(ctx, extras);
+  if (extras.cookie !== undefined) document.cookie = extras.cookie;
   vm.createContext(ctx);
   for (const s of scriptsInline()) vm.runInContext(s, ctx);
   vm.runInContext(MEDICAO, ctx);

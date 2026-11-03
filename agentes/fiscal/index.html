@@ -43,6 +43,8 @@
 window.gtag('consent','default',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c,wait_for_update:500});})();</script>
 <!-- Google Tag Manager (mesmo container da home) -->
 <script src="/shared/marketing-host.js?v=1"></script>
+<!-- Meta Pixel retido até o aceite (Lucca, 03/11/2026): cria a fila do fbq ANTES do GTM; ver o arquivo -->
+<script src="/shared/pixel-consentimento.js?v=1"></script>
 <script>if(window.noMarketingHostAllowed&&window.noMarketingHostAllowed(location.hostname))(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -50,8 +52,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-NK87FH8W');</script>
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
-<script src="/agentes/fiscal/medicao.js?v=3" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=10" defer></script>
+<script src="/agentes/fiscal/medicao.js?v=4" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=11" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -218,7 +220,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01M12 11h.01"/></svg></span>
         <h3>Escritório<small>Pra quem emite mais de 100 notas por mês no próprio negócio</small></h3>
         <p class="fi-plano-preco fi-plano-preco--texto">Sob medida</p>
-        <a class="fi-btn fi-btn--tinta" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Quero%20o%20plano%20Escrit%C3%B3rio%20do%20n%C3%B3.fiscal%3A%20emito%20mais%20de%20100%20notas%20por%20m%C3%AAs." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
+        <a class="fi-btn fi-btn--tinta" data-lead="escritorio" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Quero%20o%20plano%20Escrit%C3%B3rio%20do%20n%C3%B3.fiscal%3A%20emito%20mais%20de%20100%20notas%20por%20m%C3%AAs." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <ul class="fi-plano-itens">
           <li>Franquia de notas combinada com você</li>
           <li>Emissão e cancelamento pelo WhatsApp</li>
@@ -231,7 +233,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
         <h3>Agência<small>Pra integrar a emissão no sistema dos seus clientes</small></h3>
         <p class="fi-plano-preco fi-plano-preco--texto">Sob medida</p>
-        <a class="fi-btn fi-btn--tinta" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Sou%20de%20uma%20ag%C3%AAncia%20e%20quero%20integrar%20o%20n%C3%B3.fiscal%20ao%20sistema%20dos%20meus%20clientes." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
+        <a class="fi-btn fi-btn--tinta" data-lead="agencia" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Sou%20de%20uma%20ag%C3%AAncia%20e%20quero%20integrar%20o%20n%C3%B3.fiscal%20ao%20sistema%20dos%20meus%20clientes." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <ul class="fi-plano-itens">
           <li>Um cadastro e um certificado A1 por cliente</li>
           <li>API para o sistema que você já usa</li>

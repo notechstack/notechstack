@@ -174,10 +174,36 @@
   /* ---------- funil de compra (medicao.js) ---------- */
   var medir = window.noFiscalMedicao || null;
   if (medir) medir.verPagina();
-  Array.prototype.forEach.call(document.querySelectorAll('a[data-plano]'), function (a) {
-    a.addEventListener('click', function () {
-      if (medir) medir.planoEscolhido(a.getAttribute('data-plano'), 'planos', planos && planos.getAttribute('data-ciclo'));
+  /* Clique "comum" (botão principal, sem Ctrl/Cmd/Shift/Alt): só esse a página segura para o evento sair antes de
+     trocar de página. Ctrl/Cmd-clique e o botão do meio abrem a nova aba normalmente (a página fica, o envio também). */
+  function cliqueComum(ev) {
+    return !(ev.defaultPrevented || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey);
+  }
+  /* Segura a navegação até a medição confirmar (CAPI e GTM) ou 300 ms; sem nada a esperar, segue na hora. */
+  function seguirDepois(ev, eventId, ir) {
+    var espera = medir && eventId ? medir.aposEnvio(eventId) : null;
+    if (!espera) { if (!ev) ir(); return; }
+    if (ev) ev.preventDefault();
+    espera.then(ir);
+  }
+  function medirLink(a, medida) {
+    a.addEventListener('click', function (ev) {
+      var id = medida();
+      if (!cliqueComum(ev) || a.target === '_blank') return; // nova aba: nada a segurar
+      var href = a.href; // já com o ?ciclo= do botão Mensal/Anual
+      seguirDepois(ev, id, function () { location.assign(href); });
     });
+    a.addEventListener('auxclick', function (ev) { if (ev.button === 1) medida(); }); // botão do meio
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('a[data-plano]'), function (a) {
+    medirLink(a, function () {
+      return medir ? medir.planoEscolhido(a.getAttribute('data-plano'), 'planos', planos && planos.getAttribute('data-ciclo')) : null;
+    });
+  });
+  /* Escritório e Agência: o WhatsApp comercial abre em outra aba (target=_blank), então não há o que segurar; o Lead
+     sai no clique, com keepalive na CAPI (Lucca, 03/11/2026: nesses planos o evento é Lead). */
+  Array.prototype.forEach.call(document.querySelectorAll('a[data-lead]'), function (a) {
+    medirLink(a, function () { return medir ? medir.lead(a.getAttribute('data-lead'), 'whatsapp') : null; });
   });
 
   /* ---------- simulador ---------- */
@@ -280,7 +306,11 @@
   function ctaFinal(el) {
     el.addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-acao]'); if (!b) return;
-      if (b.dataset.acao === 'conta') { dl({ event: 'fiscal_cta_conta', origem: 'simulador' }); if (medir) medir.planoEscolhido('inicial', 'simulador'); location.assign(cadastroUrl()); }
+      if (b.dataset.acao === 'conta') {
+        dl({ event: 'fiscal_cta_conta', origem: 'simulador' });
+        var url = cadastroUrl();
+        seguirDepois(null, medir ? medir.planoEscolhido('inicial', 'simulador') : null, function () { location.assign(url); });
+      }
       else irPara('planos');
     });
   }
