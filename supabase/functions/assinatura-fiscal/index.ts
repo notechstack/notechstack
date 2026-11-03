@@ -22,6 +22,10 @@ const NOMES_ENV = [
   "PAGARME_PLANO_FISCAL_PRO_ID",
   "PAGARME_PLANO_FISCAL_INICIAL_SEM_TESTE_ID",
   "PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID",
+  "PAGARME_PLANO_FISCAL_INICIAL_ANUAL_ID",
+  "PAGARME_PLANO_FISCAL_PRO_ANUAL_ID",
+  "PAGARME_PLANO_FISCAL_INICIAL_ANUAL_SEM_TESTE_ID",
+  "PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID",
   "FISCAL_VENDA_ABERTA",
   "FISCAL_TRIAL_SALT",
   // Só em teste: manda a compra para a aba "Testar eventos" do Events Manager.
@@ -92,6 +96,8 @@ Deno.serve(async (request) => {
           p_subscription_id: l.subscription_id,
           p_status: l.status,
           p_aceite_texto: l.aceite_texto,
+          // Só no anual: o mensal segue chamando a assinatura antiga da função (p_ciclo tem padrão 'mensal').
+          ...(l.ciclo === "anual" ? { p_ciclo: l.ciclo } : {}),
         }) as { id?: string; status?: string; reconciliada?: boolean } | null;
         if (!data?.id) throw new Error("fiscal_registrar_assinatura_sem_id");
         log("info", "assinatura_fiscal_registrada", {

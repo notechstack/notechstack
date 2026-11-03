@@ -119,14 +119,18 @@
 
     var plano = nf.PLANOS[e.plano] || nf.PLANOS.inicial;
     $('fa-plano-nome').textContent = plano.nome;
-    $('fa-plano-notas').textContent = 'Até ' + plano.notas + ' · ' + nf.reais(plano.centavos) + '/mês';
+    $('fa-plano-notas').textContent = a && a.ciclo === 'anual'
+      ? 'Até ' + plano.notas + ' · ' + nf.reais(plano.anual) + '/ano (anual)'
+      : 'Até ' + plano.notas + ' · ' + nf.reais(plano.centavos) + '/mês';
     var s = statusAssinatura(a);
     var pill = $('fa-status');
     pill.textContent = s[0];
     pill.className = 'nf-status' + (s[1] ? ' nf-status--' + s[1] : '');
     var ativa = a && a.status !== 'cancelada';
     $('fa-trocar-plano').textContent = pro ? 'Mudar para o Inicial' : 'Mudar para o Pro';
-    $('fa-trocar-plano').hidden = !ativa;
+    // No anual a troca é com a equipe (fiscal-conta: TROCA_ANUAL_INDISPONIVEL).
+    $('fa-trocar-plano').hidden = !ativa || a.ciclo === 'anual';
+    $('fa-periodo-pago').textContent = a && a.ciclo === 'anual' ? 'do ano já pago' : 'do mês já pago';
     $('fa-abrir-cartao').hidden = !ativa;
 
     $('fa-cert-titular').textContent = c && c.subject ? nf.titular(c.subject) : 'Nenhum certificado enviado';

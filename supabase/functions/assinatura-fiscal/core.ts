@@ -9,50 +9,108 @@ import { hashesDoTeste, normalizarTelefone } from "./teste-gratis.ts";
 import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao } from "./medicao.ts";
 
 export type CodigoPlano = "inicial" | "pro";
-export type CodigoPlanoPagarme = CodigoPlano | "inicial_sem_teste" | "pro_sem_teste";
+/** Ciclo de cobrança (Lucca, 03/11/2026): anual = 12 mensalidades com 20% off, cobradas de uma vez. */
+export type Ciclo = "mensal" | "anual";
+export type CodigoPlanoPagarme =
+  | CodigoPlano
+  | "inicial_sem_teste"
+  | "pro_sem_teste"
+  | "inicial_anual"
+  | "pro_anual"
+  | "inicial_anual_sem_teste"
+  | "pro_anual_sem_teste";
 export type Ambiente = "sandbox" | "producao";
 type Nivel = "info" | "warn" | "error";
 
 const DIAS_DE_TESTE = 7;
 const DIA_MS = 24 * 3600 * 1000;
 
+export const DESCONTO_ANUAL_PERCENTUAL = 20;
+
+/** Preço do ano no anual: 12 mensalidades com o desconto, em centavos. */
+export function centavosAnuais(mensal: number): number {
+  return Math.round(mensal * 12 * (100 - DESCONTO_ANUAL_PERCENTUAL) / 100);
+}
+
 export const PLANOS_PAGARME: Record<CodigoPlanoPagarme, {
   nome: string;
   centavos: number;
   comTeste: boolean;
+  ciclo: Ciclo;
   env: string;
 }> = {
-  inicial: { nome: "Agente Fiscal Inicial", centavos: 4900, comTeste: true, env: "PAGARME_PLANO_FISCAL_INICIAL_ID" },
-  pro: { nome: "Agente Fiscal Pro", centavos: 12900, comTeste: true, env: "PAGARME_PLANO_FISCAL_PRO_ID" },
+  inicial: { nome: "Agente Fiscal Inicial", centavos: 4900, comTeste: true, ciclo: "mensal", env: "PAGARME_PLANO_FISCAL_INICIAL_ID" },
+  pro: { nome: "Agente Fiscal Pro", centavos: 12900, comTeste: true, ciclo: "mensal", env: "PAGARME_PLANO_FISCAL_PRO_ID" },
   inicial_sem_teste: {
     nome: "Agente Fiscal Inicial",
     centavos: 4900,
     comTeste: false,
+    ciclo: "mensal",
     env: "PAGARME_PLANO_FISCAL_INICIAL_SEM_TESTE_ID",
   },
   pro_sem_teste: {
     nome: "Agente Fiscal Pro",
     centavos: 12900,
     comTeste: false,
+    ciclo: "mensal",
     env: "PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID",
   },
+  inicial_anual: {
+    nome: "Agente Fiscal Inicial",
+    centavos: centavosAnuais(4900),
+    comTeste: true,
+    ciclo: "anual",
+    env: "PAGARME_PLANO_FISCAL_INICIAL_ANUAL_ID",
+  },
+  pro_anual: {
+    nome: "Agente Fiscal Pro",
+    centavos: centavosAnuais(12900),
+    comTeste: true,
+    ciclo: "anual",
+    env: "PAGARME_PLANO_FISCAL_PRO_ANUAL_ID",
+  },
+  inicial_anual_sem_teste: {
+    nome: "Agente Fiscal Inicial",
+    centavos: centavosAnuais(4900),
+    comTeste: false,
+    ciclo: "anual",
+    env: "PAGARME_PLANO_FISCAL_INICIAL_ANUAL_SEM_TESTE_ID",
+  },
+  pro_anual_sem_teste: {
+    nome: "Agente Fiscal Pro",
+    centavos: centavosAnuais(12900),
+    comTeste: false,
+    ciclo: "anual",
+    env: "PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID",
+  },
 };
+
+/** Código do plano no Pagar.me para o par plano × ciclo × teste. */
+export function codigoPagarme(plano: CodigoPlano, ciclo: Ciclo, comTeste: boolean): CodigoPlanoPagarme {
+  return `${plano}${ciclo === "anual" ? "_anual" : ""}${comTeste ? "" : "_sem_teste"}` as CodigoPlanoPagarme;
+}
+
+/** O que a assinatura cobra por ciclo, em centavos (sem cupom). */
+export function centavosDoCiclo(plano: CodigoPlano, ciclo: Ciclo): number {
+  return PLANOS_PAGARME[codigoPagarme(plano, ciclo, true)].centavos;
+}
 
 // Corpo de POST /plans (docs.pagar.me, "Criar plano"; molde scripts/pagarme-assinatura/planos.mjs).
 // trial_period_days: "Dias de teste. A assinatura será iniciada após o término deste período."
 export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown> {
   const p = PLANOS_PAGARME[codigo];
+  const nome = p.ciclo === "anual" ? `${p.nome} anual` : p.nome;
   return {
-    name: p.comTeste ? p.nome : `${p.nome} (sem teste)`,
-    description: `Assinatura ${p.nome} · nó tech stack`,
-    interval: "month",
+    name: p.comTeste ? nome : `${nome} (sem teste)`,
+    description: `Assinatura ${nome} · nó tech stack`,
+    interval: p.ciclo === "anual" ? "year" : "month",
     interval_count: 1,
     billing_type: "prepaid",
     payment_methods: ["credit_card"],
     installments: [1],
     currency: "BRL",
     statement_descriptor: "NOFISCAL",
-    items: [{ name: p.nome, quantity: 1, pricing_scheme: { scheme_type: "unit", price: p.centavos } }],
+    items: [{ name: nome, quantity: 1, pricing_scheme: { scheme_type: "unit", price: p.centavos } }],
     ...(p.comTeste ? { trial_period_days: DIAS_DE_TESTE } : {}),
     metadata: { origem: "agente-fiscal", codigo },
   };
@@ -97,12 +155,9 @@ export function lerConfig(env: Record<string, string | undefined>): Config {
     // Como no auditor: em produção, sem chave própria, usa a da conta da nó; em sandbox nunca.
     secretKey: env.PAGARME_ASSINATURA_SECRET_KEY || (ambiente === "producao" ? env.PAGARME_SECRET_KEY || "" : ""),
     sal: env.FISCAL_TRIAL_SALT || "",
-    planIds: {
-      inicial: env[PLANOS_PAGARME.inicial.env] || "",
-      pro: env[PLANOS_PAGARME.pro.env] || "",
-      inicial_sem_teste: env[PLANOS_PAGARME.inicial_sem_teste.env] || "",
-      pro_sem_teste: env[PLANOS_PAGARME.pro_sem_teste.env] || "",
-    },
+    planIds: Object.fromEntries(
+      (Object.keys(PLANOS_PAGARME) as CodigoPlanoPagarme[]).map((c) => [c, env[PLANOS_PAGARME[c].env] || ""]),
+    ) as Record<CodigoPlanoPagarme, string>,
   };
 }
 
@@ -113,14 +168,20 @@ export function responderConfiguracao(env: Record<string, string | undefined>): 
 
 /** Corpo de GET assinatura-fiscal: o que a etapa de pagamento precisa. */
 export function configuracaoPublica(env: Record<string, string | undefined>): Record<string, unknown> {
+  const config = lerConfig(env);
+  // O anual só abre com os quatro planos anuais cadastrados; sem eles a página oferece só o mensal.
+  const anualDisponivel = (["inicial", "pro"] as CodigoPlano[]).every((p) =>
+    Boolean(config.planIds[codigoPagarme(p, "anual", true)] && config.planIds[codigoPagarme(p, "anual", false)])
+  );
   return {
     ok: true,
-    venda_aberta: lerConfig(env).vendaAberta,
+    venda_aberta: config.vendaAberta,
+    anual_disponivel: anualDisponivel,
     public_key: env.PAGARME_ASSINATURA_PUBLIC_KEY || "",
     aceite_texto: TEXTO_ACEITE_FISCAL,
     planos: {
-      inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos },
-      pro: { valor_centavos: PLANOS_PAGARME.pro.centavos },
+      inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos, anual_centavos: centavosDoCiclo("inicial", "anual") },
+      pro: { valor_centavos: PLANOS_PAGARME.pro.centavos, anual_centavos: centavosDoCiclo("pro", "anual") },
     },
   };
 }
@@ -137,6 +198,7 @@ export type Endereco = {
 
 export type Pedido = {
   plano: CodigoPlano;
+  ciclo: Ciclo;
   /** Opcional desde 22/10/2026: o cadastro não pede mais o CPF (Lucca); quando vem, entra no bloqueio de reteste. */
   cpf?: string;
   card_token: string;
@@ -159,6 +221,7 @@ export type Contexto = {
 export type LinhaAssinatura = {
   tenant_id: string;
   plano: CodigoPlano;
+  ciclo: Ciclo;
   com_teste: boolean;
   trial_ends_at: string | null;
   customer_id: string | null;
@@ -221,6 +284,12 @@ function invalido(mensagem: string) {
   return { ok: false as const, mensagem };
 }
 
+/** Ciclo do pedido: ausente é mensal (páginas antigas); qualquer outro valor é inválido. */
+export function lerCiclo(valor: unknown): Ciclo | null {
+  if (valor === undefined || valor === null || valor === "" || valor === "mensal") return "mensal";
+  return valor === "anual" ? "anual" : null;
+}
+
 export function lerEndereco(valor: unknown): Endereco | null {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) return null;
   const e = valor as Record<string, unknown>;
@@ -253,6 +322,8 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
   }
   const plano = typeof b.plano === "string" ? b.plano : "";
   if (plano !== "inicial" && plano !== "pro") return invalido("Escolha um dos planos: Inicial ou Pro.");
+  const ciclo = lerCiclo(b.ciclo);
+  if (!ciclo) return invalido("Escolha a cobrança: mensal ou anual.");
 
   const cpf = typeof b.cpf === "string" ? b.cpf.replace(/\D/g, "") : "";
   if (cpf !== "" && cpf.length !== 11) return invalido("Confira o CPF (11 números).");
@@ -274,7 +345,7 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
 
   return {
     ok: true,
-    pedido: { plano, ...(cpf ? { cpf } : {}), card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL },
+    pedido: { plano, ciclo, ...(cpf ? { cpf } : {}), card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL },
   };
 }
 
@@ -324,6 +395,7 @@ export function corpoAssinatura(
       origem: "agente-fiscal",
       tenant_id: contexto.tenant_id,
       plano: pedido.plano,
+      ciclo: pedido.ciclo,
       com_teste: comTeste,
       ...(cupom ? { cupom: cupom.codigo } : {}),
     },
@@ -349,6 +421,7 @@ const MSG_CUPOM: Record<string, string> = {
   CUPOM_PLANO: "Este cupom não vale para o plano escolhido.",
   CUPOM_JA_USADO: "Sua empresa já usou este cupom.",
   CUPOM_NAO_CORTESIA: "Este cupom não dispensa o pagamento. Informe o cartão.",
+  CUPOM_ANUAL: "O plano anual já tem 20% de desconto e não aceita cupom. Para usar o cupom, escolha o mensal.",
 };
 
 /** Código normalizado, null quando não veio, false quando veio fora do formato. */
@@ -429,6 +502,8 @@ export async function processarValidarCupom(body: unknown, deps: Deps): Promise<
   if (!plano) return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
   const codigo = lerCodigoCupom(b.codigo);
   if (!codigo) return erroCupom("CUPOM_INVALIDO");
+  // O anual já vem com desconto: cupom (cortesia inclusive) só no mensal.
+  if (lerCiclo(b.ciclo) !== "mensal") return erroCupom("CUPOM_ANUAL");
   const contexto = await deps.contexto(userId);
   if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da empresa antes de usar um cupom.");
   const a = await avaliarCupom(deps, contexto.tenant_id, codigo, plano);
@@ -464,6 +539,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   // bloco: não é venda (vale com a venda fechada) e não passa pelo Pagar.me.
   const codigoCupom = lerCodigoCupom(b.cupom);
   if (codigoCupom === false) return erroCupom("CUPOM_INVALIDO");
+  if (codigoCupom && lerCiclo(b.ciclo) !== "mensal") return erroCupom("CUPOM_ANUAL");
   let cupom: CupomValido | null = null;
   let sessaoLida: string | null | undefined;
   const sessao = async () => (sessaoLida === undefined ? (sessaoLida = await deps.sessao()) : sessaoLida);
@@ -516,10 +592,10 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     return erro(409, "ASSINATURA_EXISTENTE", "Esta empresa já tem uma assinatura.");
   }
 
-  const planoComTeste = config.planIds[pedido.plano];
-  const planoSemTeste = config.planIds[`${pedido.plano}_sem_teste` as CodigoPlanoPagarme];
+  const planoComTeste = config.planIds[codigoPagarme(pedido.plano, pedido.ciclo, true)];
+  const planoSemTeste = config.planIds[codigoPagarme(pedido.plano, pedido.ciclo, false)];
   if (!planoComTeste || !planoSemTeste) {
-    log("warn", "assinatura_fiscal_plano_indisponivel", { plano: pedido.plano });
+    log("warn", "assinatura_fiscal_plano_indisponivel", { plano: pedido.plano, ciclo: pedido.ciclo });
     return erro(409, "PLANO_INDISPONIVEL", "Este plano não está disponível agora. Tente mais tarde.");
   }
 
@@ -529,6 +605,20 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     config.sal,
   ) as Record<string, string>;
   const comTeste = await deps.reivindicarTeste(contexto.tenant_id, hashes);
+  // Anual sem teste cobra o ano inteiro na hora: só com a confirmação explícita da página. Quando a
+  // reivindicação falha nada é gravado em fiscal_trial_claims, então repetir com a confirmação é seguro.
+  if (!comTeste && pedido.ciclo === "anual" && b.confirmar_sem_teste !== true) {
+    log("info", "assinatura_fiscal_anual_sem_teste_confirmar", { plano: pedido.plano });
+    return {
+      http: 409,
+      body: {
+        ok: false,
+        error_code: "CONFIRMAR_SEM_TESTE",
+        mensagem: `${MSG_TESTE_JA_USADO}. No anual, o ano inteiro é cobrado agora.`,
+        valor_centavos: centavosDoCiclo(pedido.plano, "anual"),
+      },
+    };
+  }
   const planId = comTeste ? planoComTeste : planoSemTeste;
 
   const headers = { "Content-Type": "application/json", Authorization: `Basic ${btoa(`${config.secretKey}:`)}` };
@@ -581,6 +671,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   const linha: LinhaAssinatura = {
     tenant_id: contexto.tenant_id,
     plano: pedido.plano,
+    ciclo: pedido.ciclo,
     com_teste: comTeste,
     trial_ends_at: trialEndsAt,
     customer_id: typeof customerId === "string" ? customerId : null,
@@ -615,7 +706,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   }
 
   const status = registro?.status || linha.status;
-  log("info", "assinatura_fiscal_checkout", { plano: pedido.plano, com_teste: comTeste, subscription_id: subId, status });
+  log("info", "assinatura_fiscal_checkout", { plano: pedido.plano, ciclo: pedido.ciclo, com_teste: comTeste, subscription_id: subId, status });
   // A reconciliação pode trazer um aviso que chegou antes do registro.
   if (status === "recusada") {
     return erro(402, "PAGAMENTO_RECUSADO", "O pagamento não foi aprovado pelo cartão. Atualize o cartão para continuar.");
@@ -632,7 +723,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     }
   }
   // Medição (medicao.ts): o navegador repete este evento com o mesmo event_id; com consentimento, a CAPI também.
-  const centavos = PLANOS_PAGARME[pedido.plano].centavos;
+  const centavos = centavosDoCiclo(pedido.plano, pedido.ciclo);
   const compra = eventoDaCompra(registro.id, comTeste, cupom ? valorComDesconto(centavos, cupom) : centavos);
   const medicao = lerMedicao(b.medicao);
   if (medicao.consent === "granted" && deps.enviarMeta) {
@@ -656,6 +747,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       ok: true,
       status,
       assinatura_id: registro.id,
+      ciclo: pedido.ciclo,
       com_teste: comTeste,
       medicao: compra,
       trial_ends_at: trialEndsAt,

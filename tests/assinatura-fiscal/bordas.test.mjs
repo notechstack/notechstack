@@ -111,7 +111,7 @@ test("cliente do Pagar.me é a empresa do contexto, nunca o corpo", async () => 
   assert.equal(body.customer.email, "dono@example.test");
   assert.equal(body.customer.document, "11444777000161");
   assert.deepEqual(body.customer.phones.mobile_phone, { country_code: "55", area_code: "11", number: "987654321" });
-  assert.deepEqual(body.metadata, { origem: "agente-fiscal", tenant_id: CONTEXTO.tenant_id, plano: "pro", com_teste: true });
+  assert.deepEqual(body.metadata, { origem: "agente-fiscal", tenant_id: CONTEXTO.tenant_id, plano: "pro", ciclo: "mensal", com_teste: true });
   assert.equal(body.card.billing_address.zip_code, "01001000");
   // O CPF do dono entra só em hash.
   assert.equal(JSON.stringify(body).includes("12345678909"), false);

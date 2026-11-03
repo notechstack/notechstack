@@ -691,3 +691,84 @@ test('sessão vencida no meio volta ao código com o que foi digitado', async ()
   assert.equal(p.etapa(), 3);
   assert.equal(rede.de('fiscal-cadastro:criar')[1].corpo.cnpj, CNPJ, 'o que foi digitado continua');
 });
+
+// Ciclo anual (Lucca, 03/11/2026): o toggle da LP manda ?ciclo=anual; preço do ano, sem cupom, ciclo no checkout.
+// O ciclo fica no localStorage (a retomada pode ser em outra aba); link com plano manda no ciclo.
+const CHECKOUT_ANUAL = (extra = {}) => r(200, {
+  ok: true, venda_aberta: true, anual_disponivel: true, public_key: 'pk_test_abc', aceite_texto: ACEITE,
+  planos: { inicial: { valor_centavos: 4900, anual_centavos: 47040 }, pro: { valor_centavos: 12900, anual_centavos: 123840 } },
+  ...extra
+});
+const ANUAL = { 'nofiscal.ciclo': 'anual' };
+const COMPRA = { status: 200, corpo: { ok: true, status: 'pendente', com_teste: true, medicao: { evento: 'StartTrial', event_id: 'e1', transaction_id: 't1', valor: 1238.4, moeda: 'BRL' } } };
+
+test('anual: rótulo do plano com o preço do ano', async () => {
+  const p = await abrir('/agentes/fiscal/comecar/?plano=pro&ciclo=anual');
+  assert.equal(p.texto('fc-plano'), 'Plano Pro anual · R$ 1.238,40/ano · 7 dias grátis');
+  const i = await abrir('/agentes/fiscal/comecar/?plano=inicial&ciclo=anual');
+  assert.equal(i.texto('fc-plano'), 'Plano Inicial anual · R$ 470,40/ano · 7 dias grátis');
+  // Link com plano e sem ciclo é mensal, mesmo com o anual guardado.
+  const m = await abrir('/agentes/fiscal/comecar/?plano=pro', { local: ANUAL });
+  assert.equal(m.texto('fc-plano'), 'Plano Pro · R$ 129/mês · 7 dias grátis');
+});
+
+test('anual: pagamento sem cupom e com o ciclo no checkout', async () => {
+  const p = await abrirNaEtapa('pagamento', {
+    local: ANUAL, aba: { 'nofiscal.cupom': 'DEZ' },
+    respostas: { 'GET assinatura-fiscal': CHECKOUT_ANUAL(), 'POST assinatura-fiscal': () => COMPRA }
+  });
+  assert.equal(p.etapa(), 3);
+  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Pro anual · R$ 1.238,40/ano · 7 dias grátis');
+  assert.ok(!p.visivel('fc-cupom'), 'sem cupom no anual');
+  assert.ok(p.visivel('fc-texto-anual'));
+  assert.equal(p.rede.de('assinatura-fiscal:validar_cupom').length, 0, 'cupom guardado não é aplicado');
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  const [pedido] = p.rede.de('POST assinatura-fiscal');
+  assert.ok(pedido, 'checkout chamado');
+  assert.equal(pedido.corpo.ciclo, 'anual');
+  assert.equal(pedido.corpo.plano, 'pro');
+  assert.equal(pedido.corpo.cupom, undefined);
+  assert.equal(pedido.corpo.confirmar_sem_teste, undefined);
+  assert.equal(p.etapa(), 4);
+});
+
+test('anual indisponível no servidor: segue no mensal e avisa', async () => {
+  const p = await abrirNaEtapa('pagamento', {
+    local: ANUAL,
+    respostas: { 'GET assinatura-fiscal': CHECKOUT_ANUAL({ anual_disponivel: false }), 'POST assinatura-fiscal': () => COMPRA }
+  });
+  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Pro · R$ 129/mês · 7 dias grátis');
+  assert.ok(p.visivel('fc-cupom'));
+  assert.match(p.texto('fc-aviso-3'), /anual ainda não está disponível/);
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  assert.equal(p.rede.de('POST assinatura-fiscal')[0].corpo.ciclo, 'mensal');
+});
+
+test('anual sem teste: confirma antes de cobrar o ano', async () => {
+  let vezes = 0;
+  const p = await abrirNaEtapa('pagamento', {
+    local: ANUAL,
+    respostas: {
+      'GET assinatura-fiscal': CHECKOUT_ANUAL(),
+      'POST assinatura-fiscal': () => (vezes++ === 0
+        ? { status: 409, corpo: { ok: false, error_code: 'CONFIRMAR_SEM_TESTE', mensagem: 'Este CNPJ, e-mail ou telefone já usou o teste grátis. No anual, o ano inteiro é cobrado agora.', valor_centavos: 123840 } }
+        : COMPRA)
+    }
+  });
+  await preencherCartao(p);
+  await p.marcar('fc-aceite');
+  await p.enviar('fc-form-3');
+  assert.equal(p.etapa(), 3, 'não segue sem confirmar');
+  assert.match(p.texto('fc-aviso-3'), /R\$ 1\.238,40/);
+  assert.equal(p.texto('fc-pagar'), 'Pagar R$ 1.238,40 agora');
+  await preencherCartao(p);
+  await p.enviar('fc-form-3');
+  const pedidos = p.rede.de('POST assinatura-fiscal');
+  assert.equal(pedidos.length, 2);
+  assert.equal(pedidos[0].corpo.confirmar_sem_teste, undefined);
+  assert.equal(pedidos[1].corpo.confirmar_sem_teste, true);
+});

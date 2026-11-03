@@ -20,8 +20,9 @@
   var UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA',
     'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
   var PLANOS = {
-    inicial: { nome: 'Inicial', centavos: 4900, notas: 20 },
-    pro: { nome: 'Pro', centavos: 12900, notas: 100 }
+    // anual: o ano inteiro com 20% off, cobrado de uma vez (assinatura-fiscal/core.ts, centavosAnuais).
+    inicial: { nome: 'Inicial', centavos: 4900, anual: 47040, notas: 20 },
+    pro: { nome: 'Pro', centavos: 12900, anual: 123840, notas: 100 }
   };
 
   /* ---------- funções puras ---------- */
@@ -106,15 +107,21 @@
   function horaBR(iso) { var p = partesData(iso); return p ? p.hour + ':' + p.minute : ''; }
   function reais(centavos) {
     var n = Number(centavos) / 100;
-    return 'R$ ' + (n % 1 === 0 ? String(n) : n.toFixed(2).replace('.', ','));
+    var t = n % 1 === 0 ? String(n) : n.toFixed(2).replace('.', ',');
+    return 'R$ ' + t.replace(/^\d+/, function (i) { return i.replace(/\B(?=(\d{3})+$)/g, '.'); });
   }
-  function rotuloPlano(codigo, centavos) {
+  /** No anual, `centavos` é o preço do ano. */
+  function rotuloPlano(codigo, centavos, ciclo) {
     var p = PLANOS[codigo] || PLANOS.inicial;
+    if (ciclo === 'anual') return 'Plano ' + p.nome + ' anual · ' + reais(centavos == null ? p.anual : centavos) + '/ano · 7 dias grátis';
     return 'Plano ' + p.nome + ' · ' + reais(centavos == null ? p.centavos : centavos) + '/mês · 7 dias grátis';
   }
   function planoDaUrl(search) {
     var p = new URLSearchParams(search || '').get('plano');
     return p === 'pro' ? 'pro' : 'inicial';
+  }
+  function cicloDaUrl(search) {
+    return new URLSearchParams(search || '').get('ciclo') === 'anual' ? 'anual' : 'mensal';
   }
   /* Titular legível do subject que a rota do A1 devolve ("CN=NOME:CNPJ, C=BR, ..."). */
   function titular(subject) {
@@ -481,7 +488,7 @@
     cpfValido: cpfValido, cnpjValido: cnpjValido, documentoValido: documentoValido, emailValido: emailValido,
     telefoneE164: telefoneE164, formatarCnpj: formatarCnpj, formatarDocumento: formatarDocumento,
     mascararEmail: mascararEmail, mascararTelefone: mascararTelefone,
-    dataBR: dataBR, diaMes: diaMes, horaBR: horaBR, reais: reais, rotuloPlano: rotuloPlano, planoDaUrl: planoDaUrl,
+    dataBR: dataBR, diaMes: diaMes, horaBR: horaBR, reais: reais, rotuloPlano: rotuloPlano, planoDaUrl: planoDaUrl, cicloDaUrl: cicloDaUrl,
     titular: titular, percentual: percentual, validarCartao: validarCartao, enderecoDoCartao: enderecoDoCartao,
     formatarCodigo: formatarCodigo, buscarCodigos: buscarCodigos,
     sessao: sessao, cadastro: cadastro, aba: abaTexto, nomePlano: nomePlano,

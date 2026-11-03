@@ -14,6 +14,24 @@
 
   /* Fundo líquido do bloco do simulador: shader com as cores da marca (âmbar, âmbar claro, osso, vermelho claro).
      Sem WebGL o canvas fica vazio e o degradê do CSS aparece. Com movimento reduzido, só um quadro. */
+  /* Ciclo dos planos: no anual, Inicial e Pro com 20% off (preço por mês + total do ano) e o ciclo vai no link do
+     cadastro; Escritório e Agência somem pelo CSS. */
+  var planos = document.getElementById('fi-planos');
+  var cicloBtns = document.querySelectorAll('.fi-ciclo-toggle [data-ciclo]');
+  function mudarCiclo(c) {
+    planos.setAttribute('data-ciclo', c);
+    Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
+    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-preco b'), function (v) { v.textContent = v.getAttribute('data-' + c); });
+    Array.prototype.forEach.call(planos.querySelectorAll('a[data-plano]'), function (a) {
+      var u = new URL(a.getAttribute('href'), location.href);
+      if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
+      a.setAttribute('href', u.pathname + u.search);
+    });
+  }
+  if (planos) Array.prototype.forEach.call(cicloBtns, function (b) {
+    b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
+  });
+
   var fluido = document.getElementById('fi-fluido');
   if (fluido && window.NoFluido) {
     var cs = getComputedStyle(document.documentElement);
@@ -99,6 +117,7 @@
     var q = new URLSearchParams(location.search);
     ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'].forEach(function (k) { var v = q.get(k); if (v) u.searchParams.set(k, v); });
     u.searchParams.set('origem', 'fiscal');
+    u.searchParams.set('plano', 'inicial'); // com plano no link o ciclo é o do link (mensal), não o guardado
     return u.toString();
   }
   function irPara(id) { var el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: reduzido ? 'auto' : 'smooth', block: 'start' }); }
@@ -156,7 +175,9 @@
   var medir = window.noFiscalMedicao || null;
   if (medir) medir.verPagina();
   Array.prototype.forEach.call(document.querySelectorAll('a[data-plano]'), function (a) {
-    a.addEventListener('click', function () { if (medir) medir.planoEscolhido(a.getAttribute('data-plano'), 'planos'); });
+    a.addEventListener('click', function () {
+      if (medir) medir.planoEscolhido(a.getAttribute('data-plano'), 'planos', planos && planos.getAttribute('data-ciclo'));
+    });
   });
 
   /* ---------- simulador ---------- */

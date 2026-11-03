@@ -33,8 +33,17 @@
     FORBIDDEN: 'Esta conta não é a dona desta empresa.'
   };
 
+  var CICLO_KEY = 'nofiscal.ciclo'; // antes de st: cicloInicial() roda na criação dele
+  /* O ciclo vai no localStorage (o plano fica no servidor; a retomada pode ser em outra aba ou depois do e-mail). */
+  var cicloGuardado = {
+    ler: function () { try { return localStorage.getItem(CICLO_KEY); } catch (e) { return null; } },
+    gravar: function (v) { try { localStorage.setItem(CICLO_KEY, v); } catch (e) { /* sem armazenamento */ } },
+    apagar: function () { try { localStorage.removeItem(CICLO_KEY); } catch (e) { /* sem armazenamento */ } }
+  };
   var st = {
     plano: nf.planoDaUrl(location.search),
+    ciclo: cicloInicial(),   // mensal | anual (toggle da LP); o anual não aceita cupom
+    confirmarSemTeste: false, // anual sem teste: o servidor pede confirmação antes de cobrar o ano
     etapa: 0,
     maxEtapa: 0,             // etapa mais adiantada já aberta: até ela a trilha deixa voltar
     tenantId: null,
@@ -50,14 +59,28 @@
     cupom: null              // cupom aplicado (resposta de validar_cupom); cortesia dispensa cartão
   };
   var CUPOM_KEY = 'nofiscal.cupom';
+  /* Link com plano manda no ciclo (sem ?ciclo= é mensal); sem plano no link (retomada), vale o guardado. */
+  function cicloInicial() {
+    var q = new URLSearchParams(location.search);
+    var c = q.get('plano') ? nf.cicloDaUrl(location.search) : (cicloGuardado.ler() === 'anual' ? 'anual' : 'mensal');
+    if (c === 'anual') cicloGuardado.gravar('anual'); else cicloGuardado.apagar();
+    return c;
+  }
+  function anual() { return st.ciclo === 'anual'; }
+  /** Centavos que a assinatura cobra por ciclo (sem cupom), pelo GET do checkout ou pela tabela da página. */
+  function centavosDoPlano() {
+    var p = st.checkout && st.checkout.planos && st.checkout.planos[st.plano];
+    if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : null;
+    return p ? p.valor_centavos : null;
+  }
   // Funil de compra (medicao.js): sem o arquivo, a página funciona igual e não mede.
   var medir = window.noFiscalMedicao || null;
   /** Valor da primeira cobrança em reais: o do plano, ou o do cupom aplicado. */
   function valorAtual() {
     var c = st.cupom;
     if (c) return c.cortesia ? 0 : c.valor_centavos_com_desconto / 100;
-    var p = st.checkout && st.checkout.planos && st.checkout.planos[st.plano];
-    return p ? p.valor_centavos / 100 : null;
+    var centavos = centavosDoPlano();
+    return centavos == null ? null : centavos / 100;
   }
 
   /* ---------- etapas ---------- */
@@ -98,8 +121,7 @@
     if (entrar) entrar();
   }
   function mostrarPlano() {
-    var centavos = st.checkout && st.checkout.planos && st.checkout.planos[st.plano] ? st.checkout.planos[st.plano].valor_centavos : null;
-    var rotulo = nf.rotuloPlano(st.plano, centavos);
+    var rotulo = nf.rotuloPlano(st.plano, centavosDoPlano(), st.ciclo);
     $('fc-plano').textContent = rotulo;
     var c = st.cupom;
     $('fc-plano-pagamento').textContent = !c ? rotulo
@@ -350,13 +372,21 @@
     nf.funcao('assinatura-fiscal', undefined, { metodo: 'GET', auth: false }).then(function (r) {
       if (!r.ok) { nf.aviso($('fc-aviso-3'), 'Não deu para abrir o pagamento agora. Recarregue a página em alguns minutos.', 'erro'); return; }
       st.checkout = r.dados;
+      // Anual sem os planos anuais no Pagar.me: segue no mensal e avisa.
+      if (anual() && r.dados.anual_disponivel !== true) {
+        st.ciclo = 'mensal';
+        cicloGuardado.apagar();
+        nf.aviso($('fc-aviso-3'), 'O plano anual ainda não está disponível. Seguimos com o mensal.', 'info');
+      }
+      $('fc-cupom').hidden = anual();
+      $('fc-texto-anual').hidden = !anual();
       mostrarPlano();
-      if (medir) medir.checkoutIniciado(st.plano, valorAtual(), st.cupom && st.cupom.codigo);
+      if (medir) medir.checkoutIniciado(st.plano, valorAtual(), st.cupom && st.cupom.codigo, st.ciclo);
       $('fc-aceite-texto').textContent = r.dados.aceite_texto || '';
       atualizarPagar();
       // Cupom vindo do link (?cupom=) ou guardado nesta aba: aplica sozinho.
       var guardado = new URLSearchParams(location.search).get('cupom') || nf.aba.ler(CUPOM_KEY);
-      if (guardado && !st.cupom) { $('fc-cupom-codigo').value = guardado; abrirCampoCupom(); aplicarCupom(); }
+      if (guardado && !st.cupom && !anual()) { $('fc-cupom-codigo').value = guardado; abrirCampoCupom(); aplicarCupom(); }
     });
   }
   /* Botão de pagar: cortesia não depende da venda aberta nem do cartão. */
@@ -392,7 +422,7 @@
     if (!/^[A-Z0-9_-]{3,40}$/.test(codigo)) { nf.erroCampo('fc-cupom-codigo', 'Cupom não encontrado. Confira o código.'); return; }
     var botao = $('fc-cupom-aplicar');
     nf.ocupado(botao, true, 'Aplicando…');
-    nf.funcao('assinatura-fiscal', { acao: 'validar_cupom', codigo: codigo, plano: st.plano }).then(function (r) {
+    nf.funcao('assinatura-fiscal', { acao: 'validar_cupom', codigo: codigo, plano: st.plano, ciclo: st.ciclo }).then(function (r) {
       if (r.ok && r.dados.cupom) {
         st.cupom = r.dados.cupom;
         nf.aba.gravar(CUPOM_KEY, st.cupom.codigo);
@@ -470,7 +500,8 @@
     nf.tokenizarCartao(st.checkout.public_key, c).then(function (token) {
       limparCartao();
       return nf.funcao('assinatura-fiscal', {
-        plano: st.plano, card_token: token, endereco: nf.enderecoDoCartao(c.endereco),
+        plano: st.plano, ciclo: st.ciclo, confirmar_sem_teste: st.confirmarSemTeste || undefined,
+        card_token: token, endereco: nf.enderecoDoCartao(c.endereco),
         termos_aceite: true, aceite_texto: nf.texto($('fc-aceite-texto').textContent),
         cupom: cupomUsado,
         // Consentimento e cookies da Meta para a CAPI da compra (assinatura-fiscal/medicao.ts).
@@ -480,6 +511,7 @@
           concluiu = true;
           if (medir) medir.compra(r.dados.medicao, st.plano, cupomUsado);
           nf.aba.apagar(CUPOM_KEY);
+          cicloGuardado.apagar();
           if (r.dados.com_teste === false) {
             nf.aviso($('fc-aviso-3'), nf.esc(r.dados.aviso || MSG.reteste), 'info');
             botao.hidden = true;
@@ -490,6 +522,14 @@
           return;
         }
         if (r.status === 401) return;
+        if (r.codigo === 'CONFIRMAR_SEM_TESTE') {
+          // Nada foi cobrado; o cartão já foi limpo, então a pessoa digita de novo para confirmar.
+          st.confirmarSemTeste = true;
+          var valor = r.dados && r.dados.valor_centavos ? nf.reais(r.dados.valor_centavos) : 'o valor do ano';
+          nf.aviso($('fc-aviso-3'), nf.esc(r.mensagem || MSG.reteste) + ' Para assinar mesmo assim, informe o cartão de novo e confirme o pagamento de ' + nf.esc(valor) + '.', 'info');
+          botao.dataset.rotulo = 'Pagar ' + valor + ' agora'; // nf.ocupado(botao, false) devolve este rótulo
+          return;
+        }
         if ((r.status === 402 || r.codigo === 'PAGAMENTO_RECUSADO') && medir) medir.pagamentoRecusado(st.plano);
         if (r.status === 402 || r.codigo === 'PAGAMENTO_RECUSADO') { nf.aviso($('fc-aviso-3'), MSG.recusado, 'erro'); return; }
         if (/^CUPOM_/.test(r.codigo || '')) { removerCupom(); nf.erroCampo('fc-cupom-codigo', r.mensagem); return; }
