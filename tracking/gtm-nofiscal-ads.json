@@ -1,0 +1,431 @@
+{
+ "exportFormatVersion": 2,
+ "exportTime": "2026-11-03 12:00:00",
+ "containerVersion": {
+  "path": "accounts/6348281513/containers/248523885/versions/0",
+  "accountId": "6348281513",
+  "containerId": "248523885",
+  "containerVersionId": "0",
+  "container": {
+   "path": "accounts/6348281513/containers/248523885",
+   "accountId": "6348281513",
+   "containerId": "248523885",
+   "name": "Nó Teck Stack",
+   "publicId": "GTM-NK87FH8W",
+   "usageContext": [
+    "WEB"
+   ],
+   "fingerprint": "1762185600000",
+   "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/6348281513/containers/248523885/workspaces?apiLink=container",
+   "features": {
+    "supportUserPermissions": true,
+    "supportEnvironments": true,
+    "supportWorkspaces": true,
+    "supportGtagConfigs": false,
+    "supportBuiltInVariables": true,
+    "supportClients": false,
+    "supportFolders": true,
+    "supportTags": true,
+    "supportTemplates": true,
+    "supportTriggers": true,
+    "supportVariables": true,
+    "supportVersions": true,
+    "supportZones": true,
+    "supportTransformations": false
+   },
+   "tagIds": [
+    "GTM-NK87FH8W"
+   ]
+  },
+  "tag": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "960",
+    "name": "Google Ads - nó.fiscal - Início do teste",
+    "type": "awct",
+    "parameter": [
+     {
+      "type": "BOOLEAN",
+      "key": "enableNewCustomerReporting",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableConversionLinker",
+      "value": "true"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "orderId",
+      "value": "{{dl.transaction_id}}"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableProductReporting",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionValue",
+      "value": "{{dl.valor}}"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableShippingData",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionId",
+      "value": "17683211415"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "currencyCode",
+      "value": "BRL"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionLabel",
+      "value": "Y1R9CO3R0rEdEJfJgfBB"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "rdp",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableProductReportingCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableNewCustomerReportingCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableCustomerLifecycleReporting",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableEnhancedConversionsCheckbox",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableRdpCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableTransportUrl",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableCustomParams",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableEventParameters",
+      "value": "true"
+     }
+    ],
+    "firingTriggerId": [
+     "935"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1762185600000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "961",
+    "name": "Google Ads - nó.fiscal - Compra",
+    "type": "awct",
+    "parameter": [
+     {
+      "type": "BOOLEAN",
+      "key": "enableNewCustomerReporting",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableConversionLinker",
+      "value": "true"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "orderId",
+      "value": "{{dl.transaction_id}}"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableProductReporting",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionValue",
+      "value": "{{dl.valor}}"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableShippingData",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionId",
+      "value": "17683211415"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "currencyCode",
+      "value": "BRL"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "conversionLabel",
+      "value": "3PaeCOjS0rEdEJfJgfBB"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "rdp",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableProductReportingCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableNewCustomerReportingCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableCustomerLifecycleReporting",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableEnhancedConversionsCheckbox",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableRdpCheckbox",
+      "value": "true"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableTransportUrl",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableCustomParams",
+      "value": "false"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "enableEventParameters",
+      "value": "true"
+     }
+    ],
+    "firingTriggerId": [
+     "934"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1762185600000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "tagId": "962",
+    "name": "GA4 - generate_lead (nó.fiscal WhatsApp)",
+    "type": "gaawe",
+    "parameter": [
+     {
+      "type": "TEMPLATE",
+      "key": "eventName",
+      "value": "generate_lead"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "measurementIdOverride",
+      "value": "G-1YEB89RVER"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "sendEcommerceData",
+      "value": "false"
+     },
+     {
+      "type": "LIST",
+      "key": "eventSettingsTable",
+      "list": [
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "plano"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.plano}}"
+         }
+        ]
+       },
+       {
+        "type": "MAP",
+        "map": [
+         {
+          "type": "TEMPLATE",
+          "key": "parameter",
+          "value": "canal"
+         },
+         {
+          "type": "TEMPLATE",
+          "key": "parameterValue",
+          "value": "{{dl.canal}}"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "firingTriggerId": [
+     "937"
+    ],
+    "tagFiringOption": "ONCE_PER_EVENT",
+    "fingerprint": "1762185600000"
+   }
+  ],
+  "trigger": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "934",
+    "name": "ce.nofiscal_compra (nó.fiscal assinatura cobrada)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_compra"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1762185600000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "935",
+    "name": "ce.nofiscal_teste_iniciado (nó.fiscal assinatura em teste)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_teste_iniciado"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1762185600000"
+   },
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "triggerId": "937",
+    "name": "ce.nofiscal_lead (nó.fiscal Escritório/Agência no WhatsApp)",
+    "type": "CUSTOM_EVENT",
+    "customEventFilter": [
+     {
+      "type": "EQUALS",
+      "parameter": [
+       {
+        "type": "TEMPLATE",
+        "key": "arg0",
+        "value": "{{_event}}"
+       },
+       {
+        "type": "TEMPLATE",
+        "key": "arg1",
+        "value": "nofiscal_lead"
+       }
+      ]
+     }
+    ],
+    "fingerprint": "1762185600000"
+   }
+  ],
+  "variable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "variableId": "981",
+    "name": "dl.canal",
+    "type": "v",
+    "parameter": [
+     {
+      "type": "INTEGER",
+      "key": "dataLayerVersion",
+      "value": "2"
+     },
+     {
+      "type": "BOOLEAN",
+      "key": "setDefaultValue",
+      "value": "false"
+     },
+     {
+      "type": "TEMPLATE",
+      "key": "name",
+      "value": "canal"
+     }
+    ],
+    "fingerprint": "1762185600000",
+    "formatValue": {}
+   }
+  ],
+  "builtInVariable": [
+   {
+    "accountId": "6348281513",
+    "containerId": "248523885",
+    "type": "EVENT",
+    "name": "Event"
+   }
+  ],
+  "fingerprint": "1762185600000",
+  "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/6348281513/containers/248523885/versions/0?apiLink=version"
+ }
+}
