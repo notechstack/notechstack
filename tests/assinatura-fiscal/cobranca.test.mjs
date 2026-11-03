@@ -19,10 +19,10 @@ test("pagamentoDoAviso: invoice.paid e charge.paid do mesmo pagamento dão a mes
   const cobranca = { id: "ch_1", amount: 12900, paid_amount: 12900, invoice: { id: "in_1", subscription_id: "sub_1" } };
   assert.deepEqual(pagamentoDoAviso("invoice.paid", fatura), { chave: "in_1", centavos: 12900 });
   assert.deepEqual(pagamentoDoAviso("charge.paid", cobranca), { chave: "in_1", centavos: 12900 });
-  // sem fatura: a cobrança
-  assert.deepEqual(pagamentoDoAviso("charge.paid", { id: "ch_9", amount: 4900 }), { chave: "ch_9", centavos: 4900 });
+  // sem fatura: não mede (o invoice.paid do mesmo pagamento cobre; evita Purchase em dobro)
+  assert.equal(pagamentoDoAviso("charge.paid", { id: "ch_9", amount: 4900 }), null);
   // valor pago com desconto vence o valor cheio; sem valor, null (compra.ts usa o preço do plano)
-  assert.equal(pagamentoDoAviso("charge.paid", { id: "ch_2", amount: 12900, paid_amount: 6450 }).centavos, 6450);
+  assert.equal(pagamentoDoAviso("charge.paid", { id: "ch_2", invoice: { id: "in_3" }, amount: 12900, paid_amount: 6450 }).centavos, 6450);
   assert.equal(pagamentoDoAviso("invoice.paid", { id: "in_2" }).centavos, null);
   // só cobrança paga
   for (const tipo of ["charge.payment_failed", "invoice.payment_failed", "subscription.canceled", "invoice.created"]) {

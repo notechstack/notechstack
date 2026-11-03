@@ -100,8 +100,8 @@ export async function autorizado(authorization: string | null, env: Record<strin
 }
 
 // Cobrança paga do aviso (Purchase da cobrança depois do teste e das renovações; compra.ts). O Pagar.me manda
-// invoice.paid e charge.paid para o mesmo pagamento: a chave é a fatura nos dois (charge.paid traz data.invoice),
-// e só cai para o id da cobrança quando não há fatura. Valor em centavos: o pago da cobrança, senão o da fatura;
+// invoice.paid e charge.paid para o mesmo pagamento: a chave é a fatura nos dois (charge.paid traz data.invoice);
+// charge.paid sem fatura não é medido. Valor em centavos: o pago da cobrança, senão o da fatura;
 // null quando o aviso não traz (compra.ts usa o preço do plano).
 export type PagamentoDoAviso = { chave: string; centavos: number | null };
 
@@ -119,7 +119,9 @@ export function pagamentoDoAviso(tipo: string, data: Record<string, unknown>): P
     const chave = texto(d.id) ?? texto(charge.id);
     return chave ? { chave, centavos: centavos(charge.paid_amount) ?? centavos(d.amount) ?? centavos(charge.amount) } : null;
   }
-  const chave = texto(obj(d.invoice).id) ?? texto(d.invoice_id) ?? texto(d.id);
+  // charge.paid só mede quando traz a fatura: sem ela a chave seria ch_… e o invoice.paid do mesmo pagamento
+  // (chave in_…) viraria um segundo Purchase. Cobrança de assinatura sempre tem fatura; o invoice.paid cobre.
+  const chave = texto(obj(d.invoice).id) ?? texto(d.invoice_id);
   return chave ? { chave, centavos: centavos(d.paid_amount) ?? centavos(d.amount) } : null;
 }
 
