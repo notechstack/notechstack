@@ -166,7 +166,8 @@
       if (!a) return;
       var rodape = (' ' + (a.getAttribute('class') || '') + ' ').indexOf(' ft-whatsapp ') > -1;
       window.track('whatsapp_click', { pagina: location.pathname, link: rodape ? 'rodape' : 'conteudo' });
-      if (typeof window.fbq === 'function'){
+      /* data-lead: o botão já manda Lead à Meta (agentes/fiscal/medicao.js); Contact aqui seria um segundo evento. */
+      if (typeof window.fbq === 'function' && !(a.hasAttribute && a.hasAttribute('data-lead'))){
         window.fbq('track', 'Contact', { pagina: location.pathname });
       }
     } catch(e){}
