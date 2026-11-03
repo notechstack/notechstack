@@ -33,6 +33,8 @@
 window.gtag('consent','default',{ad_storage:c,ad_user_data:c,ad_personalization:c,analytics_storage:c,wait_for_update:500});})();</script>
 <!-- Google Tag Manager (mesmo container da home) -->
 <script src="/shared/marketing-host.js?v=1"></script>
+<!-- Meta Pixel retido até o aceite (Lucca, 03/11/2026): cria a fila do fbq ANTES do GTM; ver o arquivo -->
+<script src="/shared/pixel-consentimento.js?v=1"></script>
 <script>if(window.noMarketingHostAllowed&&window.noMarketingHostAllowed(location.hostname))(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -345,7 +347,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=4"></script>
-<script src="/agentes/fiscal/medicao.js?v=3"></script>
+<script src="/agentes/fiscal/medicao.js?v=4"></script>
 <script src="/agentes/fiscal/comecar/comecar.js?v=10"></script>
 </body>
 </html>

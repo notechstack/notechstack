@@ -3,7 +3,8 @@
    permitida, no Meta Pixel com eventID:
 
      LP carregada ............ nofiscal_view_content       ViewContent
-     plano escolhido ......... nofiscal_plano_escolhido    AddToCart          (GA4 add_to_cart)
+     plano escolhido ......... nofiscal_plano_escolhido    AddToCart + CAPI   (GA4 add_to_cart)
+     Escritório / Agência .... nofiscal_lead               Lead + CAPI        (GA4 generate_lead; WhatsApp comercial)
      cadastro aberto ......... nofiscal_cadastro_inicio    -
      já tem A1? (etapa 1) .... nofiscal_a1                 -                  (também no painel: form_nofiscal_a1)
      conta criada ............ nofiscal_cadastro           CompleteRegistration (GA4 sign_up)
@@ -16,14 +17,19 @@
      WhatsApp de ativação .... nofiscal_ativacao_whatsapp  -
 
    A compra usa o evento que o checkout devolve (assinatura-fiscal/medicao.ts): o mesmo event_id sai da Meta CAPI
-   no servidor, e a Meta deduplica. Política da Meta (igual a meta-capi): custom_data só com value e currency.
-   O dataLayer recebe sempre (o modo de consentimento do Google decide o que o GA4 e o Ads guardam); o fbq só sai
-   com a medição permitida em 'no_fiscal_consent'. */
+   no servidor, e a Meta deduplica. AddToCart e Lead também saem do servidor, pela função meta-capi, com o mesmo
+   event_id do Pixel (Lucca, 03/11/2026): o clique navega logo em seguida e o Pixel sozinho se perdia. Os dois levam
+   content_name e, no AddToCart, content_ids/content_type do nó.fiscal (é o produto da Nó, nada de categoria de
+   saúde). O dataLayer recebe sempre (o modo de consentimento do Google decide o que o GA4 e o Ads guardam); o fbq e
+   a CAPI só saem com a medição permitida em 'no_fiscal_consent', e a CAPI só no domínio de produção. */
 (function () {
   'use strict';
   var CONSENT_KEY = 'no_fiscal_consent';
   var PRECOS = { inicial: 49, pro: 129 }; // reais por mês (assinatura-fiscal/core.ts, PLANOS_PAGARME)
   var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4 }; // reais por ano no anual (20% off, core.ts centavosAnuais)
+  var NOMES = { inicial: 'Inicial', pro: 'Pro', escritorio: 'Escritório', agencia: 'Agência' };
+  var FN_CAPI = 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/meta-capi'; // a mesma da /agentes/
+  var ESPERA_MAX_MS = 300; // quanto um clique que sai da página espera os envios confirmarem
 
   function consentido() {
     try { return localStorage.getItem(CONSENT_KEY) === 'granted'; } catch (e) { return false; }
@@ -60,24 +66,79 @@
     if ((tentativas || 0) >= 20) return;
     setTimeout(function () { fbqQuandoPronto(args, (tentativas || 0) + 1); }, 250);
   }
+  function producao() {
+    return typeof window.noMarketingHostAllowed === 'function' && window.noMarketingHostAllowed(location.hostname);
+  }
+  function nada() {}
+  /* Envios em curso por event_id, para o clique que sai da página esperar (aposEnvio). */
+  var envios = {};
+  function registrar(eventId, promessa) {
+    if (!promessa) return;
+    envios[eventId] = envios[eventId] ? Promise.all([envios[eventId], promessa]).then(nada) : promessa;
+  }
+  /* Meta CAPI pela função meta-capi, do mesmo jeito da /agentes/ (escritorio/pagina.js): corpo sem dado pessoal,
+     só cookies da Meta e a página sem query. Só com a medição permitida; fora de produção o corpo fica em
+     api.capi (para os testes) e nada sai do navegador. keepalive: o envio sobrevive à troca de página. */
+  function enviarCapi(eventName, eventId, customData) {
+    if (!consentido()) return null;
+    var corpo = {
+      event_name: eventName,
+      event_id: eventId,
+      event_source_url: location.origin + location.pathname,
+      fbp: cookie('_fbp') || undefined,
+      fbc: fbc() || undefined,
+      custom_data: customData
+    };
+    // value/currency também no topo: é onde a meta-capi de hoje os lê (body.value, body.currency).
+    if (customData && customData.value != null) { corpo.value = customData.value; corpo.currency = customData.currency; }
+    api.capi.push(corpo);
+    if (!producao() || typeof fetch !== 'function') return null;
+    try {
+      return fetch(FN_CAPI, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), keepalive: true })
+        .then(nada, nada); // medição não pode derrubar a página
+    } catch (e) { return null; }
+  }
   function precoDe(plano, ciclo) {
     var tabela = ciclo === 'anual' ? PRECOS_ANUAIS : PRECOS;
     return Object.prototype.hasOwnProperty.call(tabela, plano) ? tabela[plano] : null;
   }
 
+  /* meta.capi: o evento também vai à CAPI (mesmo event_id). meta.esperar: o evento antecede uma saída da página, e o
+     GTM avisa quando terminou as tags dele (eventCallback), para aposEnvio não cortar o GA4/Ads no meio. */
   function disparar(nome, dados, meta) {
     var eventId = (meta && meta.eventId) || 'nofiscal-' + uuid();
     var p = { event: nome, event_id: eventId };
     for (var k in dados) if (Object.prototype.hasOwnProperty.call(dados, k) && dados[k] !== undefined && dados[k] !== null) p[k] = dados[k];
+    if (meta && meta.esperar && producao()) {
+      registrar(eventId, new Promise(function (ok) { p.eventCallback = function () { ok(); }; p.eventTimeout = ESPERA_MAX_MS; }));
+    }
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push(p);
-    if (meta && consentido()) fbqQuandoPronto(['track', meta.evento, meta.dados || {}, { eventID: eventId }]);
+    if (meta && meta.evento && consentido()) {
+      fbqQuandoPronto(['track', meta.evento, meta.dados || {}, { eventID: eventId }]);
+      if (meta.capi) registrar(eventId, enviarCapi(meta.evento, eventId, meta.dados || {}));
+    }
     return eventId;
   }
   function valorMeta(valor) { return valor == null ? {} : { value: valor, currency: 'BRL' }; }
 
   var api = {
     consentido: consentido,
+    /** Corpos mandados (ou que seriam mandados, fora de produção) à meta-capi nesta página. */
+    capi: [],
+    /** Promessa que resolve quando os envios do evento confirmarem ou em 300 ms, o que vier antes; null quando não
+        há nada a esperar (aí quem chamou segue na hora). Para o clique que sai da página: CAPI e tags do GTM. */
+    aposEnvio: function (eventId) {
+      var pendente = envios[eventId];
+      delete envios[eventId];
+      if (!pendente) return null;
+      return new Promise(function (ok) {
+        var feito = false;
+        function seguir() { if (!feito) { feito = true; ok(); } }
+        setTimeout(seguir, ESPERA_MAX_MS);
+        pendente.then(seguir, seguir);
+      });
+    },
     /** O que o checkout manda ao servidor para a CAPI; sem consentimento, só o "denied". */
     paraServidor: function () {
       if (!consentido()) return { consent: 'denied' };
@@ -87,10 +148,22 @@
       return disparar('nofiscal_view_content', { pagina: location.pathname }, { evento: 'ViewContent' });
     },
     planoEscolhido: function (plano, origem, ciclo) {
+      var anual = ciclo === 'anual';
       var valor = precoDe(plano, ciclo);
+      var dados = valorMeta(valor);
+      dados.content_name = 'nó.fiscal ' + (NOMES[plano] || plano);
+      dados.content_ids = ['nofiscal-' + plano + '-' + (anual ? 'anual' : 'mensal')];
+      dados.content_type = 'product';
       return disparar('nofiscal_plano_escolhido',
-        { plano: plano, valor: valor, moeda: 'BRL', origem: origem, ciclo: ciclo === 'anual' ? 'anual' : undefined },
-        { evento: 'AddToCart', dados: valorMeta(valor) });
+        { plano: plano, valor: valor, moeda: 'BRL', origem: origem, ciclo: anual ? 'anual' : undefined },
+        { evento: 'AddToCart', dados: dados, capi: true, esperar: true });
+    },
+    /** Escritório e Agência (sob medida) não têm cadastro: o clique no WhatsApp comercial é o Lead. */
+    lead: function (plano, canal) {
+      return disparar('nofiscal_lead', { plano: plano, canal: canal || 'whatsapp' }, {
+        evento: 'Lead', eventId: 'nofiscal-lead-' + uuid(), capi: true, esperar: true,
+        dados: { content_name: 'nó.fiscal ' + (NOMES[plano] || plano), content_category: 'nofiscal' }
+      });
     },
     cadastroIniciado: function (plano) {
       if (!primeiraVez('cadastro_inicio')) return null;
