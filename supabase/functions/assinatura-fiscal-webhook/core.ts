@@ -99,6 +99,30 @@ export async function autorizado(authorization: string | null, env: Record<strin
   return Boolean(user && pass && confere);
 }
 
+// Cobrança paga do aviso (Purchase da cobrança depois do teste e das renovações; compra.ts). O Pagar.me manda
+// invoice.paid e charge.paid para o mesmo pagamento: a chave é a fatura nos dois (charge.paid traz data.invoice),
+// e só cai para o id da cobrança quando não há fatura. Valor em centavos: o pago da cobrança, senão o da fatura;
+// null quando o aviso não traz (compra.ts usa o preço do plano).
+export type PagamentoDoAviso = { chave: string; centavos: number | null };
+
+function centavos(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+export function pagamentoDoAviso(tipo: string, data: Record<string, unknown>): PagamentoDoAviso | null {
+  const t = String(tipo || "").trim();
+  if (statusDoTipo(t) !== "paga") return null;
+  const d = obj(data);
+  if (t.startsWith("invoice.")) {
+    const charge = obj(d.charge);
+    const chave = texto(d.id) ?? texto(charge.id);
+    return chave ? { chave, centavos: centavos(charge.paid_amount) ?? centavos(d.amount) ?? centavos(charge.amount) } : null;
+  }
+  const chave = texto(obj(d.invoice).id) ?? texto(d.invoice_id) ?? texto(d.id);
+  return chave ? { chave, centavos: centavos(d.paid_amount) ?? centavos(d.amount) } : null;
+}
+
 /** Argumentos de public.fiscal_aplicar_evento_assinatura. */
 export type ArgsDoEvento = {
   p_gateway_event_id: string;
@@ -113,6 +137,8 @@ export type DepsDoAviso = {
   env: Record<string, string | undefined>;
   aplicarEvento: (args: ArgsDoEvento) => Promise<Record<string, unknown> | null>;
   log?: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void;
+  /** Medição da cobrança paga (compra.ts). Devolve o resumo para o log; nunca muda a resposta ao Pagar.me. */
+  medirCobranca?: (args: { subscriptionId: string; tipo: string; pagamento: PagamentoDoAviso }) => Promise<Record<string, unknown>>;
 };
 
 export type Resultado = { http: number; body: Record<string, unknown> };
@@ -160,6 +186,18 @@ export async function processarAviso(
     encontrada: result?.encontrada ?? null,
     ignorado: result?.ignorado ?? null,
   });
+  // Cobrança paga: Purchase (e purchase no GA4) com o consentimento gravado no checkout. Aviso repetido não mede de
+  // novo (duplicado aqui, e a chave da cobrança no banco segura invoice.paid + charge.paid do mesmo pagamento).
+  // "fora_de_ordem" e "cancelada_final" só dizem respeito ao status: a cobrança foi paga do mesmo jeito.
+  const pagamento = pagamentoDoAviso(tipo, data);
+  if (pagamento && subscriptionId && deps.medirCobranca && !result?.duplicado) {
+    try {
+      const medida = await deps.medirCobranca({ subscriptionId, tipo, pagamento });
+      log("info", "assinatura_fiscal_webhook_cobranca", { gateway_event_id: eventId, subscription_id: subscriptionId, ...medida });
+    } catch {
+      log("error", "assinatura_fiscal_webhook_cobranca", { gateway_event_id: eventId, subscription_id: subscriptionId, resultado: "erro" });
+    }
+  }
   // 200 também para repetido e tipo desconhecido: o Pagar.me não precisa reenviar.
   return { http: 200, body: { ok: true, ...(result || {}) } };
 }

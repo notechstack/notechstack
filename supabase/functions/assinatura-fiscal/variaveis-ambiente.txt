@@ -29,3 +29,12 @@ PAGARME_FISCAL_WEBHOOK_PASS=
 # O Supabase injeta nas funções.
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+# Medição (opcionais). META_ACCESS_TOKEN: o mesmo de meta-capi; sem ele nada vai à Meta CAPI (checkout e webhook).
+META_ACCESS_TOKEN=
+# Só em teste: manda os eventos para a aba "Testar eventos" do Events Manager (e debug_mode no GA4).
+META_TEST_EVENT_CODE=
+# GA4 Measurement Protocol da cobrança paga (assinatura-fiscal-webhook/compra.ts): o mesmo secret de
+# diagnostico-auditor. Sem ele o webhook não manda purchase ao GA4 (pula sem erro).
+GA4_API_SECRET=
+# Opcional: troca a propriedade (padrão G-1YEB89RVER, a do site).
+GA4_MEASUREMENT_ID=

@@ -6,7 +6,7 @@
 // O banco é alcançado só pelas quatro funções public.fiscal_* do lote A (deps).
 
 import { hashesDoTeste, normalizarTelefone } from "./teste-gratis.ts";
-import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao } from "./medicao.ts";
+import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao, type MedicaoDoNavegador } from "./medicao.ts";
 
 export type CodigoPlano = "inicial" | "pro";
 /** Ciclo de cobrança (Lucca, 03/11/2026): anual = 12 mensalidades com 20% off, cobradas de uma vez. */
@@ -264,6 +264,9 @@ export type Deps = {
   enviarMeta?: (corpo: Record<string, unknown>) => Promise<string>;
   /** IP e user agent de quem assinou, só para a CAPI com consentimento. */
   cliente?: ClienteHttp;
+  /** public.fiscal_registrar_medicao: guarda o consentimento (e fbp/fbc só com "granted") na assinatura, para o
+      webhook medir a cobrança depois do teste e as renovações. Ausente: nada é gravado e o webhook não mede. */
+  registrarMedicao?: (assinaturaId: string, medicao: MedicaoDoNavegador) => Promise<void>;
 };
 
 export type Resultado = { http: number; body: Record<string, unknown> };
@@ -726,6 +729,14 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   const centavos = centavosDoCiclo(pedido.plano, pedido.ciclo);
   const compra = eventoDaCompra(registro.id, comTeste, cupom ? valorComDesconto(centavos, cupom) : centavos);
   const medicao = lerMedicao(b.medicao);
+  // A assinatura já existe: uma falha aqui só fica no log (o webhook deixa de medir as cobranças dela).
+  if (deps.registrarMedicao) {
+    try {
+      await deps.registrarMedicao(registro.id, medicao);
+    } catch {
+      log("error", "assinatura_fiscal_medicao_nao_gravada", { subscription_id: subId });
+    }
+  }
   if (medicao.consent === "granted" && deps.enviarMeta) {
     try {
       const corpo = await corpoDaCompraMeta(
