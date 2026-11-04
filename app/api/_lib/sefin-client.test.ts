@@ -82,8 +82,9 @@ describe('emissão pelo cliente real', () => {
     const request = fake.requests[0]
     expect(Object.keys(JSON.parse(request.body!))).toEqual(['dpsXmlGZipB64'])
     expect(request.headers['content-type']).toMatch(/application\/json/)
-    // O XML transmitido é exatamente o guardado em xml_dps, e a assinatura verifica.
-    expect(request.xml).toBe(result.xmlDps)
+    // O XML transmitido é o guardado em xml_dps com a declaração UTF-8 na frente (E1229), e a assinatura verifica.
+    expect(request.xml).toBe(`<?xml version="1.0" encoding="UTF-8"?>${result.xmlDps}`)
+    expect(result.xmlDps.startsWith('<?xml')).toBe(false)
     expect(verifySignature(result.xmlDps, cert.certPem)).toBe(true)
     expect(result.chaveAcesso).toBe(fake.issued.get(invoice.id_dps)!.chave)
     expect(result.xmlNfse).toContain(`<infNFSe Id="NFS${result.chaveAcesso}">`)
