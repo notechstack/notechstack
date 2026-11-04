@@ -165,12 +165,42 @@
 .fi-plano-icone svg{width:26px;height:26px}
 .fi-plano h3{display:flex;flex-direction:column;gap:3px;margin:0;font-size:20px;line-height:1.2;letter-spacing:-.01em}
 .fi-plano h3 small{font-size:14px;font-weight:400;color:var(--fi-texto-sec)}
-.fi-plano-preco{margin:8px 0 0;font-weight:800;font-size:clamp(38px,3.4vw,46px);line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
-.fi-plano-preco span{margin-left:4px;font-size:15px;font-weight:500;letter-spacing:0;color:var(--fi-texto-sec)}
-.fi-plano-preco--texto{font-size:clamp(30px,2.6vw,36px)}
 .fi-plano-franquia{margin:0;font:500 13px/1.4 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-texto-sec)}
 .fi-plano-franquia b{font-weight:700;color:var(--fi-texto)}
 .fi-plano .fi-btn{width:100%;margin-top:10px}
+/* Cards sem preço (04/11/2026): ícone ao lado do título, o teste de 7 dias no lugar do valor e menos respiro vazio.
+   O botão fica no mesmo ponto nos quatro cards; a lista vem embaixo. */
+.fi-planos--teste{row-gap:16px}
+.fi-planos--teste .fi-plano{display:grid;grid-row:span 4;grid-template-rows:subgrid;row-gap:14px;align-items:start;padding:30px 22px 24px}
+@media(min-width:1080px){.fi-planos--teste{row-gap:18px}}
+.fi-plano-topo{display:flex;align-items:center;gap:14px;width:100%}
+.fi-planos--teste .fi-plano-icone{flex:none;width:48px;height:48px;margin:0}
+.fi-planos--teste .fi-plano-icone svg{width:22px;height:22px}
+.fi-planos--teste .fi-plano h3{font-size:19px}
+.fi-planos--teste .fi-plano h3 small{font-size:13.5px;line-height:1.35}
+.fi-plano-oferta{width:100%;align-self:stretch;padding:14px 16px;border-radius:16px;background:var(--fi-fundo);border:1px solid var(--fi-borda)}
+.fi-plano--destaque .fi-plano-oferta{background:var(--fi-acento-tint);border-color:transparent}
+.fi-plano-gratis{margin:0;font-weight:800;font-size:clamp(34px,2.8vw,42px);line-height:1;letter-spacing:-.03em;white-space:nowrap}
+.fi-plano-depois{margin:8px 0 0;font-size:13.5px;line-height:1.45;color:var(--fi-texto-sec);text-wrap:pretty}
+.fi-plano-depois b{font-weight:600;color:var(--fi-texto)}
+.fi-plano-gratis span{margin-left:4px;font-size:.42em;font-weight:600;letter-spacing:0;color:var(--fi-texto-sec)}
+.fi-planos--teste .fi-plano .fi-btn{margin-top:0}
+.fi-planos--teste .fi-plano-itens{margin:2px 0 0;padding-top:14px;gap:9px}
+.fi-plano-itens li.fi-plano-base{padding-left:0;font-weight:700}
+.fi-plano-itens li.fi-plano-base::before,.fi-plano-itens li.fi-plano-base::after{display:none}
+/* Botões dos planos em verde (Lucca, 04/11/2026). O verde base (#30A46C) com texto branco fica em 3,2:1; o verde
+   escuro da paleta derivada passa de 4,5:1, e o hover escurece mais para não perder contraste. */
+.fi-btn--verde{background:var(--no-verde-escuro,#2A8459);color:#fff;border-color:var(--no-verde-escuro,#2A8459)}
+.fi-btn--verde:hover{background:#226C49;border-color:#226C49}
+.fi-btn--verde:focus-visible{outline:2px solid var(--no-verde,#30A46C);outline-offset:3px}
+/* Inclinação e brilho que seguem o cursor (portados do FlipCard do React Bits, sem o giro, que esconderia o card e
+   brigaria com o clique nos botões). O fiscal.js mexe em --rx/--ry/--gx/--gy/--brilho; sem mouse ou com movimento
+   reduzido, nada mexe. */
+.fi-planos--teste .fi-plano{--rx:0deg;--ry:0deg;--gx:50%;--gy:50%;--brilho:0;transform:perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry));transition:transform .5s cubic-bezier(.2,.8,.2,1),box-shadow .25s ease}
+.fi-planos--teste .fi-plano:hover{transform:perspective(1100px) translateY(-4px) rotateX(var(--rx)) rotateY(var(--ry))}
+.fi-planos--teste .fi-plano.is-inclinado{transition:transform .12s linear,box-shadow .25s ease}
+.fi-plano-brilho{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:var(--brilho);transition:opacity .3s ease;background:radial-gradient(circle farthest-side at var(--gx) var(--gy),rgba(48,164,108,.22) 0%,rgba(48,164,108,.14) 22%,rgba(48,164,108,.06) 48%,rgba(48,164,108,0) 75%)}
+@media (prefers-reduced-motion:reduce){.fi-planos--teste .fi-plano,.fi-planos--teste .fi-plano:hover{transform:none}.fi-plano-brilho{display:none}}
 .fi-plano-itens{width:100%;margin:12px 0 0;padding:16px 0 0;list-style:none;border-top:1px solid var(--fi-borda);display:grid;gap:10px;font-size:14px;line-height:1.45;color:var(--fi-texto)}
 .fi-plano-itens li{position:relative;padding-left:28px;text-wrap:pretty}
 .fi-plano-itens li::before{content:'';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--fi-acento-tint)}
@@ -187,10 +217,6 @@
 .fi-ciclo-toggle button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
 .fi-ciclo-toggle button span{padding:4px 8px;border-radius:999px;background:var(--fi-acento);color:var(--fi-texto);font-size:11.5px}
 .fi-ciclo-toggle+.fi-planos{margin-top:clamp(28px,3vw,36px)}
-.fi-plano-preco b{font-weight:inherit}
-.fi-plano-de{display:none;margin:0 0 6px;font-size:15px;font-weight:500;letter-spacing:0;color:var(--fi-texto-sec)}
-.fi-plano-anual{display:none;margin:-4px 0 0;font-size:13px;color:var(--fi-texto-sec)}
-.fi-planos[data-ciclo="anual"] .fi-plano-de,.fi-planos[data-ciclo="anual"] .fi-plano-anual{display:block}
 .fi-planos[data-ciclo="anual"] [data-plano="escritorio"],.fi-planos[data-ciclo="anual"] [data-plano="agencia"]{display:none}
 @media(min-width:700px){.fi-planos[data-ciclo="anual"]{grid-template-columns:repeat(2,minmax(0,330px));justify-content:center}}
 .fi-planos-nota{margin:18px 0 0;text-align:center;font-size:12.5px;line-height:1.5;color:var(--fi-texto-sec)}

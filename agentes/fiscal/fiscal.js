@@ -14,14 +14,14 @@
 
   /* Fundo líquido do bloco do simulador: shader com as cores da marca (âmbar, âmbar claro, osso, vermelho claro).
      Sem WebGL o canvas fica vazio e o degradê do CSS aparece. Com movimento reduzido, só um quadro. */
-  /* Ciclo dos planos: no anual, Inicial e Pro com 20% off (preço por mês + total do ano) e o ciclo vai no link do
+  /* Ciclo dos planos: no anual, Inicial e Pro dizem que o ano sai com 20% off (o valor só aparece no /comecar/) e o ciclo vai no link do
      cadastro; Escritório e Agência somem pelo CSS. */
   var planos = document.getElementById('fi-planos');
   var cicloBtns = document.querySelectorAll('.fi-ciclo-toggle [data-ciclo]');
   function mudarCiclo(c) {
     planos.setAttribute('data-ciclo', c);
     Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
-    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-preco b'), function (v) { v.textContent = v.getAttribute('data-' + c); });
+    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-depois [data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
     Array.prototype.forEach.call(planos.querySelectorAll('a[data-plano]'), function (a) {
       var u = new URL(a.getAttribute('href'), location.href);
       if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
@@ -31,6 +31,35 @@
   if (planos) Array.prototype.forEach.call(cicloBtns, function (b) {
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
+
+  /* Cards dos planos: inclinam e ganham um brilho na direção do cursor (efeito do FlipCard do React Bits, em JS puro e
+     sem o giro). Só com mouse e sem movimento reduzido; o CSS faz a suavização. */
+  var INCLINACAO_MAX = 6; // graus
+  var semMovimento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (planos && planos.classList.contains('fi-planos--teste') && !semMovimento) {
+    Array.prototype.forEach.call(planos.children, function (card) {
+      var brilho = document.createElement('span');
+      brilho.className = 'fi-plano-brilho';
+      brilho.setAttribute('aria-hidden', 'true');
+      card.appendChild(brilho);
+      card.addEventListener('pointermove', function (e) {
+        if (e.pointerType === 'touch') return;
+        var r = card.getBoundingClientRect();
+        var px = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        var py = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+        card.classList.add('is-inclinado');
+        card.style.setProperty('--rx', ((0.5 - py) * 2 * INCLINACAO_MAX).toFixed(2) + 'deg');
+        card.style.setProperty('--ry', ((px - 0.5) * 2 * INCLINACAO_MAX).toFixed(2) + 'deg');
+        card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
+        card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
+        card.style.setProperty('--brilho', '1');
+      });
+      card.addEventListener('pointerleave', function () {
+        card.classList.remove('is-inclinado');
+        ['--rx', '--ry', '--gx', '--gy', '--brilho'].forEach(function (v) { card.style.removeProperty(v); });
+      });
+    });
+  }
 
   var fluido = document.getElementById('fi-fluido');
   if (fluido && window.NoFluido) {
