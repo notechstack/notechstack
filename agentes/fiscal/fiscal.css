@@ -171,7 +171,7 @@
 /* Cards sem preço (04/11/2026): ícone ao lado do título, o teste de 7 dias no lugar do valor e menos respiro vazio.
    O botão fica no mesmo ponto nos quatro cards; a lista vem embaixo. */
 .fi-planos--teste{row-gap:16px}
-.fi-planos--teste .fi-plano{display:grid;grid-row:span 5;grid-template-rows:subgrid;row-gap:14px;align-items:start;padding:30px 22px 24px}
+.fi-planos--teste .fi-plano{display:grid;grid-row:span 4;grid-template-rows:subgrid;row-gap:14px;align-items:start;padding:30px 22px 24px}
 @media(min-width:1080px){.fi-planos--teste{row-gap:18px}}
 .fi-plano-topo{display:flex;align-items:center;gap:14px;width:100%}
 .fi-planos--teste .fi-plano-icone{flex:none;width:48px;height:48px;margin:0}
@@ -180,9 +180,10 @@
 .fi-planos--teste .fi-plano h3 small{font-size:13.5px;line-height:1.35}
 .fi-plano-oferta{width:100%;align-self:stretch;padding:14px 16px;border-radius:16px;background:var(--fi-fundo);border:1px solid var(--fi-borda)}
 .fi-plano--destaque .fi-plano-oferta{background:var(--fi-acento-tint);border-color:transparent}
-.fi-plano-gratis{margin:0;font-weight:800;font-size:clamp(24px,1.9vw,30px);line-height:1.05;letter-spacing:-.03em;white-space:nowrap}
+.fi-plano-gratis{margin:0;font-weight:800;font-size:clamp(34px,2.8vw,42px);line-height:1;letter-spacing:-.03em;white-space:nowrap}
 .fi-plano-depois{margin:8px 0 0;font-size:13.5px;line-height:1.45;color:var(--fi-texto-sec);text-wrap:pretty}
 .fi-plano-depois b{font-weight:600;color:var(--fi-texto)}
+.fi-plano-gratis span{margin-left:4px;font-size:.42em;font-weight:600;letter-spacing:0;color:var(--fi-texto-sec)}
 .fi-planos--teste .fi-plano .fi-btn{margin-top:0}
 .fi-planos--teste .fi-plano-itens{margin:2px 0 0;padding-top:14px;gap:9px}
 .fi-plano-itens li.fi-plano-base{padding-left:0;font-weight:700}

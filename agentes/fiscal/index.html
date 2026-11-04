@@ -185,7 +185,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>-20%</span></button>
     </div>
     <!-- Cards sem preço (Lucca, 04/11/2026): o valor de cada plano aparece no /comecar/, na etapa de pagamento, antes
-         do cartão. Aqui o destaque é o teste de 7 dias; o Pro e o Escritório listam só o que somam ao plano anterior. -->
+         do cartão. Aqui o destaque é o volume de notas por mês, e o teste de 7 dias vem logo abaixo; o Pro e o Escritório listam só o que somam ao plano anterior. -->
     <ul class="fi-planos fi-planos--teste fi-reveal" id="fi-planos" data-ciclo="mensal">
       <li class="fi-plano" data-plano="inicial">
         <div class="fi-plano-topo">
@@ -193,10 +193,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <h3>Inicial<small>Pra quem emite algumas notas por mês</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <p class="fi-plano-gratis">7 dias grátis</p>
-          <p class="fi-plano-depois"><b data-mensal="Depois, mensalidade do Inicial" data-anual="Depois, anual com 20% de desconto">Depois, mensalidade do Inicial</b>. Cancele no teste e não paga nada.</p>
+          <p class="fi-plano-gratis">20 <span>notas/mês</span></p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar. <span data-mensal="Depois, mensalidade do plano." data-anual="Depois, anual com 20% de desconto.">Depois, mensalidade do plano.</span></p>
         </div>
-        <p class="fi-plano-franquia">Até <b>20</b> notas por mês</p>
         <a class="fi-btn fi-btn--tinta" data-plano="inicial" href="/agentes/fiscal/comecar/?plano=inicial">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
           <li>Emissão e cancelamento pelo WhatsApp</li>
@@ -212,14 +211,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <h3>Pro<small>Pra rotina de atendimento</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <p class="fi-plano-gratis">7 dias grátis</p>
-          <p class="fi-plano-depois"><b data-mensal="Depois, mensalidade do Pro" data-anual="Depois, anual com 20% de desconto">Depois, mensalidade do Pro</b>. Cancele no teste e não paga nada.</p>
+          <p class="fi-plano-gratis">100 <span>notas/mês</span></p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar. <span data-mensal="Depois, mensalidade do plano." data-anual="Depois, anual com 20% de desconto.">Depois, mensalidade do plano.</span></p>
         </div>
-        <p class="fi-plano-franquia">Até <b>100</b> notas por mês</p>
         <a class="fi-btn fi-btn--tinta" data-plano="pro" href="/agentes/fiscal/comecar/?plano=pro">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Inicial, e mais:</li>
-          <li>5 vezes mais notas por mês</li>
           <li>Cópia automática para o cliente e o contador</li>
           <li>Resumo das notas no WhatsApp, mensal ou semanal</li>
         </ul>
@@ -230,10 +227,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <h3>Escritório<small>Pra quem emite mais de 100 notas por mês</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <p class="fi-plano-gratis">Sob medida</p>
-          <p class="fi-plano-depois">Volume e valor combinados com a Nó pelo WhatsApp.</p>
+          <p class="fi-plano-gratis">+100 <span>notas/mês</span></p>
+          <p class="fi-plano-depois"><b>Sob medida:</b> franquia e valor combinados com a Nó.</p>
         </div>
-        <p class="fi-plano-franquia">Mais de <b>100</b> notas por mês</p>
         <a class="fi-btn fi-btn--tinta" data-lead="escritorio" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Quero%20o%20plano%20Escrit%C3%B3rio%20do%20n%C3%B3.fiscal%3A%20emito%20mais%20de%20100%20notas%20por%20m%C3%AAs." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Pro, e mais:</li>
@@ -247,10 +243,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <h3>Agência<small>Pra integrar a emissão no sistema dos seus clientes</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <p class="fi-plano-gratis">Sob medida</p>
-          <p class="fi-plano-depois">Volume e valor combinados com a Nó pelo WhatsApp.</p>
+          <p class="fi-plano-gratis">Vários <span>CNPJs</span></p>
+          <p class="fi-plano-depois"><b>Sob medida:</b> volume e valor combinados com a Nó.</p>
         </div>
-        <p class="fi-plano-franquia">Vários CNPJs, <b>1</b> API</p>
         <a class="fi-btn fi-btn--tinta" data-lead="agencia" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Sou%20de%20uma%20ag%C3%AAncia%20e%20quero%20integrar%20o%20n%C3%B3.fiscal%20ao%20sistema%20dos%20meus%20clientes." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <ul class="fi-plano-itens">
           <li>API para o sistema que você já usa</li>

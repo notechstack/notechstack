@@ -21,7 +21,7 @@
   function mudarCiclo(c) {
     planos.setAttribute('data-ciclo', c);
     Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
-    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-depois b[data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
+    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-depois [data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
     Array.prototype.forEach.call(planos.querySelectorAll('a[data-plano]'), function (a) {
       var u = new URL(a.getAttribute('href'), location.href);
       if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
