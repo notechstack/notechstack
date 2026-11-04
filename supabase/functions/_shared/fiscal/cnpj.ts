@@ -114,9 +114,14 @@ export function padraoNacional(ibge: string, lista: ListaMunicipios): boolean {
 }
 
 // O MEI emite pelo Emissor Nacional em qualquer município: as regras E0037, E0038 e E0039 da Sefin
-// (Anexo I v1.01, aba RN DPS_NFS-e) exceptuam o MEI. A lista só vale para o Simples ME/EPP.
+// (Anexo I v1.01, aba RN DPS_NFS-e) exceptuam o MEI.
+// Desde a competência 01/11/2026, a Resolução CGSN 191/2026 obriga a ME/EPP do Simples a emitir
+// "exclusivamente pelo Emissor Nacional (Web ou API)", "independentemente de o município possuir emissor
+// próprio" (gov.br/nfse, notícia de 29/10/2026). Por isso o Simples também passa em qualquer município, e a
+// lista (padraoNacional) deixou de barrar o cadastro. Ela fica para quando surgir regime que dependa dela.
 export function municipioAtendido(d: Pick<DadosCnpj, "regime" | "codigo_municipio_ibge">, lista: ListaMunicipios): boolean {
-  return d.regime === "mei" || padraoNacional(d.codigo_municipio_ibge, lista);
+  if (d.regime === "mei" || d.regime === "simples") return true;
+  return padraoNacional(d.codigo_municipio_ibge, lista);
 }
 
 export function lerListaMunicipios(conteudo: string | null): ListaMunicipios {
