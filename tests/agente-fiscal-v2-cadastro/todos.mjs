@@ -3,3 +3,4 @@
 import "./acesso.test.mjs";
 import "./cadastro.test.mjs";
 import "./checkout.test.mjs";
+import "./municipio.test.mjs";

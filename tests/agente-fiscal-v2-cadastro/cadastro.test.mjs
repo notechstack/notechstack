@@ -137,7 +137,8 @@ test("consultar cnpj: sem CNPJ_API_URL usa a BrasilAPI oficial", async () => {
   assert.deepEqual(api.chamadas, [`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`]);
 });
 
-test("município fora do padrão: consulta diz padrao_nacional false e criar responde 422 sem gravar nada", async () => {
+test("Simples ME/EPP fora da lista do padrão nacional: consulta passa e criar grava (Res. CGSN 191/2026)", async () => {
+  // Desde a competência 01/11/2026 a ME/EPP do Simples emite pelo Emissor Nacional em qualquer município.
   const cnpj = cnpjValido();
   const telefone = telefoneAleatorio();
   const u = await criarUsuario(bancos.dono);
@@ -146,46 +147,34 @@ test("município fora do padrão: consulta diz padrao_nacional false e criar res
 
   const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
   assert.equal(consulta.status, 200);
-  assert.equal(consulta.body.padrao_nacional, false);
+  assert.equal(consulta.body.regime, "simples");
+  assert.equal(consulta.body.padrao_nacional, true);
 
   // Mesmo que o corpo diga outro município, vale o da consulta.
   const r = await chamar(
     { acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro", codigo_municipio_ibge: "3550308" },
     { api, userId: u.id },
   );
-  assert.equal(r.status, 422);
-  assert.equal(r.body.error_code, "MUNICIPIO_FORA_DO_PADRAO");
-  assert.equal(r.chamadasCriar.length, 0);
-  assert.deepEqual(await contar(cnpj, telefone, u.email), { tenants: 0, phones: 0, clients: 0 });
-  const conta = await bancos.dono.query("select 1 from nofiscal.fiscal_accounts where user_id = $1", [u.id]);
-  assert.equal(conta.rowCount, 0);
+  assert.equal(r.status, 201);
+  assert.equal(r.chamadasCriar[0].regime, "simples");
+  const t = (await bancos.dono.query("select regime, codigo_municipio_ibge from nofiscal.fiscal_tenants where id = $1", [r.body.tenant_id])).rows[0];
+  assert.deepEqual(t, { regime: "simples", codigo_municipio_ibge: String(FORA_DO_PADRAO) });
 });
 
-test("município fora do padrão: com a lista real do lote P, Salvador fica fora e São Paulo passa", async () => {
+test("com a lista real do lote P, Bragança Paulista (fora da lista) e São Paulo passam no Simples", async () => {
   // A mesma lista que o index.ts da função usa (municipios-padrao-nacional.json, embutido).
   assert.ok(LISTA_MUNICIPIOS.fonte.startsWith("https://www.gov.br/nfse/"));
-  const salvador = cnpjValido();
+  assert.ok(!LISTA_MUNICIPIOS.codigos_ibge.includes("3507605"));
+  const braganca = cnpjValido();
   const saoPaulo = cnpjValido();
-  const telefone = telefoneAleatorio();
-  const u = await criarUsuario(bancos.dono);
-  limpar.push({ userId: u.id, cnpj: salvador, telefone });
   const api = brasilApi({
-    [salvador]: respostaBrasilApi(salvador, { ibge: 2927408, municipio: "SALVADOR", uf: "BA" }),
+    [braganca]: respostaBrasilApi(braganca, { ibge: 3507605, municipio: "BRAGANCA PAULISTA", uf: "SP" }),
     [saoPaulo]: respostaBrasilApi(saoPaulo),
   });
-  const fora = await chamar({ acao: "consultar_cnpj", cnpj: salvador }, { api, lista: LISTA_MUNICIPIOS });
-  assert.equal(fora.body.padrao_nacional, false);
+  const fora = await chamar({ acao: "consultar_cnpj", cnpj: braganca }, { api, lista: LISTA_MUNICIPIOS });
+  assert.equal(fora.body.padrao_nacional, true);
   const dentro = await chamar({ acao: "consultar_cnpj", cnpj: saoPaulo }, { api, lista: LISTA_MUNICIPIOS });
   assert.equal(dentro.body.padrao_nacional, true);
-
-  const r = await chamar(
-    { acao: "criar", cnpj: salvador, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "inicial" },
-    { api, userId: u.id, lista: LISTA_MUNICIPIOS },
-  );
-  assert.equal(r.status, 422);
-  assert.equal(r.body.error_code, "MUNICIPIO_FORA_DO_PADRAO");
-  assert.equal(r.chamadasCriar.length, 0);
-  assert.deepEqual(await contar(salvador, telefone, u.email), { tenants: 0, phones: 0, clients: 0 });
 });
 
 test("município fora do padrão: lista sem fonte (lote P sem resposta) deixa todos passarem", async () => {
