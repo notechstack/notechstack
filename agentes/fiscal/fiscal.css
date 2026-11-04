@@ -188,6 +188,19 @@
 .fi-planos--teste .fi-plano-itens{margin:2px 0 0;padding-top:14px;gap:9px}
 .fi-plano-itens li.fi-plano-base{padding-left:0;font-weight:700}
 .fi-plano-itens li.fi-plano-base::before,.fi-plano-itens li.fi-plano-base::after{display:none}
+/* Botões dos planos em verde (Lucca, 04/11/2026). O verde base (#30A46C) com texto branco fica em 3,2:1; o verde
+   escuro da paleta derivada passa de 4,5:1, e o hover escurece mais para não perder contraste. */
+.fi-btn--verde{background:var(--no-verde-escuro,#2A8459);color:#fff;border-color:var(--no-verde-escuro,#2A8459)}
+.fi-btn--verde:hover{background:#226C49;border-color:#226C49}
+.fi-btn--verde:focus-visible{outline:2px solid var(--no-verde,#30A46C);outline-offset:3px}
+/* Inclinação e brilho que seguem o cursor (portados do FlipCard do React Bits, sem o giro, que esconderia o card e
+   brigaria com o clique nos botões). O fiscal.js mexe em --rx/--ry/--gx/--gy/--brilho; sem mouse ou com movimento
+   reduzido, nada mexe. */
+.fi-planos--teste .fi-plano{--rx:0deg;--ry:0deg;--gx:50%;--gy:50%;--brilho:0;transform:perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry));transition:transform .5s cubic-bezier(.2,.8,.2,1),box-shadow .25s ease}
+.fi-planos--teste .fi-plano:hover{transform:perspective(1100px) translateY(-4px) rotateX(var(--rx)) rotateY(var(--ry))}
+.fi-planos--teste .fi-plano.is-inclinado{transition:transform .12s linear,box-shadow .25s ease}
+.fi-plano-brilho{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:var(--brilho);transition:opacity .3s ease;background:radial-gradient(circle farthest-side at var(--gx) var(--gy),rgba(255,255,255,.55) 0%,rgba(255,255,255,.28) 26%,rgba(255,255,255,.08) 60%,rgba(255,255,255,0) 100%),radial-gradient(circle at var(--gx) var(--gy),rgba(48,164,108,.10) 0%,rgba(48,164,108,0) 55%)}
+@media (prefers-reduced-motion:reduce){.fi-planos--teste .fi-plano,.fi-planos--teste .fi-plano:hover{transform:none}.fi-plano-brilho{display:none}}
 .fi-plano-itens{width:100%;margin:12px 0 0;padding:16px 0 0;list-style:none;border-top:1px solid var(--fi-borda);display:grid;gap:10px;font-size:14px;line-height:1.45;color:var(--fi-texto)}
 .fi-plano-itens li{position:relative;padding-left:28px;text-wrap:pretty}
 .fi-plano-itens li::before{content:'';position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:var(--fi-acento-tint)}

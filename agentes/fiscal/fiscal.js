@@ -32,6 +32,35 @@
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
 
+  /* Cards dos planos: inclinam e ganham um brilho na direção do cursor (efeito do FlipCard do React Bits, em JS puro e
+     sem o giro). Só com mouse e sem movimento reduzido; o CSS faz a suavização. */
+  var INCLINACAO_MAX = 6; // graus
+  var semMovimento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (planos && planos.classList.contains('fi-planos--teste') && !semMovimento) {
+    Array.prototype.forEach.call(planos.children, function (card) {
+      var brilho = document.createElement('span');
+      brilho.className = 'fi-plano-brilho';
+      brilho.setAttribute('aria-hidden', 'true');
+      card.appendChild(brilho);
+      card.addEventListener('pointermove', function (e) {
+        if (e.pointerType === 'touch') return;
+        var r = card.getBoundingClientRect();
+        var px = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        var py = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+        card.classList.add('is-inclinado');
+        card.style.setProperty('--rx', ((0.5 - py) * 2 * INCLINACAO_MAX).toFixed(2) + 'deg');
+        card.style.setProperty('--ry', ((px - 0.5) * 2 * INCLINACAO_MAX).toFixed(2) + 'deg');
+        card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
+        card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
+        card.style.setProperty('--brilho', '1');
+      });
+      card.addEventListener('pointerleave', function () {
+        card.classList.remove('is-inclinado');
+        ['--rx', '--ry', '--gx', '--gy', '--brilho'].forEach(function (v) { card.style.removeProperty(v); });
+      });
+    });
+  }
+
   var fluido = document.getElementById('fi-fluido');
   if (fluido && window.NoFluido) {
     var cs = getComputedStyle(document.documentElement);
