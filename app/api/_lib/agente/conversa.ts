@@ -412,12 +412,9 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     await responder(ctx, TEXTOS.chamouAEquipe)
     return
   }
-  // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
+  // Comandos do dono (critérios 44 e 46) e boas-vindas (29) vêm antes dos pedidos.
   if (await tratarComando(ctx, texto)) return
-  if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido') {
-    await conversarNasBoasVindas(ctx, texto)
-    return
-  }
+  if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
     if (!(pedido && (await responderEtapa(ctx, pedido, texto)))) {
