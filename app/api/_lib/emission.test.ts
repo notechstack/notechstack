@@ -72,7 +72,8 @@ describe('emissão autorizada (C3)', () => {
     const transmitted = sefin.requests[0].xml!
     expect(row.chave_acesso).toBe(sefin.issued.get(row.id_dps!)!.chave)
     expect(row.chave_acesso).toMatch(/^[0-9]{50}$/)
-    expect(row.xml_dps).toBe(transmitted)
+    // O transmitido leva a declaração UTF-8 na frente (E1229); o gravado é o mesmo XML assinado, sem ela.
+    expect(transmitted).toBe(`<?xml version="1.0" encoding="UTF-8"?>${row.xml_dps}`)
     expect(verifySignature(row.xml_dps!, cert.certPem)).toBe(true)
     expect(row.xml_nfse).toBe(sefin.issued.get(row.id_dps!)!.xml)
     expect(row.issued_at).toEqual(t0)

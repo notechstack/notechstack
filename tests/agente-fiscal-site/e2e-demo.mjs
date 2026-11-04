@@ -185,21 +185,10 @@ async function whatsapp(context, botao, dados) {
   log(`dono: ${texto}`);
   await esperar(/Sua empresa: [\s\S]*Está tudo certo\?/);
   await conversa.screenshot({ path: join(capturas, `whatsapp-1-conferir${sufixo}.png`), fullPage: true });
+  // "sim" fecha as boas-vindas (critério 29): sem cliente frequente nem nota de exemplo desde 04/11/2026.
   await dizer('sim');
-  await esperar(/Para quem você mais emite\?/);
-  await dizer('Prontia Saúde');
-  const cliente = await esperar(/Está certo\?|CPF|CNPJ/);
-  if (/Está certo\?/.test(cliente)) await dizer('sim');
-  else { await dizer('11444777000161'); await esperar(/e-mail/i); await dizer('financeiro@prontia.com.br'); await esperar(/modelo|salv/i); await dizer('sim'); }
-  await esperar(/Me diga uma nota que você emitiria/);
-  await dizer('nota pra Prontia Saúde, 150 reais');
-  await esperar(/EXEMPLO — não será emitida/);
-  await conversa.screenshot({ path: join(capturas, `whatsapp-2-ensaio${sufixo}.png`), fullPage: true });
-  // "confirmar" no ensaio não emite (critério 32) e fecha as boas-vindas (critério 33).
-  await dizer('confirmar');
-  const pronto = await esperar(/Pronto! Agora, para emitir uma nova nota/);
-  if (!/Isso foi só um exemplo/.test((await agente.allInnerTexts()).join(' '))) throw new Error('sem "Isso foi só um exemplo"');
-  await conversa.screenshot({ path: join(capturas, `whatsapp-3-pronto${sufixo}.png`), fullPage: true });
+  const pronto = await esperar(/Pronto! Agora, para emitir uma nota/);
+  await conversa.screenshot({ path: join(capturas, `whatsapp-2-pronto${sufixo}.png`), fullPage: true });
   if (!/Pronto!/.test(pronto)) throw new Error('sem "Pronto!"');
 }
 

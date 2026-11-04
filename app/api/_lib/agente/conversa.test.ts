@@ -26,7 +26,7 @@ import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb, sefinDouble } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
-import { DESCRICAO_PADRAO, ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
+import { DESCRICAO_PADRAO, ehConfirmarEmissao, ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
 import { comNonoDigito } from './normalizacao.js'
 import { mensagensDaNotificacao } from './webhook.js'
@@ -302,6 +302,27 @@ describe('conversa no WhatsApp', () => {
     // Um segundo "confirmar" não cria outra nota.
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(1)
+  })
+
+  it('"Sim" ao resumo também emite', async () => {
+    // Lucca, 04/11/2026: um cliente respondeu "Sim" ao resumo e o robô mandou a ajuda em vez de emitir.
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
+    const c = conversa(ROTEIRO_PRONTIA)
+
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    await c.enviar(s.ownerPhone, 'Sim')
+    expect(c.ultimaPara(s.ownerPhone)).toBe('Emitindo na Sefin. Em instantes mando a nota aqui e no seu e-mail.')
+    const [pedido] = await pedidosDo(admin.db, s.tenant.id)
+    expect(pedido.status).toBe('confirmed')
+    expect(c.ia.chamadas).toEqual([PEDIDO_PRONTIA])
+  })
+
+  it('respostas de concordância no resumo', () => {
+    for (const t of ['Sim', 'sim!', 's', 'ok', 'Pode emitir', 'pode sim', 'Sim, pode emitir por favor', 'ok, tá certo', 'Tudo certo', 'isso', 'confirmo', 'Emite aí', '👍', '👍🏻', '✅'])
+      expect(ehConfirmarEmissao(t), t).toBe(true)
+    for (const t of ['não', 'sim, mas muda o valor', 'corrigir', 'nota pra Prontia, 10 reais', 'tudo', 'por favor', 'ok 200 reais', '', 'pode mandar pro outro e-mail'])
+      expect(ehConfirmarEmissao(t), t).toBe(false)
   })
 
   it('tomador novo pede documento', async () => {

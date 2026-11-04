@@ -3,6 +3,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   allowTestUserToAssume,
+  assinarTenant,
   canaisDouble,
   createSelfServiceTenant,
   criarModelo,
@@ -113,11 +114,10 @@ async function contagens(tenantId: string) {
 }
 
 /** Tenant ativado pelo `ATIVAR` e já na etapa pedida, pelo caminho real da conversa. */
-async function ateAEtapa(etapa: 'boas_vindas_conferir' | 'boas_vindas_cliente', c = conversa()) {
+async function ateAEtapa(etapa: 'boas_vindas_conferir', c = conversa()) {
   const s = await novoTenant()
   // A mensagem que a página põe pronta no WhatsApp (Lucca, 22/10/2026), com empresa e plano antes do código.
   await c.enviar(s.ownerPhone, mensagemDeAtivacao('EMPRESA TESTE LTDA', 'pro', await codigoPara(s)))
-  if (etapa === 'boas_vindas_cliente') await c.enviar(s.ownerPhone, 'sim')
   expect((await estadoDe(s)).etapa).toBe(etapa)
   return s
 }
@@ -238,113 +238,62 @@ describe('boas-vindas', () => {
     expect((await estadoDe(s)).etapa).toBe('boas_vindas_conferir')
     expect(await c.enviar(s.ownerPhone, 'pronto')).toBe(pergunta)
 
-    // "sim" passa ao cliente frequente.
-    expect(await c.enviar(s.ownerPhone, 'Sim')).toBe('Para quem você mais emite?')
-    expect((await estadoDe(s)).etapa).toBe('boas_vindas_cliente')
+    // "sim" conclui, com um cliente da conta no exemplo.
+    const pronto = await c.enviar(s.ownerPhone, 'Sim')
+    expect(pronto).toMatch(/^Pronto! Agora, para emitir uma nota, é só mandar uma mensagem aqui com o cliente e o valor, por exemplo: nota pra (Importado A|Importado B|Da nota), 150 reais$/)
+    expect((await estadoDe(s)).etapa).toBe('concluido')
   })
 
-  it('cliente mais frequente', async () => {
-    // Com modelo: mostra o modelo e pergunta "Está certo?".
+  it('sem clientes, o exemplo é genérico', async () => {
     const c = conversa()
-    const comModelo = await ateAEtapa('boas_vindas_cliente', c)
-    await criarModelo(admin.db, comModelo.tenant.id, {
-      nome: 'Prontia',
-      documento: '52998224725',
-      nomeTomador: 'Prontia Saúde',
-      email: 'financeiro@prontia.test',
-      descricao: 'Consultoria em saúde',
-    })
-    const cartao = await c.enviar(comModelo.ownerPhone, 'Prontia')
-    expect(cartao).toContain('Tomador: Prontia Saúde')
-    expect(cartao).toContain('CPF: 529.982.247-25')
-    expect(cartao).toContain('Serviço: 01.07.01')
-    expect(cartao).toContain('Descrição na nota: Consultoria em saúde')
-    expect(cartao).toContain('E-mail: financeiro@prontia.test')
-    expect(cartao.trim().endsWith('Está certo?')).toBe(true)
-    expect(await c.enviar(comModelo.ownerPhone, 'sim')).toContain('Me diga uma nota que você emitiria, como se fosse de verdade')
-    expect((await estadoDe(comModelo)).etapa).toBe('boas_vindas_ensaio')
-
-    // Sem modelo: pede CPF/CNPJ e e-mail, como no tomador novo, e oferece salvar como modelo.
-    const semModelo = await ateAEtapa('boas_vindas_cliente', c)
-    const pedido = await c.enviar(semModelo.ownerPhone, 'Clínica Aurora')
-    expect(pedido).toMatch(/CPF ou CNPJ/)
-    expect(pedido).toMatch(/e-mail/)
-    expect(await c.enviar(semModelo.ownerPhone, '11.444.777/0001-61')).toContain('Falta o e-mail')
-    expect(await c.enviar(semModelo.ownerPhone, 'contato@aurora.test')).toBe('Quer que eu guarde Clínica Aurora para as próximas notas? Responda sim ou não.')
-    const salvo = await c.enviar(semModelo.ownerPhone, 'sim')
-    expect(salvo).toContain('Modelo Clínica Aurora salvo.')
-    expect(salvo).toContain('Me diga uma nota que você emitiria')
-    const { rows } = await admin.db.query(
-      `select nome, tomador_documento, tomador_nome, tomador_email, codigo_servico_nacional, origem, created_from_invoice_id
-         from nofiscal.fiscal_models where tenant_id = $1`,
-      [semModelo.tenant.id],
+    const s = await ateAEtapa('boas_vindas_conferir', c)
+    expect(await c.enviar(s.ownerPhone, 'sim')).toBe(
+      'Pronto! Agora, para emitir uma nota, é só mandar uma mensagem aqui com o cliente e o valor, por exemplo: nota pra seu cliente, 150 reais',
     )
-    expect(rows).toEqual([
-      {
-        nome: 'Clínica Aurora',
-        tomador_documento: '11444777000161',
-        tomador_nome: 'TOMADOR PJ LTDA',
-        tomador_email: 'contato@aurora.test',
-        codigo_servico_nacional: '010701',
-        origem: 'boas_vindas',
-        created_from_invoice_id: null,
-      },
-    ])
-    expect(await contagens(semModelo.tenant.id)).toEqual({ notas: 0, pedidos: 0 })
+    expect((await estadoDe(s)).etapa).toBe('concluido')
+    expect(await contagens(s.tenant.id)).toEqual({ notas: 0, pedidos: 0 })
   })
 
-  it('ensaio não emite', async () => {
+  it('depois do sim, o pedido já é de verdade', async () => {
     const c = conversa({ 'nota pra Prontia, 150 reais': { intencao: 'emitir', tomador: 'Prontia', valor: '150' } })
-    const s = await ateAEtapa('boas_vindas_cliente', c)
+    const s = await ateAEtapa('boas_vindas_conferir', c)
+    await assinarTenant(admin.db, s.tenant.id, { status: 'paga' })
     await criarModelo(admin.db, s.tenant.id, { nome: 'Prontia', documento: '52998224725', nomeTomador: 'Prontia Saúde' })
-    await c.enviar(s.ownerPhone, 'Prontia')
     await c.enviar(s.ownerPhone, 'sim')
     const antes = await contagens(s.tenant.id)
 
     const resumo = await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
-    expect(resumo.split('\n')[0]).toBe('EXEMPLO — não será emitida')
+    expect(resumo).not.toContain('EXEMPLO')
     expect(resumo).toContain('Tomador: Prontia Saúde')
     expect(resumo).toContain('Valor: R$ 150,00')
-    expect(c.ia.chamadas).toEqual(['nota pra Prontia, 150 reais'])
-    expect(await contagens(s.tenant.id)).toEqual(antes)
-    expect(antes.pedidos).toBe(0)
+    expect(await contagens(s.tenant.id)).toEqual({ ...antes, pedidos: antes.pedidos + 1 })
   })
 
-  it('confirmar no ensaio', async () => {
-    const c = conversa({ 'nota pra Prontia, 150 reais': { intencao: 'emitir', tomador: 'Prontia', valor: '150' } })
-    const s = await ateAEtapa('boas_vindas_cliente', c)
-    await criarModelo(admin.db, s.tenant.id, { nome: 'Prontia', documento: '52998224725', nomeTomador: 'Prontia Saúde' })
-    await c.enviar(s.ownerPhone, 'Prontia')
-    await c.enviar(s.ownerPhone, 'sim')
-    await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
-    // A única nota do tenant é a de origem do modelo (fixture).
-    const antes = await contagens(s.tenant.id)
-    expect(antes).toEqual({ notas: 1, pedidos: 0 })
+  for (const etapa of ['boas_vindas_cliente', 'boas_vindas_ensaio']) {
+    it(`quem parou em ${etapa} é concluído e o pedido segue`, async () => {
+      const c = conversa({ 'nota pra Prontia, 150 reais': { intencao: 'emitir', tomador: 'Prontia', valor: '150' } })
+      const s = await novoTenant({ ativado: true, onboardingEtapa: etapa })
+      await admin.db.query(
+        `update nofiscal.fiscal_tenants set agente_conversa = jsonb_set(coalesce(agente_conversa, '{}'), '{boas_vindas}', '{"passo":"nome"}') where id = $1`,
+        [s.tenant.id],
+      )
+      await assinarTenant(admin.db, s.tenant.id, { status: 'paga' })
+      await criarModelo(admin.db, s.tenant.id, { nome: 'Prontia', documento: '52998224725', nomeTomador: 'Prontia Saúde' })
+      const antes = await contagens(s.tenant.id)
 
-    const depois = c.canais.whatsapps.length
-    await c.enviar(s.ownerPhone, 'confirmar')
-    const respostas = c.canais.whatsapps.slice(depois).map((m) => m.texto)
-    expect(respostas[0]).toBe('Isso foi só um exemplo. Para emitir de verdade, mande o pedido de novo.')
-    expect(await contagens(s.tenant.id)).toEqual(antes)
-  })
-
-  it('pronto conclui', async () => {
-    const c = conversa({ 'nota pra Prontia, 150 reais': { intencao: 'emitir', tomador: 'Prontia', valor: '150' } })
-    const s = await ateAEtapa('boas_vindas_cliente', c)
-    await criarModelo(admin.db, s.tenant.id, { nome: 'Prontia', documento: '52998224725', nomeTomador: 'Prontia Saúde' })
-    await c.enviar(s.ownerPhone, 'Prontia')
-    await c.enviar(s.ownerPhone, 'sim')
-    await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
-    expect((await estadoDe(s)).etapa).toBe('boas_vindas_ensaio')
-    const antes = await contagens(s.tenant.id)
-
-    const pronto = await c.enviar(s.ownerPhone, 'confirmar')
-    expect(pronto).toBe(
-      'Pronto! Agora, para emitir uma nova nota, é só mandar uma mensagem aqui com o cliente e o valor, por exemplo: nota pra Prontia, 150 reais',
-    )
-    expect((await estadoDe(s)).etapa).toBe('concluido')
-    expect(await contagens(s.tenant.id)).toEqual(antes)
-  })
+      const resumo = await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
+      expect(resumo).not.toContain('Antes de emitir')
+      expect(resumo).toContain('Tomador: Prontia Saúde')
+      expect((await estadoDe(s)).etapa).toBe('concluido')
+      expect(c.ia.chamadas).toEqual(['nota pra Prontia, 150 reais'])
+      expect(await contagens(s.tenant.id)).toEqual({ ...antes, pedidos: antes.pedidos + 1 })
+      const { rows } = await admin.db.query<{ bv: boolean }>(
+        `select agente_conversa ? 'boas_vindas' as bv from nofiscal.fiscal_tenants where id = $1`,
+        [s.tenant.id],
+      )
+      expect(rows[0].bv).toBe(false)
+    })
+  }
 
   it('pedido antes de concluir', async () => {
     const c = conversa()
@@ -353,12 +302,7 @@ describe('boas-vindas', () => {
     const naConferencia = await c.enviar(s.ownerPhone, 'nota pra Prontia, 10 reais')
     expect(naConferencia.startsWith('Antes de emitir, vamos terminar a configuração')).toBe(true)
     expect(naConferencia).toContain('Está tudo certo?')
-
-    await c.enviar(s.ownerPhone, 'sim')
-    const noCliente = await c.enviar(s.ownerPhone, 'nota pra Prontia, 10 reais')
-    expect(noCliente.startsWith('Antes de emitir, vamos terminar a configuração')).toBe(true)
-    expect(noCliente).toContain('Para quem você mais emite?')
-    expect((await estadoDe(s)).etapa).toBe('boas_vindas_cliente')
+    expect((await estadoDe(s)).etapa).toBe('boas_vindas_conferir')
 
     // Site incompleto: o mesmo aviso, com o link da conta.
     const noSite = await novoTenant({ ativado: true, onboardingEtapa: 'certificado' })

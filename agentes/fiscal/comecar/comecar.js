@@ -825,8 +825,8 @@
         link.href = r.dados.whatsapp_url;
         link.hidden = false;
         $('fc-ativar-texto').textContent = 'Toque no botão: o WhatsApp abre com a mensagem de ativação pronta. Mande do número que você cadastrou: ' +
-          'o código no fim da mensagem liga esse WhatsApp à sua conta. Depois, o agente confere o cadastro com você, pergunta para quem você ' +
-          'mais emite e faz uma nota de exemplo, sem emitir nada.';
+          'o código no fim da mensagem liga esse WhatsApp à sua conta. Depois, o agente confere o cadastro com você e você já ' +
+          'pode mandar a primeira nota.';
         $('fc-ativar-numero').textContent = tel ? nf.formatarTelefone(tel) : '';
         $('fc-ativar-mensagem').textContent = r.dados.mensagem || ('ATIVAR ' + r.dados.codigo);
         $('fc-ativacao').hidden = false;

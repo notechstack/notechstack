@@ -132,6 +132,24 @@ export const semAcento = (texto: string) =>
 export const limpa = (texto: string) => semAcento(texto).replace(/[.!?\s]+$/g, '')
 
 export const ehConfirmar = (texto: string) => /^(confirmar|confirmo|confirma|confirmado|confirmada)$/.test(limpa(texto))
+// Respostas de "pode emitir" no resumo da nota (Lucca, 04/11/2026: um cliente respondeu "Sim" ao resumo e o robô
+// não emitiu). Confirma quando cada palavra da resposta é de concordância ou de enchimento, com pelo menos uma de
+// concordância; qualquer outra palavra ("não", "mas", um valor) segue para corrigir ou para a IA, como antes.
+const CONCORDANCIA = new Set([
+  'confirmar', 'confirmo', 'confirma', 'confirmado', 'confirmada', 'sim', 's', 'ss', 'ok', 'okay', 'okk', 'pode', 'emite',
+  'emitir', 'emita', 'manda', 'isso', 'certo', 'certinho', 'correto', 'perfeito', 'bora', 'vai', 'claro', 'beleza', 'blz',
+  'positivo', 'yes', 'exato', 'exatamente', 'show', 'otimo', 'top', 'fechado', 'segue',
+])
+const ENCHIMENTO = new Set(['por', 'favor', 'pfv', 'pf', 'obrigado', 'obrigada', 'ai', 'agora', 'mesmo', 'pra', 'para', 'e', 'a', 'nota', 'tudo', 'ta', 'esta'])
+/** Só emoji de positivo (👍 👌 ✅ ✔️), com ou sem tom de pele. */
+const SINAL_DE_POSITIVO = /^(?:(?:\u{1F44D}|\u{1F44C}|\u{2705}|\u{2714})(?:\u{FE0F}|\u{1F3FB}|\u{1F3FC}|\u{1F3FD}|\u{1F3FE}|\u{1F3FF})*\s*)+$/u
+/** No resumo da nota: "sim", "pode emitir", "ok, tá certo", "👍" e parecidos também confirmam. */
+export const ehConfirmarEmissao = (texto: string) => {
+  if (ehConfirmar(texto) || SINAL_DE_POSITIVO.test(texto.trim())) return true
+  const palavras = semAcento(texto).replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean)
+  if (!palavras.length || palavras.length > 8) return false
+  return palavras.some((p) => CONCORDANCIA.has(p)) && palavras.every((p) => CONCORDANCIA.has(p) || ENCHIMENTO.has(p))
+}
 export const ehSim = (texto: string) => /^(sim|s|pode|pode salvar|salvar|salva|quero|pode substituir|substituir|substitui)$/.test(limpa(texto))
 // "cancelar" não é "não" (Lucca, 22/10/2026): na confirmação de cancelamento ele confirma, e no resumo da nota ele
 // desiste dela. Cada etapa lê com a lista certa abaixo.
@@ -412,12 +430,9 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     await responder(ctx, TEXTOS.chamouAEquipe)
     return
   }
-  // Comandos do dono (critérios 44 e 46) e boas-vindas (29 a 34) vêm antes dos pedidos.
+  // Comandos do dono (critérios 44 e 46) e boas-vindas (29) vêm antes dos pedidos.
   if (await tratarComando(ctx, texto)) return
-  if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido') {
-    await conversarNasBoasVindas(ctx, texto)
-    return
-  }
+  if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
     if (!(pedido && (await responderEtapa(ctx, pedido, texto)))) {
@@ -483,7 +498,7 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
 
   if (pedido.status === 'awaiting_confirmation' && pedido.expires_at.getTime() <= ctx.agora.getTime()) {
     await expirarPedido(ctx.deps.db, pedido.id, ctx.agora)
-    if (!ehConfirmar(texto)) return false
+    if (!(pedido.kind === 'emitir' ? ehConfirmarEmissao(texto) : ehConfirmar(texto))) return false
     ctx.pedidoId = pedido.id
     await responder(ctx, TEXTOS.expirou)
     return true
@@ -512,7 +527,7 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
         }
         return escolherDescricao(ctx, pedido, texto)
       }
-      if (ehConfirmar(texto)) {
+      if (ehConfirmarEmissao(texto)) {
         ctx.pedidoId = pedido.id
         await confirmar(ctx, pedido)
         return true

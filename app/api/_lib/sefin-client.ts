@@ -80,7 +80,15 @@ export function httpsTransport(options: { timeoutMs?: number; extraCa?: string[]
     })
 }
 
+// A Sefin recusa com E1229 ("Xml não está utilizando codificação UTF-8") o XML sem declaração quando há
+// acento no texto: a primeira nota de produção (04/11/2026, "Serviços de mkt digital…") voltou assim. A
+// declaração fica fora do elemento assinado, então não mexe na assinatura (E0714); só entra no que vai
+// comprimido para a Sefin, e o `xml_dps` gravado continua sem ela.
+export const DECLARACAO_XML = '<?xml version="1.0" encoding="UTF-8"?>'
+export const comDeclaracao = (xml: string) => (xml.startsWith('<?xml') ? xml : `${DECLARACAO_XML}${xml}`)
 export const gzipBase64 = (xml: string) => gzipSync(Buffer.from(xml, 'utf8')).toString('base64')
+/** O que vai no corpo da DPS e do pedido de evento. */
+export const xmlParaSefin = (xml: string) => gzipBase64(comDeclaracao(xml))
 export const gunzipBase64 = (b64: string) => gunzipSync(Buffer.from(b64, 'base64')).toString('utf8')
 
 type Json = Record<string, unknown>
@@ -217,7 +225,7 @@ export function createSefinClient(options: SefinClientOptions = {}): SefinClient
           method: 'POST',
           url: url(tenant, '/nfse'),
           headers: JSON_HEADERS,
-          body: JSON.stringify({ dpsXmlGZipB64: gzipBase64(xmlDps) }),
+          body: JSON.stringify({ dpsXmlGZipB64: xmlParaSefin(xmlDps) }),
         },
         pem,
       )
@@ -266,7 +274,7 @@ export function createSefinClient(options: SefinClientOptions = {}): SefinClient
           method: 'POST',
           url: url(tenant, `/nfse/${encodeURIComponent(chaveAcesso)}/eventos`),
           headers: JSON_HEADERS,
-          body: JSON.stringify({ pedidoRegistroEventoXmlGZipB64: gzipBase64(xml) }),
+          body: JSON.stringify({ pedidoRegistroEventoXmlGZipB64: xmlParaSefin(xml) }),
         },
         pem,
       )
