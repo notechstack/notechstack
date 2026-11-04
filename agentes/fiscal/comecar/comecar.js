@@ -24,6 +24,15 @@
     reteste: 'Este CNPJ, e-mail ou telefone já usou o teste grátis',
     generico: 'Não deu para concluir agora. Tente de novo em alguns minutos.'
   };
+  /* Assinatura feita sem teste grátis: a primeira cobrança sai na hora. A resposta do checkout pode chegar antes
+     de o Pagar.me confirmar a cobrança (status "pendente"), então "aprovado" só com status "paga". */
+  function textoSemTeste(d) {
+    var reais = d && d.medicao && typeof d.medicao.valor === 'number' ? nf.reais(Math.round(d.medicao.valor * 100)) : '';
+    var cobranca = reais ? 'a primeira cobrança (' + reais + ')' : 'a primeira cobrança';
+    var inicio = d && d.status === 'paga' ? 'Pagamento aprovado. ' : 'Assinatura feita. ';
+    return inicio + 'Como este CNPJ, e-mail ou telefone já usou o teste grátis, ' + cobranca +
+      ' é feita agora no cartão. Toque em Continuar para enviar o certificado.';
+  }
   var CERT = {
     CERT_SENHA_INVALIDA: 'Senha incorreta',
     CERT_VENCIDO: 'Certificado vencido',
@@ -513,7 +522,8 @@
           nf.aba.apagar(CUPOM_KEY);
           cicloGuardado.apagar();
           if (r.dados.com_teste === false) {
-            nf.aviso($('fc-aviso-3'), nf.esc(r.dados.aviso || MSG.reteste), 'info');
+            // Lucca, 04/11/2026: o aviso sozinho ("já usou o teste grátis") parecia recusa depois de pagar.
+            nf.aviso($('fc-aviso-3'), nf.esc(textoSemTeste(r.dados)), 'ok');
             botao.hidden = true;
             $('fc-seguir-sem-teste').hidden = false;
             return;

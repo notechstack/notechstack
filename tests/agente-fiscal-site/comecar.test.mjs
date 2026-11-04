@@ -311,14 +311,15 @@ test('funil sem consentimento: dataLayer sim, Pixel não; recusa medida', async 
 
 test('aviso de reteste', async () => {
   const aviso = 'Este CNPJ, e-mail ou telefone já usou o teste grátis';
-  const rede = superficie({ 'POST assinatura-fiscal': r(200, { ok: true, status: 'pendente', com_teste: false, trial_ends_at: null, aviso }) });
+  const rede = superficie({ 'POST assinatura-fiscal': r(200, { ok: true, status: 'pendente', com_teste: false, trial_ends_at: null, aviso, medicao: { evento: 'Purchase', event_id: 'x', valor: 1, moeda: 'BRL' } }) });
   const p = await abrir('/agentes/fiscal/comecar/', { rede });
   await ateEtapa3(p);
   await preencherCartao(p);
   await p.marcar('fc-aceite');
   await p.enviar('fc-form-3');
   assert.equal(p.etapa(), 3, 'mostra o aviso antes de seguir');
-  assert.equal(p.texto('fc-aviso-3'), aviso);
+  // Pago sem teste: o texto diz que deu certo e quanto sai agora, sem soar como recusa (Lucca, 04/11/2026).
+  assert.equal(p.texto('fc-aviso-3'), 'Assinatura feita. Como este CNPJ, e-mail ou telefone já usou o teste grátis, a primeira cobrança (R$ 1) é feita agora no cartão. Toque em Continuar para enviar o certificado.');
   assert.ok(p.visivel('fc-aviso-3'));
   assert.ok(p.visivel('fc-seguir-sem-teste'));
   await p.clicar('fc-seguir-sem-teste');
