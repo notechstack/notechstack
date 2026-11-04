@@ -199,7 +199,7 @@
 .fi-planos--teste .fi-plano{--rx:0deg;--ry:0deg;--gx:50%;--gy:50%;--brilho:0;transform:perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry));transition:transform .5s cubic-bezier(.2,.8,.2,1),box-shadow .25s ease}
 .fi-planos--teste .fi-plano:hover{transform:perspective(1100px) translateY(-4px) rotateX(var(--rx)) rotateY(var(--ry))}
 .fi-planos--teste .fi-plano.is-inclinado{transition:transform .12s linear,box-shadow .25s ease}
-.fi-plano-brilho{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:var(--brilho);transition:opacity .3s ease;background:radial-gradient(circle farthest-side at var(--gx) var(--gy),rgba(255,255,255,.55) 0%,rgba(255,255,255,.28) 26%,rgba(255,255,255,.08) 60%,rgba(255,255,255,0) 100%),radial-gradient(circle at var(--gx) var(--gy),rgba(48,164,108,.10) 0%,rgba(48,164,108,0) 55%)}
+.fi-plano-brilho{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:var(--brilho);transition:opacity .3s ease;background:radial-gradient(circle farthest-side at var(--gx) var(--gy),rgba(48,164,108,.22) 0%,rgba(48,164,108,.14) 22%,rgba(48,164,108,.06) 48%,rgba(48,164,108,0) 75%)}
 @media (prefers-reduced-motion:reduce){.fi-planos--teste .fi-plano,.fi-planos--teste .fi-plano:hover{transform:none}.fi-plano-brilho{display:none}}
 .fi-plano-itens{width:100%;margin:12px 0 0;padding:16px 0 0;list-style:none;border-top:1px solid var(--fi-borda);display:grid;gap:10px;font-size:14px;line-height:1.45;color:var(--fi-texto)}
 .fi-plano-itens li{position:relative;padding-left:28px;text-wrap:pretty}
