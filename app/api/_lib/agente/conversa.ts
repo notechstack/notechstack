@@ -21,6 +21,8 @@ import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
 import { registrarJanela } from './janela.js'
 import { receberPlanilha, responderAoLote, tipoDaPlanilha } from './lote.js'
+import { MODELO_DA_PLANILHA, planoDeEscritorio, TEXTO_VER_NOTA } from './planos.js'
+import { tratarVerNota } from './ver-nota.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 import type { BaixaMidia } from './whatsapp-cloud.js'
@@ -83,7 +85,9 @@ export const TEXTOS = {
   faltaValor: `Qual é o valor da nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
-  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  /** Conta Escritório: a ajuda cita também a planilha do mês (lote) e o modelo. */
+  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
@@ -224,6 +228,8 @@ export type Contexto = {
   /** Pedido a que esta mensagem pertence (C39); `null` quando não pertence a nenhum. */
   pedidoId: string | null
   enviadas: number
+  /** O WhatsApp sem a retentativa embutida, para quem precisa saber se o envio saiu (registro de entregas). */
+  whatsappBruto?: EnviaWhatsApp
 }
 
 export async function responder(ctx: Pick<Contexto, 'whatsapp' | 'para'> & Partial<Contexto>, texto: string): Promise<void> {
@@ -420,6 +426,7 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     tenantId: numero.tenantId,
     pedidoId: null,
     enviadas: 0,
+    whatsappBruto: noEnderecoRecebido(deps.whatsapp, msg),
   }
   // Planilha do lote (conta Escritório): antes da regra que só lê texto; o certificado já foi recusado lá em cima.
   if (msg.tipo === 'document' && tipoDaPlanilha(msg.arquivo)) {
@@ -443,6 +450,8 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   if (await tratarComando(ctx, texto)) return
   // "confirmar"/"cancelar" de um lote aguardando, quando ele é mais recente que o pedido avulso aguardando.
   if (await responderAoLote(ctx, texto)) return
+  // "nota 123" / "nota Maria": o PDF de uma nota, por código, sem a IA.
+  if (await tratarVerNota(ctx, texto)) return
   if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
@@ -454,6 +463,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     // A mensagem recebida e as respostas contam no pedido a que pertencem (C39).
     if (ctx.pedidoId) await contarMensagens(deps.db, ctx.pedidoId, 1 + ctx.enviadas)
   }
+}
+
+/** A conta do telefone é de um plano de escritório? (a conta-mãe; o telefone é sempre dela) */
+async function ehEscritorio(ctx: Contexto): Promise<boolean> {
+  const { rows } = await ctx.deps.db.query<{ plan: string }>('select plan from nofiscal.fiscal_tenants where id = $1', [ctx.tenantId])
+  return planoDeEscritorio(rows[0]?.plan)
 }
 
 async function etapaDoOnboarding(db: Queryable, tenantId: string): Promise<string> {
@@ -952,7 +967,7 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   if (parsed.intencao !== 'emitir') {
     semPedido()
     await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não era pedido de nota; mandei a ajuda' })
-    await responder(ctx, TEXTOS.ajuda)
+    await responder(ctx, (await ehEscritorio(ctx)) ? TEXTOS.ajudaEscritorio : TEXTOS.ajuda)
     return
   }
   await pedidoDeEmissao(ctx, parsed, tokens)
