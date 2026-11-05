@@ -6,6 +6,7 @@ import type { Queryable } from '../db.js'
 import { logEvent } from '../log.js'
 import { ehConfirmar, ehNao, limpa, responder, semAcento, type Contexto } from './conversa.js'
 import { emailNoTexto } from './documentos.js'
+import { planoCompleto } from './planos.js'
 import { dataBr } from './tempo.js'
 
 export const TEXTOS_COMANDOS = {
@@ -152,7 +153,8 @@ export async function tratarComando(ctx: Contexto, texto: string): Promise<boole
     return true
   }
 
-  if (estado.plan !== 'pro') {
+  // Escritório também é plano completo (contador e resumo, como o Pro).
+  if (!planoCompleto(estado.plan)) {
     await responder(ctx, TEXTOS_COMANDOS.soPro)
     return true
   }

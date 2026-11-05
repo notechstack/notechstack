@@ -1,7 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { log } from "../_shared/logger.ts";
+import { LISTA_MUNICIPIOS } from "../_shared/fiscal/municipios.ts";
 import { corsFiscal } from "./cors.ts";
-import { type EstadoBanco, processarConta } from "./core.ts";
+import { type EscritorioBanco, type EstadoBanco, processarConta } from "./core.ts";
 
 // Só nomes; os valores ficam com Lucca. Os do Pagar.me são os mesmos do checkout.
 const NOMES_ENV = [
@@ -9,6 +10,9 @@ const NOMES_ENV = [
   "PAGARME_SECRET_KEY",
   "PAGARME_ASSINATURA_API_URL",
   "PAGARME_ASSINATURA_AMBIENTE",
+  // Empresa adicionada pelo escritório: a mesma consulta e o mesmo ambiente de fiscal-cadastro.
+  "CNPJ_API_URL",
+  "FISCAL_AMBIENTE_PADRAO",
 ];
 
 const SITE_PADRAO = "https://www.notechstack.com.br";
@@ -70,6 +74,25 @@ Deno.serve(async (request) => {
       agendarCancelamento: async (userId, fimCiclo) =>
         await rpc("fiscal_agendar_cancelamento", { p_user_id: userId, p_fim_ciclo: fimCiclo }),
       apagarConta: async (userId) => await rpc("fiscal_apagar_conta", { p_user_id: userId }),
+      escritorio: async (userId) => (await rpc("fiscal_escritorio_estado", { p_user_id: userId })) as EscritorioBanco | null,
+      empresaAdicionar: async (userId, a) =>
+        await rpc("fiscal_empresa_adicionar", {
+          p_user_id: userId,
+          p_cnpj: a.cnpj,
+          p_razao_social: a.razao_social,
+          p_codigo_municipio_ibge: a.codigo_municipio_ibge,
+          p_cnae: a.cnae,
+          p_regime: a.regime,
+          p_api_key_hash: a.api_key_hash,
+          p_ambiente: a.ambiente,
+        }),
+      empresaConfigurar: async (userId, tenantId, dados) =>
+        await rpc("fiscal_empresa_configurar", { p_user_id: userId, p_tenant_id: tenantId, p_dados: dados }),
+      empresaAtivar: async (userId, tenantId, ativa) =>
+        await rpc("fiscal_empresa_ativar", { p_user_id: userId, p_tenant_id: tenantId, p_ativa: ativa }),
+      relatorio: async (userId, mes, tenantId) =>
+        await rpc("fiscal_relatorio", { p_user_id: userId, p_mes: mes, p_tenant_id: tenantId }),
+      municipios: async () => LISTA_MUNICIPIOS,
       codigosServico: () => codigosServico().catch(() => null),
       log,
     });

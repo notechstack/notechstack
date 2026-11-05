@@ -17,7 +17,7 @@ import {
   enviarParaMeta,
   GA4_ID_PADRAO,
 } from "../assinatura-fiscal/medicao.ts";
-import { centavosDoCiclo } from "../assinatura-fiscal/core.ts";
+import { centavosDoCiclo, lerPlano, planoDeEscritorio } from "../assinatura-fiscal/core.ts";
 import type { PagamentoDoAviso } from "./core.ts";
 
 export type Reivindicacao = {
@@ -59,8 +59,9 @@ export async function medirCobranca(
   if (!r?.encontrada) return { resultado: "nao_fiscal" };
   if (!r.enviar) return { resultado: r.motivo || "nao_enviar", chave: pagamento.chave };
 
-  const plano = r.plano === "pro" ? "pro" : r.plano === "inicial" ? "inicial" : null;
-  const ciclo = r.ciclo === "anual" ? "anual" : "mensal";
+  // Escritório (05/11/2026): as faixas também viram compra, sempre no mensal.
+  const plano = lerPlano(r.plano);
+  const ciclo = r.ciclo === "anual" && !planoDeEscritorio(plano) ? "anual" : "mensal";
   if (!plano || !r.tenant_id) return { resultado: "contexto_invalido", chave: pagamento.chave };
 
   const cobranca: CobrancaPaga = {

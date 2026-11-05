@@ -141,6 +141,17 @@ export async function dropTestTenant(db: Db, tenantId: string): Promise<void> {
     'delete from nofiscal.fiscal_invoice_events where invoice_id in (select id from nofiscal.fiscal_invoices where tenant_id = $1)',
     [tenantId],
   )
+  // Conta Escritório: registro de entregas, linhas e lotes por planilha apontam para as notas e o tenant.
+  await db.query(
+    'delete from nofiscal.fiscal_invoice_entregas where invoice_id in (select id from nofiscal.fiscal_invoices where tenant_id = $1)',
+    [tenantId],
+  )
+  await db.query(
+    `delete from nofiscal.fiscal_lote_itens
+      where tenant_id = $1 or invoice_id in (select id from nofiscal.fiscal_invoices where tenant_id = $1)`,
+    [tenantId],
+  )
+  await db.query('delete from nofiscal.fiscal_lotes where escritorio_tenant_id = $1', [tenantId])
   await db.query('delete from nofiscal.fiscal_invoices where tenant_id = $1', [tenantId])
   await db.query('delete from nofiscal.fiscal_dps_series where tenant_id = $1', [tenantId])
   await db.query('delete from nofiscal.fiscal_certificates where tenant_id = $1', [tenantId])

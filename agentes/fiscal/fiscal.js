@@ -14,14 +14,14 @@
 
   /* Fundo líquido do bloco do simulador: shader com as cores da marca (âmbar, âmbar claro, osso, vermelho claro).
      Sem WebGL o canvas fica vazio e o degradê do CSS aparece. Com movimento reduzido, só um quadro. */
-  /* Ciclo dos planos: no anual, Inicial e Pro dizem que o ano sai com 20% off (o valor só aparece no /comecar/) e o ciclo vai no link do
-     cadastro; Escritório e Agência somem pelo CSS. */
+  /* Ciclo dos planos: no anual, Inicial e Pro trocam o valor pelo do mês no anual (20% off) e dizem o total do ano, e o ciclo vai
+     no link do cadastro; Escritório e Agência somem pelo CSS. */
   var planos = document.getElementById('fi-planos');
   var cicloBtns = document.querySelectorAll('.fi-ciclo-toggle [data-ciclo]');
   function mudarCiclo(c) {
     planos.setAttribute('data-ciclo', c);
     Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
-    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-depois [data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
+    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-oferta [data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
     Array.prototype.forEach.call(planos.querySelectorAll('a[data-plano]'), function (a) {
       var u = new URL(a.getAttribute('href'), location.href);
       if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');

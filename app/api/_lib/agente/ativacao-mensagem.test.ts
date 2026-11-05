@@ -9,6 +9,13 @@ describe('mensagem de ativação', () => {
     expect(codigoDaMensagem(m)).toBe('116605')
     expect(codigoDaMensagem(mensagemDeAtivacao('EMPRESA 123456 LTDA', 'inicial', '654321'))).toBe('654321')
   })
+  it('as faixas do Escritório aparecem como "Escritório"', () => {
+    for (const plano of ['escritorio_5', 'escritorio_20', 'escritorio_50']) {
+      expect(mensagemDeAtivacao('ESCRITORIO TOLEDO', plano, '116605')).toBe(
+        'Quero ativar o nó.fiscal da ESCRITORIO TOLEDO no plano Escritório. Código de ativação: 116605',
+      )
+    }
+  })
   it('aceita a forma antiga e variações de digitação', () => {
     expect(codigoDaMensagem('ATIVAR 116605')).toBe('116605')
     expect(codigoDaMensagem('ativar 116605')).toBe('116605')

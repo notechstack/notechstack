@@ -317,6 +317,91 @@ test("criar empresa: sem sessão responde 401 e plano desconhecido vale inicial"
   assert.equal(de_novo.body.tenant_id, r.body.tenant_id);
 });
 
+// Escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md): a empresa do próprio escritório nasce pelo
+// mesmo caminho, com a faixa no plano; sem banco (criar em dublê), a forma do pedido e as recusas.
+test("escritório: escritorio_5|20|50 vão ao banco com a faixa; tipo escritorio sem faixa é recusado antes da Receita", async () => {
+  for (const plano of ["escritorio_5", "escritorio_20", "escritorio_50"]) {
+    const cnpj = cnpjValido();
+    const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj, { regime: "mei" }) });
+    const r = await chamar(
+      { acao: "criar", tipo: "escritorio", cnpj, razao_social: "Escritório Teste", responsavel: "Sandra Souza", telefone: "(11) 98765-4321", plano },
+      { api, userId: "user-escritorio", criar: async () => ({ status: "criado", tenant_id: "t-escritorio", etapa: "pagamento" }) },
+    );
+    assert.equal(r.status, 201, plano);
+    assert.deepEqual(r.body, { ok: true, tenant_id: "t-escritorio", etapa: "pagamento", novo: true });
+    assert.equal(r.chamadasCriar.length, 1);
+    assert.equal(r.chamadasCriar[0].plano, plano);
+    // O regime continua vindo da Receita (Simples ou MEI), como nos outros planos.
+    assert.equal(r.chamadasCriar[0].regime, "mei");
+  }
+
+  const cnpj = cnpjValido();
+  const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj) });
+  for (const plano of [undefined, "pro", "escritorio", "escritorio_10"]) {
+    const r = await chamar(
+      { acao: "criar", tipo: "escritorio", cnpj, razao_social: "Escritório Teste", responsavel: "Sandra Souza", telefone: "(11) 98765-4321", plano },
+      { api, userId: "user-escritorio", criar: async () => { throw new Error("não devia criar"); } },
+    );
+    assert.equal(r.status, 422, String(plano));
+    assert.equal(r.body.error_code, "DADOS_INVALIDOS");
+    assert.equal(r.body.mensagem, "Escolha a faixa do plano Escritório: até 5, 20 ou 50 empresas.");
+    assert.equal(r.chamadasCriar.length, 0);
+  }
+  assert.equal(api.chamadas.length, 0, "a faixa é conferida antes da consulta à Receita");
+
+  const semNome = await chamar(
+    { acao: "criar", tipo: "escritorio", cnpj, razao_social: " ", responsavel: "Sandra Souza", telefone: "(11) 98765-4321", plano: "escritorio_5" },
+    { api, userId: "user-escritorio" },
+  );
+  assert.equal(semNome.body.mensagem, "Informe o nome do escritório.");
+
+  // Fora do Simples/MEI: o mesmo bloqueio de hoje (o Presumido fica para a RFC).
+  const cnpjForaDoSimples = cnpjValido();
+  const fora = await chamar(
+    { acao: "criar", tipo: "escritorio", cnpj: cnpjForaDoSimples, razao_social: "Escritório Presumido", responsavel: "Sandra Souza", telefone: "(11) 98765-4321", plano: "escritorio_5" },
+    { api: brasilApi({ [cnpjForaDoSimples]: respostaBrasilApi(cnpjForaDoSimples, { regime: "presumido" }) }), userId: "user-escritorio", criar: async () => { throw new Error("não devia criar"); } },
+  );
+  assert.equal(fora.status, 422);
+  assert.equal(fora.body.error_code, "CNPJ_FORA_DO_SIMPLES");
+
+  // CNPJ que já tem conta Inicial/Pro: a mesma recusa (migrar de plano fica fora da v1).
+  const comConta = await chamar(
+    { acao: "criar", tipo: "escritorio", cnpj, razao_social: "Escritório Teste", responsavel: "Sandra Souza", telefone: "(11) 98765-4321", plano: "escritorio_5" },
+    { api, userId: "user-escritorio", criar: async () => ({ status: "cnpj_ja_cadastrado" }) },
+  );
+  assert.equal(comConta.status, 409);
+  assert.equal(comConta.body.mensagem, "Este CNPJ já tem conta. Entre pela sua conta");
+});
+
+// Contra o banco local: só com a migração 20261105180000 aplicada (o banco aceita os planos escritorio_*).
+test("escritório: escritorio_5 grava a conta-mãe com plano, franquia de 500 notas e etapa pagamento", async (t) => {
+  const migrado = await bancos.dono.query(
+    "select 1 from information_schema.columns where table_schema = 'nofiscal' and table_name = 'fiscal_tenants' and column_name = 'escritorio_tenant_id'",
+  );
+  if (migrado.rowCount === 0) { t.skip("banco local sem a migração 20261105180000"); return; }
+  const cnpj = cnpjValido();
+  const telefone = telefoneAleatorio();
+  const u = await criarUsuario(bancos.dono);
+  limpar.push({ userId: u.id, cnpj, telefone });
+  const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj) });
+  const r = await chamar(
+    { acao: "criar", tipo: "escritorio", cnpj, razao_social: "Escritório Teste", responsavel: "Sandra Souza", telefone, plano: "escritorio_5" },
+    { api, userId: u.id },
+  );
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.etapa, "pagamento");
+  const tenant = (await bancos.dono.query(
+    "select plan, monthly_note_limit, onboarding_etapa, regime, escritorio_tenant_id, client_id is not null as tem_cliente from nofiscal.fiscal_tenants where id = $1",
+    [r.body.tenant_id],
+  )).rows[0];
+  assert.deepEqual(tenant, {
+    plan: "escritorio_5", monthly_note_limit: 500, onboarding_etapa: "pagamento", regime: "simples",
+    escritorio_tenant_id: null, tem_cliente: true,
+  });
+  const fones = await bancos.dono.query("select phone_e164, role from nofiscal.fiscal_phones where tenant_id = $1", [r.body.tenant_id]);
+  assert.deepEqual(fones.rows, [{ phone_e164: telefone, role: "owner" }]);
+});
+
 test("conflitos no cadastro: CNPJ repetido e WhatsApp de outra empresa respondem 409 sem criar nada", async () => {
   const cnpjA = cnpjValido();
   const telA = telefoneAleatorio();

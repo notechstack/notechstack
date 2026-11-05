@@ -12,6 +12,7 @@ import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import type { MensagemRecebida } from './conversa.js'
 import type { Links } from './links.js'
 import { perguntaDeConferencia } from './boas-vindas.js'
+import { LINHA_DA_PLANILHA, nomeDoPlano, planoDeEscritorio } from './planos.js'
 
 export const ATIVACAO_VALIDADE_MS = 24 * 3600_000
 export const PROPOSITO_ATIVACAO = 'whatsapp_activation'
@@ -19,12 +20,10 @@ const ATIVAR = /^ATIVAR\s+(\d{6})$/i
 // Mensagem legível (Lucca, 22/10/2026): "Quero ativar o nó.fiscal da <empresa> no plano <plano>. Código de ativação:
 // 123456". O código continua sendo a chave; empresa e plano são só para a pessoa (e quem lê a conversa) entender.
 const CODIGO_NA_FRASE = /c[oó]digo\s+de\s+ativa[cç][aã]o\s*:?\s*(\d{6})\b/i
-const NOMES_DOS_PLANOS: Record<string, string> = { inicial: 'Inicial', pro: 'Pro' }
-
-/** Texto que vai pronto no link do WhatsApp. */
+/** Texto que vai pronto no link do WhatsApp (escritorio_5/20/50 aparecem como "Escritório"). */
 export function mensagemDeAtivacao(razaoSocial: string, plano: string, codigo: string): string {
   const empresa = razaoSocial.replace(/\s+/g, ' ').trim()
-  return `Quero ativar o nó.fiscal da ${empresa} no plano ${NOMES_DOS_PLANOS[plano] ?? 'Inicial'}. Código de ativação: ${codigo}`
+  return `Quero ativar o nó.fiscal da ${empresa} no plano ${nomeDoPlano(plano)}. Código de ativação: ${codigo}`
 }
 
 /** O código de 6 dígitos de uma mensagem de ativação (a nova, a antiga `ATIVAR 123456`), ou null. */
@@ -211,11 +210,11 @@ async function ativar(
     return abrirBoasVindas(tx, alvo.tenantId, deps.agora)
   })
   if (etapa === null) return false
-  if (etapa === 'boas_vindas_conferir') {
-    await deps.whatsapp.enviarTexto(alvo.telefone, await perguntaDeConferencia(deps.db, alvo.tenantId, deps.catalogo))
-  } else {
-    await deps.whatsapp.enviarTexto(alvo.telefone, textoFaltaSite(deps.links))
-  }
+  const texto =
+    etapa === 'boas_vindas_conferir' ? await perguntaDeConferencia(deps.db, alvo.tenantId, deps.catalogo) : textoFaltaSite(deps.links)
+  // Escritório: a primeira resposta já conta que as notas do mês podem vir numa planilha.
+  const { rows } = await deps.db.query<{ plan: string }>('select plan from nofiscal.fiscal_tenants where id = $1', [alvo.tenantId])
+  await deps.whatsapp.enviarTexto(alvo.telefone, planoDeEscritorio(rows[0]?.plan) ? [texto, LINHA_DA_PLANILHA].join('\n') : texto)
   return true
 }
 

@@ -15,12 +15,19 @@ import type { ModelosDoAgente } from './janela.js'
 import { linksFromEnv } from './links.js'
 import { emailResend } from './resend.js'
 import type { AgenteDeps } from './tarefas.js'
-import { whatsappCloud } from './whatsapp-cloud.js'
+import { whatsappCloud, type BaixaMidia } from './whatsapp-cloud.js'
 
 const variavel = (nome: string) => process.env[nome] || undefined
 
 /** O cliente cru da Cloud API; quem envia em nome do robô ou da equipe o embrulha em `whatsappGravado`. */
 export function whatsappFromEnv(): EnviaWhatsApp | null {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  return token && phoneNumberId ? whatsappCloud({ token, phoneNumberId, graphUrl: variavel('WHATSAPP_GRAPH_URL') }) : null
+}
+
+/** Download das mídias recebidas (planilha do lote da conta Escritório), com o mesmo token do envio. */
+export function midiaFromEnv(): BaixaMidia | null {
   const token = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   return token && phoneNumberId ? whatsappCloud({ token, phoneNumberId, graphUrl: variavel('WHATSAPP_GRAPH_URL') }) : null
@@ -50,6 +57,7 @@ export function conversaFromEnv(): ConversaDeps {
     consultaCnpj: consultaCnpjBrasilApi({ baseUrl: variavel('CNPJ_API_URL') }),
     catalogo: catalogoDoSite({ site: links.site }),
     numeroProprio: numeroProprioFromEnv(),
+    midia: midiaFromEnv() ?? undefined,
   }
 }
 

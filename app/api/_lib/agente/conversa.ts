@@ -20,8 +20,10 @@ import { validarParsed, type Interprete, type Parsed } from './interprete.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
 import { registrarJanela } from './janela.js'
+import { receberPlanilha, responderAoLote, tipoDaPlanilha } from './lote.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
+import type { BaixaMidia } from './whatsapp-cloud.js'
 
 export const VALIDADE_DO_PEDIDO_MS = 24 * 3600_000
 export const MAX_CANDIDATAS = 5
@@ -40,7 +42,8 @@ export type MensagemRecebida = {
   /** `messages[].type`: `text`, `document`, `image`… */
   tipo: string
   texto: string | null
-  arquivo: { nome: string | null; mime: string | null } | null
+  /** `midiaId` = `document.id` da Meta, para baixar a planilha do lote (conta Escritório). */
+  arquivo: { nome: string | null; mime: string | null; midiaId?: string | null } | null
 }
 
 /** Nome do CNPJ nos dados públicos (porta; sem cliente real neste lote). */
@@ -59,6 +62,8 @@ export type ConversaDeps = {
   /** O agente tem número próprio, só do robô (Lucca, 29/10/2026): quem escreve sem conta é mandado ao número
    * oficial da Nó. Quem tem conta e pede uma pessoa é atendido no próprio número, pela central de conversas. */
   numeroProprio?: boolean
+  /** Download da planilha do lote (`baixarMidia` da Cloud API); sem ele, a planilha é recusada com aviso. */
+  midia?: BaixaMidia
   now?: () => Date
 }
 
@@ -405,11 +410,6 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     await numeroSemPermissao(deps, msg, links, fora, agora)
     return
   }
-  if (msg.tipo !== 'text' || !msg.texto?.trim()) {
-    await responder(fora, TEXTOS.soTexto)
-    return
-  }
-
   const ctx: Contexto = {
     deps,
     whatsapp,
@@ -420,6 +420,15 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     tenantId: numero.tenantId,
     pedidoId: null,
     enviadas: 0,
+  }
+  // Planilha do lote (conta Escritório): antes da regra que só lê texto; o certificado já foi recusado lá em cima.
+  if (msg.tipo === 'document' && tipoDaPlanilha(msg.arquivo)) {
+    await receberPlanilha(ctx, msg.arquivo)
+    return
+  }
+  if (msg.tipo !== 'text' || !msg.texto?.trim()) {
+    await responder(fora, TEXTOS.soTexto)
+    return
   }
   const texto = msg.texto.trim()
   // Pedido de uma pessoa: a equipe responde no mesmo número, pela central (alerta por e-mail); o pedido de nota
@@ -432,6 +441,8 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   }
   // Comandos do dono (critérios 44 e 46) e boas-vindas (29) vêm antes dos pedidos.
   if (await tratarComando(ctx, texto)) return
+  // "confirmar"/"cancelar" de um lote aguardando, quando ele é mais recente que o pedido avulso aguardando.
+  if (await responderAoLote(ctx, texto)) return
   if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)

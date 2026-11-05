@@ -8,6 +8,7 @@ import type { AnexoEmail, EnviaEmail, EnviaWhatsApp, MensagemEmail } from '../_l
 import type { MensagemRecebida } from '../_lib/agente/conversa.js'
 import type { Interprete, Parsed } from '../_lib/agente/interprete.js'
 import type { Links } from '../_lib/agente/links.js'
+import type { BaixaMidia } from '../_lib/agente/whatsapp-cloud.js'
 import type { SefinClient } from '../_lib/sefin.js'
 import { handleWorkerRequest } from '../_lib/worker-route.js'
 import { createDb, type Db } from '../_lib/db.js'
@@ -348,4 +349,70 @@ export function codigoDaMensagem(texto: string): string {
   const match = texto.match(/\b(\d{6})\b/)
   if (!match) throw new Error('mensagem sem código de 6 dígitos')
   return match[1]
+}
+
+// ---------------------------------------------------------------------------------------
+// Conta Escritório (.design/agente-fiscal-escritorio.md): a conta-mãe é um tenant self-service com plano
+// `escritorio_*`; as outras empresas apontam para ela por `escritorio_tenant_id` (sem login nem telefone próprios).
+
+export type Escritorio = { mae: SelfServiceTenant; empresas: TestTenant[] }
+
+export async function createEscritorio(
+  db: Db,
+  opcoes: SelfServiceOptions & { plano?: 'escritorio_5' | 'escritorio_20' | 'escritorio_50'; empresas?: (TestTenantOptions & { razaoSocial?: string })[] } = {},
+): Promise<Escritorio> {
+  const mae = await createSelfServiceTenant(db, { ...opcoes, plan: 'pro', razaoSocial: opcoes.razaoSocial ?? 'Escritório Toledo Contabilidade' })
+  const plano = opcoes.plano ?? 'escritorio_5'
+  await db.query('update nofiscal.fiscal_tenants set plan = $2, monthly_note_limit = nofiscal.limite_do_plano($2) where id = $1', [mae.tenant.id, plano])
+  await assinarTenant(db, mae.tenant.id, { status: 'paga' })
+  const empresas: TestTenant[] = []
+  for (const [i, empresa] of (opcoes.empresas ?? []).entries()) {
+    const t = await createTestTenant(db, empresa)
+    await db.query(
+      `update nofiscal.fiscal_tenants
+          set escritorio_tenant_id = $2, plan = $3, monthly_note_limit = nofiscal.limite_do_plano($3),
+              codigo_servico_nacional = '010701', onboarding_etapa = 'concluido', razao_social = $4
+        where id = $1`,
+      [t.id, mae.tenant.id, plano, empresa.razaoSocial ?? `Empresa ${i + 2} do escritório`],
+    )
+    empresas.push(t)
+  }
+  return { mae, empresas }
+}
+
+export async function dropEscritorio(db: Db, e: Escritorio): Promise<void> {
+  for (const t of e.empresas) {
+    await dropAgenteRows(db, t.id)
+    await dropTestTenant(db, t.id)
+  }
+  await dropSelfServiceTenant(db, e.mae)
+}
+
+/** Documento recebido no WhatsApp, com o `document.id` da Meta para o download. */
+export function mensagemDePlanilha(de: string, nome: string | null, mime: string | null, midiaId: string): MensagemRecebida {
+  return {
+    id: `wamid.teste-${randomBytes(8).toString('hex')}-${++sequenciaDeMensagem}`,
+    de,
+    tipo: 'document',
+    texto: null,
+    arquivo: { nome, mime, midiaId },
+  }
+}
+
+/** Dublê do download de mídia da Cloud API: devolve os bytes guardados por id. */
+export function midiaDouble(): { midia: BaixaMidia; guardar: (id: string, conteudo: Uint8Array | string) => void; baixadas: string[] } {
+  const arquivos = new Map<string, Uint8Array>()
+  const baixadas: string[] = []
+  return {
+    baixadas,
+    guardar: (id, conteudo) => arquivos.set(id, typeof conteudo === 'string' ? new TextEncoder().encode(conteudo) : conteudo),
+    midia: {
+      async baixarMidia(id) {
+        baixadas.push(id)
+        const conteudo = arquivos.get(id)
+        if (!conteudo) throw new Error(`mídia de teste ${id} não existe`)
+        return { conteudo, mime: null }
+      },
+    },
+  }
 }

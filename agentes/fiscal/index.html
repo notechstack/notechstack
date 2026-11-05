@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=13">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=14">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -53,7 +53,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
 <script src="/agentes/fiscal/medicao.js?v=4" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=13" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=14" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -69,8 +69,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "Não tenho certificado A1. Como consigo um?", "acceptedAnswer": {"@type": "Answer", "text": "O A1 (e-CNPJ) é a identidade digital da sua empresa: um arquivo .pfx ou .p12, protegido por senha, que assina as notas. Vale 1 ano e é comprado à parte, numa certificadora. Para emitir pela API oficial, a Sefin Nacional exige a nota assinada com o certificado da própria empresa, inclusive no MEI. Primeiro, pergunte ao seu contador: muitas vezes ele já tem o A1 da empresa e pode te mandar o arquivo e a senha. Se não tiver, compre um e-CNPJ do tipo A1 numa certificadora credenciada pela ICP-Brasil, como Certisign, Serasa Experian, Valid, Soluti ou Safeweb, faça a validação por videoconferência ou presencial, com os documentos da empresa e do responsável legal, e baixe o arquivo .pfx, guardando a senha que você criou. O A3, em cartão ou token USB, não serve: precisa ser o A1, em arquivo."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
-    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês, ou Pro, até 100. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores da seção de planos são provisórios e aparecem confirmados na tela de assinatura."}},
-    {"@type": "Question", "name": "Qual a diferença entre Escritório e Agência?", "acceptedAnswer": {"@type": "Answer", "text": "O Escritório é para quem emite mais de 100 notas por mês para o próprio negócio: um CNPJ, com a franquia combinada com você. A Agência é para quem quer integrar a emissão no sistema dos próprios clientes: vários CNPJs, um cadastro e um certificado A1 por cliente. Os dois são combinados direto com a Nó, pelo WhatsApp."}},
+    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório a partir de R$ 297/mês, ou o anual com 20% de desconto no Inicial e no Pro."}},
+    {"@type": "Question", "name": "Qual a diferença entre Escritório e Agência?", "acceptedAnswer": {"@type": "Answer", "text": "O Escritório é para escritório de contabilidade e para quem emite em volume: várias empresas numa conta só (até 5, 20 ou 50), cada uma com o próprio certificado A1, e a planilha do mês enviada no WhatsApp, que vira todas as notas de uma vez, com relatório e PDF no painel. A assinatura é feita no site, com 7 dias grátis. A Agência é para quem quer integrar a emissão no sistema dos próprios clientes, pela API, e é combinada direto com a Nó, pelo WhatsApp."}},
     {"@type": "Question", "name": "O agente substitui o meu contador?", "acceptedAnswer": {"@type": "Answer", "text": "Não. Ele emite e cancela as notas; o enquadramento, o percentual de tributos do Simples e a apuração continuam com a sua contabilidade. No plano Pro, dá para cadastrar o e-mail do contador para que cada nota chegue lá também, com PDF e XML."}},
     {"@type": "Question", "name": "E se a Sefin estiver fora do ar?", "acceptedAnswer": {"@type": "Answer", "text": "A nota entra numa fila e o agente tenta de novo sozinho, até 5 vezes, com intervalo crescente. Você acompanha pelo WhatsApp: o agente avisa quando a nota é autorizada ou se algo for rejeitado, com o motivo e o que fazer."}},
     {"@type": "Question", "name": "Como cancelo uma nota?", "acceptedAnswer": {"@type": "Answer", "text": "Pelo mesmo chat: “cancela a nota 142”. O agente pede confirmação e envia o evento oficial de cancelamento à Sefin Nacional. Vale o prazo de cancelamento do seu município; fora dele, o agente explica o caminho."}},
@@ -184,8 +184,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <button type="button" aria-pressed="true" data-ciclo="mensal">Mensal</button>
       <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>-20%</span></button>
     </div>
-    <!-- Cards sem preço (Lucca, 04/11/2026): o valor de cada plano aparece no /comecar/, na etapa de pagamento, antes
-         do cartão. Aqui o destaque é o volume de notas por mês, e o teste de 7 dias vem logo abaixo; o Pro e o Escritório listam só o que somam ao plano anterior. -->
+    <!-- Cards com preço (Lucca, 05/11/2026; antes, desde 04/11, sem preço): o destaque continua sendo o volume de notas
+         por mês, com o valor logo abaixo (mensal ou anual, pelo botão acima) e o teste de 7 dias. O Pro e o Escritório listam só
+         o que somam ao plano anterior. Valores: supabase/functions/assinatura-fiscal/core.ts (PLANOS_PAGARME). -->
     <ul class="fi-planos fi-planos--teste fi-reveal" id="fi-planos" data-ciclo="mensal">
       <li class="fi-plano" data-plano="inicial">
         <div class="fi-plano-topo">
@@ -194,7 +195,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </div>
         <div class="fi-plano-oferta">
           <p class="fi-plano-gratis">20 <span>notas/mês</span></p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar. <span data-mensal="Depois, mensalidade do plano." data-anual="Depois, anual com 20% de desconto.">Depois, mensalidade do plano.</span></p>
+          <p class="fi-plano-preco"><b data-mensal="R$ 49" data-anual="R$ 39,20">R$ 49</b>/mês <small data-mensal="" data-anual="R$ 470,40 cobrados por ano, 20% off"></small></p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar.</p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="inicial" href="/agentes/fiscal/comecar/?plano=inicial">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
@@ -212,7 +214,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </div>
         <div class="fi-plano-oferta">
           <p class="fi-plano-gratis">100 <span>notas/mês</span></p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar. <span data-mensal="Depois, mensalidade do plano." data-anual="Depois, anual com 20% de desconto.">Depois, mensalidade do plano.</span></p>
+          <p class="fi-plano-preco"><b data-mensal="R$ 129" data-anual="R$ 103,20">R$ 129</b>/mês <small data-mensal="" data-anual="R$ 1.238,40 cobrados por ano, 20% off"></small></p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar.</p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="pro" href="/agentes/fiscal/comecar/?plano=pro">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
@@ -224,17 +227,19 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <li class="fi-plano" data-plano="escritorio">
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01M12 11h.01"/></svg></span>
-          <h3>Escritório<small>Pra quem emite mais de 100 notas por mês</small></h3>
+          <h3>Escritório<small>Pra escritório de contabilidade e quem emite em volume</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <p class="fi-plano-gratis">+100 <span>notas/mês</span></p>
-          <p class="fi-plano-depois"><b>Sob medida:</b> franquia e valor combinados com a Nó.</p>
+          <p class="fi-plano-gratis">200+ <span>notas/mês</span></p>
+          <p class="fi-plano-preco"><b>R$ 297</b>/mês <small>na faixa de até 5 empresas</small></p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar. Também há faixas de 20 e 50 empresas.</p>
         </div>
-        <a class="fi-btn fi-btn--verde" data-lead="escritorio" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Quero%20o%20plano%20Escrit%C3%B3rio%20do%20n%C3%B3.fiscal%3A%20emito%20mais%20de%20100%20notas%20por%20m%C3%AAs." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
+        <a class="fi-btn fi-btn--verde" data-plano="escritorio_5" href="/agentes/fiscal/comecar/?tipo=escritorio&amp;plano=escritorio_5">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Pro, e mais:</li>
-          <li>Franquia de notas combinada com você</li>
-          <li>Mais de um WhatsApp autorizado a pedir notas</li>
+          <li>Várias empresas (CNPJs) numa conta só</li>
+          <li>Planilha no WhatsApp: as notas do mês saem de uma vez</li>
+          <li>Painel com relatório e PDF de cada nota</li>
         </ul>
       </li>
       <li class="fi-plano" data-plano="agencia">
@@ -254,7 +259,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </ul>
       </li>
     </ul>
-    <p class="fi-planos-nota">O valor de cada plano aparece no cadastro, na etapa de pagamento, antes de você informar o cartão. O teste de 7 dias vale uma vez por empresa. Impostos continuam com a sua contabilidade.</p>
+    <p class="fi-planos-nota">O valor aparece de novo no cadastro, na etapa de pagamento, antes de você informar o cartão. O teste de 7 dias vale uma vez por empresa. Impostos continuam com a sua contabilidade.</p>
   </section>
 
   <!-- ── FAQ ── -->
@@ -304,11 +309,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Quanto custa?</summary>
-          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês, ou Pro, até 100. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores da seção de planos são provisórios e aparecem confirmados na tela de assinatura.</p>
+          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório a partir de R$ 297/mês, ou o anual com 20% de desconto no Inicial e no Pro.</p>
         </details>
         <details>
           <summary>Qual a diferença entre Escritório e Agência?</summary>
-          <p>O Escritório é para quem emite mais de 100 notas por mês para o próprio negócio: um CNPJ, com a franquia combinada com você. A Agência é para quem quer integrar a emissão no sistema dos próprios clientes: vários CNPJs, um cadastro e um certificado A1 por cliente. Os dois são combinados direto com a Nó, pelo WhatsApp.</p>
+          <p>O Escritório é para escritório de contabilidade e para quem emite em volume: várias empresas numa conta só (até 5, 20 ou 50), cada uma com o próprio certificado A1, e a planilha do mês enviada no WhatsApp, que vira todas as notas de uma vez, com relatório e PDF no painel. A assinatura é feita no site, com 7 dias grátis. A Agência é para quem quer integrar a emissão no sistema dos próprios clientes, pela API, e é combinada direto com a Nó, pelo WhatsApp.</p>
         </details>
         <details>
           <summary>O agente substitui o meu contador?</summary>

@@ -146,6 +146,7 @@
 
     $('fa-secao-cancelar').hidden = !ativa || !!(a && a.cancelamento_agendado_para);
     $('fa-confirmar-cancelar').hidden = true;
+    desenharEscritorio();
   }
 
   /* ---------- cartão ---------- */
@@ -337,6 +338,522 @@
       nf.aviso($('fa-aviso-apagar'), nf.esc(r.mensagem || GENERICO), 'erro');
     });
   }
+
+  /* ---------- conta Escritório: abas, Minhas empresas e Relatórios ----------
+     Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
+     seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
+     empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
+  var ABAS = ['dados', 'empresas', 'relatorios'];
+  var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  var SITUACAO = {
+    pronta: ['Pronta', 'ok'],
+    falta_certificado: ['Falta certificado A1', ''],
+    falta_dados_fiscais: ['Faltam dados fiscais', ''],
+    certificado_vencido: ['Certificado vencido', 'erro'],
+    desativada: ['Desativada', 'off']
+  };
+  var SITUACAO_NOTA = {
+    issued: ['Emitida', 'ok'], rejected: ['Recusada', 'erro'], queued: ['Na fila', ''], signing: ['Na fila', ''], sent: ['Na fila', ''],
+    cancel_requested: ['Cancelamento pedido', ''], cancelled: ['Cancelada', 'off'], skipped: ['Não emitida', 'off']
+  };
+  var BOTAO_FAIXA = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-faixa>Trocar faixa</button>';
+  var ec = { aba: null, acao: null, seletor: null, relCarregado: false, relPedido: 0, faixa: null };
+  var moldeSeletor = $('fa-emp-seletor').cloneNode(true);
+
+  function escritorio() { return st.estado && st.estado.escritorio ? st.estado.escritorio : null; }
+  function pill(s) { return '<span class="nf-status' + (s[1] ? ' nf-status--' + s[1] : '') + '">' + nf.esc(s[0]) + '</span>'; }
+  function situacaoEmpresa(emp) {
+    if (emp.situacao === 'certificado_vencendo') {
+      var fim = emp.certificado && emp.certificado.not_after ? new Date(emp.certificado.not_after).getTime() : NaN;
+      if (isNaN(fim)) return ['Certificado vence em breve', ''];
+      var n = Math.max(0, Math.ceil((fim - Date.now()) / 86400000));
+      return [n === 0 ? 'Certificado vence hoje' : 'Certificado vence em ' + n + (n === 1 ? ' dia' : ' dias'), ''];
+    }
+    return SITUACAO[emp.situacao] || [emp.situacao || '—', ''];
+  }
+  function nomeEmpresa(emp) { return emp.razao_social || nf.formatarCnpj(emp.cnpj); }
+  function empresaPorId(id) {
+    var x = escritorio();
+    if (!x) return null;
+    for (var i = 0; i < x.empresas.length; i++) if (x.empresas[i].tenant_id === id) return x.empresas[i];
+    return null;
+  }
+
+  /* ---------- abas ---------- */
+  function abaDoHash() {
+    var h = location.hash.replace(/^#/, '');
+    if (h === 'assinatura') return 'dados';
+    if (h === 'certificado') return 'empresas';
+    return ABAS.indexOf(h) >= 0 ? h : null;
+  }
+  function mostrarAba(aba, opcoes) {
+    opcoes = opcoes || {};
+    ec.aba = aba;
+    ABAS.forEach(function (a) {
+      var tab = $('fa-aba-' + a), ativa = a === aba;
+      tab.setAttribute('aria-selected', ativa ? 'true' : 'false');
+      tab.tabIndex = ativa ? 0 : -1;
+      $('fa-painel-' + a).hidden = !ativa;
+    });
+    // A aba fica no endereço (sem pular a página): o recarregar abre nela.
+    if (opcoes.hash !== false && location.hash !== '#' + aba) {
+      try { history.replaceState(null, '', '#' + aba); } catch (e) { /* sem history */ }
+    }
+    if (opcoes.foco) $('fa-aba-' + aba).focus();
+    if (aba === 'relatorios' && !ec.relCarregado) carregarRelatorio();
+  }
+
+  function proximaCobranca(a) {
+    if (!a || a.status === 'cancelada') return 'Sem cobrança';
+    if (a.cortesia) return 'Cortesia, sem cobrança';
+    if (a.cancelamento_agendado_para) return 'Sem cobrança (cancelamento agendado)';
+    if (emTeste(a)) return nf.dataBR(a.trial_ends_at) + ' (fim do teste)';
+    return a.periodo_fim ? nf.dataBR(a.periodo_fim) : '—';
+  }
+
+  function desenharEscritorio() {
+    var x = escritorio();
+    ['dados', 'empresas', 'relatorios'].forEach(function (a) {
+      var p = $('fa-painel-' + a);
+      if (x) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'fa-aba-' + a); }
+      else { p.removeAttribute('role'); p.removeAttribute('aria-labelledby'); }
+    });
+    $('fa-abas').hidden = !x;
+    $('certificado').hidden = !!x;
+    $('fa-secao-fiscal').hidden = !!x;
+    $('fa-secao-apagar').hidden = !!x;
+    $('fa-plano-uso').hidden = !x;
+    $('fa-abrir-faixas').hidden = true;
+    if (!x) {
+      $('fa-painel-dados').hidden = false;
+      $('fa-painel-empresas').hidden = true;
+      $('fa-painel-relatorios').hidden = true;
+      $('fa-faixas').hidden = true;
+      return;
+    }
+    var e = st.estado, a = e.assinatura, emp = e.empresa || {};
+    var faixa = nf.FAIXAS[x.plano] || { nome: 'Até ' + x.max_empresas + ' empresas', centavos: null };
+    // A configuração que falta ao escritório é só pagamento e ativação; A1 e dados fiscais são por empresa.
+    $('fa-retomar').hidden = !(e.onboarding_etapa === 'pagamento' || e.onboarding_etapa === 'ativacao');
+
+    $('fa-empresa-passo').textContent = 'Escritório';
+    $('fa-empresa-titulo').textContent = 'Escritório';
+    $('fa-empresa').innerHTML = linhas([
+      ['Razão social', emp.razao_social], ['CNPJ', emp.cnpj ? nf.formatarCnpj(emp.cnpj) : ''],
+      ['Responsável', emp.responsavel], ['E-mail', emp.email], ['WhatsApp', emp.telefone ? nf.mascararTelefone(emp.telefone) : '']
+    ]);
+    $('fa-plano-nome').textContent = 'Escritório';
+    $('fa-plano-notas-rotulo').textContent = 'Faixa';
+    $('fa-plano-notas').textContent = faixa.nome + (faixa.centavos ? ' · ' + nf.reais(faixa.centavos) + '/mês' : '');
+    var excedente = Number(x.notas_mes) - Number(x.notas_limite);
+    $('fa-plano-uso').innerHTML = linhas([
+      ['Empresas ativas', x.empresas_ativas + ' de ' + x.max_empresas],
+      ['Notas do mês', x.notas_mes + ' de ' + x.notas_limite + (excedente > 0 ? ' (' + excedente + ' acima da franquia)' : '')],
+      ['Próxima cobrança', proximaCobranca(a)]
+    ]);
+    var ativa = a && a.status !== 'cancelada';
+    $('fa-trocar-plano').hidden = true;
+    $('fa-abrir-faixas').hidden = !ativa || !!a.cancelamento_agendado_para || a.ciclo === 'anual';
+    if ($('fa-abrir-faixas').hidden) $('fa-faixas').hidden = true;
+    desenharFaixas(x);
+    desenharEmpresas(x);
+    preencherFiltros(x);
+    mostrarAba(ec.aba || abaDoHash() || 'dados', { hash: false });
+  }
+
+  /* ---------- trocar faixa ---------- */
+  function desenharFaixas(x) {
+    $('fa-faixas-lista').innerHTML = Object.keys(nf.FAIXAS).map(function (c) {
+      var f = nf.FAIXAS[c], atual = c === x.plano, pequena = Number(x.empresas_ativas) > f.empresas;
+      return '<button type="button" class="nf-faixa' + (atual ? ' nf-faixa--atual' : '') + '" data-faixa="' + c + '"' +
+        (atual ? ' disabled aria-current="true"' : '') + '><b>' + nf.esc(f.nome) + '</b><span>' + nf.esc(nf.reais(f.centavos)) +
+        '/mês · ' + f.notas + ' notas por mês</span>' +
+        (atual ? '<small>Faixa atual</small>' : pequena ? '<small>Você tem ' + x.empresas_ativas + ' empresas ativas</small>' : '') + '</button>';
+    }).join('');
+    $('fa-confirmar-faixa').hidden = true;
+  }
+  function abrirFaixas() {
+    var aberto = $('fa-faixas').hidden;
+    $('fa-faixas').hidden = !aberto;
+    $('fa-abrir-faixas').setAttribute('aria-expanded', aberto ? 'true' : 'false');
+    $('fa-confirmar-faixa').hidden = true;
+  }
+  function irParaFaixas() {
+    mostrarAba('dados');
+    if (!$('fa-abrir-faixas').hidden) {
+      $('fa-faixas').hidden = false;
+      $('fa-abrir-faixas').setAttribute('aria-expanded', 'true');
+    }
+    var alvo = $('assinatura');
+    if (alvo && typeof alvo.scrollIntoView === 'function') alvo.scrollIntoView({ block: 'start' });
+    var primeiro = $('fa-faixas-lista').querySelector('button:not([disabled])');
+    if (primeiro && !$('fa-faixas').hidden) primeiro.focus();
+  }
+  function perguntarFaixa(codigo) {
+    var f = nf.FAIXAS[codigo];
+    if (!f) return;
+    ec.faixa = codigo;
+    $('fa-faixa-pergunta').textContent = 'Trocar para a faixa ' + f.nome + ', ' + nf.reais(f.centavos) + '/mês? O valor novo vale a partir da próxima cobrança.';
+    $('fa-confirmar-faixa').hidden = false;
+    $('fa-faixa-sim').focus();
+  }
+  function trocarFaixa() {
+    var codigo = ec.faixa;
+    if (!codigo) return;
+    var botao = $('fa-faixa-sim');
+    nf.ocupado(botao, true, 'Trocando…');
+    nf.aviso($('fa-aviso-plano'), '');
+    nf.funcao('fiscal-conta', { acao: 'trocar_plano', plano: codigo }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok && r.dados && r.dados.tenant_id) {
+        st.estado = r.dados;
+        $('fa-faixas').hidden = true;
+        $('fa-abrir-faixas').setAttribute('aria-expanded', 'false');
+        desenhar();
+        nf.aviso($('fa-aviso-plano'), nf.esc('Faixa alterada para ' + nf.FAIXAS[codigo].nome + '.'), 'ok');
+        return;
+      }
+      if (r.ok) return carregar();
+      if (r.status === 401) return;
+      $('fa-confirmar-faixa').hidden = true;
+      nf.aviso($('fa-aviso-plano'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  /* ---------- Minhas empresas ---------- */
+  function botaoLinha(acao, emp, rotulo) {
+    return '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="' + acao + '" data-tenant="' + nf.esc(emp.tenant_id) +
+      '" aria-label="' + nf.esc(rotulo + ': ' + nomeEmpresa(emp)) + '">' + nf.esc(rotulo) + '</button>';
+  }
+  function linhaEmpresa(emp) {
+    var ativa = emp.ativa !== false, acoes = [];
+    if (ativa) {
+      acoes.push(botaoLinha('cert', emp, emp.certificado ? 'Trocar A1' : 'Enviar A1'));
+      acoes.push(botaoLinha('fiscal', emp, 'Dados fiscais'));
+    }
+    if (!emp.principal) acoes.push(botaoLinha(ativa ? 'desativar' : 'reativar', emp, ativa ? 'Desativar' : 'Reativar'));
+    return '<tr' + (ativa ? '' : ' class="nf-linha-off"') + '><th scope="row">' + nf.esc(nomeEmpresa(emp)) +
+      (emp.principal ? ' <span class="nf-selo">Escritório</span>' : '') + '</th>' +
+      '<td class="nf-nowrap">' + nf.esc(nf.formatarCnpj(emp.cnpj)) + '</td>' +
+      '<td>' + pill(situacaoEmpresa(emp)) + '</td>' +
+      '<td class="nf-num">' + nf.esc(String(emp.notas_mes || 0)) + '</td>' +
+      '<td><div class="nf-acoes-linha">' + acoes.join('') + '</div></td></tr>';
+  }
+  function desenharEmpresas(x) {
+    var f = nf.FAIXAS[x.plano];
+    $('fa-empresas-resumo').textContent = x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' +
+      (f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 e os próprios dados fiscais.';
+    var a = st.estado.assinatura, motivo = '';
+    if (!a) motivo = 'Sem assinatura ativa: nenhuma empresa emite.';
+    else if (a.status === 'recusada') motivo = 'Pagamento recusado: nenhuma empresa emite até o cartão ser trocado em Meus dados.';
+    else if (a.status === 'cancelada') motivo = 'Assinatura cancelada: nenhuma empresa emite.';
+    nf.aviso($('fa-aviso-emissao'), nf.esc(motivo), 'erro');
+    $('fa-empresas-linhas').innerHTML = x.empresas.map(linhaEmpresa).join('');
+    // A linha da ação aberta pode ter mudado (ex.: desativada): o painel fecha se a empresa sumiu ou desativou.
+    if (ec.acao) {
+      var atual = empresaPorId(ec.acao.tenantId);
+      if (!atual || atual.ativa === false) fecharAcao(); else ec.acao.empresa = atual;
+    }
+  }
+  function fecharAcao() {
+    ec.acao = null;
+    $('fa-empresa-acao').hidden = true;
+  }
+  function abrirAcao(tipo, id, botao) {
+    var emp = empresaPorId(id);
+    if (!emp) return;
+    if (tipo === 'reativar') { ativarEmpresa(emp, true, botao); return; }
+    ec.acao = { tipo: tipo, tenantId: id, empresa: emp };
+    $('fa-empresa-acao').hidden = false;
+    $('fa-form-emp-cert').hidden = tipo !== 'cert';
+    $('fa-form-emp-fiscal').hidden = tipo !== 'fiscal';
+    $('fa-confirmar-desativar').hidden = tipo !== 'desativar';
+    $('fa-empresa-acao-titulo').textContent = { cert: 'Certificado A1 de ', fiscal: 'Dados fiscais de ', desativar: 'Desativar ' }[tipo] + nomeEmpresa(emp);
+    ['fa-aviso-emp-cert', 'fa-aviso-emp-fiscal'].forEach(function (i) { nf.aviso($(i), ''); });
+    ['fa-emp-pfx', 'fa-emp-pfx-senha', 'fa-emp-codigo-servico', 'fa-emp-percentual'].forEach(function (i) { nf.erroCampo(i, ''); });
+    if (tipo === 'cert') { $('fa-emp-pfx').value = ''; $('fa-emp-pfx-senha').value = ''; }
+    if (tipo === 'fiscal') prepararFiscalEmpresa(emp);
+    if (tipo === 'desativar') {
+      $('fa-desativar-pergunta').textContent = 'Desativar ' + nomeEmpresa(emp) + '? Ela para de emitir e deixa de contar no limite do plano. As notas e o certificado continuam guardados, e dá para reativar depois.';
+    }
+    var titulo = $('fa-empresa-acao-titulo');
+    if (typeof titulo.scrollIntoView === 'function') titulo.scrollIntoView({ block: 'nearest' });
+    titulo.focus();
+  }
+
+  /* A1 da empresa: o mesmo envio de /v1/onboarding/certificate, com o tenant_id da linha. */
+  function enviarCertEmpresa(ev) {
+    ev.preventDefault();
+    var ac = ec.acao;
+    if (!ac) return;
+    nf.erroCampo('fa-emp-pfx', ''); nf.erroCampo('fa-emp-pfx-senha', ''); nf.aviso($('fa-aviso-emp-cert'), '');
+    var arquivo = $('fa-emp-pfx').files && $('fa-emp-pfx').files[0];
+    var senha = $('fa-emp-pfx-senha').value;
+    if (!arquivo) { nf.erroCampo('fa-emp-pfx', 'Escolha o arquivo do certificado.'); return; }
+    if (!senha) { nf.erroCampo('fa-emp-pfx-senha', 'Informe a senha do certificado.'); return; }
+    var form = new FormData();
+    form.append('tenant_id', ac.tenantId);
+    form.append('pfx', arquivo, arquivo.name || 'certificado.pfx');
+    form.append('senha', senha);
+    var botao = $('fa-emp-enviar-a1');
+    nf.ocupado(botao, true, 'Enviando…');
+    nf.app('/v1/onboarding/certificate', form).then(function (r) {
+      nf.ocupado(botao, false);
+      $('fa-emp-pfx-senha').value = '';
+      if (r.ok) {
+        var msg = 'Certificado de ' + nf.titular(r.dados.subject) + ' válido até ' + nf.dataBR(r.dados.not_after);
+        fecharAcao();
+        return carregar().then(function () { nf.aviso($('fa-aviso-empresas'), nf.esc(msg), 'ok'); });
+      }
+      if (r.status === 401) return;
+      nf.aviso($('fa-aviso-emp-cert'), nf.esc(CERT[r.codigo] || r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  /* Dados fiscais da empresa: o mesmo seletor de código da página (um novo a cada empresa) e o % do Simples. */
+  function prepararFiscalEmpresa(emp) {
+    var velho = $('fa-emp-seletor'), novo = moldeSeletor.cloneNode(true);
+    velho.parentNode.replaceChild(novo, velho);
+    var cnae = emp.cnae || (emp.principal ? (st.estado.empresa || {}).cnae : null);
+    ec.seletor = nf.seletorCodigo(novo, { cnae: cnae, atual: emp.codigo_servico_nacional });
+    var mei = emp.regime === 'mei';
+    $('fa-emp-campo-percentual').hidden = mei;
+    $('fa-emp-percentual').value = !mei && emp.p_tot_trib_sn != null ? String(emp.p_tot_trib_sn).replace('.', ',') : '';
+  }
+  var CAMPO_EMP_FISCAL = { codigo_servico_nacional: 'fa-emp-codigo-servico', p_tot_trib_sn: 'fa-emp-percentual' };
+  function salvarFiscalEmpresa(ev) {
+    ev.preventDefault();
+    var ac = ec.acao;
+    if (!ac) return;
+    Object.keys(CAMPO_EMP_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_EMP_FISCAL[k], ''); });
+    nf.aviso($('fa-aviso-emp-fiscal'), '');
+    var codigo = ec.seletor ? ec.seletor.valor() : '';
+    var mei = ac.empresa.regime === 'mei';
+    var pct = mei ? null : nf.percentual($('fa-emp-percentual').value);
+    var falhou = false;
+    if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-emp-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
+    if (!mei && pct === null) { nf.erroCampo('fa-emp-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    if (falhou) return;
+    var corpo = { acao: 'empresa_configurar', tenant_id: ac.tenantId, codigo_servico_nacional: codigo };
+    if (!mei) corpo.p_tot_trib_sn = pct;
+    var botao = $('fa-emp-salvar-fiscal');
+    var nome = nomeEmpresa(ac.empresa);
+    nf.ocupado(botao, true, 'Salvando…');
+    nf.funcao('fiscal-conta', corpo).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) {
+        fecharAcao();
+        var depois = function () { nf.aviso($('fa-aviso-empresas'), nf.esc('Dados fiscais de ' + nome + ' salvos.'), 'ok'); };
+        if (r.dados && r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
+        return carregar().then(depois);
+      }
+      if (r.status === 401) return;
+      if (r.codigo === 'DADOS_FISCAIS_INVALIDOS' && CAMPO_EMP_FISCAL[r.dados.campo]) { nf.erroCampo(CAMPO_EMP_FISCAL[r.dados.campo], r.mensagem || 'Confira este campo.'); return; }
+      nf.aviso($('fa-aviso-emp-fiscal'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  function ativarEmpresa(emp, ativa, botao) {
+    var nome = nomeEmpresa(emp);
+    nf.ocupado(botao, true, ativa ? 'Reativando…' : 'Desativando…');
+    nf.aviso($('fa-aviso-empresas'), '');
+    nf.funcao('fiscal-conta', { acao: 'empresa_ativar', tenant_id: emp.tenant_id, ativa: ativa }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) {
+        fecharAcao();
+        var depois = function () { nf.aviso($('fa-aviso-empresas'), nf.esc((ativa ? 'Empresa reativada: ' : 'Empresa desativada: ') + nome + '.'), 'ok'); };
+        if (r.dados && r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
+        return carregar().then(depois);
+      }
+      if (r.status === 401) return;
+      nf.aviso($('fa-aviso-empresas'), nf.esc(r.mensagem || GENERICO) + (r.codigo === 'EMPRESAS_ACIMA_DO_LIMITE' ? BOTAO_FAIXA : ''), 'erro');
+    });
+  }
+
+  function abrirAdicionar() {
+    var abrir = $('fa-form-adicionar').hidden;
+    $('fa-form-adicionar').hidden = !abrir;
+    $('fa-abrir-adicionar').setAttribute('aria-expanded', abrir ? 'true' : 'false');
+    nf.erroCampo('fa-add-cnpj', '');
+    nf.aviso($('fa-aviso-adicionar'), '');
+    if (abrir) $('fa-add-cnpj').focus();
+  }
+  function adicionarEmpresa(ev) {
+    ev.preventDefault();
+    var cnpj = nf.digitos($('fa-add-cnpj').value);
+    nf.erroCampo('fa-add-cnpj', '');
+    nf.aviso($('fa-aviso-adicionar'), '');
+    if (!nf.cnpjValido(cnpj)) { nf.erroCampo('fa-add-cnpj', 'CNPJ inválido. Confira os 14 números.'); return; }
+    var botao = $('fa-adicionar');
+    nf.ocupado(botao, true, 'Consultando a Receita…');
+    nf.funcao('fiscal-conta', { acao: 'empresa_adicionar', cnpj: cnpj }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) {
+        var reativada = !!(r.dados.adicionada && r.dados.adicionada.reativada);
+        $('fa-add-cnpj').value = '';
+        $('fa-form-adicionar').hidden = true;
+        $('fa-abrir-adicionar').setAttribute('aria-expanded', 'false');
+        var depois = function () {
+          nf.aviso($('fa-aviso-empresas'), (reativada ? 'Empresa reativada.' : 'Empresa adicionada.') + ' Agora envie o certificado A1 e os dados fiscais dela.', 'ok');
+        };
+        if (r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
+        return carregar().then(depois);
+      }
+      if (r.status === 401) return;
+      if (r.codigo === 'EMPRESAS_ACIMA_DO_LIMITE') {
+        var x = escritorio();
+        var msg = r.mensagem || ('Seu plano permite até ' + (x ? x.max_empresas : '') + ' empresas.');
+        nf.aviso($('fa-aviso-adicionar'), nf.esc(msg) + BOTAO_FAIXA, 'erro');
+        return;
+      }
+      if (r.dados && r.dados.campo === 'cnpj') { nf.erroCampo('fa-add-cnpj', r.mensagem || 'Confira o CNPJ.'); return; }
+      nf.aviso($('fa-aviso-adicionar'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  /* ---------- Relatórios ---------- */
+  function mesAtual() {
+    var p = {};
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
+      .formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+    return p.year + '-' + p.month;
+  }
+  function nomeMes(mes) {
+    var m = /^(\d{4})-(\d{2})$/.exec(mes || '');
+    return m ? MESES[Number(m[2]) - 1] + ' de ' + m[1] : mes;
+  }
+  function preencherFiltros(x) {
+    var sel = $('fa-rel-mes');
+    if (!sel.options.length) {
+      var p = mesAtual().split('-'), ano = Number(p[0]), mes = Number(p[1]);
+      for (var i = 0; i < 24; i++) {
+        var v = ano + '-' + (mes < 10 ? '0' : '') + mes;
+        var o = document.createElement('option');
+        o.value = v; o.textContent = nomeMes(v);
+        sel.appendChild(o);
+        mes -= 1;
+        if (mes === 0) { mes = 12; ano -= 1; }
+      }
+    }
+    var emp = $('fa-rel-empresa'), antes = emp.value;
+    emp.innerHTML = '<option value="">Todas as empresas</option>' + x.empresas.map(function (e) {
+      return '<option value="' + nf.esc(e.tenant_id) + '">' + nf.esc(nomeEmpresa(e)) + '</option>';
+    }).join('');
+    emp.value = empresaPorId(antes) ? antes : '';
+  }
+  function valorTexto(v) {
+    var n = Number(v);
+    if (v === null || v === undefined || v === '' || !isFinite(n)) return '—';
+    return n.toFixed(2).replace('.', ',').replace(/^\d+/, function (i) { return i.replace(/\B(?=(\d{3})+$)/g, '.'); });
+  }
+  function linhaEntrega(e) {
+    var ok = e.status === 'enviado';
+    var destino = e.canal === 'whatsapp' ? nf.formatarTelefone(e.destino) : e.destino;
+    return '<li class="nf-entrega nf-entrega--' + (ok ? 'ok' : 'falhou') + '"><span aria-hidden="true">' + (ok ? '✓' : '✗') + '</span> ' +
+      nf.esc(destino) + ' <small>' + (e.canal === 'whatsapp' ? 'WhatsApp' : 'e-mail') + ' · ' + (ok ? 'enviado' : 'falhou') + '</small></li>';
+  }
+  function linhaNota(n) {
+    var emp = n.empresa || {}, tom = n.tomador || {};
+    var entregas = n.entregas && n.entregas.length ? '<ul class="nf-entregas">' + n.entregas.map(linhaEntrega).join('') + '</ul>' : '—';
+    var pdf = n.tem_pdf
+      ? '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-pdf="' + nf.esc(n.invoice_id) + '" aria-label="' +
+        nf.esc('Baixar o PDF da nota' + (n.numero ? ' ' + n.numero : '') + (tom.nome ? ' de ' + tom.nome : '')) + '">PDF</button>'
+      : '—';
+    return '<tr><td class="nf-nowrap">' + nf.esc(nf.dataBR(n.emitida_em || n.criada_em)) + '</td>' +
+      '<td>' + nf.esc(emp.razao_social || '') + (emp.cnpj ? '<small class="nf-sub">' + nf.esc(nf.formatarCnpj(emp.cnpj)) + '</small>' : '') + '</td>' +
+      '<td>' + nf.esc(tom.nome || '—') + (tom.documento ? '<small class="nf-sub">' + nf.esc(nf.formatarDocumento(tom.documento)) + '</small>' : '') + '</td>' +
+      '<td class="nf-desc">' + nf.esc(n.descricao || '—') + '</td>' +
+      '<td class="nf-nowrap">' + nf.esc(n.codigo_tributacao ? nf.formatarCodigo(n.codigo_tributacao) : '—') + '</td>' +
+      '<td class="nf-num nf-nowrap">' + nf.esc(valorTexto(n.valor)) + '</td>' +
+      '<td>' + pill(SITUACAO_NOTA[n.situacao] || [n.situacao || '—', '']) + (n.motivo ? '<small class="nf-sub">' + nf.esc(n.motivo) + '</small>' : '') + '</td>' +
+      '<td>' + entregas + '</td><td>' + pdf + '</td></tr>';
+  }
+  function desenharRelatorio(d, mes) {
+    var t = d.totais || {};
+    $('fa-rel-emitidas').textContent = String(t.emitidas || 0);
+    $('fa-rel-valor').textContent = nf.reais(Math.round(Number(t.valor_emitido || 0) * 100));
+    $('fa-rel-recusadas').textContent = String(t.recusadas || 0);
+    $('fa-rel-fila').textContent = String(t.na_fila || 0);
+    var notas = Array.isArray(d.notas) ? d.notas : [];
+    $('fa-rel-vazio').textContent = 'Nenhuma nota em ' + nomeMes(mes);
+    $('fa-rel-vazio').hidden = notas.length > 0;
+    $('fa-rel-rolagem').hidden = notas.length === 0;
+    $('fa-notas-linhas').innerHTML = notas.map(linhaNota).join('');
+  }
+  function carregarRelatorio() {
+    ec.relCarregado = true;
+    var mes = $('fa-rel-mes').value || mesAtual(), tenant = $('fa-rel-empresa').value;
+    var corpo = { acao: 'relatorio', mes: mes };
+    if (tenant) corpo.tenant_id = tenant;
+    var pedido = ++ec.relPedido;
+    nf.aviso($('fa-aviso-rel'), '');
+    $('fa-rel-rolagem').setAttribute('aria-busy', 'true');
+    return nf.funcao('fiscal-conta', corpo).then(function (r) {
+      if (pedido !== ec.relPedido) return; // chegou depois de outro filtro
+      $('fa-rel-rolagem').removeAttribute('aria-busy');
+      if (r.ok) { desenharRelatorio(r.dados, mes); return; }
+      if (r.status === 401) return;
+      nf.aviso($('fa-aviso-rel'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+  function baixarPdf(botao) {
+    var id = botao.getAttribute('data-pdf');
+    nf.ocupado(botao, true, '…');
+    nf.aviso($('fa-aviso-rel'), '');
+    nf.appArquivo('/v1/fiscal/nota-pdf', { invoice_id: id }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok && r.blob) { nf.baixarArquivo(r.blob, r.nome || 'nfse-' + id + '.pdf'); return; }
+      if (r.status === 401) return;
+      nf.aviso($('fa-aviso-rel'), r.status === 404 ? 'O PDF desta nota não está disponível.' : nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  $('fa-abas').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('[role=tab]');
+    if (b) mostrarAba(b.getAttribute('data-aba'));
+  });
+  $('fa-abas').addEventListener('keydown', function (ev) {
+    var i = ABAS.indexOf(ec.aba), n = null;
+    if (ev.key === 'ArrowRight') n = ABAS[(i + 1) % ABAS.length];
+    else if (ev.key === 'ArrowLeft') n = ABAS[(i + ABAS.length - 1) % ABAS.length];
+    else if (ev.key === 'Home') n = ABAS[0];
+    else if (ev.key === 'End') n = ABAS[ABAS.length - 1];
+    if (n) { ev.preventDefault(); mostrarAba(n, { foco: true }); }
+  });
+  window.addEventListener('hashchange', function () {
+    var a = abaDoHash();
+    if (a && escritorio() && a !== ec.aba) mostrarAba(a, { hash: false });
+  });
+  $('fa-abrir-faixas').addEventListener('click', abrirFaixas);
+  $('fa-faixas-lista').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-faixa]');
+    if (b && !b.disabled) perguntarFaixa(b.getAttribute('data-faixa'));
+  });
+  $('fa-faixa-nao').addEventListener('click', function () { $('fa-confirmar-faixa').hidden = true; ec.faixa = null; });
+  $('fa-faixa-sim').addEventListener('click', trocarFaixa);
+  $('fa-painel').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('[data-ir-faixa]');
+    if (b) irParaFaixas();
+  });
+  $('fa-abrir-adicionar').addEventListener('click', abrirAdicionar);
+  $('fa-adicionar-cancelar').addEventListener('click', abrirAdicionar);
+  $('fa-form-adicionar').addEventListener('submit', adicionarEmpresa);
+  $('fa-empresas-linhas').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-acao]');
+    if (b) abrirAcao(b.getAttribute('data-acao'), b.getAttribute('data-tenant'), b);
+  });
+  $('fa-empresa-acao').addEventListener('click', function (ev) {
+    if (ev.target.closest && ev.target.closest('[data-fechar-acao]')) fecharAcao();
+  });
+  $('fa-form-emp-cert').addEventListener('submit', enviarCertEmpresa);
+  $('fa-form-emp-fiscal').addEventListener('submit', salvarFiscalEmpresa);
+  $('fa-desativar-sim').addEventListener('click', function () { if (ec.acao) ativarEmpresa(ec.acao.empresa, false, $('fa-desativar-sim')); });
+  $('fa-rel-mes').addEventListener('change', carregarRelatorio);
+  $('fa-rel-empresa').addEventListener('change', carregarRelatorio);
+  $('fa-notas-linhas').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-pdf]');
+    if (b) baixarPdf(b);
+  });
 
   /* ---------- ligações ---------- */
   $('fa-form-email').addEventListener('submit', pedirCodigo);
