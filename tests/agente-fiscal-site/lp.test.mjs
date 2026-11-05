@@ -17,11 +17,19 @@ test('lp leva ao cadastro', () => {
     assert.ok(c, `cartão ${nome}`);
     const a = acoes(c);
     // Lucca, 30/10/2026: volta o teste de 7 dias com cartão (em 22/10 tinha virado "5 primeiras emissões grátis").
-    assert.deepEqual(a, [{ rotulo: 'Começar 7 dias grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
+    // Lucca, 04/11/2026: o rótulo virou "Testar 7 dias grátis".
+    assert.deepEqual(a, [{ rotulo: 'Testar 7 dias grátis', href: `/agentes/fiscal/comecar/?plano=${plano}`, tag: 'A' }], nome);
   }
-  // Escritório (mais de 100 notas no próprio negócio) e Agência (vários CNPJs) vão ao WhatsApp comercial.
+  // Escritório (Lucca, 05/11/2026): cadastro público no site, na faixa de até 5 empresas.
+  {
+    const c = cartoes.find((x) => x.dataset.plano === 'escritorio');
+    assert.ok(c, 'cartão Escritório');
+    assert.match(txt(c.querySelector('h3')), /^Escritório/);
+    assert.deepEqual(acoes(c), [{ rotulo: 'Testar 7 dias grátis', href: '/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_5', tag: 'A' }]);
+    assert.match(txt(c), /Planilha no WhatsApp/);
+  }
+  // Agência (vários CNPJs pela API) vai ao WhatsApp comercial.
   for (const [plano, nome, texto] of [
-    ['escritorio', 'Escritório', 'Olá! Quero o plano Escritório do nó.fiscal: emito mais de 100 notas por mês.'],
     ['agencia', 'Agência', 'Olá! Sou de uma agência e quero integrar o nó.fiscal ao sistema dos meus clientes.']
   ]) {
     const c = cartoes.find((x) => x.dataset.plano === plano);

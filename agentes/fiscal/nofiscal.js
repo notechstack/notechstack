@@ -498,4 +498,61 @@
     formatarTelefone: formatarTelefone,
     navegar: function (url) { location.assign(url); }
   };
+
+  /* ---------- conta Escritório (painel de /conta/) ---------- */
+  /* Faixas do Escritório (fiscal-conta/core.ts, FAIXAS_ESCRITORIO): empresas, notas por mês e preço mensal. */
+  var FAIXAS = {
+    escritorio_5: { nome: 'Até 5 empresas', empresas: 5, notas: 500, centavos: 29700 },
+    escritorio_20: { nome: 'Até 20 empresas', empresas: 20, notas: 2000, centavos: 79700 },
+    escritorio_50: { nome: 'Até 50 empresas', empresas: 50, notas: 5000, centavos: 149700 }
+  };
+  /* Nome do arquivo no Content-Disposition (filename="…"), ou null. */
+  function nomeDoAnexo(cabecalho) {
+    var m = /filename="?([^";]+)"?/i.exec(String(cabecalho || ''));
+    return m ? m[1] : null;
+  }
+  /* GET de um arquivo numa rota do app com a sessão (o mesmo token de app()); um 401 renova uma vez.
+     Resolve {ok, status, blob, nome, codigo, mensagem}; sem sessão válida avisa a página como chamar(). */
+  function appArquivo(caminho, params) {
+    var qs = params ? new URLSearchParams(params).toString() : '';
+    var url = API + caminho + (/\/$/.test(caminho) ? '' : '/') + (qs ? '?' + qs : '');
+    function pedir(token) {
+      return fetch(url, { method: 'GET', headers: { Authorization: 'Bearer ' + token } }).then(function (r) {
+        if (r.ok) {
+          return r.blob().then(function (b) {
+            return { status: r.status, ok: true, blob: b, nome: nomeDoAnexo(r.headers.get('content-disposition')), codigo: null, mensagem: '' };
+          });
+        }
+        return r.json().catch(function () { return null; }).then(function (j) { return resposta(r.status, j); });
+      }, function () { return SEM_REDE; });
+    }
+    return sessao.token().then(function (t) {
+      if (!t) return avisarVencida(resposta(401, { ok: false, error_code: 'SEM_SESSAO' }));
+      return pedir(t).then(function (r) {
+        if (r.status !== 401) return r;
+        return sessao.renovar().then(function (n) {
+          if (!n) return avisarVencida(r);
+          return pedir(n.access_token).then(function (r2) { return r2.status === 401 ? avisarVencida(r2) : r2; });
+        });
+      });
+    });
+  }
+  /* Entrega um Blob ao navegador como download (link temporário). */
+  function baixarArquivo(blob, nome) {
+    var URLs = window.URL || window.webkitURL;
+    if (!URLs || typeof URLs.createObjectURL !== 'function') return false;
+    var href = URLs.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = href;
+    a.download = nome || 'arquivo';
+    a.rel = 'noopener';
+    a.hidden = true;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); try { URLs.revokeObjectURL(href); } catch (e) { /* já liberado */ } }, 1000);
+    return true;
+  }
+  window.noFiscal.FAIXAS = FAIXAS;
+  window.noFiscal.appArquivo = appArquivo;
+  window.noFiscal.baixarArquivo = baixarArquivo;
 })();

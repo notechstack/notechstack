@@ -1,10 +1,16 @@
 // fiscal-cadastro: consulta do CNPJ e criação da empresa self-service (critérios 2, 3, 6 e 8;
 // Landing "fiscal-cadastro: forma", lote A). Público (verify_jwt = false); `criar` confere a sessão.
 // Núcleo testável: sem Deno e sem supabase-js. O banco só é alcançado por public.fiscal_cadastro_criar.
+// Escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md): `plano` escritorio_5|20|50 cria a empresa do
+// próprio escritório (a conta-mãe) pelo mesmo caminho, com as mesmas travas (Receita, Simples/MEI, CNPJ e WhatsApp
+// únicos). As demais empresas do escritório entram depois, em Minha conta.
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
 import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, municipioAtendido, type Regime, soDigitos } from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
+
+export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
+const FAIXAS_ESCRITORIO = ["escritorio_5", "escritorio_20", "escritorio_50"];
 
 export type ArgsCriar = {
   user_id: string;
@@ -14,7 +20,7 @@ export type ArgsCriar = {
   cnae: string | null;
   regime: Regime;
   telefone: string;
-  plano: "inicial" | "pro";
+  plano: PlanoDoCadastro;
   responsavel: string;
   api_key_hash: string;
   ambiente: "producao_restrita" | "producao";
@@ -115,10 +121,21 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   // Guardado com o nono dígito: é a forma que o WhatsApp do dono vai casar depois (comNonoDigito).
   const telefoneBruto = typeof b.telefone === "string" ? normalizarTelefone(b.telefone) : null;
   const telefone = telefoneBruto ? comNonoDigito(telefoneBruto) : null;
-  if (!razaoDigitada) return erro(422, "DADOS_INVALIDOS", "Informe o nome da empresa.", h);
+  // Escritório: pelo plano (escritorio_*) ou por `tipo: "escritorio"` vindo da página; com o tipo, a faixa é obrigatória.
+  const escritorio = (typeof b.plano === "string" && FAIXAS_ESCRITORIO.includes(b.plano)) || b.tipo === "escritorio";
+  if (!razaoDigitada) return erro(422, "DADOS_INVALIDOS", escritorio ? "Informe o nome do escritório." : "Informe o nome da empresa.", h);
   if (!responsavel) return erro(422, "DADOS_INVALIDOS", "Informe o nome do responsável.", h);
   if (!telefone || !telefone.startsWith("+55")) return erro(422, "DADOS_INVALIDOS", "Informe um WhatsApp do Brasil com DDD.", h);
-  const plano = b.plano === "pro" ? "pro" : "inicial";
+  let plano: PlanoDoCadastro;
+  if (escritorio) {
+    if (typeof b.plano !== "string" || !FAIXAS_ESCRITORIO.includes(b.plano)) {
+      return erro(422, "DADOS_INVALIDOS", "Escolha a faixa do plano Escritório: até 5, 20 ou 50 empresas.", h);
+    }
+    plano = b.plano as PlanoDoCadastro;
+  } else {
+    // Plano desconhecido vale Inicial, como antes (a página manda só inicial ou pro).
+    plano = b.plano === "pro" ? "pro" : "inicial";
+  }
 
   // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3).
   const c = await consultar(cnpj);
@@ -160,11 +177,17 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
       // novo: a conta nasceu agora (o site mede o cadastro concluído só uma vez).
       return json(201, { ok: true, tenant_id: res.tenant_id, etapa: res.etapa, novo: res.status === "criado" }, h);
     case "cnpj_ja_cadastrado":
+      // Escritório com CNPJ que já tem conta Inicial/Pro: mesma recusa (migrar de plano fica fora da v1).
       return erro(409, "CNPJ_JA_CADASTRADO", "Este CNPJ já tem conta. Entre pela sua conta", h);
     case "telefone_de_outra_empresa":
       return erro(409, "TELEFONE_DE_OUTRA_EMPRESA", "Este WhatsApp já está ligado a outra empresa", h);
     case "conta_ja_tem_empresa":
-      return erro(409, "CONTA_JA_TEM_EMPRESA", "Este e-mail já tem outra empresa. Entre pela sua conta", h);
+      return erro(
+        409,
+        "CONTA_JA_TEM_EMPRESA",
+        escritorio ? "Este e-mail já tem uma conta no nó.fiscal. Entre pela sua conta" : "Este e-mail já tem outra empresa. Entre pela sua conta",
+        h,
+      );
     case "sem_email_confirmado":
       return erro(401, "SEM_SESSAO", "Confirme o e-mail com o código antes de continuar.", h);
     default:

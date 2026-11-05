@@ -92,7 +92,9 @@ export function mensagensDaNotificacao(corpo: unknown, phoneNumberId?: string): 
         enderecoRecebido: `+${de}`,
         tipo,
         texto: tipo === 'text' ? textoOuNulo(obj(m.text)?.body) : null,
-        arquivo: documento ? { nome: textoOuNulo(documento.filename), mime: textoOuNulo(documento.mime_type) } : null,
+        arquivo: documento
+          ? { nome: textoOuNulo(documento.filename), mime: textoOuNulo(documento.mime_type), midiaId: textoOuNulo(documento.id) }
+          : null,
       })
     }
   }

@@ -131,11 +131,19 @@ export type CobrancaPaga = {
   /** Id da fatura (in_...) ou, sem fatura, da cobrança (ch_...). Base do event_id e do transaction_id. */
   chave: string;
   valorCentavos: number;
-  plano: "inicial" | "pro";
+  /** Os planos de fiscal_subscriptions.plano (core.ts, PlanoAssinatura; repetido aqui porque core.ts importa este arquivo). */
+  plano: "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
+  /** O Escritório é só mensal. */
   ciclo: "mensal" | "anual";
 };
 
-const NOME_PLANO: Record<CobrancaPaga["plano"], string> = { inicial: "Inicial", pro: "Pro" };
+const NOME_PLANO: Record<CobrancaPaga["plano"], string> = {
+  inicial: "Inicial",
+  pro: "Pro",
+  escritorio_5: "Escritório 5",
+  escritorio_20: "Escritório 20",
+  escritorio_50: "Escritório 50",
+};
 
 export function eventIdDaCobranca(chave: string): string {
   return `nofiscal-purchase-${chave}`;

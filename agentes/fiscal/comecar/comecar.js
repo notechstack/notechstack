@@ -42,6 +42,35 @@
     FORBIDDEN: 'Esta conta não é a dona desta empresa.'
   };
 
+  /* Modo escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Cadastro do escritório"): o card Escritório
+     da LP abre /comecar/?tipo=escritorio&plano=escritorio_5. A empresa do próprio escritório faz as mesmas 7 etapas; a
+     etapa 1 fala do escritório e a 3 mostra as faixas (só mensal: `ciclo` da URL é ignorado). O tipo e a faixa ficam na
+     aba (sessionStorage) para sobreviver ao vai-e-volta do código de e-mail; o plano gravado na conta também liga o modo. */
+  var TIPO_KEY = 'nofiscal.tipo';
+  var FAIXA_KEY = 'nofiscal.faixa';
+  var FAIXAS = { // assinatura-fiscal/core.ts, FAIXAS_ESCRITORIO
+    escritorio_5: { empresas: 5, notas: 500, centavos: 29700 },
+    escritorio_20: { empresas: 20, notas: 2000, centavos: 79700 },
+    escritorio_50: { empresas: 50, notas: 5000, centavos: 149700 }
+  };
+  function ehFaixa(p) { return Object.prototype.hasOwnProperty.call(FAIXAS, p); }
+  /* Link com tipo=escritorio ou plano=escritorio_* liga o modo; link com plano Inicial/Pro desliga; sem nada, vale a aba. */
+  function escritorioInicial() {
+    var q = new URLSearchParams(location.search);
+    var plano = q.get('plano');
+    if (q.get('tipo') === 'escritorio' || ehFaixa(plano)) { nf.aba.gravar(TIPO_KEY, 'escritorio'); return true; }
+    if (plano) { nf.aba.apagar(TIPO_KEY); nf.aba.apagar(FAIXA_KEY); return false; }
+    return nf.aba.ler(TIPO_KEY) === 'escritorio';
+  }
+  function faixaInicial() {
+    var p = new URLSearchParams(location.search).get('plano');
+    if (!ehFaixa(p)) p = nf.aba.ler(FAIXA_KEY);
+    if (!ehFaixa(p)) p = 'escritorio_5';
+    nf.aba.gravar(FAIXA_KEY, p);
+    return p;
+  }
+  var modoEscritorio = escritorioInicial();
+
   var CICLO_KEY = 'nofiscal.ciclo'; // antes de st: cicloInicial() roda na criação dele
   /* O ciclo vai no localStorage (o plano fica no servidor; a retomada pode ser em outra aba ou depois do e-mail). */
   var cicloGuardado = {
@@ -50,8 +79,10 @@
     apagar: function () { try { localStorage.removeItem(CICLO_KEY); } catch (e) { /* sem armazenamento */ } }
   };
   var st = {
-    plano: nf.planoDaUrl(location.search),
-    ciclo: cicloInicial(),   // mensal | anual (toggle da LP); o anual não aceita cupom
+    escritorio: modoEscritorio,
+    plano: modoEscritorio ? faixaInicial() : nf.planoDaUrl(location.search),
+    // mensal | anual (toggle da LP); o anual não aceita cupom. O Escritório é só mensal e não mexe no ciclo guardado.
+    ciclo: modoEscritorio ? 'mensal' : cicloInicial(),
     confirmarSemTeste: false, // anual sem teste: o servidor pede confirmação antes de cobrar o ano
     etapa: 0,
     maxEtapa: 0,             // etapa mais adiantada já aberta: até ela a trilha deixa voltar
@@ -79,8 +110,69 @@
   /** Centavos que a assinatura cobra por ciclo (sem cupom), pelo GET do checkout ou pela tabela da página. */
   function centavosDoPlano() {
     var p = st.checkout && st.checkout.planos && st.checkout.planos[st.plano];
+    if (st.escritorio && ehFaixa(st.plano)) return p && p.valor_centavos != null ? p.valor_centavos : FAIXAS[st.plano].centavos;
     if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : null;
     return p ? p.valor_centavos : null;
+  }
+  /** Dias do teste grátis: 30 com o cupom de fundador do Escritório (dias_de_teste), 7 nos demais. */
+  function diasDeTeste() { return st.cupom && st.cupom.dias_de_teste === 30 ? 30 : 7; }
+  function nomeFaixa(p) { return 'Escritório até ' + FAIXAS[p].empresas + ' empresas'; }
+  /** "1º mês grátis, depois R$ 247/mês no 1º ano" (FUNDADOR5); sem o teste de 30 dias, só o preço e o período. */
+  function efeitoDoCupomEscritorio(c) {
+    var periodo = c.ciclos === 12 ? ' no 1º ano' : c.ciclos ? ' nos ' + c.ciclos + (c.ciclos === 1 ? ' primeiro mês' : ' primeiros meses') : '';
+    var preco = nf.reais(c.valor_centavos_com_desconto) + '/mês' + periodo;
+    return c.dias_de_teste === 30 ? '1º mês grátis, depois ' + preco : preco;
+  }
+
+  /* Textos do modo escritório: [id, texto do escritório]; o texto de Inicial/Pro é guardado para voltar. */
+  var TEXTOS_ESCRITORIO = [
+    ['fc-h1', 'O agente fiscal do seu escritório em 7 passos'],
+    ['fc-trilha-1', 'Seu escritório'],
+    ['fc-passo-1', '1 de 7 · Seu escritório'],
+    ['fc-titulo-1', 'Dados do escritório'],
+    ['fc-cnpj-rotulo', 'CNPJ do escritório'],
+    ['fc-empresa-rotulo', 'Nome do escritório'],
+    ['fc-telefone-rotulo', 'WhatsApp de quem vai mandar as planilhas'],
+    ['fc-telefone-dica', 'É por este número que o escritório manda as planilhas e pede as notas de todas as empresas.'],
+    ['fc-a1-pergunta', 'Você já tem o certificado A1 do escritório?']
+  ];
+  var REQUISITO_A1_ESCRITORIO = '<b>Cada empresa precisa do próprio certificado digital A1 <span>(e-CNPJ)</span>.</b> É ele que assina as ' +
+    'notas, e o padrão nacional não aceita outro jeito, nem para MEI. O do escritório você envia na etapa 4; o das outras empresas, ' +
+    'depois, em Minha conta. O A3, em token ou cartão, não serve. <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
+  var textosPadrao = null;
+  function aplicarModo() {
+    if (!textosPadrao) {
+      textosPadrao = TEXTOS_ESCRITORIO.map(function (t) { var el = $(t[0]); return el ? el.textContent : null; });
+      textosPadrao.requisito = $('fc-requisito-a1') ? $('fc-requisito-a1').innerHTML : null;
+    }
+    TEXTOS_ESCRITORIO.forEach(function (t, i) {
+      var el = $(t[0]);
+      if (el && textosPadrao[i] != null) el.textContent = st.escritorio ? t[1] : textosPadrao[i];
+    });
+    if ($('fc-requisito-a1') && textosPadrao.requisito != null) $('fc-requisito-a1').innerHTML = st.escritorio ? REQUISITO_A1_ESCRITORIO : textosPadrao.requisito;
+    $('fc-faixas').hidden = !st.escritorio;
+    $('fc-escritorio-depois').hidden = !st.escritorio;
+    // Escritório: a conta abre direto em Minhas empresas, onde entram as outras empresas.
+    $('fc-minha-conta').setAttribute('href', st.escritorio ? '/agentes/fiscal/conta/#empresas' : '/agentes/fiscal/conta/');
+    if (st.escritorio) marcarFaixa();
+  }
+  function marcarFaixa() {
+    var radios = document.getElementsByName('fc-faixa');
+    for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === st.plano;
+  }
+  /* O plano da conta manda: escritorio_* liga o modo (e a faixa); Inicial/Pro desliga. */
+  function modoDoPlano(plano) {
+    if (ehFaixa(plano)) {
+      st.plano = plano;
+      nf.aba.gravar(FAIXA_KEY, plano);
+      if (!st.escritorio) { st.escritorio = true; st.ciclo = 'mensal'; nf.aba.gravar(TIPO_KEY, 'escritorio'); aplicarModo(); }
+      else marcarFaixa();
+      return;
+    }
+    if (plano === 'pro' || plano === 'inicial') {
+      st.plano = plano;
+      if (st.escritorio) { st.escritorio = false; nf.aba.apagar(TIPO_KEY); nf.aba.apagar(FAIXA_KEY); aplicarModo(); }
+    }
   }
   // Funil de compra (medicao.js): sem o arquivo, a página funciona igual e não mede.
   var medir = window.noFiscalMedicao || null;
@@ -130,12 +222,22 @@
     if (entrar) entrar();
   }
   function mostrarPlano() {
+    if (st.escritorio && ehFaixa(st.plano)) { mostrarPlanoEscritorio(); return; }
     var rotulo = nf.rotuloPlano(st.plano, centavosDoPlano(), st.ciclo);
     $('fc-plano').textContent = rotulo;
     var c = st.cupom;
     $('fc-plano-pagamento').textContent = !c ? rotulo
       : c.cortesia ? 'Plano ' + nf.nomePlano(st.plano) + ' · cortesia com o cupom ' + c.codigo
       : 'Plano ' + nf.nomePlano(st.plano) + ' · ' + nf.reais(c.valor_centavos_com_desconto) + '/mês com o cupom ' + c.codigo;
+  }
+  function mostrarPlanoEscritorio() {
+    var base = 'Plano ' + nomeFaixa(st.plano);
+    var rotulo = base + ' · ' + nf.reais(centavosDoPlano()) + '/mês · 7 dias grátis';
+    $('fc-plano').textContent = rotulo;
+    var c = st.cupom;
+    $('fc-plano-pagamento').textContent = !c ? rotulo
+      : c.cortesia ? base + ' · cortesia com o cupom ' + c.codigo
+      : base + ' · ' + efeitoDoCupomEscritorio(c) + ' com o cupom ' + c.codigo;
   }
   function etapaDoEstado(e) {
     var n = ETAPA_DO_SERVIDOR[e.onboarding_etapa] || 3;
@@ -147,7 +249,7 @@
   function aplicarEstado(e) {
     st.estado = e;
     st.tenantId = e.tenant_id || st.tenantId;
-    if (e.plano === 'pro' || e.plano === 'inicial') st.plano = e.plano;
+    modoDoPlano(e.plano);
     mostrarPlano();
   }
 
@@ -207,7 +309,7 @@
   function validarEtapa1(d) {
     var erros = {};
     if (!nf.cnpjValido(d.cnpj)) erros['fc-cnpj'] = MSG.cnpj;
-    if (d.empresa.length < 2) erros['fc-empresa'] = 'Informe o nome da empresa.';
+    if (d.empresa.length < 2) erros['fc-empresa'] = st.escritorio ? 'Informe o nome do escritório.' : 'Informe o nome da empresa.';
     if (d.responsavel.length < 3) erros['fc-responsavel'] = 'Informe o nome do responsável.';
     if (!nf.emailValido(d.email)) erros['fc-email'] = 'Informe um e-mail válido.';
     if (!nf.telefoneE164(d.telefone)) erros['fc-telefone'] = 'Informe o WhatsApp com DDD.';
@@ -325,7 +427,9 @@
     var d = nf.cadastro.ler();
     return nf.funcao('fiscal-cadastro', {
       acao: 'criar', cnpj: d.cnpj, razao_social: d.empresa, responsavel: d.responsavel,
-      telefone: nf.telefoneE164(d.telefone), plano: st.plano
+      telefone: nf.telefoneE164(d.telefone), plano: st.plano,
+      // Escritório: fiscal-cadastro exige a faixa no plano quando vem o tipo.
+      tipo: st.escritorio ? 'escritorio' : undefined
     }).then(function (r) {
       if (r.ok && r.dados.tenant_id) {
         st.tenantId = r.dados.tenant_id;
@@ -337,7 +441,7 @@
       var aviso = null, campo = null;
       if (r.codigo === 'CNPJ_JA_CADASTRADO') aviso = MSG.cnpjComConta;
       else if (r.codigo === 'TELEFONE_DE_OUTRA_EMPRESA') { aviso = MSG.telefoneOutra; campo = ['fc-telefone', MSG.telefoneOutra]; }
-      else if (r.codigo === 'CONTA_JA_TEM_EMPRESA') aviso = 'Este e-mail já tem uma empresa cadastrada. <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>';
+      else if (r.codigo === 'CONTA_JA_TEM_EMPRESA') aviso = (st.escritorio ? 'Este e-mail já tem uma conta no nó.fiscal.' : 'Este e-mail já tem uma empresa cadastrada.') + ' <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>';
       else if (r.codigo === 'MUNICIPIO_FORA_DO_PADRAO') aviso = MSG.municipio;
       else if (r.codigo === 'CNPJ_FORA_DO_SIMPLES') campo = ['fc-cnpj', MSG.foraDoSimples];
       else if (r.codigo === 'CNPJ_INVALIDO') campo = ['fc-cnpj', MSG.cnpj];
@@ -389,6 +493,8 @@
       }
       $('fc-cupom').hidden = anual();
       $('fc-texto-anual').hidden = !anual();
+      // Escritório sem os planos no Pagar.me (GET sem escritorio_disponivel): só a cortesia passa; o resto fala com a Nó.
+      if (escritorioIndisponivel()) nf.aviso($('fc-aviso-3'), 'O plano Escritório ainda não está disponível para assinatura. Fale com a Nó pelo WhatsApp.', 'info');
       mostrarPlano();
       if (medir) medir.checkoutIniciado(st.plano, valorAtual(), st.cupom && st.cupom.codigo, st.ciclo);
       $('fc-aceite-texto').textContent = r.dados.aceite_texto || '';
@@ -404,9 +510,27 @@
     var cortesia = !!(st.cupom && st.cupom.cortesia);
     $('fc-cobranca').hidden = cortesia;
     $('fc-texto-cobranca').hidden = cortesia;
+    $('fc-dias-cobranca').textContent = diasDeTeste() + ' dias';
     if (cortesia) { pagar.disabled = false; pagar.textContent = 'Ativar com o cupom'; return; }
-    if (st.checkout && st.checkout.venda_aberta === true) { pagar.disabled = false; pagar.textContent = 'Começar 7 dias grátis'; }
+    if (escritorioIndisponivel()) { pagar.disabled = true; pagar.textContent = MSG.vendaFechada; return; }
+    if (st.checkout && st.checkout.venda_aberta === true) { pagar.disabled = false; pagar.textContent = 'Começar ' + diasDeTeste() + ' dias grátis'; }
     else { pagar.disabled = true; pagar.textContent = MSG.vendaFechada; }
+  }
+  function escritorioIndisponivel() { return !!(st.escritorio && st.checkout && st.checkout.escritorio_disponivel === false); }
+
+  /* ---------- faixa do Escritório ---------- */
+  /* Trocar a faixa reaplica o cupom: os de fundador valem só na própria faixa (o servidor responde CUPOM_PLANO). */
+  function trocarFaixa(ev) {
+    var p = ev.target && ev.target.value;
+    if (!ehFaixa(p) || p === st.plano) return;
+    st.plano = p;
+    nf.aba.gravar(FAIXA_KEY, p);
+    nf.erroCampo('fc-cupom-codigo', '');
+    var codigo = st.cupom && st.cupom.codigo;
+    st.cupom = null;
+    mostrarCupom();
+    if (codigo) { $('fc-cupom-codigo').value = codigo; abrirCampoCupom(); aplicarCupom(); }
+    if (medir) medir.checkoutIniciado(st.plano, valorAtual(), null, st.ciclo);
   }
 
   /* ---------- cupom ---------- */
@@ -418,6 +542,8 @@
     $('fc-cupom-abrir').hidden = true;
     if (c) {
       var efeito = c.cortesia ? 'assinatura sem cobrança, sem cartão'
+        // Escritório com o cupom de fundador: "1º mês grátis, depois R$ 247/mês no 1º ano".
+        : st.escritorio && c.dias_de_teste === 30 ? nf.esc(efeitoDoCupomEscritorio(c))
         : '<s>' + nf.esc(nf.reais(c.valor_centavos)) + '</s> ' + nf.esc(nf.reais(c.valor_centavos_com_desconto)) + '/mês' +
           (c.ciclos ? ' nos ' + c.ciclos + (c.ciclos === 1 ? ' primeiro mês' : ' primeiros meses') : '');
       $('fc-cupom-resumo').innerHTML = 'Cupom <b>' + nf.esc(c.codigo) + '</b> aplicado: ' + efeito + '.';
@@ -491,7 +617,7 @@
   function enviarPagamento(ev) {
     ev.preventDefault();
     if (st.cupom && st.cupom.cortesia) { enviarCortesia(); return; }
-    if (!st.checkout || st.checkout.venda_aberta !== true) return;
+    if (!st.checkout || st.checkout.venda_aberta !== true || escritorioIndisponivel()) return;
     Object.keys(CAMPO_CARTAO).forEach(function (k) { nf.erroCampo(CAMPO_CARTAO[k], ''); });
     nf.erroCampo('fc-aceite', '');
     nf.aviso($('fc-aviso-3'), '');
@@ -620,8 +746,10 @@
     var empresa = st.estado && st.estado.empresa;
     return ((empresa && empresa.regime) || (st.consulta && st.consulta.regime)) === 'mei';
   }
+  /** Contador e resumo: Pro e Escritório (nofiscal.plano_completo, migração 20261105180000). */
+  function planoCompleto() { return st.plano === 'pro' || ehFaixa(st.plano); }
   function abrirFiscal() {
-    var pro = st.plano === 'pro';
+    var pro = planoCompleto();
     $('fc-pro').hidden = !pro;
     $('fc-campo-percentual').hidden = ehMei();
     var dia = $('fc-resumo-dia-mes');
@@ -664,7 +792,7 @@
     if (!mei && pct === null) { nf.erroCampo('fc-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
     var corpo = { acao: 'configurar', codigo_servico_nacional: codigo };
     if (!mei) corpo.p_tot_trib_sn = pct;
-    if (st.plano === 'pro') {
+    if (planoCompleto()) {
       var contador = nf.texto($('fc-contador').value);
       if (contador && !nf.emailValido(contador)) { nf.erroCampo('fc-contador', 'Informe um e-mail válido ou deixe em branco.'); falhou = true; }
       corpo.contador_email = contador || null;
@@ -882,6 +1010,7 @@
   $('fc-trocar-email').addEventListener('click', function () { preencherEtapa1(nf.cadastro.ler()); irPara(1); });
   $('fc-form-3').addEventListener('submit', enviarPagamento);
   $('fc-seguir-sem-teste').addEventListener('click', function () { irPara(4); });
+  $('fc-faixas').addEventListener('change', trocarFaixa);
   $('fc-cupom-abrir').addEventListener('click', function () { abrirCampoCupom(); $('fc-cupom-codigo').focus(); });
   $('fc-cupom-aplicar').addEventListener('click', aplicarCupom);
   $('fc-cupom-codigo').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); aplicarCupom(); } });
@@ -896,6 +1025,7 @@
   $('fc-continuar-6').addEventListener('click', function () { irPara(7); });
 
   /* ---------- início ---------- */
+  aplicarModo();
   mostrarPlano();
   preencherEtapa1(nf.cadastro.ler());
   if (nf.sessao.ler()) retomar();

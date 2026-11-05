@@ -22,7 +22,7 @@
 <link rel="stylesheet" href="/shared/site-layout.css">
 <link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=8">
 <link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=2">
-<link rel="stylesheet" href="/agentes/fiscal/comecar/comecar.css?v=9">
+<link rel="stylesheet" href="/agentes/fiscal/comecar/comecar.css?v=10">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Medição do funil (Lucca, 22/10/2026): o mesmo consentimento e o mesmo GTM da LP do nó.fiscal -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -54,10 +54,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <main class="fi-main nf-main" id="conteudo">
   <header class="nf-topo">
     <p class="fi-lockup"><span class="fi-lockup-no">nó</span><span class="fi-lockup-sub">.fiscal</span></p>
-    <h1 class="nf-h1">Seu agente fiscal em 7 passos</h1>
+    <h1 class="nf-h1" id="fc-h1">Seu agente fiscal em 7 passos</h1>
     <p class="nf-plano" id="fc-plano">Plano Inicial · R$ 49/mês · 7 dias grátis</p>
     <ol class="nf-trilha" id="fc-trilha" aria-label="Etapas">
-      <li data-etapa="1"><button type="button" disabled>Sua empresa</button></li><li data-etapa="2"><button type="button" disabled>Código</button></li><li data-etapa="3"><button type="button" disabled>Pagamento</button></li><li data-etapa="4"><button type="button" disabled>Certificado</button></li><li data-etapa="5"><button type="button" disabled>Dados fiscais</button></li><li data-etapa="6"><button type="button" disabled>Seus clientes</button></li><li data-etapa="7"><button type="button" disabled>Concluir no WhatsApp</button></li>
+      <li data-etapa="1"><button type="button" id="fc-trilha-1" disabled>Sua empresa</button></li><li data-etapa="2"><button type="button" disabled>Código</button></li><li data-etapa="3"><button type="button" disabled>Pagamento</button></li><li data-etapa="4"><button type="button" disabled>Certificado</button></li><li data-etapa="5"><button type="button" disabled>Dados fiscais</button></li><li data-etapa="6"><button type="button" disabled>Seus clientes</button></li><li data-etapa="7"><button type="button" disabled>Concluir no WhatsApp</button></li>
     </ol>
   </header>
 
@@ -65,20 +65,20 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
   <!-- 1 · Sua empresa -->
   <section class="nf-cartao" id="fc-etapa-1" data-etapa="1" hidden aria-labelledby="fc-titulo-1">
-    <p class="nf-passo">1 de 7 · Sua empresa</p>
+    <p class="nf-passo" id="fc-passo-1">1 de 7 · Sua empresa</p>
     <h2 class="nf-h2" id="fc-titulo-1">Os dados da sua empresa</h2>
     <!-- Requisito do A1 antes do pagamento (Lucca, 22/10/2026): quem não tinha A1 pagava e travava na etapa 4.
          A Sefin exige a DPS assinada com o certificado do próprio emitente, inclusive MEI (Anexo I, regra E0718). -->
     <p class="nf-aviso nf-aviso--info nf-requisito-a1" id="fc-requisito-a1"><b>Você vai precisar do certificado digital A1 da empresa <span>(e-CNPJ)</span>.</b> É ele que assina as notas, e o padrão nacional não aceita outro jeito, nem para MEI. O A1 é um arquivo comprado à parte, numa certificadora, e vale 1 ano. O A3, em token ou cartão, não serve. <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a></p>
     <form id="fc-form-1" class="nf-form" novalidate>
       <div class="nf-campo nf-campo--largo">
-        <label for="fc-cnpj">CNPJ</label>
+        <label for="fc-cnpj" id="fc-cnpj-rotulo">CNPJ</label>
         <input id="fc-cnpj" name="cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00" required>
         <small class="nf-dica" id="fc-cnpj-dica">Buscamos razão social, município, atividade e regime (MEI ou Simples) nos dados públicos do CNPJ.</small>
         <small class="nf-erro" id="fc-cnpj-erro" hidden></small>
       </div>
       <div class="nf-campo nf-campo--largo">
-        <label for="fc-empresa">Nome da empresa</label>
+        <label for="fc-empresa" id="fc-empresa-rotulo">Nome da empresa</label>
         <input id="fc-empresa" name="empresa" autocomplete="organization" maxlength="150" required>
         <small class="nf-erro" id="fc-empresa-erro" hidden></small>
       </div>
@@ -93,14 +93,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <small class="nf-erro" id="fc-email-erro" hidden></small>
       </div>
       <div class="nf-campo">
-        <label for="fc-telefone">WhatsApp</label>
+        <label for="fc-telefone" id="fc-telefone-rotulo">WhatsApp</label>
         <input id="fc-telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(11) 90000-0000" required>
-        <small class="nf-dica">É por este número que você vai pedir as notas.</small>
+        <small class="nf-dica" id="fc-telefone-dica">É por este número que você vai pedir as notas.</small>
         <small class="nf-erro" id="fc-telefone-erro" hidden></small>
       </div>
       <!-- Pergunta medida no funil (nofiscal_a1): quantos chegam sem A1, por regime, antes de integrar a venda do certificado -->
       <fieldset class="nf-grupo nf-a1-pergunta" id="fc-a1">
-        <legend>Você já tem o certificado A1?</legend>
+        <legend id="fc-a1-pergunta">Você já tem o certificado A1?</legend>
         <label class="nf-opcao"><input type="radio" name="fc-a1" value="sim"><span>Sim, tenho o arquivo e a senha</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-a1" value="contador"><span>Está com o meu contador</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-a1" value="nao"><span>Ainda não tenho</span></label>
@@ -141,8 +141,16 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="nf-cartao" id="fc-etapa-3" data-etapa="3" hidden aria-labelledby="fc-titulo-3">
     <p class="nf-passo">3 de 7 · Pagamento</p>
     <h2 class="nf-h2" id="fc-titulo-3">Pagamento</h2>
-    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos 7 dias; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com 20% de desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
+    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com 20% de desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
     <form id="fc-form-3" class="nf-form" novalidate>
+      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio), só mensal -->
+      <fieldset class="nf-grupo nf-grupo--coluna nf-faixas" id="fc-faixas" hidden>
+        <legend>Quantas empresas o escritório vai atender?</legend>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_5"><span><b>Até 5 empresas</b> · 500 notas/mês · R$ 297</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_20"><span><b>Até 20 empresas</b> · 2.000 notas/mês · R$ 797</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_50"><span><b>Até 50 empresas</b> · 5.000 notas/mês · R$ 1.497</span></label>
+        <small class="nf-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
+      </fieldset>
       <div class="nf-cupom" id="fc-cupom">
         <button type="button" class="fi-link-btn" id="fc-cupom-abrir">Tem um cupom?</button>
         <div class="nf-campo" id="fc-cupom-campo" hidden>
@@ -311,6 +319,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <p class="nf-passo">7 de 7 · Concluir no WhatsApp</p>
     <h2 class="nf-h2" id="fc-titulo-7">Agora é no WhatsApp</h2>
     <p class="nf-texto" id="fc-ativar-texto">Toque no botão: o WhatsApp abre com a mensagem de ativação pronta. Mande do número que você cadastrou. O agente confere o cadastro com você e você já pode mandar a primeira nota.</p>
+    <p class="nf-texto" id="fc-escritorio-depois" hidden>Depois, em Minha conta, você adiciona as outras empresas do escritório, com o certificado A1 e os dados fiscais de cada uma.</p>
     <dl class="nf-ativacao" id="fc-ativacao" hidden>
       <dt>Seu WhatsApp cadastrado</dt><dd id="fc-ativar-numero"></dd>
       <dt>Mensagem que vai pronta</dt><dd><span class="nf-balao" id="fc-ativar-mensagem"></span></dd>
@@ -318,7 +327,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <p class="nf-aviso" id="fc-aviso-7" role="alert" hidden></p>
     <div class="nf-acoes">
       <a class="fi-btn fi-btn--tinta nf-whatsapp" id="fc-whatsapp" href="#" target="_blank" rel="noopener" hidden>Concluir no WhatsApp</a>
-      <a class="fi-btn fi-btn--borda" href="/agentes/fiscal/conta/">Minha conta</a>
+      <a class="fi-btn fi-btn--borda" id="fc-minha-conta" href="/agentes/fiscal/conta/">Minha conta</a>
     </div>
     <p class="nf-dica" id="fc-ativar-validade" hidden></p>
   </section>
@@ -348,6 +357,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=4"></script>
 <script src="/agentes/fiscal/medicao.js?v=4"></script>
-<script src="/agentes/fiscal/comecar/comecar.js?v=11"></script>
+<script src="/agentes/fiscal/comecar/comecar.js?v=12"></script>
 </body>
 </html>

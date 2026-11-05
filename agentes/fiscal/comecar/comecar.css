@@ -87,3 +87,8 @@
 .nf-requisito-a1 span{white-space:nowrap}
 .nf-a1-retorno{font-size:14px;line-height:1.5}
 .nf-a1-retorno a{color:var(--fi-texto);font-weight:600;text-underline-offset:2px}
+
+/* faixas do Escritório na etapa de pagamento (modo ?tipo=escritorio) */
+.nf-faixas{margin:0 0 18px}
+.nf-faixas .nf-opcao:has(input:checked){border-color:var(--fi-texto);background:var(--fi-acento-tint)}
+.nf-faixas .nf-dica{margin:0}

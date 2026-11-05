@@ -1,5 +1,7 @@
 // Cria planos do Agente Fiscal no Pagar.me (produção). Quem roda: preparar-producao-fiscal.ps1.
-// Os códigos (PLANOS_PAGARME) vêm nos argumentos; sem argumento, cria os 8 (4 mensais e 4 anuais).
+// Os códigos (PLANOS_PAGARME) vêm nos argumentos; sem argumento, cria todos os 17 (4 mensais, 4 anuais e os 9 do
+// Escritório, 05/11/2026: escritorio_N com 7 dias de teste, escritorio_N_sem_teste e escritorio_N_teste30, N = 5, 20, 50).
+// Em produção os 8 de Inicial/Pro já existem: rode sempre com os códigos (o preparar-producao-fiscal.ps1 faz isso).
 // Corpo de cada plano: corpoDoPlano em supabase/functions/assinatura-fiscal/core.ts (Node 24 lê o .ts).
 // Chave: PAGARME_SECRET_KEY no ambiente desta janela; exige sk_ e recusa sk_test_ (CHAVE_NAO_PRODUCAO).
 // Imprime uma linha NOME_DA_VARIAVEL=plan_... por plano (id de plano não é segredo). Nunca imprime a chave.

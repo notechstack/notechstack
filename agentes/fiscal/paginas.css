@@ -105,3 +105,51 @@
   .nf-dados dd{margin-bottom:8px}
 }
 #assinatura,#certificado{scroll-margin-top:calc(110px + env(safe-area-inset-top))}
+
+/* Minha conta, plano Escritório: abas, tabelas de empresas e notas, faixas e totais do mês */
+.nf-abas{display:flex;gap:6px;padding:6px;border-radius:999px;background:var(--fi-branco);box-shadow:var(--no-shadow-sm);overflow-x:auto;scrollbar-width:none}
+.nf-abas::-webkit-scrollbar{display:none}
+.nf-aba{flex:1 0 auto;min-height:44px;padding:10px 18px;border:0;border-radius:999px;background:transparent;color:var(--fi-texto-sec);font:600 14.5px/1.2 var(--font-core,'Sora',sans-serif);cursor:pointer;white-space:nowrap;transition:background-color .2s ease,color .2s ease}
+.nf-aba:hover{color:var(--fi-texto)}
+.nf-aba[aria-selected=true]{background:var(--fi-texto);color:var(--fi-fundo)}
+.nf-aba:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
+.nf-bloco{margin-top:18px;padding:18px;border-radius:18px;background:var(--fi-fundo-alt)}
+.nf-bloco .nf-h3{outline:none}
+.nf-tabela-rolagem{margin-top:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1.5px solid var(--fi-borda);border-radius:16px}
+.nf-tabela-rolagem:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
+.nf-tabela{width:100%;min-width:640px;border-collapse:collapse;font-size:14px;line-height:1.45}
+.nf-tabela--notas{min-width:1080px}
+.nf-tabela th,.nf-tabela td{padding:12px 14px;border-bottom:1px solid var(--fi-borda);text-align:left;vertical-align:top}
+.nf-tabela thead th{background:var(--fi-fundo-alt);font:600 11.5px/1.3 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--fi-texto-sec);white-space:nowrap}
+.nf-tabela tbody tr:last-child > *{border-bottom:0}
+.nf-tabela tbody th{font-weight:600}
+.nf-tabela .nf-num{text-align:right;font-variant-numeric:tabular-nums}
+.nf-nowrap{white-space:nowrap}
+.nf-desc{min-width:200px;max-width:320px}
+.nf-sub{display:block;margin-top:2px;font-size:12.5px;font-weight:400;color:var(--fi-texto-sec);overflow-wrap:anywhere}
+.nf-linha-off > *{color:var(--fi-texto-sec)}
+.nf-selo{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--fi-acento-tint);font:600 10.5px/1.5 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
+.nf-acoes-linha{display:flex;flex-wrap:wrap;gap:6px}
+.nf-btn-mini{min-height:34px;padding:6px 12px;border-width:1.5px;font-size:13px;white-space:nowrap}
+.nf-status--off::before{background:var(--fi-texto-sec)}
+.nf-faixas{margin-top:14px}
+.nf-faixas-lista{display:grid;gap:10px}
+@media(min-width:700px){.nf-faixas-lista{grid-template-columns:repeat(3,1fr)}}
+.nf-faixa{display:grid;gap:4px;padding:14px 16px;border:1.5px solid var(--fi-borda);border-radius:16px;background:var(--fi-fundo);color:var(--fi-texto);text-align:left;font:400 14px/1.4 var(--font-core,'Sora',sans-serif);cursor:pointer;transition:border-color .2s ease}
+.nf-faixa:hover:not([disabled]){border-color:var(--fi-texto)}
+.nf-faixa:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
+.nf-faixa b{font-size:16px;font-weight:700}
+.nf-faixa small{font-size:12.5px;color:var(--fi-texto-sec)}
+.nf-faixa--atual{border-color:var(--fi-texto);background:var(--fi-acento-tint);cursor:default}
+.nf-totais{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:18px 0 0}
+@media(min-width:700px){.nf-totais{grid-template-columns:repeat(4,1fr)}}
+.nf-totais > div{padding:14px 16px;border-radius:16px;background:var(--fi-fundo-alt)}
+.nf-totais dt{font:600 11.5px/1.3 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--fi-texto-sec)}
+.nf-totais dd{margin:6px 0 0;font-weight:800;font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+.nf-rel-vazio{margin-top:16px;padding:18px;border-radius:16px;background:var(--fi-fundo-alt);text-align:center}
+.nf-entregas{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.nf-entrega{white-space:nowrap}
+.nf-entrega small{color:var(--fi-texto-sec)}
+.nf-entrega--ok > span{color:var(--fi-ok);font-weight:700}
+.nf-entrega--falhou > span,.nf-entrega--falhou small{color:var(--fi-erro-texto);font-weight:700}
+#fa-painel-dados #fa-plano-uso{margin-top:-6px}

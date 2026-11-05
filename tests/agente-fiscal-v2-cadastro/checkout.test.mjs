@@ -116,13 +116,14 @@ async function assinaturas(e) {
 test("configuração do checkout: GET responde 200 com venda_aberta, public_key, aceite_texto e planos 4900/12900", () => {
   const aberta = responderConfiguracao(ENV);
   assert.equal(aberta.http, 200);
-  assert.deepEqual(aberta.body, {
-    ok: true,
-    venda_aberta: true,
-    public_key: "pk_test_publica",
-    aceite_texto: TEXTO_ACEITE_FISCAL,
-    planos: { inicial: { valor_centavos: 4900 }, pro: { valor_centavos: 12900 } },
-  });
+  // Campos do Inicial/Pro conferidos um a um: o anual e as faixas do Escritório têm testes próprios
+  // (anual.test.mjs e tests/assinatura-fiscal/escritorio.test.mjs).
+  assert.equal(aberta.body.ok, true);
+  assert.equal(aberta.body.venda_aberta, true);
+  assert.equal(aberta.body.public_key, "pk_test_publica");
+  assert.equal(aberta.body.aceite_texto, TEXTO_ACEITE_FISCAL);
+  assert.equal(aberta.body.planos.inicial.valor_centavos, 4900);
+  assert.equal(aberta.body.planos.pro.valor_centavos, 12900);
   const fechada = responderConfiguracao({ ...ENV, FISCAL_VENDA_ABERTA: "" });
   assert.equal(fechada.http, 200);
   assert.equal(fechada.body.venda_aberta, false);

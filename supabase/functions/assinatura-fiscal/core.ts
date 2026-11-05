@@ -4,13 +4,23 @@
 // "Texto do aceite". Molde: assinatura-auditor/core.ts.
 // Dado de cartão nunca passa por aqui: o navegador tokeniza direto no Pagar.me e manda só o card_token.
 // O banco é alcançado só pelas quatro funções public.fiscal_* do lote A (deps).
+// Escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md): faixas escritorio_5/20/50, só mensal, com
+// três planos por faixa no Pagar.me. Escolha: cupom com dias_de_teste = 30 → `_teste30`; senão o teste de 7 dias
+// liberado por fiscal_trial_claims → o base; senão `_sem_teste`. O desconto do cupom vai em discounts, como sempre.
 
 import { hashesDoTeste, normalizarTelefone } from "./teste-gratis.ts";
 import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao, type MedicaoDoNavegador } from "./medicao.ts";
 
 export type CodigoPlano = "inicial" | "pro";
+/** Faixas do plano Escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Faixas do Escritório").
+    A empresa do próprio escritório é a conta-mãe: um tenant comum com uma destas faixas. Só mensal na v1. */
+export type PlanoEscritorio = "escritorio_5" | "escritorio_20" | "escritorio_50";
+/** Todo plano que uma assinatura pode ter (o mesmo check de fiscal_subscriptions.plano). */
+export type PlanoAssinatura = CodigoPlano | PlanoEscritorio;
 /** Ciclo de cobrança (Lucca, 03/11/2026): anual = 12 mensalidades com 20% off, cobradas de uma vez. */
 export type Ciclo = "mensal" | "anual";
+/** Teste do plano do Escritório no Pagar.me: 7 dias (o base), nenhum, ou 30 dias (cupom de fundador). */
+export type TesteDoEscritorio = "teste" | "sem_teste" | "teste30";
 export type CodigoPlanoPagarme =
   | CodigoPlano
   | "inicial_sem_teste"
@@ -18,12 +28,63 @@ export type CodigoPlanoPagarme =
   | "inicial_anual"
   | "pro_anual"
   | "inicial_anual_sem_teste"
-  | "pro_anual_sem_teste";
+  | "pro_anual_sem_teste"
+  | PlanoEscritorio
+  | `${PlanoEscritorio}_sem_teste`
+  | `${PlanoEscritorio}_teste30`;
 export type Ambiente = "sandbox" | "producao";
 type Nivel = "info" | "warn" | "error";
 
 const DIAS_DE_TESTE = 7;
+/** Teste do cupom de fundador do Escritório (fiscal_cupons.dias_de_teste só aceita 30). */
+export const DIAS_DE_TESTE_DO_CUPOM = 30;
 const DIA_MS = 24 * 3600 * 1000;
+
+/** Empresas e notas por mês de cada faixa: o mesmo de nofiscal.limite_do_plano e max_empresas_do_plano. */
+export const FAIXAS_ESCRITORIO: Record<PlanoEscritorio, { centavos: number; empresas: number; notas: number }> = {
+  escritorio_5: { centavos: 29700, empresas: 5, notas: 500 },
+  escritorio_20: { centavos: 79700, empresas: 20, notas: 2000 },
+  escritorio_50: { centavos: 149700, empresas: 50, notas: 5000 },
+};
+const ESCRITORIO_ENV: Record<PlanoEscritorio, string> = {
+  escritorio_5: "PAGARME_PLANO_FISCAL_ESCRITORIO_5",
+  escritorio_20: "PAGARME_PLANO_FISCAL_ESCRITORIO_20",
+  escritorio_50: "PAGARME_PLANO_FISCAL_ESCRITORIO_50",
+};
+
+export function planoDeEscritorio(plano: unknown): plano is PlanoEscritorio {
+  return plano === "escritorio_5" || plano === "escritorio_20" || plano === "escritorio_50";
+}
+
+/** Plano do corpo do pedido, ou null quando não é um dos cinco. */
+export function lerPlano(valor: unknown): PlanoAssinatura | null {
+  return valor === "inicial" || valor === "pro" || planoDeEscritorio(valor) ? valor : null;
+}
+
+/** Código do plano do Escritório no Pagar.me: o base tem 7 dias de teste, como Inicial e Pro. */
+export function codigoPagarmeEscritorio(plano: PlanoEscritorio, teste: TesteDoEscritorio): CodigoPlanoPagarme {
+  return `${plano}${teste === "teste" ? "" : `_${teste}`}` as CodigoPlanoPagarme;
+}
+
+type PlanoPagarme = { nome: string; centavos: number; comTeste: boolean; diasDeTeste?: number; ciclo: Ciclo; env: string };
+
+/** Os 9 planos do Escritório: três por faixa (com teste de 7 dias, sem teste e com teste de 30 dias). */
+function planosDoEscritorio(): Record<string, PlanoPagarme> {
+  const planos: Record<string, PlanoPagarme> = {};
+  for (const faixa of Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]) {
+    const nome = `Agente Fiscal Escritório ${FAIXAS_ESCRITORIO[faixa].empresas}`;
+    const base = { nome, centavos: FAIXAS_ESCRITORIO[faixa].centavos, ciclo: "mensal" as Ciclo };
+    planos[faixa] = { ...base, comTeste: true, env: `${ESCRITORIO_ENV[faixa]}_ID` };
+    planos[`${faixa}_sem_teste`] = { ...base, comTeste: false, env: `${ESCRITORIO_ENV[faixa]}_SEM_TESTE_ID` };
+    planos[`${faixa}_teste30`] = {
+      ...base,
+      comTeste: true,
+      diasDeTeste: DIAS_DE_TESTE_DO_CUPOM,
+      env: `${ESCRITORIO_ENV[faixa]}_TESTE30_ID`,
+    };
+  }
+  return planos;
+}
 
 export const DESCONTO_ANUAL_PERCENTUAL = 20;
 
@@ -32,13 +93,7 @@ export function centavosAnuais(mensal: number): number {
   return Math.round(mensal * 12 * (100 - DESCONTO_ANUAL_PERCENTUAL) / 100);
 }
 
-export const PLANOS_PAGARME: Record<CodigoPlanoPagarme, {
-  nome: string;
-  centavos: number;
-  comTeste: boolean;
-  ciclo: Ciclo;
-  env: string;
-}> = {
+export const PLANOS_PAGARME: Record<CodigoPlanoPagarme, PlanoPagarme> = {
   inicial: { nome: "Agente Fiscal Inicial", centavos: 4900, comTeste: true, ciclo: "mensal", env: "PAGARME_PLANO_FISCAL_INICIAL_ID" },
   pro: { nome: "Agente Fiscal Pro", centavos: 12900, comTeste: true, ciclo: "mensal", env: "PAGARME_PLANO_FISCAL_PRO_ID" },
   inicial_sem_teste: {
@@ -83,25 +138,30 @@ export const PLANOS_PAGARME: Record<CodigoPlanoPagarme, {
     ciclo: "anual",
     env: "PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID",
   },
-};
+  ...planosDoEscritorio(),
+} as Record<CodigoPlanoPagarme, PlanoPagarme>;
 
-/** Código do plano no Pagar.me para o par plano × ciclo × teste. */
+/** Código do plano no Pagar.me para o par plano × ciclo × teste (Inicial e Pro; o Escritório usa codigoPagarmeEscritorio). */
 export function codigoPagarme(plano: CodigoPlano, ciclo: Ciclo, comTeste: boolean): CodigoPlanoPagarme {
   return `${plano}${ciclo === "anual" ? "_anual" : ""}${comTeste ? "" : "_sem_teste"}` as CodigoPlanoPagarme;
 }
 
-/** O que a assinatura cobra por ciclo, em centavos (sem cupom). */
-export function centavosDoCiclo(plano: CodigoPlano, ciclo: Ciclo): number {
+/** O que a assinatura cobra por ciclo, em centavos (sem cupom). O Escritório é só mensal: o ciclo não muda o preço
+    (quem pede o anual é recusado antes, em ESCRITORIO_SO_MENSAL). */
+export function centavosDoCiclo(plano: PlanoAssinatura, ciclo: Ciclo): number {
+  if (planoDeEscritorio(plano)) return PLANOS_PAGARME[plano].centavos;
   return PLANOS_PAGARME[codigoPagarme(plano, ciclo, true)].centavos;
 }
 
 // Corpo de POST /plans (docs.pagar.me, "Criar plano"; molde scripts/pagarme-assinatura/planos.mjs).
-// trial_period_days: "Dias de teste. A assinatura será iniciada após o término deste período."
+// trial_period_days: "Dias de teste. A assinatura será iniciada após o término deste período." Os planos sem
+// teste não mandam o campo (equivale a 0), como os de Inicial e Pro que já estão em produção.
 export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown> {
   const p = PLANOS_PAGARME[codigo];
   const nome = p.ciclo === "anual" ? `${p.nome} anual` : p.nome;
+  const dias = p.diasDeTeste ?? DIAS_DE_TESTE;
   return {
-    name: p.comTeste ? nome : `${nome} (sem teste)`,
+    name: !p.comTeste ? `${nome} (sem teste)` : dias !== DIAS_DE_TESTE ? `${nome} (teste de ${dias} dias)` : nome,
     description: `Assinatura ${nome} · nó tech stack`,
     interval: p.ciclo === "anual" ? "year" : "month",
     interval_count: 1,
@@ -111,7 +171,7 @@ export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown
     currency: "BRL",
     statement_descriptor: "NOFISCAL",
     items: [{ name: nome, quantity: 1, pricing_scheme: { scheme_type: "unit", price: p.centavos } }],
-    ...(p.comTeste ? { trial_period_days: DIAS_DE_TESTE } : {}),
+    ...(p.comTeste ? { trial_period_days: dias } : {}),
     metadata: { origem: "agente-fiscal", codigo },
   };
 }
@@ -173,17 +233,38 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
   const anualDisponivel = (["inicial", "pro"] as CodigoPlano[]).every((p) =>
     Boolean(config.planIds[codigoPagarme(p, "anual", true)] && config.planIds[codigoPagarme(p, "anual", false)])
   );
+  // O Escritório só abre com os 9 planos dele cadastrados (sem eles o checkout responde PLANO_INDISPONIVEL).
+  const escritorioDisponivel = (Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]).every((faixa) =>
+    escritorioConfigurado(config, faixa)
+  );
+  const faixa = (p: PlanoEscritorio) => ({
+    valor_centavos: FAIXAS_ESCRITORIO[p].centavos,
+    empresas: FAIXAS_ESCRITORIO[p].empresas,
+    notas: FAIXAS_ESCRITORIO[p].notas,
+  });
   return {
     ok: true,
     venda_aberta: config.vendaAberta,
     anual_disponivel: anualDisponivel,
+    escritorio_disponivel: escritorioDisponivel,
     public_key: env.PAGARME_ASSINATURA_PUBLIC_KEY || "",
     aceite_texto: TEXTO_ACEITE_FISCAL,
     planos: {
       inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos, anual_centavos: centavosDoCiclo("inicial", "anual") },
       pro: { valor_centavos: PLANOS_PAGARME.pro.centavos, anual_centavos: centavosDoCiclo("pro", "anual") },
+      // Escritório: só mensal (sem anual_centavos).
+      escritorio_5: faixa("escritorio_5"),
+      escritorio_20: faixa("escritorio_20"),
+      escritorio_50: faixa("escritorio_50"),
     },
   };
+}
+
+/** Os três planos da faixa (7 dias, sem teste e 30 dias) têm id no ambiente. */
+function escritorioConfigurado(config: Config, faixa: PlanoEscritorio): boolean {
+  return (["teste", "sem_teste", "teste30"] as TesteDoEscritorio[]).every((t) =>
+    Boolean(config.planIds[codigoPagarmeEscritorio(faixa, t)])
+  );
 }
 
 export type Endereco = {
@@ -197,7 +278,7 @@ export type Endereco = {
 };
 
 export type Pedido = {
-  plano: CodigoPlano;
+  plano: PlanoAssinatura;
   ciclo: Ciclo;
   /** Opcional desde 22/10/2026: o cadastro não pede mais o CPF (Lucca); quando vem, entra no bloqueio de reteste. */
   cpf?: string;
@@ -220,7 +301,7 @@ export type Contexto = {
 /** Argumentos de public.fiscal_registrar_assinatura. */
 export type LinhaAssinatura = {
   tenant_id: string;
-  plano: CodigoPlano;
+  plano: PlanoAssinatura;
   ciclo: Ciclo;
   com_teste: boolean;
   trial_ends_at: string | null;
@@ -240,6 +321,8 @@ export type CupomBanco = {
   valor?: number;
   cortesia?: boolean;
   ciclos?: number | null;
+  /** Migração 20261105180000: 30 no cupom de fundador do Escritório; nulo nos demais. */
+  dias_de_teste?: number | null;
   id?: string;
   status?: string;
 };
@@ -255,9 +338,9 @@ export type Deps = {
   /** Fluxo v2: grava pago_em e passa onboarding_etapa a 'certificado' depois do registro. */
   marcarPago?: (tenantId: string) => Promise<void>;
   /** Cupons (migração 20261025090000). */
-  validarCupom?: (tenantId: string, codigo: string, plano: CodigoPlano) => Promise<CupomBanco>;
-  registrarCortesia?: (tenantId: string, plano: CodigoPlano, codigo: string, aceite: string) => Promise<CupomBanco>;
-  usarCupom?: (tenantId: string, codigo: string, plano: CodigoPlano, subscriptionId: string) => Promise<CupomBanco>;
+  validarCupom?: (tenantId: string, codigo: string, plano: PlanoAssinatura) => Promise<CupomBanco>;
+  registrarCortesia?: (tenantId: string, plano: PlanoAssinatura, codigo: string, aceite: string) => Promise<CupomBanco>;
+  usarCupom?: (tenantId: string, codigo: string, plano: PlanoAssinatura, subscriptionId: string) => Promise<CupomBanco>;
   agora?: () => Date;
   log?: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void;
   /** Meta CAPI da compra (medicao.ts); ausente sem META_ACCESS_TOKEN. Devolve o resumo para o log. */
@@ -285,6 +368,16 @@ function erro(http: number, error_code: string, mensagem: string): Resultado {
 
 function invalido(mensagem: string) {
   return { ok: false as const, mensagem };
+}
+
+const MSG_ESCOLHA_PLANO = "Escolha um dos planos: Inicial, Pro ou Escritório.";
+export const MSG_ESCRITORIO_SO_MENSAL = "O plano Escritório é só mensal. Escolha a cobrança mensal.";
+
+/** Escritório com ciclo anual: recusado antes de qualquer cupom ou chamada (Decisions "Faixas do Escritório"). */
+function recusaAnualDoEscritorio(b: Record<string, unknown>): Resultado | null {
+  return planoDeEscritorio(b.plano) && lerCiclo(b.ciclo) === "anual"
+    ? erro(400, "ESCRITORIO_SO_MENSAL", MSG_ESCRITORIO_SO_MENSAL)
+    : null;
 }
 
 /** Ciclo do pedido: ausente é mensal (páginas antigas); qualquer outro valor é inválido. */
@@ -323,10 +416,11 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
   if (CAMPOS_CARTAO.some((campo) => tem(b, campo))) {
     return invalido("Por segurança, os dados do cartão não passam por aqui. Recarregue a página e tente de novo.");
   }
-  const plano = typeof b.plano === "string" ? b.plano : "";
-  if (plano !== "inicial" && plano !== "pro") return invalido("Escolha um dos planos: Inicial ou Pro.");
+  const plano = lerPlano(b.plano);
+  if (!plano) return invalido(MSG_ESCOLHA_PLANO);
   const ciclo = lerCiclo(b.ciclo);
   if (!ciclo) return invalido("Escolha a cobrança: mensal ou anual.");
+  if (ciclo === "anual" && planoDeEscritorio(plano)) return invalido(MSG_ESCRITORIO_SO_MENSAL);
 
   const cpf = typeof b.cpf === "string" ? b.cpf.replace(/\D/g, "") : "";
   if (cpf !== "" && cpf.length !== 11) return invalido("Confira o CPF (11 números).");
@@ -378,6 +472,7 @@ export function corpoAssinatura(
   planId: string,
   comTeste: boolean,
   cupom: CupomValido | null = null,
+  diasDeTeste: number = DIAS_DE_TESTE,
 ) {
   const phones = telefonePagarme(contexto.phone_e164);
   return {
@@ -400,6 +495,8 @@ export function corpoAssinatura(
       plano: pedido.plano,
       ciclo: pedido.ciclo,
       com_teste: comTeste,
+      // Só o teste de 30 dias do cupom de fundador; o de 7 dias segue sem o campo, como antes.
+      ...(comTeste && diasDeTeste !== DIAS_DE_TESTE ? { dias_de_teste: diasDeTeste } : {}),
       ...(cupom ? { cupom: cupom.codigo } : {}),
     },
   };
@@ -415,6 +512,8 @@ export type CupomValido = {
   valor: number;
   cortesia: boolean;
   ciclos: number | null;
+  /** 30 no cupom de fundador do Escritório: o checkout usa o plano `_teste30` (o primeiro mês grátis). */
+  diasDeTeste: number | null;
 };
 
 const MSG_CUPOM: Record<string, string> = {
@@ -442,7 +541,12 @@ export function valorComDesconto(centavos: number, cupom: CupomValido): number {
   return Math.max(0, centavos - cupom.valor);
 }
 
-/** Item de discounts da assinatura (docs.pagar.me, "Criar assinatura de plano"). */
+/** Item de discounts da assinatura (docs.pagar.me, "Criar assinatura de plano").
+    `cycles` com o teste do plano: o código não tem como provar se o Pagar.me conta o período de teste como um
+    ciclo. O que se sabe daqui: o teste vem do plano (trial_period_days, sem start_at) e a assinatura só gera
+    cobrança depois dele, então o esperado é que o 1º ciclo com desconto seja a 1ª cobrança após o teste. Os cupons
+    de fundador do Escritório usam 12 ciclos nessa premissa (scripts/pagarme-assinatura/cupons-fundador-escritorio.sql);
+    conferir na primeira assinatura de sandbox com cupom e teste (a fatura do 2º mês deve vir com o desconto). */
 export function descontoPagarme(cupom: CupomValido): Record<string, unknown> {
   return {
     value: cupom.valor,
@@ -461,7 +565,7 @@ async function avaliarCupom(
   deps: Deps,
   tenantId: string,
   codigo: string,
-  plano: CodigoPlano,
+  plano: PlanoAssinatura,
 ): Promise<{ ok: true; cupom: CupomValido } | { ok: false; resultado: Resultado }> {
   if (!deps.validarCupom) return { ok: false, resultado: erroCupom("CUPOM_INVALIDO") };
   const r = await deps.validarCupom(tenantId, codigo, plano);
@@ -475,6 +579,8 @@ async function avaliarCupom(
     valor: r.valor,
     cortesia: Boolean(r.cortesia),
     ciclos: typeof r.ciclos === "number" ? r.ciclos : null,
+    // O teste de 30 dias só existe nos planos do Escritório; em Inicial e Pro o campo é ignorado.
+    diasDeTeste: planoDeEscritorio(plano) && r.dias_de_teste === DIAS_DE_TESTE_DO_CUPOM ? DIAS_DE_TESTE_DO_CUPOM : null,
   };
   if (!cupom.cortesia && valorComDesconto(PLANOS_PAGARME[plano].centavos, cupom) < 100) {
     return { ok: false, resultado: erroCupom("CUPOM_PLANO") };
@@ -482,7 +588,7 @@ async function avaliarCupom(
   return { ok: true, cupom };
 }
 
-function cupomPublico(cupom: CupomValido, plano: CodigoPlano): Record<string, unknown> {
+function cupomPublico(cupom: CupomValido, plano: PlanoAssinatura): Record<string, unknown> {
   const centavos = PLANOS_PAGARME[plano].centavos;
   return {
     codigo: cupom.codigo,
@@ -493,6 +599,8 @@ function cupomPublico(cupom: CupomValido, plano: CodigoPlano): Record<string, un
     ciclos: cupom.ciclos,
     valor_centavos: centavos,
     valor_centavos_com_desconto: cupom.cortesia ? 0 : valorComDesconto(centavos, cupom),
+    // Só quando vale: a página mostra "1º mês grátis, depois R$ 247/mês no 1º ano" (FUNDADOR5).
+    ...(cupom.diasDeTeste ? { dias_de_teste: cupom.diasDeTeste } : {}),
   };
 }
 
@@ -501,8 +609,10 @@ export async function processarValidarCupom(body: unknown, deps: Deps): Promise<
   const b = obj(body);
   const userId = await deps.sessao();
   if (!userId) return erro(401, "SEM_SESSAO", "Entre na sua conta para usar um cupom.");
-  const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
-  if (!plano) return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
+  const plano = lerPlano(b.plano);
+  if (!plano) return erro(400, "DADOS_INVALIDOS", MSG_ESCOLHA_PLANO);
+  const soMensal = recusaAnualDoEscritorio(b);
+  if (soMensal) return soMensal;
   const codigo = lerCodigoCupom(b.codigo);
   if (!codigo) return erroCupom("CUPOM_INVALIDO");
   // O anual já vem com desconto: cupom (cortesia inclusive) só no mensal.
@@ -515,12 +625,12 @@ export async function processarValidarCupom(body: unknown, deps: Deps): Promise<
 }
 
 /** Pedido de cortesia: só plano e aceite; cartão e endereço não entram. */
-function validarPedidoCortesia(b: Record<string, unknown>): { ok: true; plano: CodigoPlano } | { ok: false; mensagem: string } {
+function validarPedidoCortesia(b: Record<string, unknown>): { ok: true; plano: PlanoAssinatura } | { ok: false; mensagem: string } {
   if (CAMPOS_CARTAO.some((campo) => tem(b, campo))) {
     return invalido("Por segurança, os dados do cartão não passam por aqui. Recarregue a página e tente de novo.");
   }
-  const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
-  if (!plano) return invalido("Escolha um dos planos: Inicial ou Pro.");
+  const plano = lerPlano(b.plano);
+  if (!plano) return invalido(MSG_ESCOLHA_PLANO);
   if (b.termos_aceite !== true) return invalido("Para assinar, aceite os Termos de Uso.");
   const recebido = typeof b.aceite_texto === "string" ? normalizarTexto(b.aceite_texto) : "";
   if (recebido !== TEXTO_ACEITE_FISCAL) {
@@ -537,6 +647,8 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   const agora = deps.agora ?? (() => new Date());
   const config = lerConfig(deps.env);
   const b = obj(body);
+  const soMensal = recusaAnualDoEscritorio(b);
+  if (soMensal) return soMensal;
 
   // Cupom: lido e revalidado aqui (a prévia da página não vale como prova). A cortesia termina neste
   // bloco: não é venda (vale com a venda fechada) e não passa pelo Pagar.me.
@@ -553,8 +665,8 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     }
     const userId = await sessao();
     if (!userId) return erro(401, "SEM_SESSAO", "Entre na sua conta para assinar.");
-    const plano = b.plano === "inicial" || b.plano === "pro" ? b.plano : null;
-    if (!plano) return erro(400, "DADOS_INVALIDOS", "Escolha um dos planos: Inicial ou Pro.");
+    const plano = lerPlano(b.plano);
+    if (!plano) return erro(400, "DADOS_INVALIDOS", MSG_ESCOLHA_PLANO);
     const contexto = await deps.contexto(userId);
     if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da conta e da empresa antes de assinar.");
     if (contexto.assinatura && contexto.assinatura.status !== "cancelada") {
@@ -595,11 +707,32 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     return erro(409, "ASSINATURA_EXISTENTE", "Esta empresa já tem uma assinatura.");
   }
 
-  const planoComTeste = config.planIds[codigoPagarme(pedido.plano, pedido.ciclo, true)];
-  const planoSemTeste = config.planIds[codigoPagarme(pedido.plano, pedido.ciclo, false)];
-  if (!planoComTeste || !planoSemTeste) {
-    log("warn", "assinatura_fiscal_plano_indisponivel", { plano: pedido.plano, ciclo: pedido.ciclo });
-    return erro(409, "PLANO_INDISPONIVEL", "Este plano não está disponível agora. Tente mais tarde.");
+  // Escritório: três planos por faixa no Pagar.me. Sem os três ids da faixa, nada é reivindicado nem cobrado
+  // (e Inicial/Pro seguem funcionando sem eles).
+  const escritorio = planoDeEscritorio(pedido.plano) ? pedido.plano : null;
+  let planoComTeste: string;
+  let planoSemTeste: string;
+  let planoTeste30 = "";
+  if (escritorio) {
+    if (!escritorioConfigurado(config, escritorio)) {
+      log("warn", "assinatura_fiscal_escritorio_indisponivel", { plano: escritorio });
+      return erro(
+        409,
+        "PLANO_INDISPONIVEL",
+        "O plano Escritório ainda não está disponível para assinatura. Nada foi cobrado; fale com a nó pelo WhatsApp.",
+      );
+    }
+    planoComTeste = config.planIds[codigoPagarmeEscritorio(escritorio, "teste")];
+    planoSemTeste = config.planIds[codigoPagarmeEscritorio(escritorio, "sem_teste")];
+    planoTeste30 = config.planIds[codigoPagarmeEscritorio(escritorio, "teste30")];
+  } else {
+    const plano = pedido.plano as CodigoPlano;
+    planoComTeste = config.planIds[codigoPagarme(plano, pedido.ciclo, true)];
+    planoSemTeste = config.planIds[codigoPagarme(plano, pedido.ciclo, false)];
+    if (!planoComTeste || !planoSemTeste) {
+      log("warn", "assinatura_fiscal_plano_indisponivel", { plano: pedido.plano, ciclo: pedido.ciclo });
+      return erro(409, "PLANO_INDISPONIVEL", "Este plano não está disponível agora. Tente mais tarde.");
+    }
   }
 
   // O par é escolhido por fiscal_trial_claims (Decided "Teste com cartão"). Só hash sai daqui.
@@ -607,7 +740,13 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     { cpf: pedido.cpf, cnpj: contexto.cnpj, email: contexto.email, phone: contexto.phone_e164 },
     config.sal,
   ) as Record<string, string>;
-  const comTeste = await deps.reivindicarTeste(contexto.tenant_id, hashes);
+  // Cupom de fundador do Escritório (dias_de_teste = 30): o plano `_teste30` dá o primeiro mês grátis, mesmo para
+  // quem já usou o teste de 7 dias. A reivindicação ainda roda, para CNPJ, e-mail e telefone ficarem marcados como
+  // "já teve teste" (um cadastro novo com eles não ganha outro teste de 7 dias).
+  const testeDoCupom = Boolean(escritorio && cupom?.diasDeTeste === DIAS_DE_TESTE_DO_CUPOM);
+  const reivindicou = await deps.reivindicarTeste(contexto.tenant_id, hashes);
+  const comTeste = testeDoCupom || reivindicou;
+  const diasDeTeste = testeDoCupom ? DIAS_DE_TESTE_DO_CUPOM : DIAS_DE_TESTE;
   // Anual sem teste cobra o ano inteiro na hora: só com a confirmação explícita da página. Quando a
   // reivindicação falha nada é gravado em fiscal_trial_claims, então repetir com a confirmação é seguro.
   if (!comTeste && pedido.ciclo === "anual" && b.confirmar_sem_teste !== true) {
@@ -622,7 +761,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       },
     };
   }
-  const planId = comTeste ? planoComTeste : planoSemTeste;
+  const planId = testeDoCupom ? planoTeste30 : comTeste ? planoComTeste : planoSemTeste;
 
   const headers = { "Content-Type": "application/json", Authorization: `Basic ${btoa(`${config.secretKey}:`)}` };
   const cancelar = async (subId: string, motivo: string) => {
@@ -643,7 +782,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     const res = await deps.fetch(`${config.apiUrl}/subscriptions`, {
       method: "POST",
       headers,
-      body: JSON.stringify(corpoAssinatura(pedido, contexto, planId, comTeste, cupom)),
+      body: JSON.stringify(corpoAssinatura(pedido, contexto, planId, comTeste, cupom, diasDeTeste)),
     });
     if (!res.ok) {
       // Só o status HTTP; o corpo da resposta pode ter dado pessoal.
@@ -670,7 +809,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   }
 
   const customerId = obj(sub.customer).id;
-  const trialEndsAt = comTeste ? new Date(agora().getTime() + DIAS_DE_TESTE * DIA_MS).toISOString() : null;
+  const trialEndsAt = comTeste ? new Date(agora().getTime() + diasDeTeste * DIA_MS).toISOString() : null;
   const linha: LinhaAssinatura = {
     tenant_id: contexto.tenant_id,
     plano: pedido.plano,
@@ -709,7 +848,14 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   }
 
   const status = registro?.status || linha.status;
-  log("info", "assinatura_fiscal_checkout", { plano: pedido.plano, ciclo: pedido.ciclo, com_teste: comTeste, subscription_id: subId, status });
+  log("info", "assinatura_fiscal_checkout", {
+    plano: pedido.plano,
+    ciclo: pedido.ciclo,
+    com_teste: comTeste,
+    dias_de_teste: comTeste ? diasDeTeste : 0,
+    subscription_id: subId,
+    status,
+  });
   // A reconciliação pode trazer um aviso que chegou antes do registro.
   if (status === "recusada") {
     return erro(402, "PAGAMENTO_RECUSADO", "O pagamento não foi aprovado pelo cartão. Atualize o cartão para continuar.");
@@ -760,6 +906,8 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       assinatura_id: registro.id,
       ciclo: pedido.ciclo,
       com_teste: comTeste,
+      // Teste de 30 dias do cupom de fundador; o de 7 dias segue sem o campo.
+      ...(testeDoCupom ? { dias_de_teste: diasDeTeste } : {}),
       medicao: compra,
       trial_ends_at: trialEndsAt,
       ...(comTeste ? {} : { aviso: MSG_TESTE_JA_USADO }),

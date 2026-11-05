@@ -67,6 +67,11 @@ export function whatsappComRetentativa(whatsapp: EnviaWhatsApp): EnviaWhatsApp {
   }
 }
 
+/** Qualquer envio com as mesmas tentativas, dizendo se saiu (registro de entregas por nota). */
+export function saiuComRetentativa(canal: 'whatsapp' | 'email', envio: () => Promise<unknown>): Promise<boolean> {
+  return tentar(canal, envio)
+}
+
 /** Texto com as mesmas tentativas, dizendo se saiu: quem marca "uma vez" antes de enviar desfaz a marca quando não saiu. */
 export function textoComRetentativa(whatsapp: EnviaWhatsApp, para: string, texto: string): Promise<boolean> {
   return tentar('whatsapp', () => whatsapp.enviarTexto(para, texto))

@@ -3,7 +3,8 @@
 # O que faz, sem repetir o que ja existe:
 #   1. le os nomes dos secrets que ja estao no Supabase do site;
 #   2. gera o usuario/senha do webhook fiscal (so se ainda nao existirem);
-#   3. cria os planos no Pagar.me por grupo (4 mensais, 4 anuais), so o grupo que nao existir; pede a sk_ de producao;
+#   3. cria os planos no Pagar.me por grupo (4 mensais, 4 anuais, 9 do Escritorio), so o grupo que nao existir;
+#      pede a sk_ de producao;
 #   4. grava os secrets de uma vez; 5. mostra o que cadastrar no webhook do Pagar.me.
 # NAO grava FISCAL_VENDA_ABERTA nem publica funcao: isso vem depois do teste.
 # Uso: powershell -ExecutionPolicy Bypass -File scripts\pagarme-assinatura\preparar-producao-fiscal.ps1
@@ -76,23 +77,32 @@ if ($NovoWebhook -or -not (Tem 'PAGARME_FISCAL_WEBHOOK_USER') -or -not (Tem 'PAG
   $novos['PAGARME_FISCAL_WEBHOOK_PASS'] = $webPass
 } else { Write-Host 'Usuario e senha do webhook fiscal ja existem: mantidos. Para gerar novos, rode com -NovoWebhook.' }
 
-# 3. planos, por grupo: os 4 mensais (22/10/2026) e os 4 anuais (03/11/2026, 20% off, cobranca anual)
+# 3. planos, por grupo: os 4 mensais (22/10/2026), os 4 anuais (03/11/2026, 20% off, cobranca anual) e os 9 do
+#    Escritorio (05/11/2026, so mensal: escritorio_N com trial_period_days 7, _sem_teste sem trial, _teste30 com 30,
+#    N = 5, 20 e 50; statement NOFISCAL; corpoDoPlano em supabase/functions/assinatura-fiscal/core.ts)
 $grupos = @(
-  @{ Nome = 'mensais'; Codigos = @('inicial', 'pro', 'inicial_sem_teste', 'pro_sem_teste');
+  @{ Nome = 'mensais'; Descricao = 'Inicial e Pro, com e sem teste'; Codigos = @('inicial', 'pro', 'inicial_sem_teste', 'pro_sem_teste');
      Envs = @('PAGARME_PLANO_FISCAL_INICIAL_ID', 'PAGARME_PLANO_FISCAL_PRO_ID', 'PAGARME_PLANO_FISCAL_INICIAL_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_PRO_SEM_TESTE_ID') },
-  @{ Nome = 'anuais'; Codigos = @('inicial_anual', 'pro_anual', 'inicial_anual_sem_teste', 'pro_anual_sem_teste');
-     Envs = @('PAGARME_PLANO_FISCAL_INICIAL_ANUAL_ID', 'PAGARME_PLANO_FISCAL_PRO_ANUAL_ID', 'PAGARME_PLANO_FISCAL_INICIAL_ANUAL_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID') }
+  @{ Nome = 'anuais'; Descricao = 'Inicial e Pro anuais, com e sem teste'; Codigos = @('inicial_anual', 'pro_anual', 'inicial_anual_sem_teste', 'pro_anual_sem_teste');
+     Envs = @('PAGARME_PLANO_FISCAL_INICIAL_ANUAL_ID', 'PAGARME_PLANO_FISCAL_PRO_ANUAL_ID', 'PAGARME_PLANO_FISCAL_INICIAL_ANUAL_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID') },
+  @{ Nome = 'do Escritorio'; Descricao = 'Escritorio 5, 20 e 50, com teste de 7 dias, sem teste e com teste de 30 dias';
+     Codigos = @('escritorio_5', 'escritorio_5_sem_teste', 'escritorio_5_teste30',
+                 'escritorio_20', 'escritorio_20_sem_teste', 'escritorio_20_teste30',
+                 'escritorio_50', 'escritorio_50_sem_teste', 'escritorio_50_teste30');
+     Envs = @('PAGARME_PLANO_FISCAL_ESCRITORIO_5_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_5_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_5_TESTE30_ID',
+              'PAGARME_PLANO_FISCAL_ESCRITORIO_20_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_20_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_20_TESTE30_ID',
+              'PAGARME_PLANO_FISCAL_ESCRITORIO_50_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_50_SEM_TESTE_ID', 'PAGARME_PLANO_FISCAL_ESCRITORIO_50_TESTE30_ID') }
 )
 # Checa todos os grupos antes de criar qualquer plano: grupo pela metade para tudo, sem nada criado.
 foreach ($g in $grupos) {
   $faltando = @($g.Envs | Where-Object { -not (Tem $_) })
-  if ($faltando.Count -ne 0 -and $faltando.Count -ne 4) { throw ("Faltam so alguns planos $($g.Nome) (" + ($faltando -join ', ') + "). Para nao duplicar, nada foi criado.") }
+  if ($faltando.Count -ne 0 -and $faltando.Count -ne $g.Envs.Count) { throw ("Faltam so alguns planos $($g.Nome) (" + ($faltando -join ', ') + "). Para nao duplicar, nada foi criado.") }
 }
 $sk = $null
 try {
   foreach ($g in $grupos) {
     $faltando = @($g.Envs | Where-Object { -not (Tem $_) })
-    if ($faltando.Count -eq 0) { Write-Host "Os 4 planos $($g.Nome) ja estao gravados: nenhum plano novo criado."; continue }
+    if ($faltando.Count -eq 0) { Write-Host "Os $($g.Envs.Count) planos $($g.Nome) ja estao gravados: nenhum plano novo criado."; continue }
     if ($Ensaio) { foreach ($n in $g.Envs) { $novos[$n] = 'plan_ENSAIO' }; continue }
     if (-not $sk) {
       $sk = Ler-Chave 'Cole a chave SECRETA de producao do Pagar.me (comeca com sk_, nao sk_test_) e tecle Enter'
@@ -106,7 +116,7 @@ try {
       Remove-Item Env:PAGARME_SECRET_KEY -ErrorAction SilentlyContinue }
     foreach ($linha in @($saida)) { if ("$linha" -match '^(PAGARME_PLANO_FISCAL_[A-Z_]+_ID)=(plan_\w+)$') { $novos[$Matches[1]] = $Matches[2] } }
     $criados = @($g.Envs | Where-Object { $novos.Contains($_) })
-    if ($criados.Count -ne 4) {
+    if ($criados.Count -ne $g.Envs.Count) {
       # Grava o que ja foi criado (grupos anteriores inteiros e este pela metade) para nao duplicar ao rodar de novo.
       $feitos = @($novos.Keys | Where-Object { $_ -like 'PAGARME_PLANO_FISCAL_*' } | ForEach-Object { "$_=$($novos[$_])" })
       if ($feitos.Count -gt 0) { Supa (@('secrets', 'set', '--project-ref', $Projeto) + $feitos) | Out-Null }
@@ -114,7 +124,9 @@ try {
       throw ("Os planos $($g.Nome) nao foram todos criados: " + (($saida | Where-Object { "$_" -notmatch '^PAGARME_PLANO' }) -join ' ') +
         ". Os ja criados foram gravados nos secrets: " + ($parciais -join ', ') + ". Confira no Pagar.me antes de rodar de novo.")
     }
-    Write-Host "Planos $($g.Nome) criados no Pagar.me: Inicial e Pro, com e sem teste."
+    Write-Host "Planos $($g.Nome) criados no Pagar.me: $($g.Descricao)."
+    # Ids de plano nao sao segredo: a lista fica na tela para conferir no painel do Pagar.me.
+    foreach ($n in $g.Envs) { Write-Host "  $n=$($novos[$n])" }
   }
 } finally { $sk = $null }
 

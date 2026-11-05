@@ -95,6 +95,10 @@ test("configuração pública: anual_disponivel só com os quatro planos anuais"
   assert.deepEqual(c.planos, {
     inicial: { valor_centavos: 4900, anual_centavos: 47040 },
     pro: { valor_centavos: 12900, anual_centavos: 123840 },
+    // Escritório (05/11/2026): só mensal, com empresas e notas da faixa.
+    escritorio_5: { valor_centavos: 29700, empresas: 5, notas: 500 },
+    escritorio_20: { valor_centavos: 79700, empresas: 20, notas: 2000 },
+    escritorio_50: { valor_centavos: 149700, empresas: 50, notas: 5000 },
   });
   assert.equal(configuracaoPublica({ ...ENV, PAGARME_PLANO_FISCAL_PRO_ANUAL_SEM_TESTE_ID: "" }).anual_disponivel, false);
 });

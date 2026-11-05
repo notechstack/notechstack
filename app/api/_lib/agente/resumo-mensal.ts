@@ -1,4 +1,4 @@
-// Resumo periódico do Pro no WhatsApp (critérios 35 a 37 da v2, que substituem o resumo fixo do
+// Resumo periódico do Pro (e do Escritório, plano completo; o resumo é do tenant da conta-mãe) no WhatsApp (critérios 35 a 37 da v2, que substituem o resumo fixo do
 // dia 1 da v1, C38; Landing v2, lote C - resumo configurável). Cada tenant Pro escolhe mensal
 // (dia 1 a 28) ou semanal (dia da semana ISO, 1 = segunda); sem escolha, vale mensal dia 1.
 // No dia escolhido, a partir das 09:00 (America/Sao_Paulo), o dono recebe uma vez o resumo do
@@ -86,7 +86,7 @@ export async function enviarResumoMensal(deps: ResumoDeps, opcoes: { tenantIds?:
     `select t.id as tenant_id, t.resumo_frequencia, t.resumo_dia,
             (select p.phone_e164 from nofiscal.fiscal_phones p where p.tenant_id = t.id and p.role = 'owner') as dono_phone
        from nofiscal.fiscal_tenants t
-      where t.plan = 'pro'
+      where nofiscal.plano_completo(t.plan)
         and t.client_id is not null
         and ($1::uuid[] is null or t.id = any($1::uuid[]))`,
     [opcoes.tenantIds ?? null],

@@ -52,11 +52,13 @@ describe('rotas do Nó Fiscal', () => {
     // webhook da Meta (Landing, "Provas do motor que esta feature muda"). A v2 (.checks/agente-fiscal-v2.md)
     // acrescenta a ativação do WhatsApp (lote C), que não recebe A1, e a base de clientes do
     // onboarding (lote D), que lê o A1 só por `read_certificate`, como o motor. A central de conversas
-    // (29/10/2026) lê e manda mensagens do WhatsApp e não toca no A1.
+    // (29/10/2026) lê e manda mensagens do WhatsApp e não toca no A1. O PDF da nota no painel do
+    // Escritório (05/11/2026) só lê o XML da nota emitida.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
       'api/v1/fiscal/central.ts',
+      'api/v1/fiscal/nota-pdf.ts',
       'api/v1/nfse.ts',
       'api/v1/onboarding/ativacao.ts',
       ONBOARDING_CERTIFICATE,
