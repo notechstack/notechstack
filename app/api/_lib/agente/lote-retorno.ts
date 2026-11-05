@@ -1,9 +1,10 @@
 // Fechamento do lote por planilha (.design/agente-fiscal-escritorio.md, decisões Entrega do lote e Lote; estados
 // "Sefin recusa algumas notas" e "Sefin instável"). Rodado pelo worker com as outras tarefas do agente:
-// - lote `emitindo` com todas as notas num estado final (ou 24 h depois do "confirmar") → `concluido`; depois, UMA entrega
-//   à conta-mãe (`retorno_enviado_em` só quando algum canal confirmou, com novas tentativas por até 24 h): no WhatsApp (dentro
-//   da janela de 24 h) a contagem com `retorno-AAAA-MM-DD.csv` e `notas-AAAA-MM-DD.zip` (PDF e XML de cada nota
-//   emitida); fora da janela, ou se o WhatsApp falhar, o mesmo por e-mail à conta;
+// - lote `emitindo` com todas as notas num estado final (ou 24 h depois do "confirmar") → `concluido`; depois, o retorno:
+//   e-mail ao e-mail da conta-mãe com `retorno-AAAA-MM-DD.csv` e `notas-AAAA-MM-DD.zip` (PDF e XML de cada nota emitida;
+//   acima do limite, o texto aponta para Relatórios). `retorno_enviado_em` só quando o e-mail confirmar, com novas
+//   tentativas por até 24 h. Nada de arquivo no WhatsApp (Lucca, 05/11/2026): lá vai só um texto curto, dentro da
+//   janela de 24 h, com a contagem, para onde o retorno foi e o comando *nota* (ver-nota.ts);
 // - passadas 6 h do "confirmar" sem fechar → um aviso parcial (`aviso_parcial_em`).
 // Só quem muda o estado (update condicional) envia: duas rodadas do worker não mandam o retorno duas vezes.
 import { zipSync, type Zippable } from 'fflate'
@@ -17,14 +18,14 @@ import { dentroDaJanela } from './janela.js'
 import { linksDoSite } from './links.js'
 import { centavosDe, lerValor, motivoDoProblema, reaisDeCentavos } from './lote.js'
 import { numeroDaNota } from './notas.js'
+import { TEXTO_VER_NOTA } from './planos.js'
 import { dataBr, diaLocal } from './tempo.js'
 
 export const AVISO_PARCIAL_MS = 6 * 3600_000
 /** 24 h depois do "confirmar", o lote fecha mesmo com nota parada na fila (A1 vencido, empresa desativada…). */
 export const PRAZO_DO_LOTE_MS = 24 * 3600_000
-/** Acima disto o .zip não vai anexo (WhatsApp aceita 100 MB em documento; o e-mail, bem menos). */
-const MAX_ZIP_WHATSAPP = 90 * 1024 * 1024
-const MAX_ANEXOS_EMAIL = 30 * 1024 * 1024
+/** Acima disto (CSV + .zip) o .zip não vai anexo no e-mail, e o texto aponta para Relatórios. */
+export const MAX_ANEXOS_EMAIL = 30 * 1024 * 1024
 
 const PENDENTES = new Set(['queued', 'signing', 'sent'])
 
@@ -198,40 +199,10 @@ async function destinoDoLote(db: Queryable, lote: LoteEmitindo): Promise<{ telef
 
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`
 
-type Anexo = { arquivo: AnexoEmail; legenda: string }
-
-/**
- * Manda o texto (e os anexos) no WhatsApp se a janela de 24 h está aberta; fora dela, ou se o WhatsApp falhar,
- * por e-mail à conta. `true` quando algum canal confirmou. O texto depende de o .zip ir anexo ou não (`zipVai`):
- * no WhatsApp ele vai até 90 MB; no e-mail, até 30 MB somando os anexos.
- */
-async function entregarAoEscritorio(
-  deps: EntregasDeps,
-  agora: Date,
-  destino: { telefone: string | null; email: string | null },
-  mensagem: { texto: (zipVai: boolean) => string; assunto: string; retorno: Anexo | null; zip: Anexo | null; idempotencia: string },
-): Promise<boolean> {
-  if (destino.telefone && (await dentroDaJanela(deps.db, destino.telefone, agora))) {
-    const telefone = destino.telefone
-    const zip = mensagem.zip && mensagem.zip.arquivo.conteudo.byteLength <= MAX_ZIP_WHATSAPP ? mensagem.zip : null
-    const texto = mensagem.texto(Boolean(zip))
-    const retorno = mensagem.retorno
-    // O texto vai como legenda do retorno: uma mensagem só, mais o .zip.
-    const saiu = await saiuComRetentativa('whatsapp', () =>
-      retorno ? deps.whatsapp.enviarDocumento(telefone, retorno.arquivo, texto) : deps.whatsapp.enviarTexto(telefone, texto),
-    )
-    if (saiu && zip) await saiuComRetentativa('whatsapp', () => deps.whatsapp.enviarDocumento(telefone, zip.arquivo, zip.legenda))
-    if (saiu) return true
-  }
-  if (!destino.email) return false
-  const anexos = mensagem.retorno ? [mensagem.retorno.arquivo] : []
-  const tamanho = anexos.reduce((t, a) => t + a.conteudo.byteLength, 0)
-  const zipVai = Boolean(mensagem.zip && tamanho + mensagem.zip.arquivo.conteudo.byteLength <= MAX_ANEXOS_EMAIL)
-  if (zipVai && mensagem.zip) anexos.push(mensagem.zip.arquivo)
-  const email = destino.email
-  return saiuComRetentativa('email', () =>
-    deps.email.enviar({ para: email, assunto: mensagem.assunto, texto: mensagem.texto(zipVai), anexos, idempotencia: mensagem.idempotencia }),
-  )
+/** Texto curto no WhatsApp, só dentro da janela de 24 h; melhor esforço (não decide nada). */
+async function avisoNoWhatsApp(deps: EntregasDeps, agora: Date, telefone: string | null, texto: string): Promise<boolean> {
+  if (!telefone || !(await dentroDaJanela(deps.db, telefone, agora))) return false
+  return saiuComRetentativa('whatsapp', () => deps.whatsapp.enviarTexto(telefone, texto))
 }
 
 /** `emitindo` → `concluido`: todas as notas num estado final, ou 24 h depois do "confirmar" (o que ficou na fila vai como "na fila"). */
@@ -245,7 +216,9 @@ async function concluirLote(deps: EntregasDeps, lote: LoteEmitindo, agora: Date)
   return rowCount === 1
 }
 
-/** Texto do retorno. Sem o .zip anexo, os PDFs ficam em Minha conta → Relatórios. */
+const juntar = (partes: string[]) => (partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes.at(-1)}` : partes[0])
+
+/** Texto do e-mail do retorno. Sem o .zip anexo (acima do limite), os PDFs ficam em Minha conta → Relatórios. */
 export function textoDoRetorno(
   lote: { created_at: Date; arquivo_nome: string | null },
   c: ReturnType<typeof contagemDoRetorno>,
@@ -259,7 +232,7 @@ export function textoDoRetorno(
     c.naoEmitidas ? plural(c.naoEmitidas, 'linha não emitida', 'linhas não emitidas') : null,
   ].filter(Boolean) as string[]
   return [
-    `Planilha de ${dataBr(lote.created_at)}${lote.arquivo_nome ? ` (${lote.arquivo_nome})` : ''} concluída: ${partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes.at(-1)}` : partes[0]}.`,
+    `Planilha de ${dataBr(lote.created_at)}${lote.arquivo_nome ? ` (${lote.arquivo_nome})` : ''} concluída: ${juntar(partes)}.`,
     c.emitidas ? `Valor emitido: ${formatarReais(c.valorEmitido)}.` : null,
     c.naFila ? 'As notas que ainda estão na fila aparecem em Relatórios quando a Sefin responder.' : null,
     arquivos.zip
@@ -273,9 +246,35 @@ export function textoDoRetorno(
 }
 
 /**
- * Envia o retorno de um lote `concluido` ainda sem `retorno_enviado_em`. A linha é reclamada antes (marca gravada
- * num update condicional) para duas rodadas não mandarem em dobro; se nenhum canal confirmar, a marca volta a nulo e
- * a próxima rodada tenta de novo.
+ * Aviso curto do retorno no WhatsApp (Lucca, 05/11/2026: nada de arquivo no WhatsApp; o CSV e os PDFs vão por
+ * e-mail). `email` = para onde o retorno foi; `pdfsNoEmail` = o .zip coube no e-mail.
+ */
+export function avisoDoRetorno(
+  lote: { created_at: Date },
+  c: ReturnType<typeof contagemDoRetorno>,
+  destino: { email: string; pdfsNoEmail: boolean },
+  relatorios: string,
+): string {
+  const partes = [
+    `${plural(c.emitidas, 'nota emitida', 'notas emitidas')}${c.emitidas ? ` (${formatarReais(c.valorEmitido)})` : ''}`,
+    c.recusadas ? plural(c.recusadas, 'recusada', 'recusadas') : null,
+    c.naFila ? plural(c.naFila, 'ainda na fila', 'ainda na fila') : null,
+    c.naoEmitidas ? plural(c.naoEmitidas, 'linha não emitida', 'linhas não emitidas') : null,
+  ].filter(Boolean) as string[]
+  return [
+    `Planilha de ${dataBr(lote.created_at)}: ${juntar(partes)}.`,
+    c.emitidas && !destino.pdfsNoEmail
+      ? `O retorno (CSV) foi para ${destino.email}; os PDFs estão em Minha conta → Relatórios: ${relatorios}`
+      : `O retorno (CSV)${c.emitidas ? ' e os PDFs' : ''} ${c.emitidas ? 'foram' : 'foi'} para ${destino.email}. Tudo também em Minha conta → Relatórios: ${relatorios}`,
+    TEXTO_VER_NOTA,
+  ].join('\n')
+}
+
+/**
+ * Envia o retorno de um lote `concluido` ainda sem `retorno_enviado_em`: o e-mail à conta-mãe, com o CSV e o .zip, é o
+ * canal do retorno; a marca fica só quando ele confirmar (senão volta a nulo e a próxima rodada tenta de novo). A linha
+ * é reclamada antes, num update condicional, para duas rodadas não mandarem em dobro. Com o e-mail entregue, sai o
+ * aviso curto no WhatsApp (dentro da janela), sem arquivo e sem decidir a marca.
  */
 async function enviarRetorno(deps: EntregasDeps, lote: LoteEmitindo, agora: Date): Promise<boolean> {
   const { rowCount } = await deps.db.query(
@@ -289,23 +288,37 @@ async function enviarRetorno(deps: EntregasDeps, lote: LoteEmitindo, agora: Date
     const itens = await itensDoLote(deps.db, lote.id)
     const c = contagemDoRetorno(itens)
     const dia = diaLocal(lote.created_at)
-    const links = deps.links ?? linksDoSite()
-    const csv = `retorno-${dia}.csv`
-    const zipNome = `notas-${dia}.zip`
-    const zip = await zipDasNotas(itens)
-    saiu = await entregarAoEscritorio(deps, agora, await destinoDoLote(deps.db, lote), {
-      texto: (zipVai) => textoDoRetorno(lote, c, { csv, zip: zipVai ? zipNome : null }, `${links.conta}#relatorios`),
-      assunto: `Retorno da planilha de ${dataBr(lote.created_at)}`,
-      retorno: { arquivo: { nome: csv, tipo: 'text/csv', conteudo: Buffer.from(retornoCsv(itens), 'utf8') }, legenda: '' },
-      zip: zip
-        ? {
-            arquivo: { nome: zipNome, tipo: 'application/zip', conteudo: zip },
-            legenda: `PDF e XML ${c.emitidas === 1 ? 'da nota emitida' : `das ${c.emitidas.toLocaleString('pt-BR')} notas emitidas`}.`,
-          }
-        : null,
-      idempotencia: `lote-${lote.id}-retorno`,
+    const relatorios = `${(deps.links ?? linksDoSite()).conta}#relatorios`
+    const destino = await destinoDoLote(deps.db, lote)
+    if (!destino.email) {
+      // Sem e-mail na conta (não deveria acontecer): o aviso no WhatsApp, apontando para Relatórios, é o que dá.
+      logEvent('agente.lote_retorno_sem_email', { tenant_id: lote.escritorio_tenant_id, lote_id: lote.id })
+      saiu = await avisoNoWhatsApp(deps, agora, destino.telefone, avisoDoRetorno(lote, c, { email: 'o e-mail da conta', pdfsNoEmail: false }, relatorios))
+      return saiu
+    }
+    const csv: AnexoEmail = { nome: `retorno-${dia}.csv`, tipo: 'text/csv', conteudo: Buffer.from(retornoCsv(itens), 'utf8') }
+    const zipBytes = await zipDasNotas(itens)
+    const zip: AnexoEmail | null = zipBytes ? { nome: `notas-${dia}.zip`, tipo: 'application/zip', conteudo: zipBytes } : null
+    const zipVai = Boolean(zip && csv.conteudo.byteLength + zip.conteudo.byteLength <= MAX_ANEXOS_EMAIL)
+    const email = destino.email
+    saiu = await saiuComRetentativa('email', () =>
+      deps.email.enviar({
+        para: email,
+        assunto: `Retorno da planilha de ${dataBr(lote.created_at)}`,
+        texto: textoDoRetorno(lote, c, { csv: csv.nome, zip: zipVai && zip ? zip.nome : null }, relatorios),
+        anexos: zipVai && zip ? [csv, zip] : [csv],
+        idempotencia: `lote-${lote.id}-retorno`,
+      }),
+    )
+    const aviso = saiu ? await avisoNoWhatsApp(deps, agora, destino.telefone, avisoDoRetorno(lote, c, { email, pdfsNoEmail: zipVai }, relatorios)) : false
+    logEvent('agente.lote_retorno', {
+      tenant_id: lote.escritorio_tenant_id,
+      lote_id: lote.id,
+      emitidas: c.emitidas,
+      recusadas: c.recusadas,
+      enviado: saiu,
+      aviso_whatsapp: aviso,
     })
-    logEvent('agente.lote_retorno', { tenant_id: lote.escritorio_tenant_id, lote_id: lote.id, emitidas: c.emitidas, recusadas: c.recusadas, enviado: saiu })
   } finally {
     if (!saiu) {
       await deps.db.query('update nofiscal.fiscal_lotes set retorno_enviado_em = null where id = $1', [lote.id])
@@ -314,6 +327,7 @@ async function enviarRetorno(deps: EntregasDeps, lote: LoteEmitindo, agora: Date
   return saiu
 }
 
+/** 6 h sem fechar: um aviso, no WhatsApp dentro da janela ou, fora dela (ou se falhar), por e-mail à conta. */
 async function avisoParcial(deps: EntregasDeps, lote: LoteEmitindo, agora: Date): Promise<void> {
   const { rowCount } = await deps.db.query(
     `update nofiscal.fiscal_lotes set aviso_parcial_em = $2, updated_at = $2
@@ -326,15 +340,16 @@ async function avisoParcial(deps: EntregasDeps, lote: LoteEmitindo, agora: Date)
     `A Sefin está lenta com a planilha de ${dataBr(lote.created_at)}: ${plural(c.emitidas, 'nota já saiu', 'notas já saíram')}, ` +
     `${plural(c.recusadas, 'foi recusada', 'foram recusadas')} e ${plural(c.naFila, 'continua na fila', 'continuam na fila')}. ` +
     'Eu mando o retorno completo quando todas fecharem.'
-  await entregarAoEscritorio(deps, agora, await destinoDoLote(deps.db, lote), {
-    texto: () => texto,
-    assunto: `Planilha de ${dataBr(lote.created_at)}: notas ainda na fila`,
-    retorno: null,
-    zip: null,
-    idempotencia: `lote-${lote.id}-parcial`,
-  })
+  const destino = await destinoDoLote(deps.db, lote)
+  if (!(await avisoNoWhatsApp(deps, agora, destino.telefone, texto)) && destino.email) {
+    const email = destino.email
+    await saiuComRetentativa('email', () =>
+      deps.email.enviar({ para: email, assunto: `Planilha de ${dataBr(lote.created_at)}: notas ainda na fila`, texto, idempotencia: `lote-${lote.id}-parcial` }),
+    )
+  }
   logEvent('agente.lote_aviso_parcial', { tenant_id: lote.escritorio_tenant_id, lote_id: lote.id, na_fila: c.naFila })
 }
+
 
 /**
  * Tarefa `lotes_concluidos`, em duas etapas: (1) fecha os lotes `emitindo` sem nota pendente (ou com 24 h do

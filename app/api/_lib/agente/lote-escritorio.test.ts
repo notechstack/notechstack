@@ -33,7 +33,7 @@ import { processarMensagem, TEXTOS } from './conversa.js'
 import { confirmarItensDoLote, MODELO_DA_PLANILHA, TEXTOS_DO_LOTE } from './lote.js'
 import { fecharLotes } from './lote-retorno.js'
 import { LINHA_DA_PLANILHA } from './planos.js'
-import { diaLocal } from './tempo.js'
+import { dataBr, diaLocal } from './tempo.js'
 
 const admin = openTestDb()
 const servico = openRoleDb('nofiscal_service')
@@ -82,7 +82,7 @@ function agente(agora: () => Date) {
 }
 
 async function lotesDo(tenantId: string) {
-  const { rows } = await admin.db.query<{ id: string; status: string; arquivo_sha256: string; arquivo_nome: string; expires_at: Date; created_at: Date; concluido_em: Date | null }>(
+  const { rows } = await admin.db.query<{ id: string; status: string; arquivo_sha256: string; arquivo_nome: string; expires_at: Date; created_at: Date; concluido_em: Date | null; retorno_enviado_em: Date | null }>(
     'select * from nofiscal.fiscal_lotes where escritorio_tenant_id = $1 order by created_at',
     [tenantId],
   )
@@ -179,9 +179,8 @@ describe('lote por planilha (conta Escritório)', () => {
     // Nenhum WhatsApp por nota nem oferta de modelo; o e-mail vai ao tomador e à conta do escritório.
     const depois = a.canais.whatsapps.slice(antesDoWorker)
     expect(depois.some((m) => /autorizada|Quer que eu guarde/.test(m.texto))).toBe(false)
-    expect(a.canais.emails.map((m) => m.para).sort()).toEqual(
-      ['fin@freguesa.test', 'maria@tomador.test', e.mae.ownerEmail, e.mae.ownerEmail].sort(),
-    )
+    const dasNotas = a.canais.emails.filter((m) => m.assunto.startsWith('NFS-e'))
+    expect(dasNotas.map((m) => m.para).sort()).toEqual(['fin@freguesa.test', 'maria@tomador.test', e.mae.ownerEmail, e.mae.ownerEmail].sort())
     const { rows: entregas } = await admin.db.query<{ invoice_id: string; canal: string; papel: string; destino: string; status: string }>(
       `select invoice_id, canal, papel, destino, status from nofiscal.fiscal_invoice_entregas where invoice_id = any($1::uuid[]) order by destino`,
       [notas.map((n) => n.id)],
@@ -200,29 +199,42 @@ describe('lote por planilha (conta Escritório)', () => {
       ['email', 'tomador', 'fin@freguesa.test', 'enviado'],
     ].sort())
 
-    // Fechamento: lote concluído e uma entrega ao escritório, com o CSV de retorno e o .zip.
+    // Fechamento: lote concluído; o retorno (CSV e .zip) vai por e-mail à conta, e no WhatsApp só um texto curto.
     const [fechado] = await lotesDo(e.mae.tenant.id)
     expect(fechado.status).toBe('concluido')
     expect(fechado.concluido_em).not.toBeNull()
+    expect(fechado.retorno_enviado_em).not.toBeNull()
     const dia = diaLocal(fechado.created_at)
-    expect(depois.map((m) => m.anexo?.nome)).toEqual([`retorno-${dia}.csv`, `notas-${dia}.zip`])
-    expect(depois.every((m) => m.para === e.mae.ownerPhone)).toBe(true)
-    expect(depois[0].texto).toContain('concluída: 2 notas emitidas e 3 linhas não emitidas.')
-    expect(depois[0].texto).toContain('Valor emitido: R$ 1.150,00.')
-    const retorno = Buffer.from(depois[0].anexo?.conteudo ?? []).toString('utf8')
+    expect(depois.every((m) => !m.anexo)).toBe(true)
+    expect(depois).toHaveLength(1)
+    expect(depois[0].para).toBe(e.mae.ownerPhone)
+    expect(depois[0].texto).toBe(
+      [
+        `Planilha de ${dataBr(fechado.created_at)}: 2 notas emitidas (R$ 1.150,00) e 3 linhas não emitidas.`,
+        `O retorno (CSV) e os PDFs foram para ${e.mae.ownerEmail}. Tudo também em Minha conta → Relatórios: ${LINKS_DE_TESTE.conta}#relatorios`,
+        'Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
+      ].join('\n'),
+    )
+    const emailDoRetorno = a.canais.emails.filter((m) => m.assunto.startsWith('Retorno da planilha'))
+    expect(emailDoRetorno).toHaveLength(1)
+    expect(emailDoRetorno[0].para).toBe(e.mae.ownerEmail)
+    expect(emailDoRetorno[0].anexos?.map((x) => x.nome)).toEqual([`retorno-${dia}.csv`, `notas-${dia}.zip`])
+    expect(emailDoRetorno[0].texto).toContain('concluída: 2 notas emitidas e 3 linhas não emitidas.')
+    expect(emailDoRetorno[0].texto).toContain('Valor emitido: R$ 1.150,00.')
+    const retorno = Buffer.from(emailDoRetorno[0].anexos?.[0].conteudo ?? []).toString('utf8')
     expect(retorno.startsWith('\uFEFFlinha;prestador;tomador;valor;situação;número;chave;motivo\r\n')).toBe(true)
     expect(retorno).toContain(';Padaria Freguesa (11.444.777/0001-61);1.000,00;emitida;')
     expect(retorno).toContain('4;Oficina Sem Certificado')
-    const zip = unzipSync(depois[1].anexo?.conteudo ?? new Uint8Array())
+    const zip = unzipSync(emailDoRetorno[0].anexos?.[1].conteudo ?? new Uint8Array())
     const nomes = Object.keys(zip).sort()
     expect(nomes).toHaveLength(4)
     expect(nomes.filter((n) => n.endsWith('.pdf')).map((n) => Buffer.from(zip[n].subarray(0, 5)).toString('latin1'))).toEqual(['%PDF-', '%PDF-'])
     expect(nomes.some((n) => n.startsWith(`${cliente.cnpj}/`))).toBe(true)
 
     // Outra rodada não manda o retorno de novo.
-    const total = a.canais.whatsapps.length
+    const total = [a.canais.whatsapps.length, a.canais.emails.length]
     await rodarWorker(servico.db, { sefin, tenantId: e.mae.tenant.id, canais: a.canais, now: () => agora })
-    expect(a.canais.whatsapps.length).toBe(total)
+    expect([a.canais.whatsapps.length, a.canais.emails.length]).toEqual(total)
     expect((await lotesDo(e.mae.tenant.id))[0]).toMatchObject({ status: 'concluido' })
 
     // A mesma planilha depois do lote concluído passa (o hash só barra lote aguardando); as linhas que já viraram
@@ -405,6 +417,40 @@ describe('lote por planilha: correções da revisão', () => {
     expect(canais.emails).toHaveLength(1)
   })
 
+  it('retorno_enviado_em só com o e-mail confirmado: WhatsApp no ar e e-mail fora não marcam (nem mandam o aviso)', async () => {
+    const e = await createEscritorio(admin.db)
+    escritorios.push(e)
+    const a = agente(() => new Date())
+    await a.planilha(e.mae.ownerPhone, `cpf_cnpj_tomador;nome_tomador;valor\n${CPF};Maria;30\n`)
+    await a.texto(e.mae.ownerPhone, 'confirmar')
+    const [lote] = await lotesDo(e.mae.tenant.id)
+    await admin.db.query(
+      `update nofiscal.fiscal_invoices set status = 'rejected', last_error_code = 'E0310', last_error = 'CPF não encontrado'
+        where id = (select invoice_id from nofiscal.fiscal_lote_itens where lote_id = $1 and linha = 2)`,
+      [lote.id],
+    )
+    const canais = canaisDouble()
+    const semEmail = {
+      db: servico.db,
+      whatsapp: canais.whatsapp,
+      email: { enviar: async () => Promise.reject(new Error('caixa cheia')) },
+      links: LINKS_DE_TESTE,
+      now: () => new Date(),
+    }
+    expect(await fecharLotes(semEmail, { tenantIds: [e.mae.tenant.id] })).toBe(0)
+    expect(canais.whatsapps).toEqual([])
+    expect((await lotesDo(e.mae.tenant.id))[0]).toMatchObject({ status: 'concluido', retorno_enviado_em: null })
+
+    // E-mail de volta: marca, e o aviso curto sai no WhatsApp (dentro da janela), sem arquivo.
+    expect(await fecharLotes({ ...semEmail, email: canais.email }, { tenantIds: [e.mae.tenant.id] })).toBe(1)
+    expect(canais.emails.map((m) => m.anexos?.map((x) => x.nome))).toEqual([[`retorno-${diaLocal(lote.created_at)}.csv`]])
+    expect(canais.whatsapps).toHaveLength(1)
+    expect(canais.whatsapps[0].anexo).toBeUndefined()
+    expect(canais.whatsapps[0].texto).toContain(': 0 notas emitidas e 1 recusada.')
+    expect(canais.whatsapps[0].texto).toContain(`O retorno (CSV) foi para ${e.mae.ownerEmail}.`)
+    expect((await lotesDo(e.mae.tenant.id))[0].retorno_enviado_em).not.toBeNull()
+  })
+
   it('nota parada na fila: aviso parcial em 6 h; em 24 h o lote fecha com ela "na fila" no retorno', async () => {
     const e = await createEscritorio(admin.db)
     escritorios.push(e)
@@ -423,10 +469,12 @@ describe('lote por planilha: correções da revisão', () => {
 
     await admin.db.query(`update nofiscal.fiscal_lotes set confirmed_at = now() - interval '25 hours' where id = $1`, [lote.id])
     expect(await fecharLotes(deps, { tenantIds: [e.mae.tenant.id] })).toBe(1)
-    const retorno = canais.whatsapps.at(-1)
-    expect(retorno?.anexo?.nome).toMatch(/^retorno-.*\.csv$/)
-    expect(retorno?.texto).toContain('concluída: 0 notas emitidas e 1 ainda na fila.')
-    expect(Buffer.from(retorno?.anexo?.conteudo ?? []).toString('utf8')).toContain(';na fila;')
+    expect(canais.whatsapps.at(-1)?.texto).toContain(': 0 notas emitidas e 1 ainda na fila.')
+    expect(canais.whatsapps.at(-1)?.anexo).toBeUndefined()
+    const [email] = canais.emails
+    expect(email.anexos?.map((x) => x.nome)).toEqual([expect.stringMatching(/^retorno-.*\.csv$/)])
+    expect(email.texto).toContain('concluída: 0 notas emitidas e 1 ainda na fila.')
+    expect(Buffer.from(email.anexos?.[0].conteudo ?? []).toString('utf8')).toContain(';na fila;')
     expect((await lotesDo(e.mae.tenant.id))[0].status).toBe('concluido')
   })
 })
@@ -440,7 +488,7 @@ describe('boas-vindas do Escritório', () => {
     expect(resposta).toMatch(/^Pronto! /)
     expect(resposta.split('\n').at(-1)).toBe(LINHA_DA_PLANILHA)
     expect(LINHA_DA_PLANILHA).toBe(
-      'Pra emitir as notas do mês de uma vez, mande a planilha aqui (modelo: https://www.notechstack.com.br/agentes/fiscal/dados/modelo-lote.csv).',
+      'Pra emitir as notas do mês de uma vez, mande a planilha aqui (modelo: https://www.notechstack.com.br/agentes/fiscal/dados/modelo-lote.csv). Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
     )
   })
 })

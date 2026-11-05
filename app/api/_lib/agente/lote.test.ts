@@ -29,7 +29,7 @@ import {
   type ContextoDoLote,
   type Empresa,
 } from './lote.js'
-import { contagemDoRetorno, retornoCsv, textoDoRetorno, zipDasNotas, type ItemDoRetorno } from './lote-retorno.js'
+import { avisoDoRetorno, contagemDoRetorno, retornoCsv, textoDoRetorno, zipDasNotas, type ItemDoRetorno } from './lote-retorno.js'
 import { LIMITE_DA_MIDIA, MidiaGrandeDemais, whatsappCloud } from './whatsapp-cloud.js'
 
 const ESCRITORIO: Empresa = { id: 'e1', cnpj: '12345678000195', razao_social: 'Escritório Toledo', active: true, codigo_servico_nacional: '171901' }
@@ -478,6 +478,23 @@ describe('retorno do lote', () => {
     const naFila = contagemDoRetorno([...itens, { ...itens[0], linha: 7, status: 'queued', invoice_id: 'i9' }])
     expect(textoDoRetorno(lote, naFila, { csv: 'r.csv', zip: null }, relatorios)).toContain('1 ainda na fila')
     expect(retornoCsv([{ ...itens[0], status: 'queued', dps_numero: null, chave_acesso: null }])).toContain(';na fila;;;')
+  })
+
+  it('aviso do retorno no WhatsApp: só texto, para onde o retorno foi e o comando *nota*', () => {
+    const lote = { created_at: new Date('2026-11-05T15:00:00Z') }
+    const relatorios = 'https://site.test/agentes/fiscal/conta/#relatorios'
+    const c = contagemDoRetorno([...itens, { ...itens[0], linha: 7, status: 'queued', invoice_id: 'i9' }])
+    expect(avisoDoRetorno(lote, c, { email: 'sandra@escritorio.test', pdfsNoEmail: true }, relatorios)).toBe(
+      [
+        'Planilha de 05/11/2026: 1 nota emitida (R$ 1.500,00), 1 recusada, 1 ainda na fila e 3 linhas não emitidas.',
+        `O retorno (CSV) e os PDFs foram para sandra@escritorio.test. Tudo também em Minha conta → Relatórios: ${relatorios}`,
+        'Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
+      ].join('\n'),
+    )
+    // .zip acima do limite do e-mail: o aviso manda os PDFs para Relatórios.
+    expect(avisoDoRetorno(lote, c, { email: 'sandra@escritorio.test', pdfsNoEmail: false }, relatorios)).toContain(
+      `O retorno (CSV) foi para sandra@escritorio.test; os PDFs estão em Minha conta → Relatórios: ${relatorios}`,
+    )
   })
 
   it('.zip: PDF e XML de cada nota emitida, numa pasta por CNPJ do prestador', async () => {
