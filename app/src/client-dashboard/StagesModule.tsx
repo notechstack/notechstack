@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { calculateProgress, type KanbanItem, type ProjectVersion, type Roadmap } from './client-dashboard-service'
 import './stages.css'
-import { projectPresentation, record, text } from './project-presentation'
+import { projectContact, projectPresentation, record, text } from './project-presentation'
 
 const PHASES = [
   { key: 'idea', title: 'A ideia', icon: 'lightbulb' },
@@ -29,6 +29,13 @@ export function StagesModule({ items, versions = [], roadmap }: { items: KanbanI
   const [allNext, setAllNext] = useState(false)
   const sorted = [...items].sort((a, b) => a.position - b.position)
   const presentation = projectPresentation(roadmap)
+  // Contato do roadmap (agência) ou, na falta dele, o WhatsApp da nó — ver project-presentation.ts.
+  const contact = projectContact(roadmap)
+  const contactCopy = {
+    whatsapp: { note: 'Fale diretamente pelo WhatsApp.', label: 'Abrir WhatsApp' },
+    email: { note: 'Fale diretamente por e-mail.', label: 'Enviar e-mail' },
+    link: { note: 'Fale diretamente com a equipe.', label: 'Abrir contato' },
+  }[contact.channel]
   const sourcePhases = presentation.phase_mode === 'source'
   const phases: Array<{ key: string; title: string; icon: string }> = sourcePhases
     ? [...new Set(sorted.map((item) => item.phase ?? 'Etapas'))].map((phase) => ({ key: phase, title: phase, icon: 'layers' }))
@@ -89,7 +96,7 @@ export function StagesModule({ items, versions = [], roadmap }: { items: KanbanI
         <section className="stages-next"><header><h3>Próximos passos</h3>{next.length > 3 ? <button onClick={() => setAllNext(!allNext)}>{allNext ? 'Ver menos' : 'Ver todas'} <Icon name="arrow-right" /></button> : null}</header>
           <ol>{(allNext ? next : next.slice(0, 3)).map((item) => <li key={item.id}><span className="next-icon"><Icon name={phases.find((phase) => phase.key === phaseKey(item))?.icon ?? 'layers'} /></span><div><strong>{item.title}</strong><p>Previsão: {dateLabel(item.scheduled_date)}</p></div></li>)}</ol>
           {!next.length ? <p className="stage-phase-empty">Todas as etapas cadastradas foram concluídas.</p> : null}
-          <a className="stages-contact" href="https://wa.me/5511939289413" target="_blank" rel="noreferrer"><Icon name="messages-square" /><span><strong>Dúvidas sobre o andamento?</strong><small>Fale diretamente pelo WhatsApp.</small></span><b>Abrir WhatsApp <Icon name="arrow-up-right" /></b></a>
+          <a className="stages-contact" href={contact.href} target="_blank" rel="noreferrer"><Icon name="messages-square" /><span><strong>Dúvidas sobre o andamento?</strong><small>{contactCopy.note}</small></span><b>{contact.label ?? contactCopy.label} <Icon name="arrow-up-right" /></b></a>
         </section>
       </div>
       <p className="stages-readonly">Acompanhamento somente leitura · O progresso total considera os {items.length} itens do cronograma; {sourcePhases ? 'as fases e os estados seguem o roadmap original.' : 'a publicação do roadmap é um marco adicional do plano.'}</p>

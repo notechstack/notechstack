@@ -14,7 +14,7 @@ import {
 import { EditorModule } from './EditorModule'
 import { StagesModule } from './StagesModule'
 import './client-dashboard.css'
-import { projectArchitecture, projectPresentation, record, text } from './project-presentation'
+import { isExternalHref, projectArchitecture, projectContact, projectPresentation, record, text } from './project-presentation'
 import { ProjectArchitecture, ProjectCostCalculator } from './ProjectInfrastructure'
 import './project-infrastructure.css'
 
@@ -241,7 +241,7 @@ function OverviewModule({
             {price ? <p className="scope-price"><strong>{price}</strong>{text(option.price_note) ? <small>{text(option.price_note)}</small> : null}</p> : null}
             {text(option.tagline) ? <p className="scope-tagline">{text(option.tagline)}</p> : null}
             <ul>{toDisplayItems(option.features ?? []).map((feature) => <li key={feature}>{feature}</li>)}</ul>
-            {ctaLabel && /^(https:\/\/|mailto:)/.test(ctaHref) ? <a className="scope-cta" href={ctaHref} target="_blank" rel="noreferrer noopener">{ctaLabel} <span aria-hidden="true">→</span></a> : null}
+            {ctaLabel && isExternalHref(ctaHref) ? <a className="scope-cta" href={ctaHref} target="_blank" rel="noreferrer noopener">{ctaLabel} <span aria-hidden="true">→</span></a> : null}
           </article>
         })}</div>
         <p className="infra-caption">{text(presentation.scope_note)}</p>
@@ -304,7 +304,7 @@ function OverviewModule({
         ))}
         <a
           className="overview-whatsapp-card"
-          href="https://wa.me/5511939289413"
+          href={projectContact(roadmap).href}
           target="_blank"
           rel="noreferrer"
         >
@@ -328,15 +328,24 @@ function PrototypeModule({ roadmap }: { roadmap: Roadmap | null }) {
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [])
-  // Mockup infinito: o quadro cresce até a altura do protótipo (mesma origem), sem rolagem interna.
+  // Mockup infinito: o quadro acompanha a altura do protótipo (mesma origem), sem rolagem interna.
   useEffect(() => {
     const iframe = frame.current
     if (!iframe) return
+    // Trocou de dispositivo (ou de protótipo): descarta a medida anterior em vez de herdá-la na outra moldura.
+    setContentHeight(null)
     let observer: ResizeObserver | null = null
     const measure = () => {
       try {
         const doc = iframe.contentDocument
-        const height = doc?.documentElement ? Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0) : 0
+        const body = doc?.body
+        if (!body) return
+        // Mede o <body> (caixa + margens), não o <html>: o scrollHeight do elemento raiz nunca fica
+        // abaixo da altura atual do iframe, então a moldura só crescia e nunca encolhia (fechar um
+        // <details>, voltar de Celular para Desktop) e sobrava um vão abaixo do rodapé.
+        const style = doc.defaultView?.getComputedStyle(body)
+        const margins = (parseFloat(style?.marginTop ?? '') || 0) + (parseFloat(style?.marginBottom ?? '') || 0)
+        const height = Math.ceil(body.getBoundingClientRect().height + margins)
         if (height > 0) setContentHeight(height)
       } catch {
         setContentHeight(null)
@@ -826,6 +835,7 @@ export function ClientDashboardPage({ module, previewData }: ClientDashboardPage
   }
 
   const shell = data.shell
+  const contact = projectContact(data.roadmap)
   const showTrialNotice = shell.effective_access_status === 'INICIAL_15_DIAS'
   const remaining = shell.access_released_at
     ? Math.max(
@@ -896,12 +906,15 @@ export function ClientDashboardPage({ module, previewData }: ClientDashboardPage
                   {text(projectPresentation(data.roadmap).hero_description, 'Um processo organizado, com tecnologia moderna e suporte da nossa equipe, para você tirar sua ideia do papel e colocar no ar em 30 ou 45 dias.')}
                 </p>
                 <div className="hero-actions">
-                  <Link
+                  {/* Abre o contato do roadmap (agência) ou o WhatsApp da nó; antes levava às Etapas, cujo card era fixo da nó. */}
+                  <a
                     className="hero-primary-action"
-                    to={previewData ? '/__preview/cliente-agencia/etapas' : `/p/${encodeURIComponent(projectId)}/etapas`}
+                    href={contact.href}
+                    target="_blank"
+                    rel="noreferrer noopener"
                   >
-                    Falar com a equipe {data.agency ? `da ${data.agency.name}` : 'da Nó'} <span aria-hidden="true">→</span>
-                  </Link>
+                    {contact.label ?? `Falar com a equipe ${data.agency ? `da ${data.agency.name}` : 'da Nó'}`} <span aria-hidden="true">↗</span>
+                  </a>
                 </div>
               </div>
             </section>
