@@ -1,0 +1,307 @@
+{
+  "client": {
+    "name": "Venexia",
+    "slug": "venexia",
+    "login_email": "venexia@maisis.com.br"
+  },
+  "project": {
+    "name": "Novo site Venexia",
+    "niche": "venda direta · bem-estar e beleza",
+    "agency_slug": "maisis",
+    "lead_status": "JANELA_DE_DECISAO",
+    "project_status": "EM_REVISAO_CLIENTE",
+    "access_status": "ATIVO_ATE_FIM_DO_PROJETO",
+    "modules": {
+      "como_funciona": "ativo",
+      "prototipo": "ativo",
+      "etapas": "ativo",
+      "editor": "bloqueado",
+      "versoes": "bloqueado",
+      "marca": "bloqueado"
+    }
+  },
+  "source": {
+    "site_atual": "https://venexia.com.br/",
+    "apresentacao": "Apresentação Venexia.pdf (23 slides, recebida da Maisis em 06/11/2026)",
+    "referencia_pacote_3": "https://www.instagram.com/reels/DfIYxtGR8Vu/",
+    "prototipo": "app/public/prototipos/venexia/lp-institucional-v1/"
+  },
+  "roadmap": {
+    "stack": {
+      "architecture": {
+        "title": "A tecnologia do novo site.",
+        "description": "Pacote 1: site institucional de página única, estático e rápido, com animações de entrada. O Pacote 2 acrescenta loja, estoque e pagamentos; o Pacote 3 transforma o catálogo num mural interativo.",
+        "inputs": [
+          {
+            "id": "site",
+            "brand": "",
+            "title": "Site institucional",
+            "tool": "HTML, CSS e JavaScript",
+            "detail": "Página única com produtos, Clube Namu, Best Off e oportunidade",
+            "href": "https://developer.mozilla.org/pt-BR/docs/Web/HTML"
+          },
+          {
+            "id": "contato",
+            "brand": "resend",
+            "title": "Formulário de contato",
+            "tool": "Resend",
+            "detail": "Envio dos contatos por e-mail · previsto, desligado no protótipo",
+            "href": "https://resend.com"
+          },
+          {
+            "id": "whatsapp",
+            "brand": "whatsapp",
+            "title": "Botão de WhatsApp",
+            "tool": "WhatsApp",
+            "detail": "Número da Venexia a confirmar · previsto para o site final",
+            "href": "https://business.whatsapp.com"
+          }
+        ],
+        "core": {
+          "id": "core",
+          "brand": "no",
+          "title": "Site publicado pela nó",
+          "tool": "Vercel",
+          "detail": "Hospedagem em CDN com HTTPS · prevista para o site final",
+          "href": "https://vercel.com"
+        },
+        "services": [
+          {
+            "id": "dominio",
+            "brand": "",
+            "title": "Domínio",
+            "tool": "Domínio próprio",
+            "detail": "venexia.com.br apontado para o novo site após a aprovação",
+            "href": "https://venexia.com.br"
+          },
+          {
+            "id": "seo",
+            "brand": "meta",
+            "title": "SEO e compartilhamento",
+            "tool": "Meta tags + Open Graph",
+            "detail": "Prévia ao compartilhar no WhatsApp e nas redes · prevista para o site final",
+            "href": "https://developers.facebook.com/docs/sharing/webmasters/"
+          },
+          {
+            "id": "loja",
+            "brand": "supabase",
+            "title": "Loja, estoque e pedidos",
+            "tool": "Supabase",
+            "detail": "Pacote 2 · não incluído no Pacote 1",
+            "href": "https://supabase.com"
+          }
+        ],
+        "caption": "O protótipo navegável é o Pacote 1 pronto para aprovação. Hospedagem, domínio, loja e pagamentos dependem do pacote escolhido e ainda não foram ativados."
+      }
+    },
+    "costs": [],
+    "next_steps": {
+      "presentation": {
+        "phase_mode": "source",
+        "review_label": "Proposta em análise",
+        "review_description": "Três pacotes propostos; nenhum escolhido ainda.",
+        "prototype_title": "Navegue pelo novo site da Venexia.",
+        "editor_lock_reason": "O Editor fica bloqueado até a aprovação do pacote. Navegue pela aba Protótipo e envie suas observações à Maisis.",
+        "hero_title": "O novo site da Venexia, pronto para aprovação.",
+        "hero_description": "Explore o protótipo do site institucional, conheça a tecnologia e compare os três pacotes propostos.",
+        "infrastructure_title": "Três pacotes. Escolha o tamanho do próximo passo.",
+        "scope_options": [
+          {
+            "label": "Site institucional",
+            "badge": "Pacote 1",
+            "price": "R$ 1.500",
+            "tagline": "O site que você está vendo no protótipo, pronto para ir ao ar.",
+            "selected": false,
+            "features": [
+              "Site novo em uma página: marca, produtos, Clube Namu, Best Off e oportunidade.",
+              "Formulário de contato e botão de WhatsApp (número a confirmar).",
+              "Animações de entrada, textos e cores, como no protótipo.",
+              "Prazo e suporte combinados com a Maisis."
+            ],
+            "cta_label": "Quero o Pacote 1",
+            "cta_href": "https://wa.me/5511997151833?text=Ol%C3%A1%2C%20Thomas!%20Vi%20a%20proposta%20da%20Venexia%20no%20painel%20da%20n%C3%B3%20e%20quero%20seguir%20com%20o%20Pacote%201%20%E2%80%94%20Site%20institucional%20(R%24%201.500)."
+          },
+          {
+            "label": "E-commerce",
+            "badge": "Pacote 2",
+            "price": "R$ 5.000",
+            "tagline": "Loja virtual completa para vender os produtos direto pelo site.",
+            "selected": false,
+            "features": [
+              "Loja com catálogo dos produtos, carrinho e checkout.",
+              "Pagamentos por API, controle de estoque e logística de entrega.",
+              "Painel de produtos e pedidos, com o visual animado do Pacote 1.",
+              "Prazo e suporte combinados com a Maisis."
+            ],
+            "cta_label": "Quero o Pacote 2",
+            "cta_href": "https://wa.me/5511997151833?text=Ol%C3%A1%2C%20Thomas!%20Vi%20a%20proposta%20da%20Venexia%20no%20painel%20da%20n%C3%B3%20e%20quero%20seguir%20com%20o%20Pacote%202%20%E2%80%94%20E-commerce%20(R%24%205.000)."
+          },
+          {
+            "label": "Catálogo conceitual",
+            "badge": "Pacote 3",
+            "price": "R$ 8.000 a 10.000",
+            "tagline": "Uma vitrine de luxo: o catálogo vira um mural interativo.",
+            "selected": false,
+            "features": [
+              "Catálogo em mural: produtos em nichos iluminados, como numa galeria.",
+              "Clique no produto e ele se expande com detalhes e preço.",
+              "Zoom, transições e componentes interativos: a experiência mais imersiva.",
+              "Prazo e suporte combinados com a Maisis."
+            ],
+            "cta_label": "Quero o Pacote 3",
+            "cta_href": "https://wa.me/5511997151833?text=Ol%C3%A1%2C%20Thomas!%20Vi%20a%20proposta%20da%20Venexia%20no%20painel%20da%20n%C3%B3%20e%20quero%20seguir%20com%20o%20Pacote%203%20%E2%80%94%20Cat%C3%A1logo%20conceitual%20(R%24%208.000%20a%2010.000)."
+          }
+        ],
+        "scope_note": "Nenhum pacote foi escolhido ainda. Valores da proposta de 06/11/2026; prazos, suporte e custos de domínio e meio de pagamento são confirmados com a Maisis antes do fechamento.",
+        "hide_project_navigation": true
+      },
+      "task_details": {}
+    },
+    "references": [
+      "Site atual: https://venexia.com.br/ (página de lançamento, 1º/11/2026)",
+      "Apresentação institucional da Venexia (23 slides): textos, fotos e plano de marketing",
+      "Referência do Pacote 3: mural de produtos que expande ao clique",
+      "Protótipo: lp-institucional-v1 (Pacote 1)"
+    ],
+    "tiers": {},
+    "preferred_tier": null,
+    "prototype_url": "/prototipos/venexia/lp-institucional-v1/index.html"
+  },
+  "tasks": [
+    {
+      "source_id": "p0-1",
+      "title": "Leitura da apresentação e do site atual",
+      "phase": "Fase 0 · Proposta",
+      "status": "concluido",
+      "note": "23 slides e a página de lançamento: textos, produtos e plano.",
+      "week": null,
+      "position": 0
+    },
+    {
+      "source_id": "p0-2",
+      "title": "Proposta com três pacotes",
+      "phase": "Fase 0 · Proposta",
+      "status": "concluido",
+      "note": "Institucional, E-commerce e Catálogo conceitual.",
+      "week": null,
+      "position": 1
+    },
+    {
+      "source_id": "p0-3",
+      "title": "Protótipo do site institucional",
+      "phase": "Fase 0 · Proposta",
+      "status": "concluido",
+      "note": "Disponível na aba Protótipo.",
+      "week": null,
+      "position": 2
+    },
+    {
+      "source_id": "p0-4",
+      "title": "Apresentação pela Maisis",
+      "phase": "Fase 0 · Proposta",
+      "status": "a_fazer",
+      "note": "Reunião com a Venexia.",
+      "week": null,
+      "position": 3
+    },
+    {
+      "source_id": "p0-5",
+      "title": "Escolha do pacote",
+      "phase": "Fase 0 · Proposta",
+      "status": "a_fazer",
+      "note": "Define o escopo das próximas fases.",
+      "week": null,
+      "position": 4
+    },
+    {
+      "source_id": "p1-1",
+      "title": "Fotos originais dos produtos",
+      "phase": "Fase 1 · Conteúdo e identidade",
+      "status": "a_fazer",
+      "note": "As do protótipo foram recortadas da apresentação.",
+      "week": null,
+      "position": 5
+    },
+    {
+      "source_id": "p1-2",
+      "title": "Revisão dos textos e do plano de marketing",
+      "phase": "Fase 1 · Conteúdo e identidade",
+      "status": "a_fazer",
+      "note": "Inclui a regra vigente da Venexia Experience.",
+      "week": null,
+      "position": 6
+    },
+    {
+      "source_id": "p1-3",
+      "title": "Contatos e redes da Venexia",
+      "phase": "Fase 1 · Conteúdo e identidade",
+      "status": "a_fazer",
+      "note": "WhatsApp, e-mail de atendimento e Instagram.",
+      "week": null,
+      "position": 7
+    },
+    {
+      "source_id": "p1-4",
+      "title": "Uso das marcas Namu e Best Off",
+      "phase": "Fase 1 · Conteúdo e identidade",
+      "status": "a_fazer",
+      "note": "Confirmar textos e logos autorizados pelos parceiros.",
+      "week": null,
+      "position": 8
+    },
+    {
+      "source_id": "p2-1",
+      "title": "Ajustes após a aprovação",
+      "phase": "Fase 2 · Produção do site",
+      "status": "a_fazer",
+      "note": "Rodadas de revisão conforme o pacote.",
+      "week": null,
+      "position": 9
+    },
+    {
+      "source_id": "p2-2",
+      "title": "Formulário de contato ativo",
+      "phase": "Fase 2 · Produção do site",
+      "status": "a_fazer",
+      "note": "Contatos chegando no e-mail da Venexia.",
+      "week": null,
+      "position": 10
+    },
+    {
+      "source_id": "p2-3",
+      "title": "Testes em celular e computador",
+      "phase": "Fase 2 · Produção do site",
+      "status": "a_fazer",
+      "note": "Velocidade, animações, formulário e WhatsApp.",
+      "week": null,
+      "position": 11
+    },
+    {
+      "source_id": "p3-1",
+      "title": "Domínio venexia.com.br apontado",
+      "phase": "Fase 3 · Publicação",
+      "status": "a_fazer",
+      "note": "Substitui a página de lançamento atual.",
+      "week": null,
+      "position": 12
+    },
+    {
+      "source_id": "p3-2",
+      "title": "Site no ar e conferido",
+      "phase": "Fase 3 · Publicação",
+      "status": "a_fazer",
+      "note": "Formulário, WhatsApp e velocidade no endereço final.",
+      "week": null,
+      "position": 13
+    },
+    {
+      "source_id": "p3-3",
+      "title": "Início do suporte",
+      "phase": "Fase 3 · Publicação",
+      "status": "a_fazer",
+      "note": "Período conforme o pacote escolhido.",
+      "week": null,
+      "position": 14
+    }
+  ]
+}
