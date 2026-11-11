@@ -464,6 +464,8 @@
       var n = Math.max(0, Math.ceil((fim - Date.now()) / 86400000));
       return [n === 0 ? 'Certificado vence hoje' : 'Certificado vence em ' + n + (n === 1 ? ' dia' : ' dias'), ''];
     }
+    // Empresa cliente resolve com o A1 dela ou com procuração ao escritório; a do escritório só com o A1.
+    if (emp.situacao === 'falta_certificado' && !emp.principal) return ['Falta A1 ou procuração', ''];
     return SITUACAO[emp.situacao] || [emp.situacao || '—', ''];
   }
   function nomeEmpresa(emp) { return emp.razao_social || nf.formatarCnpj(emp.cnpj); }
@@ -622,8 +624,8 @@
   }
   function linhaEmpresa(emp) {
     var ativa = emp.ativa !== false, acoes = [];
+    var porProcuracao = emp.modo_autenticacao === 'procuracao';
     if (ativa) {
-      var porProcuracao = emp.modo_autenticacao === 'procuracao';
       acoes.push(botaoLinha('cert', emp, emp.certificado && !porProcuracao ? 'Trocar A1' : 'Enviar A1'));
       // A empresa do escritório é a procuradora das outras: ela assina com o A1 dela.
       if (!emp.principal) acoes.push(botaoLinha('proc', emp, 'Procuração'));
@@ -633,7 +635,7 @@
     return '<tr' + (ativa ? '' : ' class="nf-linha-off"') + '><th scope="row">' + nf.esc(nomeEmpresa(emp)) +
       (emp.principal ? ' <span class="nf-selo">Escritório</span>' : '') + '</th>' +
       '<td class="nf-nowrap">' + nf.esc(nf.formatarCnpj(emp.cnpj)) + '</td>' +
-      '<td>' + pill(situacaoEmpresa(emp)) + '</td>' +
+      '<td>' + pill(situacaoEmpresa(emp)) + (porProcuracao ? '<small class="nf-dica nf-por-procuracao">por procuração ao escritório</small>' : '') + '</td>' +
       '<td class="nf-num">' + nf.esc(String(emp.notas_mes || 0)) + '</td>' +
       '<td><div class="nf-acoes-linha">' + acoes.join('') + '</div></td></tr>';
   }

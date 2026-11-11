@@ -376,3 +376,15 @@ test('conta Inicial/Pro continua sem abas', async () => {
   assert.equal(p.texto('fa-empresa-titulo'), 'Empresa');
   assert.equal(p.rede.de('fiscal-conta:relatorio').length, 0);
 });
+
+test('situação mostra quem emite por procuração e o que falta à empresa cliente', async () => {
+  const lista = empresas().map((e) =>
+    e.tenant_id === EMP_PRONTA ? { ...e, modo_autenticacao: 'procuracao', procuracao: { status: 'confirmada', valida_ate: null } }
+      : e.tenant_id === EMP_VENCENDO ? { ...e, certificado: null, situacao: 'falta_certificado' }
+      : e);
+  const p = await painel({ 'fiscal-conta:estado': r(200, estadoEscritorio({}, { empresas: lista })) }, '/agentes/fiscal/conta/#empresas');
+  assert.equal(p.texto(linhaDe(p, TENANT).querySelector('.nf-status')), 'Falta certificado A1', 'o escritório só resolve com o A1 dele');
+  assert.equal(p.texto(linhaDe(p, EMP_VENCENDO).querySelector('.nf-status')), 'Falta A1 ou procuração');
+  assert.equal(p.texto(linhaDe(p, EMP_PRONTA).querySelector('.nf-por-procuracao')), 'por procuração ao escritório');
+  assert.equal(linhaDe(p, EMP_VENCENDO).querySelector('.nf-por-procuracao'), null);
+});
