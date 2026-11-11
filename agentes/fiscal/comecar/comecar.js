@@ -136,9 +136,12 @@
     ['fc-telefone-dica', 'É por este número que o escritório manda as planilhas e pede as notas de todas as empresas.'],
     ['fc-a1-pergunta', 'Você já tem o certificado A1 do escritório?']
   ];
-  var REQUISITO_A1_ESCRITORIO = '<b>Cada empresa precisa do próprio certificado digital A1 <span>(e-CNPJ)</span>.</b> É ele que assina as ' +
-    'notas, e o padrão nacional não aceita outro jeito, nem para MEI. O do escritório você envia na etapa 4; o das outras empresas, ' +
-    'depois, em Minha conta. O A3, em token ou cartão, não serve. <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
+  /* Procuração eletrônica (11/11/2026; migrações 20261111180000 e 20261111220000): a empresa cliente pode dar
+     procuração ao escritório, que assina as notas dela com o A1 do escritório. Por isso o A1 do escritório é obrigatório. */
+  var REQUISITO_A1_ESCRITORIO = '<b>O escritório precisa do próprio certificado digital A1 <span>(e-CNPJ)</span>.</b> Você envia na etapa 4. ' +
+    'Depois, em Minha conta, cada empresa cliente envia o A1 dela ou dá procuração eletrônica ao escritório, no Portal de Serviços ' +
+    'da Receita, e aí o escritório assina as notas dela com o A1 do escritório. O A3, em token ou cartão, não serve. ' +
+    '<a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
   var textosPadrao = null;
   function aplicarModo() {
     if (!textosPadrao) {
@@ -687,7 +690,7 @@
     });
   }
 
-  /* ---------- 4 · Certificado ou procuração ---------- */
+  /* ---------- 4 · Certificado ---------- */
   // Com o A1 já gravado, a etapa segue com "Continuar" e deixa trocar o arquivo (o servidor substitui o anterior).
   function mostrarCertificado(subject, notAfter) {
     nf.aviso($('fc-aviso-4'), nf.esc('Certificado de ' + nf.titular(subject) + ' válido até ' + nf.dataBR(notAfter)), 'ok');
@@ -696,134 +699,9 @@
     enviar.className = 'fi-btn fi-btn--borda';
     $('fc-continuar-4').hidden = false;
   }
-  /* Dois caminhos (Lucca, 11/11/2026; migração 20261111180000): A1 próprio ou procuração eletrônica no Portal de
-     Serviços da Receita, serviço NFS-e, para o procurador que /v1/onboarding/procuracao indica (a Nó ou, para
-     empresa de escritório, o escritório). Abre no caminho já usado; sem nenhum, espera a escolha. */
   function abrirCertificado() {
     var c = st.estado && st.estado.certificado;
     if (c && c.subject) mostrarCertificado(c.subject, c.not_after);
-    carregarProcuracao().then(function (p) {
-      var escolhido = caminhoEscolhido();
-      if (escolhido) mostrarCaminho(escolhido);
-      else if (p && p.modo === 'procuracao' && p.procuracao) mostrarCaminho('procuracao');
-      else if (c && c.subject) mostrarCaminho('certificado');
-    });
-  }
-  function caminhoEscolhido() {
-    var el = document.querySelector('input[name="fc-caminho"]:checked');
-    return el ? el.value : '';
-  }
-  function mostrarCaminho(c) {
-    $('fc-caminho-certificado').hidden = c !== 'certificado';
-    $('fc-caminho-procuracao').hidden = c !== 'procuracao';
-    var radio = document.querySelector('input[name="fc-caminho"][value="' + c + '"]');
-    if (radio && !radio.checked) radio.checked = true;
-  }
-
-  /* ---------- 4b · Procuração ---------- */
-  var PROC_INDISPONIVEL = {
-    PROCURADOR_NAO_CONFIGURADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
-    PROCURADOR_SEM_CERTIFICADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
-    PROCURADOR_CERT_VENCIDO: 'O cadastro por procuração está temporariamente indisponível. Envie o certificado A1 ou tente mais tarde.',
-    PROCURADOR_E_A_PROPRIA_EMPRESA: 'Esta empresa não pode dar procuração a ela mesma. Envie o certificado A1.',
-    ESCRITORIO_SEM_CERTIFICADO: 'Para receber procurações, o escritório precisa ter o próprio certificado A1 cadastrado em Minha conta.'
-  };
-  function hojeIso() {
-    var d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }
-  function carregarProcuracao(forcar) {
-    if (!st.tenantId) return Promise.resolve(null);
-    if (st.procCarregando && !forcar) return st.procCarregando;
-    st.procCarregando = nf.app('/v1/onboarding/procuracao', { tenant_id: st.tenantId, acao: 'consultar' }).then(function (r) {
-      if (!r.ok) { st.procCarregando = null; return null; }
-      st.procuracao = r.dados;
-      desenharProcuracao(r.dados);
-      return r.dados;
-    });
-    return st.procCarregando;
-  }
-  function desenharProcuracao(p) {
-    var opcao = $('fc-caminho-procuracao-opcao');
-    var radio = opcao.querySelector('input');
-    var jaTem = p.modo === 'procuracao' && !!p.procuracao;
-    var indisponivel = !p.disponivel && !jaTem;
-    radio.disabled = indisponivel;
-    opcao.classList.toggle('nf-caminho--off', indisponivel);
-    var dica = $('fc-caminho-procuracao-dica');
-    if (indisponivel) {
-      dica.textContent = PROC_INDISPONIVEL[p.motivo] || 'O cadastro por procuração está indisponível agora. Envie o certificado A1.';
-      if (radio.checked) { radio.checked = false; mostrarCaminho(''); }
-    } else if (p.procurador && p.procurador.tipo === 'escritorio') {
-      dica.textContent = 'Sem certificado: a empresa autoriza o escritório no Portal de Serviços da Receita, com a conta gov.br, e o escritório assina as notas em nome dela.';
-    } else if (st.escritorio) {
-      dica.textContent = 'Sem certificado: você autoriza a Nó no Portal de Serviços da Receita, com a conta gov.br. Para o escritório, prefira o A1: com ele, as empresas clientes podem dar procuração ao próprio escritório.';
-    }
-    if (p.procurador) {
-      var doc = nf.digitos(p.procurador.documento);
-      $('fc-proc-tipo-doc').textContent = doc.length === 11 ? 'CPF' : 'CNPJ';
-      $('fc-proc-doc').textContent = nf.formatarDocumento(doc);
-      $('fc-proc-nome').textContent = p.procurador.nome || '';
-      $('fc-proc-nome-wrap').hidden = !p.procurador.nome;
-    }
-    if (jaTem) statusProcuracao(p.procuracao);
-  }
-  // Situação depois do "já fiz" ou da conferência. Devolve 'ok' quando a Receita já mostra a procuração.
-  function statusProcuracao(proc) {
-    var aviso = $('fc-aviso-proc');
-    if (proc.valida_ate && !$('fc-proc-validade').value) $('fc-proc-validade').value = String(proc.valida_ate).slice(0, 10);
-    $('fc-continuar-proc').hidden = false;
-    if (proc.status === 'confirmada') {
-      nf.aviso(aviso, 'Procuração conferida na Receita. A Nó já pode assinar as notas da sua empresa.', 'ok');
-      $('fc-proc-conferir').hidden = true;
-      return 'ok';
-    }
-    $('fc-proc-conferir').hidden = false;
-    if (proc.status === 'invalida' || proc.ultimo_erro === 'E2245' || proc.ultimo_erro === 'E2243' || proc.ultimo_erro === 'E0718') {
-      nf.aviso(aviso, 'A Receita ainda não mostra a procuração. Depois de assinada, ela pode levar alguns minutos para valer. Confira se o procurador é o documento acima e se o serviço NFS-e está marcado. Você pode seguir o cadastro: conferimos de novo sozinhos e as notas saem assim que ela aparecer.', 'info');
-      return 'pendente';
-    }
-    nf.aviso(aviso, 'Procuração registrada. A conferência na Receita não respondeu agora; tentamos de novo sozinhos a cada 2 minutos. Você pode seguir o cadastro.', 'info');
-    return 'pendente';
-  }
-  function seguirComProcuracao(conferida) {
-    nf.aviso($('fc-cert-ok'), conferida
-      ? 'Procuração conferida na Receita: a Nó assina as notas da sua empresa.'
-      : 'Procuração registrada. Conferimos na Receita sozinhos; as notas saem assim que ela aparecer.', conferida ? 'ok' : 'info');
-    irPara(5);
-  }
-  function enviarProcuracao(ev) {
-    ev.preventDefault();
-    nf.erroCampo('fc-proc-validade', '');
-    nf.aviso($('fc-aviso-proc'), '');
-    var validade = $('fc-proc-validade').value || null;
-    if (validade && validade < hojeIso()) { nf.erroCampo('fc-proc-validade', 'Esta data já passou.'); return; }
-    var botao = $('fc-proc-feito');
-    nf.ocupado(botao, true, 'Conferindo na Receita…');
-    nf.app('/v1/onboarding/procuracao', { tenant_id: st.tenantId, acao: 'declarar', valida_ate: validade }).then(function (r) {
-      if (r.ok && r.dados && r.dados.procuracao) {
-        st.procuracao = r.dados;
-        st.estado = st.estado || {};
-        if (statusProcuracao(r.dados.procuracao) === 'ok') seguirComProcuracao(true);
-        return;
-      }
-      if (r.status === 401) return;
-      if (r.codigo === 'VALIDADE_PASSADA') { nf.erroCampo('fc-proc-validade', 'Esta data já passou.'); return; }
-      nf.aviso($('fc-aviso-proc'), nf.esc(r.mensagem || MSG.generico), 'erro');
-    }).then(function () { nf.ocupado(botao, false); });
-  }
-  function conferirProcuracaoDeNovo() {
-    var botao = $('fc-proc-conferir');
-    nf.ocupado(botao, true, 'Conferindo…');
-    nf.app('/v1/onboarding/procuracao', { tenant_id: st.tenantId, acao: 'conferir' }).then(function (r) {
-      if (r.ok && r.dados && r.dados.procuracao) {
-        st.procuracao = r.dados;
-        if (statusProcuracao(r.dados.procuracao) === 'ok') seguirComProcuracao(true);
-        return;
-      }
-      if (r.status === 401) return;
-      nf.aviso($('fc-aviso-proc'), nf.esc(r.mensagem || MSG.generico), 'erro');
-    }).then(function () { nf.ocupado(botao, false); });
   }
   // Envio do A1 (Lucca, 22/10/2026): círculo de carregamento por cima da página; aprovado avança direto para os
   // dados fiscais (com o aviso do certificado lá em cima), recusado abre um pop-up com o motivo.
@@ -1142,13 +1020,6 @@
   $('fc-cupom-remover').addEventListener('click', removerCupom);
   $('fc-form-4').addEventListener('submit', enviarCertificado);
   $('fc-continuar-4').addEventListener('click', function () { irPara(5); });
-  $('fc-caminho').addEventListener('change', function () { mostrarCaminho(caminhoEscolhido()); });
-  $('fc-form-proc').addEventListener('submit', enviarProcuracao);
-  $('fc-proc-conferir').addEventListener('click', conferirProcuracaoDeNovo);
-  $('fc-continuar-proc').addEventListener('click', function () {
-    var p = st.procuracao && st.procuracao.procuracao;
-    seguirComProcuracao(!!(p && p.status === 'confirmada'));
-  });
   $('fc-form-5').addEventListener('submit', enviarFiscal);
   $('fc-pdf').addEventListener('change', enviarPdfs);
   $('fc-mais-pdfs').addEventListener('click', function () { oferecerPdfs('Envie os PDFs das notas (DANFSe) de outros clientes, até 30 no total.'); });

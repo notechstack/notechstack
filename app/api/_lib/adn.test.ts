@@ -45,7 +45,7 @@ describe('conferência da procuração no ADN', () => {
   })
 
   it('E2245 é falta de procuração; E2243 também', async () => {
-    const corpo = JSON.stringify({ erros: [{ codigo: 'E2245', descricao: 'Não há procuração da inscrição 56210013000140 para a inscrição 60342339000106.' }] })
+    const corpo = JSON.stringify({ erros: [{ codigo: 'E2245', descricao: 'Não há procuração da inscrição 56210013000140 para a inscrição 11222333000181.' }] })
     expect((await conferir({ status: 400, body: corpo })).r).toEqual({ kind: 'sem_procuracao', codigo: 'E2245' })
     const raiz = JSON.stringify({ erros: [{ codigo: 'E2243', descricao: 'O CNPJ informado na consulta deve ter o mesmo CNPJ base' }] })
     expect((await conferir({ status: 400, body: raiz })).r).toEqual({ kind: 'sem_procuracao', codigo: 'E2243' })

@@ -92,9 +92,3 @@
 .nf-faixas{margin:0 0 18px}
 .nf-faixas .nf-opcao:has(input:checked){border-color:var(--fi-texto);background:var(--fi-acento-tint)}
 .nf-faixas .nf-dica{margin:0}
-/* Etapa 4: dois caminhos, certificado A1 ou procuração eletrônica (11/11/2026). */
-.nf-caminhos{margin:0 0 18px}
-.nf-caminho > span{display:grid;gap:4px}
-.nf-caminho small{font-size:14px;line-height:1.5;color:var(--fi-texto-sec)}
-.nf-caminho--off{opacity:.55;cursor:not-allowed}
-.nf-caminho-corpo{margin-top:4px}

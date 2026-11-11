@@ -159,3 +159,4 @@
 .nf-proc{margin:6px 0 18px}
 .nf-proc summary{cursor:pointer;font-weight:600;color:var(--fi-acento-texto);text-decoration:underline;text-underline-offset:3px}
 .nf-proc[open] summary{margin-bottom:12px}
+.nf-por-procuracao{display:block;margin-top:4px}

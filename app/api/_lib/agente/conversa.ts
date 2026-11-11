@@ -127,7 +127,7 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
     case 'PROCURACAO_VENCIDA':
       return `A procuração da sua empresa venceu. Faça uma nova no Portal de Serviços da Receita, serviço NFS-e, e avise na página: ${links.certificado}`
     case 'PROCURADOR_CERT_INVALIDO':
-      return `A emissão por procuração está temporariamente parada do nosso lado. Já estamos resolvendo; se precisar com urgência, fale com a Nó: ${WHATSAPP_COMERCIAL}`
+      return `O certificado A1 do escritório, que assina as notas desta empresa por procuração, venceu ou não está cadastrado. Envie o A1 do escritório na página segura: ${links.certificado}`
     case 'NO_SUBSCRIPTION':
       return `Sua empresa ainda não tem assinatura. Assine para emitir: ${links.assinatura}`
     case 'SUBSCRIPTION_CANCELLED':
