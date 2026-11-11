@@ -18,6 +18,9 @@ export type ErrorCode =
   | 'CERT_SENHA_INVALIDA'
   | 'CERT_VENCIDO'
   | 'CERT_CNPJ_DIFERENTE'
+  // Rota da procuração do cadastro (migração 20261111180000).
+  | 'PROCURADOR_INDISPONIVEL'
+  | 'VALIDADE_PASSADA'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -35,6 +38,8 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CERT_SENHA_INVALIDA: 422,
   CERT_VENCIDO: 422,
   CERT_CNPJ_DIFERENTE: 422,
+  PROCURADOR_INDISPONIVEL: 409,
+  VALIDADE_PASSADA: 422,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }

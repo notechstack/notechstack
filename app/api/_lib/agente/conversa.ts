@@ -118,6 +118,16 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
       return `Seu certificado venceu. Envie o novo na página segura: ${links.certificado}`
     case 'CERT_MISSING':
       return `Ainda não há certificado A1 cadastrado. Envie na página segura: ${links.certificado}`
+    // Procuração eletrônica (migração 20261111180000).
+    case 'PROCURACAO_NAO_ENCONTRADA':
+      return `A Receita ainda não mostra a sua procuração para o serviço NFS-e. Confira no Portal de Serviços da Receita (servicos.receitafederal.gov.br, Procurações) se ela foi assinada para o CNPJ indicado. Eu confiro de novo sozinho a cada poucos minutos. Situação: ${links.certificado}`
+    case 'PROCURACAO_MISSING':
+    case 'PROCURACAO_INVALIDA':
+      return `A procuração da sua empresa não está valendo. Faça de novo no Portal de Serviços da Receita, serviço NFS-e, ou envie o certificado A1: ${links.certificado}`
+    case 'PROCURACAO_VENCIDA':
+      return `A procuração da sua empresa venceu. Faça uma nova no Portal de Serviços da Receita, serviço NFS-e, e avise na página: ${links.certificado}`
+    case 'PROCURADOR_CERT_INVALIDO':
+      return `A emissão por procuração está temporariamente parada do nosso lado. Já estamos resolvendo; se precisar com urgência, fale com a Nó: ${WHATSAPP_COMERCIAL}`
     case 'NO_SUBSCRIPTION':
       return `Sua empresa ainda não tem assinatura. Assine para emitir: ${links.assinatura}`
     case 'SUBSCRIPTION_CANCELLED':

@@ -20,6 +20,17 @@ export const CONFIG = {
   whatsappAgente: ''
 };
 export const TENANT = '0b6f4e1c-7a55-4f0e-9c4a-2a1d3e5f7a90';
+// Procurador da plataforma na Surface de /v1/onboarding/procuracao (a nó, em produção).
+export const PROCURADOR = { documento: '60342339000106', nome: 'NO TECH STACK', tipo: 'plataforma' };
+export function procuracaoInfo(extra = {}) {
+  return { modo: 'certificado_proprio', cnpj: '11222333000181', procurador: PROCURADOR, disponivel: true, motivo: null, procuracao: null, ...extra };
+}
+export function procuracaoGravada(extra = {}) {
+  return {
+    status: 'confirmada', valida_ate: null, declarada_em: '2026-11-11T18:00:00.000Z', conferida_em: '2026-11-11T18:00:01.000Z',
+    fonte_conferencia: 'adn', procurador_documento: PROCURADOR.documento, ultimo_erro: null, ...extra
+  };
+}
 export const CNPJ = '11222333000181';
 export const CPF = '52998224725';
 export const CODIGO_CERTO = '123456';
@@ -96,6 +107,10 @@ export const PADRAO = {
   'fiscal-conta:cancelar': () => r(200, { ok: true, cancelamento_agendado_para: emDias(20) }),
   'fiscal-conta:apagar_conta': () => r(200, { ok: true }),
   'app:certificate': () => r(201, { subject: 'CN=CLINICA AURORA LTDA:11222333000181, C=BR, O=ICP-Brasil', not_after: '2027-03-31T15:00:00.000Z' }),
+  // Procuração eletrônica (11/11/2026): POST /v1/onboarding/procuracao com acao consultar | declarar | conferir.
+  'app:procuracao:consultar': () => r(200, procuracaoInfo()),
+  'app:procuracao:declarar': (c) => r(200, { ...procuracaoInfo({ modo: 'procuracao', procuracao: procuracaoGravada({ valida_ate: c.valida_ate || null }) }), conferencia: 'confirmada' }),
+  'app:procuracao:conferir': () => r(200, { ...procuracaoInfo({ modo: 'procuracao', procuracao: procuracaoGravada() }), conferencia: 'confirmada' }),
   'app:clientes:buscar_adn': () => r(200, { candidatos: CANDIDATOS }),
   'app:clientes:ler_pdf': () => r(200, { candidato: { ...CANDIDATOS[0], nome: 'Lido do PDF', tomador_documento: '04252011000110', origem: 'importacao_pdf' } }),
   'app:clientes:salvar': (c) => r(201, { salvos: c.modelos.length, ignorados: [] }),
@@ -133,6 +148,7 @@ function rota(url, metodo, corpo) {
     if (caminho === '/agentes/fiscal/api/v1/onboarding/certificate/') return 'app:certificate';
     if (caminho === '/agentes/fiscal/api/v1/onboarding/ativacao/') return 'app:ativacao';
     if (caminho === '/agentes/fiscal/api/v1/onboarding/clientes/') return 'app:clientes:' + (corpo && corpo.acao);
+    if (caminho === '/agentes/fiscal/api/v1/onboarding/procuracao/') return 'app:procuracao:' + (corpo && corpo.acao);
     const d = /^\/agentes\/fiscal\/dados\/([\w-]+\.json)$/.exec(caminho);
     if (d) return 'dados:' + d[1];
   }

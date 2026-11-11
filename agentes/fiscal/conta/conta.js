@@ -135,6 +135,10 @@
 
     $('fa-cert-titular').textContent = c && c.subject ? nf.titular(c.subject) : 'Nenhum certificado enviado';
     $('fa-cert-validade').textContent = c && c.not_after ? nf.dataBR(c.not_after) : '—';
+    $('fa-cert-modo').textContent = c && c.subject ? 'Certificado A1 da empresa' : '—';
+    $('fa-cert-titular-rotulo').textContent = 'Titular';
+    $('fa-proc-resumo').textContent = 'Assinar por procuração, sem certificado';
+    if (!escritorio()) procConta.carregar();
 
     $('fa-fiscal').innerHTML = linhas([
       ['Código de serviço', f.codigo_servico_nacional ? nf.formatarCodigo(f.codigo_servico_nacional) : ''],
@@ -233,6 +237,117 @@
       nf.aviso($('fa-aviso-cert'), nf.esc(CERT[r.codigo] || r.mensagem || GENERICO), 'erro');
     });
   }
+
+  /* ---------- procuração eletrônica (migração 20261111180000) ----------
+     O mesmo passo a passo do cadastro (/agentes/fiscal/comecar/, etapa 4), montado aqui duas vezes: na seção do
+     certificado (conta Inicial/Pro) e no painel de cada empresa do Escritório. Fala com /v1/onboarding/procuracao. */
+  var PROC_INDISPONIVEL = {
+    PROCURADOR_NAO_CONFIGURADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
+    PROCURADOR_SEM_CERTIFICADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
+    PROCURADOR_CERT_VENCIDO: 'O cadastro por procuração está temporariamente indisponível. Envie o certificado A1 ou tente mais tarde.',
+    PROCURADOR_E_A_PROPRIA_EMPRESA: 'Esta empresa não pode dar procuração a ela mesma. Use o certificado A1.',
+    ESCRITORIO_SEM_CERTIFICADO: 'Para receber procurações, o escritório precisa ter o próprio certificado A1 cadastrado.'
+  };
+  var STATUS_PROC = {
+    confirmada: 'Procuração conferida na Receita',
+    declarada: 'Procuração registrada, aguardando a Receita',
+    invalida: 'Procuração não encontrada na Receita',
+    revogada: 'Procuração revogada'
+  };
+  function hojeIso() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function htmlProcuracao(px) {
+    return '<p class="nf-aviso" id="' + px + '-indisponivel" role="status" hidden></p>' +
+      '<div id="' + px + '-passos">' +
+      '<p class="nf-texto">Faça a procuração no Portal de Serviços da Receita Federal, com a conta gov.br (nível prata ou ouro) do responsável pela empresa.</p>' +
+      '<ol class="nf-proc-passos">' +
+      '<li>Entre em <a href="https://servicos.receitafederal.gov.br/" target="_blank" rel="noopener">servicos.receitafederal.gov.br</a> e escolha o perfil da empresa.</li>' +
+      '<li>Abra <b>Procurações</b> e toque em <b>Nova Autorização</b>.</li>' +
+      '<li>Em procurador, informe o <span id="' + px + '-tipo-doc">CNPJ</span> <b class="nf-proc-doc" id="' + px + '-doc">…</b><span id="' + px + '-nome-wrap" hidden> (<span id="' + px + '-nome"></span>)</span>.</li>' +
+      '<li>Escolha a vigência (pelo menos 1 ano) e marque o serviço <b>NFS-e</b>.</li>' +
+      '<li>Confirme e assine a autorização.</li></ol>' +
+      '<form id="' + px + '-form" class="nf-form" novalidate>' +
+      '<div class="nf-campo"><label for="' + px + '-validade">Válida até (opcional)</label><input id="' + px + '-validade" type="date">' +
+      '<small class="nf-erro" id="' + px + '-validade-erro" hidden></small></div>' +
+      '<p class="nf-aviso" id="' + px + '-aviso" role="status" hidden></p>' +
+      '<div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--borda" id="' + px + '-feito">Já fiz a procuração</button>' +
+      '<button type="button" class="fi-btn fi-btn--borda" id="' + px + '-conferir" hidden>Conferir de novo</button></div>' +
+      '</form></div>';
+  }
+  /* Um bloco de procuração. `tenantId()` diz de qual empresa; `aoMudar(dados)` redesenha o resto da página. */
+  function montarProcuracao(px, tenantId, aoMudar) {
+    $(px + '-bloco').innerHTML = htmlProcuracao(px);
+    var dados = null;
+    function status(proc) {
+      var aviso = $(px + '-aviso');
+      if (proc.valida_ate && !$(px + '-validade').value) $(px + '-validade').value = String(proc.valida_ate).slice(0, 10);
+      $(px + '-conferir').hidden = proc.status === 'confirmada';
+      if (proc.status === 'confirmada') { nf.aviso(aviso, 'Procuração conferida na Receita: as notas saem assinadas pelo procurador.', 'ok'); return; }
+      if (proc.status === 'invalida' || proc.ultimo_erro === 'E2245' || proc.ultimo_erro === 'E2243' || proc.ultimo_erro === 'E0718') {
+        nf.aviso(aviso, 'A Receita ainda não mostra a procuração. Confira o procurador e o serviço NFS-e; conferimos de novo sozinhos e as notas saem assim que ela aparecer.', 'info');
+        return;
+      }
+      nf.aviso(aviso, 'Procuração registrada. A conferência na Receita não respondeu agora; tentamos de novo sozinhos a cada 2 minutos.', 'info');
+    }
+    function desenhar(d) {
+      dados = d;
+      var jaTem = d.modo === 'procuracao' && !!d.procuracao;
+      var indisponivel = !d.disponivel && !jaTem;
+      nf.aviso($(px + '-indisponivel'), indisponivel ? nf.esc(PROC_INDISPONIVEL[d.motivo] || 'O cadastro por procuração está indisponível agora.') : '', 'info');
+      $(px + '-passos').hidden = indisponivel;
+      if (d.procurador) {
+        var doc = nf.digitos(d.procurador.documento);
+        $(px + '-tipo-doc').textContent = doc.length === 11 ? 'CPF' : 'CNPJ';
+        $(px + '-doc').textContent = nf.formatarDocumento(doc);
+        $(px + '-nome').textContent = d.procurador.nome || '';
+        $(px + '-nome-wrap').hidden = !d.procurador.nome;
+      }
+      if (jaTem) status(d.procuracao);
+      if (aoMudar) aoMudar(d);
+    }
+    function chamar(corpo, botao, rotulo) {
+      if (botao) nf.ocupado(botao, true, rotulo);
+      corpo.tenant_id = tenantId();
+      return nf.app('/v1/onboarding/procuracao', corpo).then(function (r) {
+        if (botao) nf.ocupado(botao, false);
+        if (r.ok && r.dados) { desenhar(r.dados); return r; }
+        if (r.status === 401) return r;
+        if (r.codigo === 'VALIDADE_PASSADA') nf.erroCampo(px + '-validade', 'Esta data já passou.');
+        else if (corpo.acao !== 'consultar') nf.aviso($(px + '-aviso'), nf.esc(r.mensagem || GENERICO), 'erro');
+        return r;
+      });
+    }
+    $(px + '-form').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      nf.erroCampo(px + '-validade', '');
+      nf.aviso($(px + '-aviso'), '');
+      var validade = $(px + '-validade').value || null;
+      if (validade && validade < hojeIso()) { nf.erroCampo(px + '-validade', 'Esta data já passou.'); return; }
+      chamar({ acao: 'declarar', valida_ate: validade }, $(px + '-feito'), 'Conferindo na Receita…');
+    });
+    $(px + '-conferir').addEventListener('click', function () { chamar({ acao: 'conferir' }, $(px + '-conferir'), 'Conferindo…'); });
+    return {
+      carregar: function () {
+        if (!tenantId()) return Promise.resolve(null);
+        nf.aviso($(px + '-aviso'), '');
+        $(px + '-validade').value = '';
+        return chamar({ acao: 'consultar' });
+      },
+      dados: function () { return dados; }
+    };
+  }
+  var procConta = montarProcuracao('fa-proc', function () { return st.estado && st.estado.tenant_id; }, function (d) {
+    if (d.modo !== 'procuracao' || !d.procuracao) return;
+    var doc = d.procuracao.procurador_documento || (d.procurador && d.procurador.documento) || '';
+    $('fa-cert-modo').textContent = (STATUS_PROC[d.procuracao.status] || 'Procuração') +
+      (doc ? ' para ' + nf.formatarDocumento(doc) : '');
+    $('fa-cert-validade').textContent = d.procuracao.valida_ate ? nf.dataBR(d.procuracao.valida_ate) : 'Sem data informada';
+    $('fa-cert-titular-rotulo').textContent = 'Certificado A1';
+    $('fa-proc-resumo').textContent = 'Procuração eletrônica';
+    $('fa-proc').open = true;
+  });
 
   /* ---------- dados fiscais ---------- */
   /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
@@ -350,6 +465,7 @@
     falta_certificado: ['Falta certificado A1', ''],
     falta_dados_fiscais: ['Faltam dados fiscais', ''],
     certificado_vencido: ['Certificado vencido', 'erro'],
+    procuracao_pendente: ['Procuração pendente', ''],
     desativada: ['Desativada', 'off']
   };
   var SITUACAO_NOTA = {
@@ -528,7 +644,10 @@
   function linhaEmpresa(emp) {
     var ativa = emp.ativa !== false, acoes = [];
     if (ativa) {
-      acoes.push(botaoLinha('cert', emp, emp.certificado ? 'Trocar A1' : 'Enviar A1'));
+      var porProcuracao = emp.modo_autenticacao === 'procuracao';
+      acoes.push(botaoLinha('cert', emp, emp.certificado && !porProcuracao ? 'Trocar A1' : 'Enviar A1'));
+      // A empresa do escritório é a procuradora das outras: ela assina com o A1 dela.
+      if (!emp.principal) acoes.push(botaoLinha('proc', emp, 'Procuração'));
       acoes.push(botaoLinha('fiscal', emp, 'Dados fiscais'));
     }
     if (!emp.principal) acoes.push(botaoLinha(ativa ? 'desativar' : 'reativar', emp, ativa ? 'Desativar' : 'Reativar'));
@@ -542,7 +661,7 @@
   function desenharEmpresas(x) {
     var f = nf.FAIXAS[x.plano];
     $('fa-empresas-resumo').textContent = x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' +
-      (f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 e os próprios dados fiscais.';
+      (f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
     var a = st.estado.assinatura, motivo = '';
     if (!a) motivo = 'Sem assinatura ativa: nenhuma empresa emite.';
     else if (a.status === 'recusada') motivo = 'Pagamento recusado: nenhuma empresa emite até o cartão ser trocado em Meus dados.';
@@ -566,9 +685,11 @@
     ec.acao = { tipo: tipo, tenantId: id, empresa: emp };
     $('fa-empresa-acao').hidden = false;
     $('fa-form-emp-cert').hidden = tipo !== 'cert';
+    $('fa-emp-proc').hidden = tipo !== 'proc';
     $('fa-form-emp-fiscal').hidden = tipo !== 'fiscal';
     $('fa-confirmar-desativar').hidden = tipo !== 'desativar';
-    $('fa-empresa-acao-titulo').textContent = { cert: 'Certificado A1 de ', fiscal: 'Dados fiscais de ', desativar: 'Desativar ' }[tipo] + nomeEmpresa(emp);
+    $('fa-empresa-acao-titulo').textContent = { cert: 'Certificado A1 de ', proc: 'Procuração de ', fiscal: 'Dados fiscais de ', desativar: 'Desativar ' }[tipo] + nomeEmpresa(emp);
+    if (tipo === 'proc') procEmpresa.carregar();
     ['fa-aviso-emp-cert', 'fa-aviso-emp-fiscal'].forEach(function (i) { nf.aviso($(i), ''); });
     ['fa-emp-pfx', 'fa-emp-pfx-senha', 'fa-emp-codigo-servico', 'fa-emp-percentual'].forEach(function (i) { nf.erroCampo(i, ''); });
     if (tipo === 'cert') { $('fa-emp-pfx').value = ''; $('fa-emp-pfx-senha').value = ''; }
@@ -580,6 +701,12 @@
     if (typeof titulo.scrollIntoView === 'function') titulo.scrollIntoView({ block: 'nearest' });
     titulo.focus();
   }
+
+  // Procuração da empresa ao escritório: o mesmo bloco, com o tenant_id da linha; a tabela recarrega quando muda.
+  var procEmpresa = montarProcuracao('fa-emp-proc', function () { return ec.acao && ec.acao.tenantId; }, function (d) {
+    var emp = ec.acao && ec.acao.empresa;
+    if (emp && d.procuracao && (emp.modo_autenticacao !== d.modo || !emp.procuracao || emp.procuracao.status !== d.procuracao.status)) carregar();
+  });
 
   /* A1 da empresa: o mesmo envio de /v1/onboarding/certificate, com o tenant_id da linha. */
   function enviarCertEmpresa(ev) {

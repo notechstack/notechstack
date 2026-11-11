@@ -215,6 +215,9 @@ async function pdfDaNota(nota: NotaDoAgente, numero: string): Promise<AnexoEmail
 /** O que corrigir, por código de rejeição (critério 26). */
 function oQueCorrigir(codigo: string | null): string {
   if (codigo === 'SEFIN_UNAVAILABLE') return 'A Sefin ficou fora do ar e a nota não saiu. Me mande o pedido de novo mais tarde.'
+  // E0718: assinatura sem o certificado do emitente. Com procuração, a Sefin não achou a procuração vigente.
+  if (codigo === 'E0718')
+    return 'O que corrigir: a Receita não reconheceu a assinatura. Se você cadastrou por procuração, confira no Portal de Serviços da Receita se ela está ativa para o serviço NFS-e e me mande o pedido de novo.'
   return 'O que corrigir: confira o dado indicado (no cadastro da empresa ou no pedido) e me mande o pedido de novo. A nota não é reenviada sozinha.'
 }
 

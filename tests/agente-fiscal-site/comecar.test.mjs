@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   abrir, superficie, sessaoValida, estado, preencherEtapa1, ateEtapa3, preencherCartao, abrirNaEtapa,
-  TENANT, CNPJ, CPF, CODIGO_CERTO, ACEITE, CARTAO, CANDIDATOS
+  TENANT, CNPJ, CPF, CODIGO_CERTO, ACEITE, CARTAO, CANDIDATOS, procuracaoInfo, procuracaoGravada
 } from './pagina-falsa.mjs';
 
 const r = (status, corpo) => () => ({ status, corpo });
@@ -338,9 +338,16 @@ test('cartão recusado', async () => {
   assert.equal(p.$('fc-pagar').disabled, false, 'pode tentar outro cartão');
 });
 
+const caminho = (p, valor) => p.window.document.querySelector(`input[name="fc-caminho"][value="${valor}"]`);
+
 test('certificado na etapa 4', async () => {
   const p = await abrirNaEtapa('certificado');
   assert.equal(p.etapa(), 4);
+  // 11/11/2026: dois caminhos; nenhum aberto até a pessoa escolher.
+  assert.ok(p.$('fc-caminho-certificado').hidden && p.$('fc-caminho-procuracao').hidden, 'nenhum caminho aberto');
+  await p.clicar(caminho(p, 'certificado'));
+  assert.ok(!p.$('fc-caminho-certificado').hidden, 'caminho do A1 aberto');
+  assert.ok(p.$('fc-caminho-procuracao').hidden);
   // Lucca, 22/10/2026: explicação recolhida de o que é o A1 e como conseguir, fechada por padrão.
   const explica = p.$('fc-a1-explica');
   assert.equal(explica.tagName, 'DETAILS');
@@ -385,6 +392,77 @@ test('certificado na etapa 4', async () => {
     await q.esvaziar(10);
     assert.equal(doc.querySelector('.nf-popup'), null, `${codigo}: o pop-up fecha`);
   }
+});
+
+test('procuração na etapa 4: conferida na Receita, avança para os dados fiscais', async () => {
+  const p = await abrirNaEtapa('certificado');
+  const [consulta] = p.rede.de('app:procuracao:consultar');
+  assert.ok(consulta, 'a etapa consulta o procurador');
+  assert.equal(consulta.url, 'https://www.notechstack.com.br/agentes/fiscal/api/v1/onboarding/procuracao/');
+  assert.equal(consulta.headers.authorization, 'Bearer at-0');
+  assert.deepEqual(js(consulta.corpo), { tenant_id: TENANT, acao: 'consultar' });
+
+  await p.clicar(caminho(p, 'procuracao'));
+  assert.ok(!p.$('fc-caminho-procuracao').hidden, 'caminho da procuração aberto');
+  assert.ok(p.$('fc-caminho-certificado').hidden);
+  assert.equal(p.texto('fc-proc-doc'), '60.342.339/0001-06');
+  assert.equal(p.texto('fc-proc-nome'), 'NO TECH STACK');
+  assert.match(p.textoVisivel(), /Nova Autorização/);
+  assert.match(p.textoVisivel(), /servicos\.receitafederal\.gov\.br/);
+
+  await p.preencher('fc-proc-validade', '2099-12-31');
+  await p.enviar('fc-form-proc');
+  const [declarar] = p.rede.de('app:procuracao:declarar');
+  assert.deepEqual(js(declarar.corpo), { tenant_id: TENANT, acao: 'declarar', valida_ate: '2099-12-31' });
+  assert.equal(p.rede.de('app:certificate').length, 0, 'nenhum A1 enviado');
+  assert.equal(p.etapa(), 5, 'conferida avança direto');
+  assert.equal(p.texto('fc-cert-ok'), 'Procuração conferida na Receita: a Nó assina as notas da sua empresa.');
+});
+
+test('procuração ainda não aparece na Receita: avisa, deixa conferir de novo e seguir', async () => {
+  const pendente = () => ({
+    status: 200,
+    corpo: { ...procuracaoInfo({ modo: 'procuracao', procuracao: procuracaoGravada({ status: 'declarada', ultimo_erro: 'E2245', fonte_conferencia: 'adn' }) }), conferencia: 'nao_encontrada' }
+  });
+  const p = await abrirNaEtapa('certificado', { respostas: { 'app:procuracao:declarar': pendente, 'app:procuracao:conferir': pendente } });
+  await p.clicar(caminho(p, 'procuracao'));
+  await p.enviar('fc-form-proc');
+  assert.equal(p.etapa(), 4, 'fica na etapa');
+  assert.match(p.texto('fc-aviso-proc'), /A Receita ainda não mostra a procuração/);
+  assert.ok(!p.$('fc-proc-conferir').hidden, 'oferece conferir de novo');
+  await p.clicar('fc-proc-conferir');
+  assert.equal(p.rede.de('app:procuracao:conferir').length, 1);
+  assert.equal(p.etapa(), 4);
+  await p.clicar('fc-continuar-proc');
+  assert.equal(p.etapa(), 5, 'segue o cadastro');
+  assert.match(p.texto('fc-cert-ok'), /Procuração registrada/);
+});
+
+test('procuração indisponível: a opção fica desligada com o motivo; validade passada não sai', async () => {
+  const p = await abrirNaEtapa('certificado', {
+    respostas: { 'app:procuracao:consultar': () => ({ status: 200, corpo: procuracaoInfo({ disponivel: false, motivo: 'PROCURADOR_SEM_CERTIFICADO' }) }) }
+  });
+  assert.equal(caminho(p, 'procuracao').disabled, true);
+  assert.match(p.texto('fc-caminho-procuracao-dica'), /ainda não está disponível/);
+
+  const q = await abrirNaEtapa('certificado');
+  await q.clicar(caminho(q, 'procuracao'));
+  await q.preencher('fc-proc-validade', '2020-01-01');
+  await q.enviar('fc-form-proc');
+  assert.equal(q.texto('fc-proc-validade-erro'), 'Esta data já passou.');
+  assert.equal(q.rede.de('app:procuracao:declarar').length, 0);
+});
+
+test('quem já cadastrou por procuração volta na etapa 4 com o caminho aberto e pode continuar', async () => {
+  const p = await abrirNaEtapa('certificado', {
+    respostas: { 'app:procuracao:consultar': () => ({ status: 200, corpo: procuracaoInfo({ modo: 'procuracao', procuracao: procuracaoGravada({ valida_ate: '2099-12-31' }) }) }) }
+  });
+  assert.ok(!p.$('fc-caminho-procuracao').hidden, 'caminho da procuração aberto');
+  assert.equal(caminho(p, 'procuracao').checked, true);
+  assert.equal(p.$('fc-proc-validade').value, '2099-12-31');
+  assert.match(p.texto('fc-aviso-proc'), /conferida na Receita/);
+  await p.clicar('fc-continuar-proc');
+  assert.equal(p.etapa(), 5);
 });
 
 // O carregamento fica no mínimo 700 ms na tela (comecar.js, CARREGAMENTO_MINIMO_MS).
