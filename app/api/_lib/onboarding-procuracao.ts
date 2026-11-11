@@ -1,4 +1,6 @@
-// GET e POST /api/v1/onboarding/procuracao: cadastro por procuração eletrônica (migração 20261111180000).
+// GET e POST /api/v1/onboarding/procuracao: procuração eletrônica da empresa cliente ao ESCRITÓRIO (migrações
+// 20261111180000 e 20261111220000). Só empresas de um escritório; o procurador é sempre o escritório, que assina com
+// o A1 dele. A nó não assina por ninguém.
 //   GET  ?tenant_id=…  (ou POST { tenant_id, acao: 'consultar' }, que é o que a página usa)
 //        → modo, procurador a indicar na Receita e a procuração gravada.
 //   POST { tenant_id, acao: 'declarar', valida_ate?: 'AAAA-MM-DD' }
@@ -30,7 +32,7 @@ export const INTERVALO_MINIMO_CONFERIR_MS = 20_000
 export type InfoProcuracao = {
   modo: 'certificado_proprio' | 'procuracao'
   cnpj: string
-  procurador: { documento: string; nome: string | null; tipo: 'plataforma' | 'escritorio' } | null
+  procurador: { documento: string; nome: string | null; tipo: 'escritorio' } | null
   disponivel: boolean
   motivo: string | null
   procuracao: {
@@ -45,11 +47,9 @@ export type InfoProcuracao = {
 }
 
 const MOTIVOS: Record<string, string> = {
-  PROCURADOR_NAO_CONFIGURADO: 'o cadastro por procuração ainda não está disponível',
-  PROCURADOR_SEM_CERTIFICADO: 'o cadastro por procuração ainda não está disponível',
-  PROCURADOR_CERT_VENCIDO: 'o cadastro por procuração está temporariamente indisponível',
-  PROCURADOR_E_A_PROPRIA_EMPRESA: 'esta empresa não pode dar procuração a ela mesma; envie o certificado A1',
+  PROCURACAO_SO_NO_ESCRITORIO: 'a procuração vale só para as empresas clientes de um escritório; envie o certificado A1',
   ESCRITORIO_SEM_CERTIFICADO: 'o escritório precisa ter o próprio certificado A1 enviado para receber procurações',
+  PROCURADOR_CERT_VENCIDO: 'o certificado A1 do escritório venceu; envie o novo para receber procurações',
 }
 
 export async function handleOnboardingProcuracao(request: Request, deps: OnboardingProcuracaoDeps): Promise<Response> {

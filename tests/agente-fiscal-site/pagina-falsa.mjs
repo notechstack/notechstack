@@ -20,8 +20,8 @@ export const CONFIG = {
   whatsappAgente: ''
 };
 export const TENANT = '0b6f4e1c-7a55-4f0e-9c4a-2a1d3e5f7a90';
-// Procurador da plataforma na Surface de /v1/onboarding/procuracao (a nó, em produção).
-export const PROCURADOR = { documento: '60342339000106', nome: 'NO TECH STACK', tipo: 'plataforma' };
+// Procurador na Surface de /v1/onboarding/procuracao: sempre o escritório da empresa cliente (a nó não assina por ninguém).
+export const PROCURADOR = { documento: '11222333000181', nome: 'CONTABIL SANDRA LTDA', tipo: 'escritorio' };
 export function procuracaoInfo(extra = {}) {
   return { modo: 'certificado_proprio', cnpj: '11222333000181', procurador: PROCURADOR, disponivel: true, motivo: null, procuracao: null, ...extra };
 }

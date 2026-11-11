@@ -609,7 +609,7 @@ select ok(not has_function_privilege('authenticated', 'nofiscal.fiscal_status_or
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  28, 'nofiscal tem as 5 tabelas do motor, as 13 do agente (cota de PDFs da v2, lote D; cupons e usos de cupom, 20261025090000), as 3 da central de conversas (20261031090000), a da medição (20261103130000), as 3 do Escritório (20261105180000) e as 2 tabelas e a view da procuração (20261111180000)');
+  27, 'nofiscal tem as 5 tabelas do motor, as 13 do agente (cota de PDFs da v2, lote D; cupons e usos de cupom, 20261025090000), as 3 da central de conversas (20261031090000), a da medição (20261103130000), as 3 do Escritório (20261105180000) e a tabela e a view da procuração (20261111180000, sem fiscal_config desde 20261111220000)');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated'), ('service_role')) r(role)

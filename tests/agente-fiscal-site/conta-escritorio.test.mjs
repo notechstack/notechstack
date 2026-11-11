@@ -3,7 +3,7 @@
 // Mesma página falsa de conta.test.mjs; a rota do PDF (binária) é respondida aqui, antes do dublê da Surface.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrir, superficie, sessaoValida, estado, emDias, ORIGEM, TENANT } from './pagina-falsa.mjs';
+import { abrir, superficie, sessaoValida, estado, emDias, ORIGEM, TENANT, procuracaoInfo, procuracaoGravada } from './pagina-falsa.mjs';
 
 const EMP_PRONTA = '1a2b3c4d-0000-4000-8000-000000000002';
 const EMP_VENCENDO = '1a2b3c4d-0000-4000-8000-000000000003';
@@ -253,7 +253,56 @@ test('adicionar empresa e limite da faixa', async () => {
   await p.enviar('fa-form-adicionar');
   assert.equal(p.visivel('fa-form-adicionar'), false);
   assert.equal(p.$('fa-empresas-linhas').querySelectorAll('tr').length, 6);
-  assert.equal(p.texto('fa-aviso-empresas'), 'Empresa adicionada. Agora envie o certificado A1 e os dados fiscais dela.');
+  assert.match(p.texto('fa-aviso-empresas'), /^Empresa adicionada\. Agora escolha como ela vai assinar as notas: com o certificado A1 dela ou com procuração ao escritório\./);
+  // A escolha já vem no aviso, com o tenant_id da empresa nova.
+  const escolhas = [...p.$('fa-aviso-empresas').querySelectorAll('button[data-acao]')].map((b) => [b.getAttribute('data-acao'), b.getAttribute('data-tenant'), p.texto(b)]);
+  assert.deepEqual(escolhas, [
+    ['cert', '1a2b3c4d-0000-4000-8000-000000000006', 'Enviar o A1 da empresa'],
+    ['proc', '1a2b3c4d-0000-4000-8000-000000000006', 'Usar procuração ao escritório']
+  ]);
+  await p.clicar(p.$('fa-aviso-empresas').querySelector('button[data-acao="proc"]'));
+  assert.ok(p.visivel('fa-emp-proc'), 'abre a procuração da empresa nova');
+  assert.equal(p.texto('fa-empresa-acao-titulo'), 'Procuração de CLIENTE NOVO LTDA');
+  assert.deepEqual(p.rede.de('app:procuracao:consultar').at(-1).corpo, { tenant_id: '1a2b3c4d-0000-4000-8000-000000000006', acao: 'consultar' });
+});
+
+test('procuração da empresa cliente ao escritório', async () => {
+  const p = await painel({}, '/agentes/fiscal/conta/#empresas');
+  // A empresa do escritório é a procuradora: assina com o A1 dela e não tem a ação.
+  assert.equal(botaoDe(p, TENANT, 'proc'), null);
+  assert.equal(p.texto(botaoDe(p, EMP_VENCENDO, 'proc')), 'Procuração');
+  await p.clicar(botaoDe(p, EMP_VENCENDO, 'proc'));
+  assert.ok(p.visivel('fa-emp-proc'));
+  assert.equal(p.visivel('fa-form-emp-cert'), false);
+  assert.equal(p.texto('fa-empresa-acao-titulo'), 'Procuração de OFICINA RAPIDA LTDA');
+  assert.equal(p.texto('fa-emp-proc-doc'), '11.222.333/0001-81', 'o procurador é o CNPJ do escritório');
+  assert.match(p.texto('fa-emp-proc'), /o escritório assina as notas desta empresa com o certificado A1 do escritório/);
+  assert.match(p.texto('fa-emp-proc'), /Procuração antiga do e-CAC sem o serviço NFS-e não vale/);
+  assert.doesNotMatch(p.texto('fa-emp-proc'), /60\.342\.339|NO TECH/i, 'a nó não aparece como procuradora');
+
+  await p.preencher('fa-emp-proc-validade', '2099-12-31');
+  await p.enviar('fa-emp-proc-form');
+  assert.deepEqual(p.rede.de('app:procuracao:declarar')[0].corpo, { tenant_id: EMP_VENCENDO, acao: 'declarar', valida_ate: '2099-12-31' });
+  assert.equal(p.texto('fa-emp-proc-aviso'), 'Procuração conferida na Receita: as notas desta empresa saem assinadas pelo escritório.');
+});
+
+test('procuração pendente e escritório sem A1', async () => {
+  const pendente = () => ({
+    status: 200,
+    corpo: { ...procuracaoInfo({ modo: 'procuracao', procuracao: procuracaoGravada({ status: 'declarada', ultimo_erro: 'E2245' }) }), conferencia: 'nao_encontrada' }
+  });
+  const p = await painel({ 'app:procuracao:declarar': pendente }, '/agentes/fiscal/conta/#empresas');
+  await p.clicar(botaoDe(p, EMP_MEI, 'proc'));
+  await p.enviar('fa-emp-proc-form');
+  assert.match(p.texto('fa-emp-proc-aviso'), /A Receita ainda não mostra a procuração/);
+  assert.ok(p.visivel('fa-emp-proc-conferir'), 'oferece conferir de novo');
+
+  const q = await painel({
+    'app:procuracao:consultar': () => ({ status: 200, corpo: procuracaoInfo({ disponivel: false, motivo: 'ESCRITORIO_SEM_CERTIFICADO', procurador: null }) })
+  }, '/agentes/fiscal/conta/#empresas');
+  await q.clicar(botaoDe(q, EMP_MEI, 'proc'));
+  assert.match(q.texto('fa-emp-proc-indisponivel'), /o escritório precisa ter o próprio certificado A1/);
+  assert.equal(q.visivel('fa-emp-proc-passos'), false);
 });
 
 test('Relatórios: totais, tabela, entregas e PDF', async () => {

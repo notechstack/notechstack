@@ -135,10 +135,6 @@
 
     $('fa-cert-titular').textContent = c && c.subject ? nf.titular(c.subject) : 'Nenhum certificado enviado';
     $('fa-cert-validade').textContent = c && c.not_after ? nf.dataBR(c.not_after) : '—';
-    $('fa-cert-modo').textContent = c && c.subject ? 'Certificado A1 da empresa' : '—';
-    $('fa-cert-titular-rotulo').textContent = 'Titular';
-    $('fa-proc-resumo').textContent = 'Assinar por procuração, sem certificado';
-    if (!escritorio()) procConta.carregar();
 
     $('fa-fiscal').innerHTML = linhas([
       ['Código de serviço', f.codigo_servico_nacional ? nf.formatarCodigo(f.codigo_servico_nacional) : ''],
@@ -238,21 +234,14 @@
     });
   }
 
-  /* ---------- procuração eletrônica (migração 20261111180000) ----------
-     O mesmo passo a passo do cadastro (/agentes/fiscal/comecar/, etapa 4), montado aqui duas vezes: na seção do
-     certificado (conta Inicial/Pro) e no painel de cada empresa do Escritório. Fala com /v1/onboarding/procuracao. */
+  /* ---------- procuração eletrônica ao escritório (migrações 20261111180000 e 20261111220000) ----------
+     Só no plano Escritório: a empresa cliente dá procuração ao escritório, que assina as notas dela com o A1 do
+     escritório. A nó não assina por ninguém. Montado no painel de cada empresa (Minhas empresas); fala com
+     /v1/onboarding/procuracao. */
   var PROC_INDISPONIVEL = {
-    PROCURADOR_NAO_CONFIGURADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
-    PROCURADOR_SEM_CERTIFICADO: 'O cadastro por procuração ainda não está disponível. Por enquanto, envie o certificado A1.',
-    PROCURADOR_CERT_VENCIDO: 'O cadastro por procuração está temporariamente indisponível. Envie o certificado A1 ou tente mais tarde.',
-    PROCURADOR_E_A_PROPRIA_EMPRESA: 'Esta empresa não pode dar procuração a ela mesma. Use o certificado A1.',
-    ESCRITORIO_SEM_CERTIFICADO: 'Para receber procurações, o escritório precisa ter o próprio certificado A1 cadastrado.'
-  };
-  var STATUS_PROC = {
-    confirmada: 'Procuração conferida na Receita',
-    declarada: 'Procuração registrada, aguardando a Receita',
-    invalida: 'Procuração não encontrada na Receita',
-    revogada: 'Procuração revogada'
+    ESCRITORIO_SEM_CERTIFICADO: 'Para receber procurações, o escritório precisa ter o próprio certificado A1 cadastrado. Envie na linha do escritório, em Minhas empresas.',
+    PROCURADOR_CERT_VENCIDO: 'O certificado A1 do escritório venceu. Envie o novo na linha do escritório para as procurações voltarem a valer.',
+    PROCURACAO_SO_NO_ESCRITORIO: 'A procuração vale só para as empresas clientes do escritório. Esta empresa emite com o próprio certificado A1.'
   };
   function hojeIso() {
     var d = new Date();
@@ -261,11 +250,13 @@
   function htmlProcuracao(px) {
     return '<p class="nf-aviso" id="' + px + '-indisponivel" role="status" hidden></p>' +
       '<div id="' + px + '-passos">' +
-      '<p class="nf-texto">Faça a procuração no Portal de Serviços da Receita Federal, com a conta gov.br (nível prata ou ouro) do responsável pela empresa.</p>' +
+      '<p class="nf-texto">Com a procuração, o escritório assina as notas desta empresa com o certificado A1 do escritório, sem precisar do A1 dela.</p>' +
+      '<p class="nf-aviso nf-aviso--info nf-proc-ja-tem"><b>A empresa já deu procuração ao escritório com o serviço NFS-e?</b> Toque direto em “Já fiz a procuração”: conferimos na Receita na hora. Procuração antiga do e-CAC sem o serviço NFS-e não vale para emitir.</p>' +
+      '<p class="nf-texto">Se ainda não deu, o responsável pela empresa faz no Portal de Serviços da Receita Federal, com a conta gov.br (nível prata ou ouro):</p>' +
       '<ol class="nf-proc-passos">' +
       '<li>Entre em <a href="https://servicos.receitafederal.gov.br/" target="_blank" rel="noopener">servicos.receitafederal.gov.br</a> e escolha o perfil da empresa.</li>' +
       '<li>Abra <b>Procurações</b> e toque em <b>Nova Autorização</b>.</li>' +
-      '<li>Em procurador, informe o <span id="' + px + '-tipo-doc">CNPJ</span> <b class="nf-proc-doc" id="' + px + '-doc">…</b><span id="' + px + '-nome-wrap" hidden> (<span id="' + px + '-nome"></span>)</span>.</li>' +
+      '<li>Em procurador, informe o CNPJ do escritório, <b class="nf-proc-doc" id="' + px + '-doc">…</b><span id="' + px + '-nome-wrap" hidden> (<span id="' + px + '-nome"></span>)</span>.</li>' +
       '<li>Escolha a vigência (pelo menos 1 ano) e marque o serviço <b>NFS-e</b>.</li>' +
       '<li>Confirme e assine a autorização.</li></ol>' +
       '<form id="' + px + '-form" class="nf-form" novalidate>' +
@@ -284,7 +275,7 @@
       var aviso = $(px + '-aviso');
       if (proc.valida_ate && !$(px + '-validade').value) $(px + '-validade').value = String(proc.valida_ate).slice(0, 10);
       $(px + '-conferir').hidden = proc.status === 'confirmada';
-      if (proc.status === 'confirmada') { nf.aviso(aviso, 'Procuração conferida na Receita: as notas saem assinadas pelo procurador.', 'ok'); return; }
+      if (proc.status === 'confirmada') { nf.aviso(aviso, 'Procuração conferida na Receita: as notas desta empresa saem assinadas pelo escritório.', 'ok'); return; }
       if (proc.status === 'invalida' || proc.ultimo_erro === 'E2245' || proc.ultimo_erro === 'E2243' || proc.ultimo_erro === 'E0718') {
         nf.aviso(aviso, 'A Receita ainda não mostra a procuração. Confira o procurador e o serviço NFS-e; conferimos de novo sozinhos e as notas saem assim que ela aparecer.', 'info');
         return;
@@ -298,9 +289,7 @@
       nf.aviso($(px + '-indisponivel'), indisponivel ? nf.esc(PROC_INDISPONIVEL[d.motivo] || 'O cadastro por procuração está indisponível agora.') : '', 'info');
       $(px + '-passos').hidden = indisponivel;
       if (d.procurador) {
-        var doc = nf.digitos(d.procurador.documento);
-        $(px + '-tipo-doc').textContent = doc.length === 11 ? 'CPF' : 'CNPJ';
-        $(px + '-doc').textContent = nf.formatarDocumento(doc);
+        $(px + '-doc').textContent = nf.formatarDocumento(nf.digitos(d.procurador.documento));
         $(px + '-nome').textContent = d.procurador.nome || '';
         $(px + '-nome-wrap').hidden = !d.procurador.nome;
       }
@@ -338,16 +327,6 @@
       dados: function () { return dados; }
     };
   }
-  var procConta = montarProcuracao('fa-proc', function () { return st.estado && st.estado.tenant_id; }, function (d) {
-    if (d.modo !== 'procuracao' || !d.procuracao) return;
-    var doc = d.procuracao.procurador_documento || (d.procurador && d.procurador.documento) || '';
-    $('fa-cert-modo').textContent = (STATUS_PROC[d.procuracao.status] || 'Procuração') +
-      (doc ? ' para ' + nf.formatarDocumento(doc) : '');
-    $('fa-cert-validade').textContent = d.procuracao.valida_ate ? nf.dataBR(d.procuracao.valida_ate) : 'Sem data informada';
-    $('fa-cert-titular-rotulo').textContent = 'Certificado A1';
-    $('fa-proc-resumo').textContent = 'Procuração eletrônica';
-    $('fa-proc').open = true;
-  });
 
   /* ---------- dados fiscais ---------- */
   /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
@@ -820,8 +799,15 @@
         $('fa-add-cnpj').value = '';
         $('fa-form-adicionar').hidden = true;
         $('fa-abrir-adicionar').setAttribute('aria-expanded', 'false');
+        var nova = r.dados.adicionada && r.dados.adicionada.tenant_id;
         var depois = function () {
-          nf.aviso($('fa-aviso-empresas'), (reativada ? 'Empresa reativada.' : 'Empresa adicionada.') + ' Agora envie o certificado A1 e os dados fiscais dela.', 'ok');
+          var escolha = nova
+            ? ' <span class="nf-acoes-linha"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="cert" data-tenant="' + nf.esc(nova) +
+              '">Enviar o A1 da empresa</button><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="proc" data-tenant="' + nf.esc(nova) +
+              '">Usar procuração ao escritório</button></span>'
+            : '';
+          nf.aviso($('fa-aviso-empresas'), (reativada ? 'Empresa reativada.' : 'Empresa adicionada.') +
+            ' Agora escolha como ela vai assinar as notas: com o certificado A1 dela ou com procuração ao escritório. Depois, os dados fiscais.' + escolha, 'ok');
         };
         if (r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
         return carregar().then(depois);
@@ -966,6 +952,11 @@
   $('fa-adicionar-cancelar').addEventListener('click', abrirAdicionar);
   $('fa-form-adicionar').addEventListener('submit', adicionarEmpresa);
   $('fa-empresas-linhas').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-acao]');
+    if (b) abrirAcao(b.getAttribute('data-acao'), b.getAttribute('data-tenant'), b);
+  });
+  // Botões da escolha que aparecem no aviso logo depois de adicionar uma empresa.
+  $('fa-aviso-empresas').addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('button[data-acao]');
     if (b) abrirAcao(b.getAttribute('data-acao'), b.getAttribute('data-tenant'), b);
   });
