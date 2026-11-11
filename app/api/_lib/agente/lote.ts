@@ -1085,7 +1085,8 @@ async function confirmarLote(ctx: Contexto, loteId: string, donoId: string): Pro
     [
       `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
       barradas,
-      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, eu te mando aqui o retorno de cada linha e um .zip com os PDFs e XMLs.',
+      // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
+      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui. Os PDFs também ficam em Minha conta → Relatórios.',
     ]
       .filter(Boolean)
       .join('\n'),

@@ -149,7 +149,11 @@ describe('lote por planilha (conta Escritório)', () => {
 
     // "confirmar": só as linhas prontas viram nota, com external_id = 'lote:' + id da linha.
     agora = new Date(agora.getTime() + 60_000)
-    expect(await a.texto(e.mae.ownerPhone, 'confirmar')).toContain('Confirmado. Emitindo 2 notas na Sefin.')
+    const confirmacao = await a.texto(e.mae.ownerPhone, 'confirmar')
+    expect(confirmacao).toContain('Confirmado. Emitindo 2 notas na Sefin.')
+    // Desde a PR #101 o retorno vai por e-mail: a confirmação não promete arquivo no WhatsApp.
+    expect(confirmacao).toContain('mando o retorno de cada linha para o e-mail da conta e te aviso aqui.')
+    expect(confirmacao).not.toMatch(/mando aqui o retorno|\.zip/)
     const itens = await itensDo(lote.id)
     const { rows: notas } = await admin.db.query<{ id: string; tenant_id: string; external_id: string; status: string }>(
       `select id, tenant_id, external_id, status from nofiscal.fiscal_invoices where external_id like 'lote:%' and tenant_id = any($1::uuid[]) order by external_id`,
