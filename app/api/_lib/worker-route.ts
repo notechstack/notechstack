@@ -2,6 +2,7 @@
 // Sefin roda numa chamada separada, disparada pelo agendador). Autenticação:
 // `Authorization: Bearer ${CRON_SECRET}`, o header que o Vercel Cron envia; forma literal
 // no Landing do checklist (lote 2a - trabalho assíncrono).
+import type { DistribuicaoAdn } from './adn.js'
 import { entregar, notaDoAgente, tarefasDoAgente, type AgenteDeps } from './agente/tarefas.js'
 import { bearerMatches } from './auth.js'
 import { sendInvoiceCallback, type FetchLike } from './callback.js'
@@ -11,6 +12,7 @@ import type { Db } from './db.js'
 import { runEmission, type FinalStatus } from './emission.js'
 import { errorResponse, json } from './http.js'
 import { logEvent } from './log.js'
+import { conferirPendentes, type ResumoConferencias } from './procuracao.js'
 import type { SefinClient } from './sefin.js'
 
 export type WorkerDeps = {
@@ -23,6 +25,8 @@ export type WorkerDeps = {
   tenantId?: string
   /** Canais do agente fiscal; sem eles, tenant self-service cai no callback HTTP. */
   agente?: AgenteDeps
+  /** ADN para conferir as procurações (migração 20261111180000); sem ele, a conferência não roda. */
+  adn?: DistribuicaoAdn
 }
 
 export async function handleWorkerRequest(request: Request, deps: WorkerDeps): Promise<Response> {
@@ -45,6 +49,15 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
       }
       await sendInvoiceCallback({ db: deps.db, fetch: deps.fetch }, invoiceId)
     }
+    // Procurações antes da emissão: a confirmada no ADN já libera a nota desta rodada. Falha aqui não para o motor.
+    let procuracoes: ResumoConferencias | null = null
+    if (deps.adn) {
+      try {
+        procuracoes = await conferirPendentes({ db: deps.db, adn: deps.adn, now }, { tenantId: deps.tenantId })
+      } catch (error) {
+        logEvent('nofiscal.procuracao_rodada_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+      }
+    }
     const summary = await runEmission({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
     // Cancelamentos depois da emissão (Landing, lote 2b - cancelamento).
     const cancellations = await runCancellations({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
@@ -58,7 +71,13 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
       })
     }
     const tarefas = agente ? await tarefasDoAgente(deps.db, { now, ...agente }, { tenantId: deps.tenantId }) : null
-    return json(200, { ...summary, cancellations, certificates_expiring: expiring.length, ...(tarefas ? { agente: tarefas } : {}) })
+    return json(200, {
+      ...summary,
+      cancellations,
+      certificates_expiring: expiring.length,
+      ...(procuracoes ? { procuracoes } : {}),
+      ...(tarefas ? { agente: tarefas } : {}),
+    })
   } catch (error) {
     logEvent('nofiscal.worker_failed', { error_name: error instanceof Error ? error.name : 'unknown' })
     return errorResponse('INTERNAL', 'erro interno')

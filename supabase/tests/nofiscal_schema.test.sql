@@ -196,7 +196,7 @@ select ok(not has_function_privilege('supabase_read_only_user', 'nofiscal.read_c
 select is(
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'nofiscal' and c.relkind in ('r', 'p', 'v', 'm')),
-  25, 'papéis de fora não leem nofiscal: o schema tem as 25 tabelas avaliadas abaixo');
+  28, 'papéis de fora não leem nofiscal: o schema tem as 28 tabelas e views avaliadas abaixo');
 select ok(not exists (
     select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
      cross join (values ('anon'), ('authenticated')) r(role)
@@ -205,9 +205,10 @@ select ok(not exists (
   'papéis de fora não leem nofiscal: anon e authenticated sem SELECT em nenhuma tabela');
 select ok(not exists (
     select 1 from (values ('anon'), ('authenticated')) r(role)
-     cross join (values ('nofiscal.read_certificate(uuid)'), ('nofiscal.read_webhook_secret(uuid)')) f(fn)
+     cross join (values ('nofiscal.read_certificate(uuid)'), ('nofiscal.read_webhook_secret(uuid)'),
+                        ('nofiscal.read_emission_certificate(uuid)')) f(fn)
      where has_function_privilege(r.role, f.fn, 'EXECUTE')),
-  'papéis de fora não leem nofiscal: anon e authenticated sem EXECUTE em read_certificate e read_webhook_secret');
+  'papéis de fora não leem nofiscal: anon e authenticated sem EXECUTE em read_certificate, read_emission_certificate e read_webhook_secret');
 select ok(not exists (
     select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      cross join (values ('anon'), ('authenticated')) r(role)

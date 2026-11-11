@@ -53,7 +53,8 @@ describe('rotas do Nó Fiscal', () => {
     // acrescenta a ativação do WhatsApp (lote C), que não recebe A1, e a base de clientes do
     // onboarding (lote D), que lê o A1 só por `read_certificate`, como o motor. A central de conversas
     // (29/10/2026) lê e manda mensagens do WhatsApp e não toca no A1. O PDF da nota no painel do
-    // Escritório (05/11/2026) só lê o XML da nota emitida.
+    // Escritório (05/11/2026) só lê o XML da nota emitida. A procuração do cadastro (11/11/2026) só grava a
+    // declaração e confere no ADN com o A1 do procurador, lido por `read_certificate`, sem receber certificado.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
@@ -63,6 +64,7 @@ describe('rotas do Nó Fiscal', () => {
       'api/v1/onboarding/ativacao.ts',
       ONBOARDING_CERTIFICATE,
       'api/v1/onboarding/clientes.ts',
+      'api/v1/onboarding/procuracao.ts',
       'api/whatsapp/webhook.ts',
     ])
     for (const path of functionFiles().filter((p) => p !== ONBOARDING_CERTIFICATE)) {

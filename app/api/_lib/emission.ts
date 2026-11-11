@@ -11,6 +11,8 @@
 //   com `last_error_code = 'SEFIN_UNAVAILABLE'`.
 // Pausas: tenant inativo (critério 27) e certificado vencido (critério 17) não são
 // selecionados; a nota fica `queued` e sai sozinha quando o tenant volta ou o A1 é trocado.
+// Procuração (migração 20261111180000): o certificado é o de `fiscal_certificados_de_emissao`, que é o A1
+// próprio ou, no modo `procuracao`, o do procurador; sem procuração viva, a nota fica na fila como sem A1.
 // Configuração incompleta (série única, `p_tot_trib_sn` fora do MEI) deixa a nota `queued` com o código
 // `SERIE_NOT_CONFIGURED` ou `TRIBUTOS_NOT_CONFIGURED` e a revê em 5 min.
 // O limite do plano não entra na seleção (critério 29).
@@ -135,7 +137,7 @@ async function markCertExpired(db: Queryable, now: Date, tenantId: string | null
   const { rowCount } = await db.query(
     `update nofiscal.fiscal_invoices i
         set last_error_code = 'CERT_EXPIRED', updated_at = $1
-       from nofiscal.fiscal_certificates c
+       from nofiscal.fiscal_certificados_de_emissao c
       where c.tenant_id = i.tenant_id
         and c.not_after <= $1
         and i.status = 'queued'
@@ -158,7 +160,7 @@ async function claimNext(
             t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
-       join nofiscal.fiscal_certificates c on c.tenant_id = t.id
+       join nofiscal.fiscal_certificados_de_emissao c on c.tenant_id = t.id
       where t.active
         and c.not_after > $1
         and i.status in ('queued', 'signing', 'sent')
@@ -328,7 +330,7 @@ async function processClaimed(deps: EmissionDeps, now: Date, claimed: Claimed & 
 
 async function readCertificate(db: Queryable, tenantId: string): Promise<Certificado | null> {
   const { rows } = await db.query<{ pfx_base64: string; password: string }>(
-    'select pfx_base64, password from nofiscal.read_certificate($1)',
+    'select pfx_base64, password from nofiscal.read_emission_certificate($1)',
     [tenantId],
   )
   const row = rows[0]
@@ -364,6 +366,15 @@ async function markIssued(
       now,
     ],
   )
+  // Procuração: a primeira nota autorizada prova que a Sefin aceita o procurador (FAQ NFS-e v1.3, item 17.7).
+  await db.query(
+    `update nofiscal.fiscal_procuracoes p
+        set status = 'confirmada', conferida_em = $2, fonte_conferencia = 'emissao', ultimo_erro = null, updated_at = $2
+       from nofiscal.fiscal_invoices i, nofiscal.fiscal_tenants t
+      where i.id = $1 and t.id = i.tenant_id and p.tenant_id = i.tenant_id
+        and t.modo_autenticacao = 'procuracao' and p.status = 'declarada'`,
+    [id, now],
+  )
   logEvent('nofiscal.invoice_issued', { invoice_id: id })
   return 'issued'
 }
@@ -382,6 +393,17 @@ async function markRejected(
       where id = $1 and status = 'sent'`,
     [id, redactCertificate(code, cert, 100), redactCertificate(message, cert, MAX_ERROR_LENGTH), now],
   )
+  // E0718 ("A assinatura deve ser feita com o certificado digital do emitente"): com procuração, a Sefin não achou
+  // a procuração do prestador para o procurador. Fica registrado na procuração para a página e o agente.
+  if (code === 'E0718') {
+    await db.query(
+      `update nofiscal.fiscal_procuracoes p
+          set ultimo_erro = 'E0718', updated_at = $2
+         from nofiscal.fiscal_invoices i, nofiscal.fiscal_tenants t
+        where i.id = $1 and t.id = i.tenant_id and p.tenant_id = i.tenant_id and t.modo_autenticacao = 'procuracao'`,
+      [id, now],
+    )
+  }
   logEvent('nofiscal.invoice_rejected', { invoice_id: id })
   return 'rejected'
 }

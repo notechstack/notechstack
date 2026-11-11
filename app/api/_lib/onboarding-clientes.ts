@@ -140,8 +140,10 @@ async function tenantDoDono(db: Queryable, userId: string, tenantId: string): Pr
 }
 
 async function buscarAdn(deps: OnboardingClientesDeps, tenant: Tenant): Promise<Response> {
-  const { rows } = await deps.db.query<{ pfx_base64: string; password: string }>(
-    'select pfx_base64, password from nofiscal.read_certificate($1)',
+  // Certificado efetivo: o A1 próprio ou, com procuração, o do procurador, que consulta o ADN em nome da empresa
+  // com `cnpjConsulta` (Manual dos Contribuintes das APIs do ADN v1.1).
+  const { rows } = await deps.db.query<{ pfx_base64: string; password: string; modo: string }>(
+    'select pfx_base64, password, modo from nofiscal.read_emission_certificate($1)',
     [tenant.id],
   )
   const cert = rows[0]
@@ -153,6 +155,7 @@ async function buscarAdn(deps: OnboardingClientesDeps, tenant: Tenant): Promise<
     cnpj: tenant.cnpj,
     ambiente: tenant.ambiente,
     certificado: { pfxBase64: cert.pfx_base64, password: cert.password },
+    ...(cert.modo === 'procuracao' ? { cnpjConsulta: tenant.cnpj } : {}),
   })
   if (baixa.kind === 'indisponivel') {
     logEvent('nofiscal.onboarding_clientes', { acao: 'buscar_adn', tenant_id: tenant.id, result: 'ADN_INDISPONIVEL', motivo: baixa.motivo })

@@ -2,6 +2,7 @@
 // Não é rota pública da API (fica fora da tabela Surface). Com os canais do agente fiscal
 // configurados, também entrega as notas dos tenants self-service e roda as tarefas do agente
 // (os envios ficam na central de conversas).
+import { createAdnClient } from '../_lib/adn.js'
 import { agenteFromEnv } from '../_lib/agente/ambiente.js'
 import { dbFromEnv } from '../_lib/db.js'
 import { errorResponse } from '../_lib/http.js'
@@ -19,6 +20,7 @@ export default {
         cronSecret: process.env.CRON_SECRET,
         fetch: (url, init) => fetch(url, init),
         agente: agenteFromEnv(db) ?? undefined,
+        adn: createAdnClient(),
       })
     } catch {
       logEvent('nofiscal.worker_unavailable')

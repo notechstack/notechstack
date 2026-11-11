@@ -556,6 +556,15 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return `${empresa} ainda não tem certificado A1`
     case 'CERT_EXPIRED':
       return `o certificado A1 de ${empresa} venceu`
+    case 'PROCURACAO_NAO_ENCONTRADA':
+      return `a Receita ainda não mostra a procuração de ${empresa}`
+    case 'PROCURACAO_MISSING':
+    case 'PROCURACAO_INVALIDA':
+      return `a procuração de ${empresa} não está valendo`
+    case 'PROCURACAO_VENCIDA':
+      return `a procuração de ${empresa} venceu`
+    case 'PROCURADOR_CERT_INVALIDO':
+      return `o certificado A1 do escritório, que assina por procuração, não está valendo`
     case 'FISCAL_CONFIG_MISSING':
       return `faltam os dados fiscais de ${empresa} (código de serviço e percentual do Simples)`
     case 'TENANT_INACTIVE':
@@ -1085,7 +1094,8 @@ async function confirmarLote(ctx: Contexto, loteId: string, donoId: string): Pro
     [
       `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
       barradas,
-      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, eu te mando aqui o retorno de cada linha e um .zip com os PDFs e XMLs.',
+      // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
+      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui. Os PDFs também ficam em Minha conta → Relatórios.',
     ]
       .filter(Boolean)
       .join('\n'),

@@ -117,7 +117,7 @@ async function claimNext(tx: Queryable, now: Date, tenantId: string | null, trie
             t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
-       join nofiscal.fiscal_certificates c on c.tenant_id = t.id
+       join nofiscal.fiscal_certificados_de_emissao c on c.tenant_id = t.id
       where t.active
         and c.not_after > $1
         and i.status = 'cancel_requested'
@@ -162,7 +162,7 @@ async function processClaimed(deps: CancellationDeps, now: Date, claimed: Claime
   const { db, sefin } = deps
   try {
     const { rows } = await db.query<{ pfx_base64: string; password: string }>(
-      'select pfx_base64, password from nofiscal.read_certificate($1)',
+      'select pfx_base64, password from nofiscal.read_emission_certificate($1)',
       [claimed.tenant.id],
     )
     if (!rows[0]) {

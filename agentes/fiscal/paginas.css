@@ -153,3 +153,9 @@
 .nf-entrega--ok > span{color:var(--fi-ok);font-weight:700}
 .nf-entrega--falhou > span,.nf-entrega--falhou small{color:var(--fi-erro-texto);font-weight:700}
 #fa-painel-dados #fa-plano-uso{margin-top:-6px}
+/* Procuração eletrônica (11/11/2026): passo a passo no cadastro e em Minha conta. */
+.nf-proc-passos{display:grid;gap:8px;margin:0 0 18px;padding-left:22px;font-size:15px;line-height:1.55;color:var(--fi-texto)}
+.nf-proc-doc{font-variant-numeric:tabular-nums;white-space:nowrap}
+.nf-proc{margin:6px 0 18px}
+.nf-proc summary{cursor:pointer;font-weight:600;color:var(--fi-acento-texto);text-decoration:underline;text-underline-offset:3px}
+.nf-proc[open] summary{margin-bottom:12px}
