@@ -484,3 +484,11 @@
 @media(min-width:760px){.fi-caminho li+li::before{content:'';position:absolute;top:36px;left:calc(-50% + 46px);width:calc(100% - 92px);border-top:2px dashed var(--fi-borda)}}
 .fi-oficial-link{margin:26px 0 0;text-align:center;font-size:14.5px}
 .fi-oficial-link a{color:var(--fi-texto);font-weight:600;text-underline-offset:3px}
+
+/* logotipo gov.br (cores oficiais do padrão digital de governo) nos selos que citam nfse.gov.br */
+.fi-gov{display:inline-flex;align-items:baseline;font:800 15px/1 var(--font-core,'Sora',sans-serif);letter-spacing:-.04em}
+.fi-gov i{font-style:normal}.fi-gov .g1{color:#1351B4}.fi-gov .g2{color:#FFCD07}.fi-gov .g3{color:#168821}.fi-gov .g4{color:#1351B4}
+.fi-oficial-ico--gov{background:#fff;border:1px solid var(--fi-borda)}
+.fi-caminho-ico--govbr .fi-gov{font-size:22px}
+.fi-oficial-ico--gov{width:auto;padding:0 8px}
+.fi-oficial-ico--gov .fi-gov{font-size:14px}

@@ -135,6 +135,7 @@
     ['fc-telefone-rotulo', 'WhatsApp de quem vai mandar as planilhas'],
     ['fc-telefone-dica', 'É por este número que o escritório manda as planilhas e pede as notas de todas as empresas.'],
     ['fc-a1-pergunta', 'Como as empresas vão assinar as notas?'],
+    ['fc-a1-op1-rotulo', 'Certificado A1 próprio'],
     ['fc-a1-op2-rotulo', 'Tenho procurações dos meus clientes']
   ];
   var textosPadrao = null;
