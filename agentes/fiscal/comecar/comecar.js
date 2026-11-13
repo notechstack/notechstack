@@ -44,14 +44,15 @@
 
   /* Modo escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Cadastro do escritório"): o card Escritório
      da LP abre /comecar/?tipo=escritorio&plano=escritorio_5. A empresa do próprio escritório faz as mesmas 7 etapas; a
-     etapa 1 fala do escritório e a 3 mostra as faixas (só mensal: `ciclo` da URL é ignorado). O tipo e a faixa ficam na
+     etapa 1 fala do escritório e a 3 mostra as faixas (mensal ou anual, pelo `ciclo` da URL, desde 13/11/2026). O tipo e a faixa ficam na
      aba (sessionStorage) para sobreviver ao vai-e-volta do código de e-mail; o plano gravado na conta também liga o modo. */
   var TIPO_KEY = 'nofiscal.tipo';
   var FAIXA_KEY = 'nofiscal.faixa';
   var FAIXAS = { // assinatura-fiscal/core.ts, FAIXAS_ESCRITORIO
-    escritorio_5: { empresas: 5, notas: 500, centavos: 29700 },
-    escritorio_20: { empresas: 20, notas: 2000, centavos: 79700 },
-    escritorio_50: { empresas: 50, notas: 5000, centavos: 149700 }
+    // anual (13/11/2026): o ano inteiro, com 25%, 30% e 45% OFF (centavosAnuaisDoEscritorio)
+    escritorio_5: { empresas: 5, notas: 500, centavos: 29700, anual: 267300, off: 25 },
+    escritorio_20: { empresas: 20, notas: 2000, centavos: 79700, anual: 669480, off: 30 },
+    escritorio_50: { empresas: 50, notas: 5000, centavos: 149700, anual: 988020, off: 45 }
   };
   function ehFaixa(p) { return Object.prototype.hasOwnProperty.call(FAIXAS, p); }
   /* Link com tipo=escritorio ou plano=escritorio_* liga o modo; link com plano Inicial/Pro desliga; sem nada, vale a aba. */
@@ -81,8 +82,8 @@
   var st = {
     escritorio: modoEscritorio,
     plano: modoEscritorio ? faixaInicial() : nf.planoDaUrl(location.search),
-    // mensal | anual (toggle da LP); o anual não aceita cupom. O Escritório é só mensal e não mexe no ciclo guardado.
-    ciclo: modoEscritorio ? 'mensal' : cicloInicial(),
+    // mensal | anual (toggle da LP); o anual não aceita cupom. O Escritório também tem anual desde 13/11/2026.
+    ciclo: cicloInicial(),
     confirmarSemTeste: false, // anual sem teste: o servidor pede confirmação antes de cobrar o ano
     etapa: 0,
     maxEtapa: 0,             // etapa mais adiantada já aberta: até ela a trilha deixa voltar
@@ -110,7 +111,10 @@
   /** Centavos que a assinatura cobra por ciclo (sem cupom), pelo GET do checkout ou pela tabela da página. */
   function centavosDoPlano() {
     var p = st.checkout && st.checkout.planos && st.checkout.planos[st.plano];
-    if (st.escritorio && ehFaixa(st.plano)) return p && p.valor_centavos != null ? p.valor_centavos : FAIXAS[st.plano].centavos;
+    if (st.escritorio && ehFaixa(st.plano)) {
+      if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : FAIXAS[st.plano].anual;
+      return p && p.valor_centavos != null ? p.valor_centavos : FAIXAS[st.plano].centavos;
+    }
     if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : null;
     return p ? p.valor_centavos : null;
   }
@@ -165,7 +169,7 @@
     if (ehFaixa(plano)) {
       st.plano = plano;
       nf.aba.gravar(FAIXA_KEY, plano);
-      if (!st.escritorio) { st.escritorio = true; st.ciclo = 'mensal'; nf.aba.gravar(TIPO_KEY, 'escritorio'); aplicarModo(); }
+      if (!st.escritorio) { st.escritorio = true; nf.aba.gravar(TIPO_KEY, 'escritorio'); aplicarModo(); }
       else marcarFaixa();
       return;
     }
@@ -230,9 +234,24 @@
       : c.cortesia ? 'Plano ' + nf.nomePlano(st.plano) + ' · cortesia com o cupom ' + c.codigo
       : 'Plano ' + nf.nomePlano(st.plano) + ' · ' + nf.reais(c.valor_centavos_com_desconto) + '/mês com o cupom ' + c.codigo;
   }
+  /* Rótulos das faixas na etapa 3: preço do mês ou do ano, conforme o ciclo. */
+  function rotulosDasFaixas() {
+    var radios = document.getElementsByName('fc-faixa');
+    for (var i = 0; i < radios.length; i++) {
+      var f = FAIXAS[radios[i].value], span = radios[i].nextElementSibling;
+      if (!f || !span) continue;
+      span.innerHTML = '<b>Até ' + f.empresas + ' empresas</b> · ' + f.notas.toLocaleString('pt-BR') + ' notas/mês · ' +
+        (anual() ? nf.reais(f.anual) + '/ano (' + f.off + '% OFF)' : nf.reais(f.centavos) + '/mês');
+    }
+    var dica = $('fc-faixas-dica');
+    if (dica) dica.textContent = (anual() ? 'Cobrança anual, de uma vez.' : 'Cobrança mensal.') + ' Dá para trocar de faixa depois, em Minha conta.';
+  }
   function mostrarPlanoEscritorio() {
     var base = 'Plano ' + nomeFaixa(st.plano);
-    var rotulo = base + ' · ' + nf.reais(centavosDoPlano()) + '/mês · 7 dias grátis';
+    var rotulo = anual()
+      ? base + ' anual · ' + nf.reais(centavosDoPlano()) + '/ano (' + FAIXAS[st.plano].off + '% OFF) · 7 dias grátis'
+      : base + ' · ' + nf.reais(centavosDoPlano()) + '/mês · 7 dias grátis';
+    rotulosDasFaixas();
     $('fc-plano').textContent = rotulo;
     var c = st.cupom;
     $('fc-plano-pagamento').textContent = !c ? rotulo
@@ -488,7 +507,8 @@
       if (!r.ok) { nf.aviso($('fc-aviso-3'), 'Não deu para abrir o pagamento agora. Recarregue a página em alguns minutos.', 'erro'); return; }
       st.checkout = r.dados;
       // Anual sem os planos anuais no Pagar.me: segue no mensal e avisa.
-      if (anual() && r.dados.anual_disponivel !== true) {
+      var anualOk = st.escritorio ? r.dados.escritorio_anual_disponivel === true : r.dados.anual_disponivel === true;
+      if (anual() && !anualOk) {
         st.ciclo = 'mensal';
         cicloGuardado.apagar();
         nf.aviso($('fc-aviso-3'), 'O plano anual ainda não está disponível. Seguimos com o mensal.', 'info');

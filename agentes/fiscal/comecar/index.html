@@ -138,15 +138,15 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="nf-cartao" id="fc-etapa-3" data-etapa="3" hidden aria-labelledby="fc-titulo-3">
     <p class="nf-passo">3 de 7 · Pagamento</p>
     <h2 class="nf-h2" id="fc-titulo-3">Pagamento</h2>
-    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com 20% de desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
+    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
     <form id="fc-form-3" class="nf-form" novalidate>
-      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio), só mensal -->
+      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio); mensal ou anual desde 13/11/2026 -->
       <fieldset class="nf-grupo nf-grupo--coluna nf-faixas" id="fc-faixas" hidden>
         <legend>Quantas empresas o escritório vai atender?</legend>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_5"><span><b>Até 5 empresas</b> · 500 notas/mês · R$ 297</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_20"><span><b>Até 20 empresas</b> · 2.000 notas/mês · R$ 797</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_50"><span><b>Até 50 empresas</b> · 5.000 notas/mês · R$ 1.497</span></label>
-        <small class="nf-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
+        <small class="nf-dica" id="fc-faixas-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
       </fieldset>
       <div class="nf-cupom" id="fc-cupom">
         <button type="button" class="fi-link-btn" id="fc-cupom-abrir">Tem um cupom?</button>
@@ -354,6 +354,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=4"></script>
 <script src="/agentes/fiscal/medicao.js?v=5"></script>
-<script src="/agentes/fiscal/comecar/comecar.js?v=16"></script>
+<script src="/agentes/fiscal/comecar/comecar.js?v=17"></script>
 </body>
 </html>

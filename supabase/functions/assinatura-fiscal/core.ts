@@ -20,7 +20,7 @@ export type PlanoAssinatura = CodigoPlano | PlanoEscritorio;
 /** Ciclo de cobrança (Lucca, 03/11/2026): anual = 12 mensalidades com 20% off, cobradas de uma vez. */
 export type Ciclo = "mensal" | "anual";
 /** Teste do plano do Escritório no Pagar.me: 7 dias (o base), nenhum, ou 30 dias (cupom de fundador). */
-export type TesteDoEscritorio = "teste" | "sem_teste" | "teste30";
+export type TesteDoEscritorio = "teste" | "sem_teste" | "teste30" | "anual" | "anual_sem_teste";
 export type CodigoPlanoPagarme =
   | CodigoPlano
   | "inicial_sem_teste"
@@ -86,8 +86,7 @@ function planosDoEscritorio(): Record<string, PlanoPagarme> {
       env: `${ESCRITORIO_ENV[faixa]}_TESTE30_ID`,
     };
     // Anual do Escritório (Lucca, 13/11/2026): 12 mensalidades com o desconto da faixa (25%, 30% e 45%; no Inicial e
-    // no Pro são 20%), com e sem o teste de 7 dias. Por ora só a definição e os planos no Pagar.me: o checkout ainda
-    // recusa o anual do Escritório (ESCRITORIO_SO_MENSAL) até a etapa de pagamento do cadastro oferecer o ciclo.
+    // no Pro são 20%), com e sem o teste de 7 dias. Cupom (fundador inclusive) só no mensal, como no Inicial e no Pro.
     const anual = { nome, centavos: centavosAnuaisDoEscritorio(faixa), ciclo: "anual" as Ciclo };
     planos[`${faixa}_anual`] = { ...anual, comTeste: true, env: `${ESCRITORIO_ENV[faixa]}_ANUAL_ID` };
     planos[`${faixa}_anual_sem_teste`] = { ...anual, comTeste: false, env: `${ESCRITORIO_ENV[faixa]}_ANUAL_SEM_TESTE_ID` };
@@ -162,10 +161,9 @@ export function codigoPagarme(plano: CodigoPlano, ciclo: Ciclo, comTeste: boolea
   return `${plano}${ciclo === "anual" ? "_anual" : ""}${comTeste ? "" : "_sem_teste"}` as CodigoPlanoPagarme;
 }
 
-/** O que a assinatura cobra por ciclo, em centavos (sem cupom). O Escritório é só mensal: o ciclo não muda o preço
-    (quem pede o anual é recusado antes, em ESCRITORIO_SO_MENSAL). */
+/** O que a assinatura cobra por ciclo, em centavos (sem cupom). */
 export function centavosDoCiclo(plano: PlanoAssinatura, ciclo: Ciclo): number {
-  if (planoDeEscritorio(plano)) return PLANOS_PAGARME[plano].centavos;
+  if (planoDeEscritorio(plano)) return ciclo === "anual" ? centavosAnuaisDoEscritorio(plano) : PLANOS_PAGARME[plano].centavos;
   return PLANOS_PAGARME[codigoPagarme(plano, ciclo, true)].centavos;
 }
 
@@ -255,12 +253,17 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
   );
   const faixa = (p: PlanoEscritorio) => ({
     valor_centavos: FAIXAS_ESCRITORIO[p].centavos,
+    anual_centavos: centavosAnuaisDoEscritorio(p),
     empresas: FAIXAS_ESCRITORIO[p].empresas,
     notas: FAIXAS_ESCRITORIO[p].notas,
   });
+  const escritorioAnualDisponivel = (Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]).every((faixa) =>
+    escritorioConfigurado(config, faixa, "anual")
+  );
   return {
     ok: true,
     venda_aberta: config.vendaAberta,
+    escritorio_anual_disponivel: escritorioAnualDisponivel,
     anual_disponivel: anualDisponivel,
     escritorio_disponivel: escritorioDisponivel,
     public_key: env.PAGARME_ASSINATURA_PUBLIC_KEY || "",
@@ -268,7 +271,6 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
     planos: {
       inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos, anual_centavos: centavosDoCiclo("inicial", "anual") },
       pro: { valor_centavos: PLANOS_PAGARME.pro.centavos, anual_centavos: centavosDoCiclo("pro", "anual") },
-      // Escritório: só mensal (sem anual_centavos).
       escritorio_5: faixa("escritorio_5"),
       escritorio_20: faixa("escritorio_20"),
       escritorio_50: faixa("escritorio_50"),
@@ -277,8 +279,10 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
 }
 
 /** Os três planos da faixa (7 dias, sem teste e 30 dias) têm id no ambiente. */
-function escritorioConfigurado(config: Config, faixa: PlanoEscritorio): boolean {
-  return (["teste", "sem_teste", "teste30"] as TesteDoEscritorio[]).every((t) =>
+function escritorioConfigurado(config: Config, faixa: PlanoEscritorio, ciclo: Ciclo = "mensal"): boolean {
+  // Mensal: 7 dias, sem teste e 30 dias (fundador). Anual (13/11/2026): com e sem o teste de 7 dias.
+  const testes: TesteDoEscritorio[] = ciclo === "anual" ? ["anual", "anual_sem_teste"] : ["teste", "sem_teste", "teste30"];
+  return testes.every((t) =>
     Boolean(config.planIds[codigoPagarmeEscritorio(faixa, t)])
   );
 }
@@ -390,10 +394,9 @@ const MSG_ESCOLHA_PLANO = "Escolha um dos planos: Inicial, Pro ou Escritório.";
 export const MSG_ESCRITORIO_SO_MENSAL = "O plano Escritório é só mensal. Escolha a cobrança mensal.";
 
 /** Escritório com ciclo anual: recusado antes de qualquer cupom ou chamada (Decisions "Faixas do Escritório"). */
-function recusaAnualDoEscritorio(b: Record<string, unknown>): Resultado | null {
-  return planoDeEscritorio(b.plano) && lerCiclo(b.ciclo) === "anual"
-    ? erro(400, "ESCRITORIO_SO_MENSAL", MSG_ESCRITORIO_SO_MENSAL)
-    : null;
+function recusaAnualDoEscritorio(_b: Record<string, unknown>): Resultado | null {
+  // Desde 13/11/2026 o Escritório tem anual (25%, 30% e 45% OFF); a recusa ficou só para quem a chamava.
+  return null;
 }
 
 /** Ciclo do pedido: ausente é mensal (páginas antigas); qualquer outro valor é inválido. */
@@ -436,7 +439,6 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
   if (!plano) return invalido(MSG_ESCOLHA_PLANO);
   const ciclo = lerCiclo(b.ciclo);
   if (!ciclo) return invalido("Escolha a cobrança: mensal ou anual.");
-  if (ciclo === "anual" && planoDeEscritorio(plano)) return invalido(MSG_ESCRITORIO_SO_MENSAL);
 
   const cpf = typeof b.cpf === "string" ? b.cpf.replace(/\D/g, "") : "";
   if (cpf !== "" && cpf.length !== 11) return invalido("Confira o CPF (11 números).");
@@ -539,7 +541,7 @@ const MSG_CUPOM: Record<string, string> = {
   CUPOM_PLANO: "Este cupom não vale para o plano escolhido.",
   CUPOM_JA_USADO: "Sua empresa já usou este cupom.",
   CUPOM_NAO_CORTESIA: "Este cupom não dispensa o pagamento. Informe o cartão.",
-  CUPOM_ANUAL: "O plano anual já tem 20% de desconto e não aceita cupom. Para usar o cupom, escolha o mensal.",
+  CUPOM_ANUAL: "O plano anual já tem desconto e não aceita cupom. Para usar o cupom, escolha o mensal.",
 };
 
 /** Código normalizado, null quando não veio, false quando veio fora do formato. */
@@ -730,7 +732,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   let planoSemTeste: string;
   let planoTeste30 = "";
   if (escritorio) {
-    if (!escritorioConfigurado(config, escritorio)) {
+    if (!escritorioConfigurado(config, escritorio, pedido.ciclo)) {
       log("warn", "assinatura_fiscal_escritorio_indisponivel", { plano: escritorio });
       return erro(
         409,
@@ -738,8 +740,9 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
         "O plano Escritório ainda não está disponível para assinatura. Nada foi cobrado; fale com a nó pelo WhatsApp.",
       );
     }
-    planoComTeste = config.planIds[codigoPagarmeEscritorio(escritorio, "teste")];
-    planoSemTeste = config.planIds[codigoPagarmeEscritorio(escritorio, "sem_teste")];
+    const anual = pedido.ciclo === "anual";
+    planoComTeste = config.planIds[codigoPagarmeEscritorio(escritorio, anual ? "anual" : "teste")];
+    planoSemTeste = config.planIds[codigoPagarmeEscritorio(escritorio, anual ? "anual_sem_teste" : "sem_teste")];
     planoTeste30 = config.planIds[codigoPagarmeEscritorio(escritorio, "teste30")];
   } else {
     const plano = pedido.plano as CodigoPlano;
