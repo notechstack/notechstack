@@ -338,3 +338,61 @@
   .fi-roda *{animation:none!important}
   .fi-btn:hover,.fi-plano:hover,.fi-chip:hover{transform:none}
 }
+
+/* ── Funcionalidades (13/11/2026): mockup do tutorial de um lado, explicação do outro; alterna a cada seção ── */
+.fi-fxs>.fi-sub{margin-bottom:clamp(28px,4vw,48px)}
+.fi-fx{display:grid;gap:22px;align-items:center;margin-top:clamp(40px,6vw,88px);scroll-margin-top:110px}
+.fi-fx-midia{position:relative;width:100%;max-width:400px;margin:0 auto;border-radius:var(--fi-raio-lg);overflow:hidden;background:var(--fi-fundo);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-card)}
+.fi-fx-video{display:block;width:100%;height:auto;aspect-ratio:var(--fi-fx-ar,1080/1360);object-fit:cover;background:var(--fi-fundo)}
+.fi-fx-texto{max-width:520px;margin:0 auto}
+.fi-fx-texto h3{margin:14px 0 12px;font-weight:800;font-size:clamp(26px,3.4vw,40px);line-height:1.06;letter-spacing:-.025em;text-wrap:balance}
+.fi-fx-texto>p{margin:0;font-size:clamp(16px,1.5vw,18px);line-height:1.55;color:var(--fi-texto-sec);text-wrap:pretty}
+.fi-fx-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;font:600 12.5px/1 var(--font-core,'Sora',sans-serif);background:var(--fi-branco);border:1px solid var(--fi-borda);color:var(--fi-texto)}
+.fi-fx-chip::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--no-verde-escuro,#2A8459)}
+.fi-fx-chip--pro::before{background:var(--fi-acento)}
+.fi-fx-chip--escritorio{background:var(--fi-texto);border-color:var(--fi-texto);color:var(--fi-branco)}
+.fi-fx-chip--escritorio::before{background:var(--fi-acento)}
+.fi-fx-passos{margin:20px 0 0;padding:0;list-style:none;counter-reset:fx;display:grid;gap:12px}
+.fi-fx-passos li{position:relative;padding-left:40px;font-size:15px;line-height:1.5;color:var(--fi-texto-sec);counter-increment:fx;text-wrap:pretty}
+.fi-fx-passos li::before{content:counter(fx);position:absolute;left:0;top:-2px;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:var(--fi-acento-tint);color:var(--fi-acento-texto);font:700 12.5px/1 var(--font-mono,'JetBrains Mono',monospace)}
+.fi-fx-passos b{font-weight:600;color:var(--fi-texto)}
+@media(min-width:860px){
+  .fi-fx{grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(36px,6vw,88px)}
+  .fi-fx--inv{grid-template-columns:minmax(0,6fr) minmax(0,5fr)}
+  .fi-fx--inv .fi-fx-midia{order:2}
+  .fi-fx-midia,.fi-fx-texto{margin:0}
+  .fi-fx-midia{justify-self:end}
+  .fi-fx--inv .fi-fx-midia{justify-self:start}
+  .fi-fx--inv .fi-fx-texto{justify-self:end}
+}
+/* seção sem vídeo (cópias e resumo): dois cartões sobrepostos, no lugar do mockup */
+.fi-fx-midia--cartoes{overflow:visible;border:0;box-shadow:none;background:transparent;padding:18px 0 34px;display:grid}
+.fi-fx-email,.fi-fx-resumo{border-radius:20px;background:var(--fi-branco);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-card)}
+.fi-fx-email{display:grid;gap:10px;padding:22px 20px;font-size:14px;line-height:1.45;transform:rotate(-2deg)}
+.fi-fx-email b{font-size:15.5px;line-height:1.3}
+.fi-fx-email-de{font:500 12px/1 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-acento-texto)}
+.fi-fx-email-para{color:var(--fi-texto-sec);font-size:13px;overflow-wrap:anywhere}
+.fi-fx-email .fi-cv-arquivos{display:flex;flex-wrap:wrap;gap:8px}
+.fi-fx-email .fi-cv-arquivos span{padding:7px 11px;border-radius:10px;background:var(--fi-fundo);border:1px solid var(--fi-borda);font:500 12px/1 var(--font-mono,'JetBrains Mono',monospace)}
+.fi-fx-resumo{justify-self:end;width:72%;margin-top:-18px;padding:16px 18px;display:grid;gap:6px;font-size:14px;color:var(--fi-texto-sec);background:#D9FDD3;border-color:transparent;transform:rotate(3deg)}
+.fi-fx-resumo small{font:600 12px/1 var(--font-core,'Sora',sans-serif);color:var(--fi-texto)}
+.fi-fx-resumo b{color:var(--fi-texto)}
+
+/* ── Planos: fundador (até 30/11/2026), preço cortado e faixas do Escritório ── */
+.fi-fundador{position:relative;width:min(100%,720px);margin:clamp(34px,4vw,48px) auto 0}
+.fi-fundador[hidden]{display:none}
+.fi-fundador-tras{position:absolute;top:-22px;right:18px;padding:10px 16px 30px;border-radius:16px;background:var(--fi-erro);color:#fff;font:700 12.5px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.04em;text-transform:uppercase;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
+.fi-fundador-frente{position:relative;margin:0;padding:18px 22px;border-radius:20px;background:var(--fi-texto);color:var(--no-osso);font-size:15px;line-height:1.5;text-wrap:pretty;transform:rotate(-.6deg);box-shadow:var(--no-shadow-lg)}
+.fi-fundador-frente b{color:var(--fi-acento)}
+.fi-preco-de{margin-right:4px;font-size:15px;font-weight:600;color:var(--fi-erro-texto);text-decoration:line-through;text-decoration-color:var(--fi-erro);text-decoration-thickness:2px}
+.fi-planos[data-ciclo="mensal"] [data-so-anual],.fi-planos[data-fundador="off"] [data-so-fundador]{display:none}
+.fi-plano-ticket{position:absolute;top:-18px;right:18px;z-index:1;padding:9px 14px;border-radius:12px;background:var(--fi-erro);color:#fff;font:700 12px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.02em;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
+.fi-planos[data-fundador="on"] .fi-plano--fundador{border-color:var(--fi-erro)}
+.fi-faixas{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 12px}
+.fi-faixas button{padding:7px 10px;border-radius:999px;border:1px solid var(--fi-borda);background:var(--fi-branco);color:var(--fi-texto-sec);font:600 12.5px/1 var(--font-core,'Sora',sans-serif);cursor:pointer}
+.fi-faixas button[aria-pressed="true"]{background:var(--fi-texto);border-color:var(--fi-texto);color:var(--fi-branco)}
+.fi-faixas button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
+.fi-faixas>span{margin-left:4px;font-size:12.5px;color:var(--fi-texto-sec)}
+.fi-plano-gratis .fi-plano-num{margin:0;font-size:1em;font-weight:800;letter-spacing:-.03em;color:var(--fi-texto)}
+.fi-plano-itens a{color:inherit;font-weight:600;text-decoration:underline;text-decoration-color:var(--fi-acento);text-decoration-thickness:2px;text-underline-offset:3px}
+.fi-requisito-a1 a{white-space:normal}

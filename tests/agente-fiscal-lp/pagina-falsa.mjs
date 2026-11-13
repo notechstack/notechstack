@@ -76,7 +76,9 @@ function no(tag, reg) {
     appendChild(c) { c.pai = this; this.filhos.push(c); return c; },
     remove() { if (this.pai) this.pai.filhos = this.pai.filhos.filter((x) => x !== this); this.pai = null; },
     querySelectorAll(sel) { return this._cache[sel] || (this._cache[sel] = buscar(this, sel)); },
-    closest() { return null; }, focus() {}, scrollIntoView() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }
+    closest() { return null; }, focus() {}, scrollIntoView() {}, atributos: {},
+    setAttribute(k, v) { this.atributos[k] = String(v); }, removeAttribute(k) { delete this.atributos[k]; },
+    getAttribute(k) { return k in this.atributos ? this.atributos[k] : null; }
   };
 }
 

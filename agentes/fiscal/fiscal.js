@@ -32,6 +32,63 @@
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
 
+  /* Condição de fundador do Escritório (Lucca, 13/11/2026): cupons FUNDADOR5/20/50 (1º mês grátis e desconto por 12
+     cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql), anunciada até 30/11/2026. Depois do prazo, ou
+     sem JS, a página mostra só o preço cheio. O cupom vai no link e o cadastro o aplica sozinho (?cupom=).
+     Só em localhost: ?fundador=off mostra a página de depois do prazo. */
+  var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
+  var FAIXAS = {
+    escritorio_5: { notas: '500', cheio: 'R$ 297', fundador: 'R$ 247', cupom: 'FUNDADOR5' },
+    escritorio_20: { notas: '2.000', cheio: 'R$ 797', fundador: 'R$ 647', cupom: 'FUNDADOR20' },
+    escritorio_50: { notas: '5.000', cheio: 'R$ 1.497', fundador: 'R$ 1.197', cupom: 'FUNDADOR50' }
+  };
+  var fundador = Date.now() < FUNDADOR_ATE;
+  if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
+  var faixaBtns = document.querySelectorAll('[data-faixa]');
+  function mudarFaixa(codigo) {
+    var f = FAIXAS[codigo]; if (!f) return;
+    var por = function (id, texto) { var el = document.getElementById(id); if (el) el.textContent = texto; return el; };
+    Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === codigo)); });
+    por('fi-esc-notas', f.notas);
+    por('fi-esc-de', f.cheio);
+    por('fi-esc-valor', fundador ? f.fundador : f.cheio);
+    por('fi-esc-nota', fundador ? 'no 1º ano, com o cupom ' + f.cupom + ' já aplicado; depois, ' + f.cheio : '');
+    var depois = document.getElementById('fi-esc-depois');
+    if (depois) depois.innerHTML = fundador ? '<b>1º mês grátis</b> na condição de fundador.' : '<b>7 dias grátis</b> para testar.';
+    var cta = por('fi-esc-cta', fundador ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
+    if (cta) {
+      cta.setAttribute('data-plano', codigo);
+      cta.setAttribute('href', CADASTRO_URL + '?tipo=escritorio&plano=' + codigo + (fundador ? '&cupom=' + f.cupom : ''));
+    }
+  }
+  if (planos) {
+    planos.setAttribute('data-fundador', fundador ? 'on' : 'off');
+    var faixaFundador = document.getElementById('fi-fundador');
+    if (faixaFundador) faixaFundador.hidden = !fundador;
+    Array.prototype.forEach.call(faixaBtns, function (b) {
+      b.addEventListener('click', function () { mudarFaixa(b.getAttribute('data-faixa')); });
+    });
+    mudarFaixa('escritorio_5');
+  }
+
+  /* Mockups das funcionalidades: o vídeo só carrega e toca com a seção na tela, e pausa fora dela. Com movimento
+     reduzido não toca sozinho: fica o quadro de capa, com os controles do navegador. */
+  var videos = document.querySelectorAll('.fi-fx-video');
+  if (videos.length) {
+    if (reduzido || !('IntersectionObserver' in window)) {
+      Array.prototype.forEach.call(videos, function (v) { v.controls = true; });
+    } else {
+      var obsVideo = new IntersectionObserver(function (itens) {
+        itens.forEach(function (it) {
+          var v = it.target;
+          if (it.isIntersecting) { var t = v.play(); if (t && t.catch) t.catch(function () { v.controls = true; }); }
+          else v.pause();
+        });
+      }, { threshold: 0.35 });
+      Array.prototype.forEach.call(videos, function (v) { obsVideo.observe(v); });
+    }
+  }
+
   /* Cards dos planos: inclinam e ganham um brilho na direção do cursor (efeito do FlipCard do React Bits, em JS puro e
      sem o giro). Só com mouse e sem movimento reduzido; o CSS faz a suavização. */
   var INCLINACAO_MAX = 6; // graus
