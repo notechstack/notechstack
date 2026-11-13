@@ -388,36 +388,78 @@
 .fi-arq--pdf i{background:#E5484D}
 .fi-arq--xml i{background:#1D8348}
 
-/* ── Planos (v2): cards curtos, 20% OFF grande no anual, faixas do Escritório e fundador até 30/11/2026 ── */
-.fi-fundador{position:relative;width:min(100%,640px);margin:clamp(34px,4vw,48px) auto 0}
+/* ── Planos (v3): três cards; preço em evidência e, embaixo, o que cabe; Black Friday (fundador até 30/11/2026) ── */
+.fi-fundador{position:relative;width:min(100%,640px);margin:clamp(44px,5vw,60px) auto 0;padding-top:22px}
 .fi-fundador[hidden]{display:none}
-.fi-fundador-tras{position:absolute;top:-22px;right:18px;padding:10px 16px 30px;border-radius:16px;background:var(--fi-erro);color:#fff;font:700 12.5px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.04em;text-transform:uppercase;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
-.fi-fundador-frente{position:relative;margin:0;padding:16px 22px;border-radius:20px;background:var(--fi-texto);color:var(--no-osso);font-size:15px;line-height:1.5;text-align:center;text-wrap:balance;transform:rotate(-.6deg);box-shadow:var(--no-shadow-lg)}
+.fi-fundador-selo{position:absolute;top:-6px;left:50%;z-index:1;padding:11px 20px;border-radius:14px;background:var(--fi-erro);color:#fff;font:800 clamp(18px,2.4vw,24px)/1 var(--font-core,'Sora',sans-serif);letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;transform:translateX(-50%) rotate(-3deg);box-shadow:var(--no-shadow-lg)}
+.fi-fundador-frente{position:relative;margin:0;padding:34px 22px 18px;border-radius:20px;background:var(--fi-texto);color:var(--no-osso);font-size:15px;line-height:1.5;text-align:center;text-wrap:balance;box-shadow:var(--no-shadow-lg)}
 .fi-fundador-frente b{color:var(--fi-acento)}
 .fi-ciclo-toggle button span{background:var(--fi-erro);color:#fff}
-@media(min-width:1000px){.fi-planos--teste{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.fi-planos--teste .fi-plano{padding:26px 20px 22px;row-gap:14px}
-.fi-plano-oferta{position:relative}
-.fi-plano-preco{margin-top:8px;color:var(--fi-texto-sec)}
-.fi-plano-preco b{font-size:24px}
-.fi-plano-depois{margin-top:6px;font-size:13px}
-.fi-preco-de{margin-right:4px;font-size:15px;font-weight:600;color:var(--fi-erro-texto);text-decoration:line-through;text-decoration-color:var(--fi-erro);text-decoration-thickness:2px}
-.fi-preco-de[hidden]{display:none}
+@media(min-width:900px){.fi-planos--tres{grid-template-columns:repeat(3,minmax(0,1fr));max-width:1020px;margin-left:auto;margin-right:auto}}
+.fi-planos--teste .fi-plano{padding:26px 22px 22px;row-gap:14px;min-width:0}
+.fi-planos--teste .fi-plano-oferta{position:relative;min-width:0;padding:18px 18px 16px;display:flex;flex-direction:column;justify-content:flex-end}
+.fi-plano-valor{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:6px;row-gap:2px;margin:0;font-size:15px;line-height:1.1;color:var(--fi-texto-sec)}
+.fi-plano-valor b{font-weight:800;font-size:clamp(34px,3.2vw,44px);letter-spacing:-.035em;line-height:1;color:var(--fi-texto);white-space:nowrap}
+.fi-plano-valor .fi-preco-de{flex-basis:100%}
+.fi-plano-valor [hidden]{display:none}
+.fi-plano-cabe{margin:10px 0 0;font-size:14.5px;font-weight:600;line-height:1.35;color:var(--fi-texto);text-wrap:balance}
+.fi-plano-depois{margin:4px 0 0;font-size:13px;line-height:1.4;color:var(--fi-texto-sec)}
+.fi-preco-de{font-size:16px;font-weight:600;color:var(--fi-erro-texto);text-decoration:line-through;text-decoration-color:var(--fi-erro);text-decoration-thickness:2px}
 .fi-planos[data-ciclo="mensal"] [data-so-anual]{display:none}
-.fi-off{position:absolute;top:-20px;right:-12px;z-index:1;padding:9px 12px;border-radius:12px;background:var(--fi-erro);color:#fff;font:800 22px/1 var(--font-core,'Sora',sans-serif);letter-spacing:-.02em;transform:rotate(5deg);box-shadow:var(--no-shadow-card)}
-.fi-plano-ticket{position:absolute;top:-16px;right:16px;z-index:1;padding:9px 13px;border-radius:12px;background:var(--fi-erro);color:#fff;font:700 12px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.02em;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
+.fi-off{position:absolute;top:-14px;right:-10px;z-index:1;padding:9px 12px;border-radius:12px;background:var(--fi-erro);color:#fff;font:800 22px/1 var(--font-core,'Sora',sans-serif);letter-spacing:-.02em;transform:rotate(5deg);box-shadow:var(--no-shadow-card)}
+.fi-off[hidden]{display:none}
+/* selo da Black Friday no card do Escritório: o desconto da faixa, grande */
+.fi-plano-ticket{position:absolute;top:-30px;right:-10px;z-index:2;display:grid;justify-items:center;gap:3px;padding:10px 14px;border-radius:14px;background:var(--fi-erro);color:#fff;font:700 11px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.05em;text-transform:uppercase;transform:rotate(5deg);box-shadow:var(--no-shadow-lg)}
 .fi-plano-ticket[hidden]{display:none}
+.fi-plano-ticket b{font-weight:800}
+.fi-plano-ticket span{font-size:24px;font-weight:800;letter-spacing:-.02em}
+.fi-plano-ticket small{font-size:10.5px;font-weight:600;opacity:.9}
 .fi-planos[data-fundador="on"][data-ciclo="mensal"] .fi-plano--fundador{border-color:var(--fi-erro)}
-.fi-faixas{display:flex;align-items:center;gap:4px;margin:5px 0 0}
-.fi-plano-nome{min-width:0}
-.fi-faixas button{min-width:30px;padding:5px 7px;border-radius:999px;border:1px solid var(--fi-borda);background:var(--fi-branco);color:var(--fi-texto-sec);font:700 12.5px/1 var(--font-core,'Sora',sans-serif);cursor:pointer}
+.fi-faixas{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 14px}
+.fi-faixas button{min-width:34px;padding:6px 9px;border-radius:999px;border:1px solid var(--fi-borda);background:var(--fi-branco);color:var(--fi-texto-sec);font:700 12.5px/1 var(--font-core,'Sora',sans-serif);cursor:pointer}
 .fi-faixas button[aria-pressed="true"]{background:var(--fi-texto);border-color:var(--fi-texto);color:var(--fi-branco)}
 .fi-faixas button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
-.fi-faixas>span{margin-left:3px;font-size:12.5px;color:var(--fi-texto-sec)}
-.fi-plano-gratis .fi-plano-num{margin:0;font-size:1em;font-weight:800;letter-spacing:-.03em;color:var(--fi-texto)}
-/* os cards sem as faixas ganham a mesma altura de respiro, pra os números alinharem entre os quatro */
-.fi-planos--teste .fi-plano-oferta{display:flex;flex-direction:column;justify-content:center}
+.fi-faixas>span{margin-right:4px;font-size:12.5px;color:var(--fi-texto-sec)}
+.fi-plano .fi-btn[hidden]{display:none}
+.fi-faixas--fixa b{min-width:34px;padding:6px 9px;border-radius:999px;background:var(--fi-texto);color:var(--fi-branco);font:700 12.5px/1 var(--font-core,'Sora',sans-serif);text-align:center}
 .fi-planos--teste .fi-plano-itens{gap:8px;font-size:14px}
 .fi-plano-itens a{color:inherit;text-decoration:underline;text-decoration-color:var(--fi-acento);text-decoration-thickness:2px;text-underline-offset:3px}
 .fi-requisito-a1{max-width:640px;text-align:center}
 .fi-requisito-a1 a{white-space:normal}
+
+/* ── Várias empresas: mockup de celular em HTML (a tela do painel, legível também no celular) ── */
+.fi-fxs-nota{margin:clamp(28px,4vw,48px) 0 0;text-align:center;font-size:12.5px;color:var(--fi-texto-sec)}
+.fi-fx-midia--css{max-width:330px}
+@media(max-width:859px){.fi-fx-midia.fi-fx-midia--css{width:min(100%,330px);margin:0 auto;transform:none}}
+.fi-fone{padding:9px;border-radius:52px;background:#16171A;box-shadow:0 0 0 2px #8E8A84,0 0 0 4px #2A2B2E,var(--no-shadow-lg)}
+.fi-fone-tela{position:relative;display:flex;flex-direction:column;gap:12px;min-height:470px;padding:46px 14px 22px;border-radius:44px;background:var(--no-osso);overflow:hidden}
+.fi-fone-ilha{position:absolute;top:11px;left:50%;width:92px;height:26px;border-radius:999px;background:#16171A;transform:translateX(-50%)}
+.fi-fone-topo{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:6px 4px 2px;font-size:13px;color:var(--fi-texto-sec)}
+.fi-fone-topo b{font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--fi-texto)}
+.fi-fone-topo b i{font-style:normal;font-weight:600;color:var(--no-ambar)}
+.fi-fone-topo span{font-weight:600;color:var(--fi-texto)}
+.fi-emp{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.fi-emp li{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 10px;padding:12px 12px;border-radius:16px;background:var(--fi-branco);border:1px solid var(--fi-borda)}
+.fi-emp li>span:first-child{display:grid;gap:3px;min-width:0}
+.fi-emp b{font-size:14.5px;line-height:1.2}
+.fi-emp small{font-size:12px;line-height:1.25;color:var(--fi-texto-sec)}
+.fi-emp em{grid-column:2;grid-row:1;padding:6px 10px;border-radius:999px;background:#DDF3E4;color:#18794E;font:700 11.5px/1 var(--font-core,'Sora',sans-serif);font-style:normal}
+.fi-emp em.fi-emp-falta{background:var(--fi-acento-tint);color:var(--fi-acento-texto)}
+.fi-emp-acoes{grid-column:1/-1;display:flex;gap:6px}
+.fi-emp-acoes i{padding:8px 12px;border-radius:999px;border:1.5px solid var(--fi-texto);font:600 12px/1 var(--font-core,'Sora',sans-serif);font-style:normal;color:var(--fi-texto)}
+.fi-emp-add{align-self:flex-start;margin-top:2px;padding:10px 14px;border-radius:999px;background:var(--fi-texto);color:var(--fi-branco);font:600 12.5px/1 var(--font-core,'Sora',sans-serif)}
+/* a empresa nova: "Falta A1 ou procuração" → toque em Procuração → "Pronta" (ciclo de 7 s; parado, mostra o fim) */
+.fi-emp-nova{border-color:var(--fi-acento)!important}
+.fi-emp-nova .fi-emp-antes,.fi-emp-nova .fi-emp-acoes{display:none}
+@media(prefers-reduced-motion:no-preference){
+  /* antes e depois ocupam a mesma célula; só a opacidade alterna */
+  .fi-emp-nova>span:first-child small{grid-area:2/1}
+  .fi-emp-nova .fi-emp-antes{display:block;animation:fi-emp-antes 7s infinite}
+  .fi-emp-nova .fi-emp-depois{animation:fi-emp-depois 7s infinite}
+  .fi-emp-nova .fi-emp-acoes{display:flex;overflow:hidden;animation:fi-emp-acoes 7s infinite}
+  .fi-emp-nova .fi-emp-alvo{animation:fi-emp-alvo 7s infinite}
+}
+@keyframes fi-emp-antes{0%,52%{opacity:1}56%,96%{opacity:0}100%{opacity:1}}
+@keyframes fi-emp-depois{0%,52%{opacity:0}58%,96%{opacity:1}100%{opacity:0}}
+@keyframes fi-emp-acoes{0%,54%{max-height:40px;opacity:1}62%,96%{max-height:0;opacity:0}100%{max-height:40px;opacity:1}}
+@keyframes fi-emp-alvo{0%,34%{background:transparent;color:var(--fi-texto)}40%,54%{background:var(--fi-texto);color:var(--fi-branco)}60%,100%{background:transparent;color:var(--fi-texto)}}

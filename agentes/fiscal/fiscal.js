@@ -33,35 +33,51 @@
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
 
-  /* Card do Escritório (Lucca, 13/11/2026): três faixas (5, 20 e 50 empresas), mensal ou anual.
+  /* Card do Escritório (Lucca, 13/11/2026): faixas de 5, 20 e 50 empresas, mensal ou anual, e "50+" (sob medida).
      - Anual: 20% OFF, como no Inicial e no Pro (o preço do mês no anual e o total do ano).
-     - Fundador, só no mensal e até 30/11/2026: cupons FUNDADOR5/20/50 (1º mês grátis e desconto por 12 cobranças;
-       scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O cupom vai no link e o cadastro o aplica (?cupom=).
+     - Black Friday, só no mensal e até 30/11/2026: condição de fundador, cupons FUNDADOR5/20/50 (1º mês grátis e desconto
+       por 12 cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O selo diz o desconto da faixa
+       (R$ 50 em 297, R$ 150 em 797, R$ 300 em 1.497). O cupom vai no link e o cadastro o aplica (?cupom=).
+     - 50+: sem preço; o botão abre o WhatsApp comercial (Lead).
      Depois do prazo, ou sem JS, a página mostra só o preço cheio. Só em localhost: ?fundador=off mostra o depois. */
   var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
   var FAIXAS = {
-    escritorio_5: { notas: '500', cheio: 'R$ 297', fundador: 'R$ 247', cupom: 'FUNDADOR5', anual: 'R$ 237,60', ano: 'R$ 2.851,20' },
-    escritorio_20: { notas: '2.000', cheio: 'R$ 797', fundador: 'R$ 647', cupom: 'FUNDADOR20', anual: 'R$ 637,60', ano: 'R$ 7.651,20' },
-    escritorio_50: { notas: '5.000', cheio: 'R$ 1.497', fundador: 'R$ 1.197', cupom: 'FUNDADOR50', anual: 'R$ 1.197,60', ano: 'R$ 14.371,20' }
+    escritorio_5: { notas: '500', empresas: '5', cheio: 'R$ 297', fundador: 'R$ 247', off: '17% OFF', cupom: 'FUNDADOR5', anual: 'R$ 237,60', ano: 'R$ 2.851,20' },
+    escritorio_20: { notas: '2.000', empresas: '20', cheio: 'R$ 797', fundador: 'R$ 647', off: '19% OFF', cupom: 'FUNDADOR20', anual: 'R$ 637,60', ano: 'R$ 7.651,20' },
+    escritorio_50: { notas: '5.000', empresas: '50', cheio: 'R$ 1.497', fundador: 'R$ 1.197', off: '20% OFF', cupom: 'FUNDADOR50', anual: 'R$ 1.197,60', ano: 'R$ 14.371,20' }
   };
+  var SOB_MEDIDA = 'sob_medida';
   var fundador = Date.now() < FUNDADOR_ATE;
   if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
   var faixaBtns = document.querySelectorAll('[data-faixa]');
   var faixaAtual = 'escritorio_5';
   function desenharEscritorio() {
-    var f = FAIXAS[faixaAtual];
+    var el = function (id) { return document.getElementById(id); };
+    var por = function (id, texto) { var e = el(id); if (e) e.textContent = texto; return e; };
+    var mostrar = function (id, sim) { var e = el(id); if (e) e.hidden = !sim; };
+    var sobMedida = faixaAtual === SOB_MEDIDA;
     var anual = !!planos && planos.getAttribute('data-ciclo') === 'anual';
-    var oferta = fundador && !anual; // o cupom de fundador não vale no anual
-    var por = function (id, texto) { var el = document.getElementById(id); if (el) el.textContent = texto; return el; };
     Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === faixaAtual)); });
-    por('fi-esc-notas', f.notas);
-    var de = por('fi-esc-de', f.cheio);
-    if (de) de.hidden = !(anual || oferta);
+    mostrar('fi-esc-cta', !sobMedida);
+    mostrar('fi-esc-zap', sobMedida);
+    mostrar('fi-esc-por', !sobMedida);
+    if (sobMedida) {
+      mostrar('fi-esc-de', false); mostrar('fi-esc-ticket', false); mostrar('fi-esc-off', false);
+      por('fi-esc-valor', 'Sob medida');
+      por('fi-esc-cabe', 'Volume combinado');
+      if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = 'Mais de 50 empresas';
+      return;
+    }
+    var f = FAIXAS[faixaAtual];
+    var oferta = fundador && !anual; // o cupom de fundador não vale no anual
+    mostrar('fi-esc-off', true); // no mensal o CSS o esconde ([data-so-anual])
+    por('fi-esc-de', f.cheio);
+    mostrar('fi-esc-de', anual || oferta);
     por('fi-esc-valor', anual ? f.anual : oferta ? f.fundador : f.cheio);
-    var depois = document.getElementById('fi-esc-depois');
-    if (depois) depois.innerHTML = anual ? '<b>7 dias grátis</b> · ' + f.ano + '/ano' : oferta ? '<b>1º mês grátis</b> · 1º ano' : '<b>7 dias grátis</b>';
-    var ticket = document.getElementById('fi-esc-ticket');
-    if (ticket) ticket.hidden = !oferta;
+    por('fi-esc-cabe', f.notas + ' notas por mês');
+    if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = anual ? '<b>7 dias grátis</b> · ' + f.ano + '/ano' : oferta ? '<b>1º mês grátis</b> · preço do 1º ano' : '<b>7 dias grátis</b>';
+    por('fi-esc-ticket-off', f.off);
+    mostrar('fi-esc-ticket', oferta);
     var cta = por('fi-esc-cta', oferta ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
     if (cta) {
       cta.setAttribute('data-plano', faixaAtual);
@@ -73,7 +89,10 @@
     var faixaFundador = document.getElementById('fi-fundador');
     if (faixaFundador) faixaFundador.hidden = !fundador;
     Array.prototype.forEach.call(faixaBtns, function (b) {
-      b.addEventListener('click', function () { if (FAIXAS[b.getAttribute('data-faixa')]) { faixaAtual = b.getAttribute('data-faixa'); desenharEscritorio(); } });
+      b.addEventListener('click', function () {
+        var c = b.getAttribute('data-faixa');
+        if (FAIXAS[c] || c === SOB_MEDIDA) { faixaAtual = c; desenharEscritorio(); }
+      });
     });
     desenharEscritorio();
   }
