@@ -34,7 +34,7 @@
   });
 
   /* Card do Escritório (Lucca, 13/11/2026): faixas de 5, 20 e 50 empresas, mensal ou anual, e "50+" (sob medida).
-     - Anual: 20% OFF, como no Inicial e no Pro (o preço do mês no anual e o total do ano).
+     - Anual: 25%, 30% e 45% OFF conforme a faixa (no Inicial e no Pro são 20%): o preço do mês no anual e o total do ano.
      - Black Friday, só no mensal e até 30/11/2026: condição de fundador, cupons FUNDADOR5/20/50 (1º mês grátis e desconto
        por 12 cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O selo diz o desconto da faixa
        (R$ 50 em 297, R$ 150 em 797, R$ 300 em 1.497). O cupom vai no link e o cadastro o aplica (?cupom=).
@@ -42,9 +42,9 @@
      Depois do prazo, ou sem JS, a página mostra só o preço cheio. Só em localhost: ?fundador=off mostra o depois. */
   var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
   var FAIXAS = {
-    escritorio_5: { notas: '500', empresas: '5', cheio: 'R$ 297', fundador: 'R$ 247', off: '17% OFF', cupom: 'FUNDADOR5', anual: 'R$ 237,60', ano: 'R$ 2.851,20' },
-    escritorio_20: { notas: '2.000', empresas: '20', cheio: 'R$ 797', fundador: 'R$ 647', off: '19% OFF', cupom: 'FUNDADOR20', anual: 'R$ 637,60', ano: 'R$ 7.651,20' },
-    escritorio_50: { notas: '5.000', empresas: '50', cheio: 'R$ 1.497', fundador: 'R$ 1.197', off: '20% OFF', cupom: 'FUNDADOR50', anual: 'R$ 1.197,60', ano: 'R$ 14.371,20' }
+    escritorio_5: { notas: '500', empresas: '5', cheio: 'R$ 297', fundador: 'R$ 247', off: '17% OFF', cupom: 'FUNDADOR5', anual: 'R$ 222,75', ano: 'R$ 2.673', offAnual: '25% OFF' },
+    escritorio_20: { notas: '2.000', empresas: '20', cheio: 'R$ 797', fundador: 'R$ 647', off: '19% OFF', cupom: 'FUNDADOR20', anual: 'R$ 557,90', ano: 'R$ 6.694,80', offAnual: '30% OFF' },
+    escritorio_50: { notas: '5.000', empresas: '50', cheio: 'R$ 1.497', fundador: 'R$ 1.197', off: '20% OFF', cupom: 'FUNDADOR50', anual: 'R$ 823,35', ano: 'R$ 9.880,20', offAnual: '45% OFF' }
   };
   var SOB_MEDIDA = 'sob_medida';
   var fundador = Date.now() < FUNDADOR_ATE;
@@ -71,6 +71,7 @@
     var f = FAIXAS[faixaAtual];
     var oferta = fundador && !anual; // o cupom de fundador não vale no anual
     mostrar('fi-esc-off', true); // no mensal o CSS o esconde ([data-so-anual])
+    por('fi-esc-off', f.offAnual);
     por('fi-esc-de', f.cheio);
     mostrar('fi-esc-de', anual || oferta);
     por('fi-esc-valor', anual ? f.anual : oferta ? f.fundador : f.cheio);

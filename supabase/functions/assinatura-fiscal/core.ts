@@ -31,7 +31,9 @@ export type CodigoPlanoPagarme =
   | "pro_anual_sem_teste"
   | PlanoEscritorio
   | `${PlanoEscritorio}_sem_teste`
-  | `${PlanoEscritorio}_teste30`;
+  | `${PlanoEscritorio}_teste30`
+  | `${PlanoEscritorio}_anual`
+  | `${PlanoEscritorio}_anual_sem_teste`;
 export type Ambiente = "sandbox" | "producao";
 type Nivel = "info" | "warn" | "error";
 
@@ -68,7 +70,8 @@ export function codigoPagarmeEscritorio(plano: PlanoEscritorio, teste: TesteDoEs
 
 type PlanoPagarme = { nome: string; centavos: number; comTeste: boolean; diasDeTeste?: number; ciclo: Ciclo; env: string };
 
-/** Os 9 planos do Escritório: três por faixa (com teste de 7 dias, sem teste e com teste de 30 dias). */
+/** Os 15 planos do Escritório: cinco por faixa (mensal com teste de 7 dias, sem teste e com teste de 30 dias; anual
+    com e sem o teste de 7 dias). */
 function planosDoEscritorio(): Record<string, PlanoPagarme> {
   const planos: Record<string, PlanoPagarme> = {};
   for (const faixa of Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]) {
@@ -82,11 +85,24 @@ function planosDoEscritorio(): Record<string, PlanoPagarme> {
       diasDeTeste: DIAS_DE_TESTE_DO_CUPOM,
       env: `${ESCRITORIO_ENV[faixa]}_TESTE30_ID`,
     };
+    // Anual do Escritório (Lucca, 13/11/2026): 12 mensalidades com o desconto da faixa (25%, 30% e 45%; no Inicial e
+    // no Pro são 20%), com e sem o teste de 7 dias. Por ora só a definição e os planos no Pagar.me: o checkout ainda
+    // recusa o anual do Escritório (ESCRITORIO_SO_MENSAL) até a etapa de pagamento do cadastro oferecer o ciclo.
+    const anual = { nome, centavos: centavosAnuaisDoEscritorio(faixa), ciclo: "anual" as Ciclo };
+    planos[`${faixa}_anual`] = { ...anual, comTeste: true, env: `${ESCRITORIO_ENV[faixa]}_ANUAL_ID` };
+    planos[`${faixa}_anual_sem_teste`] = { ...anual, comTeste: false, env: `${ESCRITORIO_ENV[faixa]}_ANUAL_SEM_TESTE_ID` };
   }
   return planos;
 }
 
 export const DESCONTO_ANUAL_PERCENTUAL = 20;
+/** Desconto do anual em cada faixa do Escritório (Lucca, 13/11/2026): mais agressivo que os 20% de Inicial e Pro. */
+export const DESCONTO_ANUAL_ESCRITORIO: Record<PlanoEscritorio, number> = { escritorio_5: 25, escritorio_20: 30, escritorio_50: 45 };
+
+/** Preço do ano no anual do Escritório: 12 mensalidades da faixa com o desconto dela, em centavos. */
+export function centavosAnuaisDoEscritorio(faixa: PlanoEscritorio): number {
+  return Math.round(FAIXAS_ESCRITORIO[faixa].centavos * 12 * (100 - DESCONTO_ANUAL_ESCRITORIO[faixa]) / 100);
+}
 
 /** Preço do ano no anual: 12 mensalidades com o desconto, em centavos. */
 export function centavosAnuais(mensal: number): number {

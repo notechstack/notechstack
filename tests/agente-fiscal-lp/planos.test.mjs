@@ -118,13 +118,14 @@ test('planos: três cards, preço em evidência, cada um soma ao anterior', () =
   assert.match(escritorio.html, /id="fi-esc-zap" data-lead="escritorio" href="https:\/\/wa\.me\/5511939289413\?text=[^"]*50%20empresas[^"]*" target="_blank" rel="noopener noreferrer" hidden>Falar com a Nó/);
   assert.deepEqual([...escritorio.html.matchAll(/data-faixa="(\w+)">([^<]*)</g)].map((m) => m[1] + ':' + m[2]), ['escritorio_5:5', 'escritorio_20:20', 'escritorio_50:50', 'sob_medida:50+']);
   // O anual aparece grande no card: "20% OFF" nos três planos, e o preço cheio cortado.
-  for (const c of cards) assert.match(c.html, /<span class="fi-off"[^>]*data-so-anual>20% OFF<\/span>/, c.plano);
+  for (const c of [inicial, pro]) assert.match(c.html, /<span class="fi-off" data-so-anual>20% OFF<\/span>/, c.plano);
+  assert.match(escritorio.html, /<span class="fi-off" id="fi-esc-off" data-so-anual>25% OFF<\/span>/);
   assert.match(inicial.html, /<s class="fi-preco-de" data-so-anual>R\$ 49<\/s>/);
   assert.match(pro.html, /<s class="fi-preco-de" data-so-anual>R\$ 129<\/s>/);
   assert.match(texto(s), /A nota é assinada com o certificado A1 da empresa ou, no Escritório, por procuração eletrônica/);
 });
 
-test('preços da página batem com o checkout, com o anual de 20% e com os cupons de fundador', () => {
+test('preços da página batem com o checkout, com o anual e com os cupons de fundador', () => {
   const js = ler('agentes/fiscal/fiscal.js');
   let maior = 0;
   for (const [faixa, cupom] of [['escritorio_5', 'FUNDADOR5'], ['escritorio_20', 'FUNDADOR20'], ['escritorio_50', 'FUNDADOR50']]) {
@@ -132,7 +133,7 @@ test('preços da página batem com o checkout, com o anual de 20% e com os cupon
     assert.ok(core, faixa + ' no core.ts');
     const cheio = Number(core[1]);
     const desconto = Number(new RegExp(`'${cupom}'[^\\n]*'valor', (\\d+), 12, array\\['${faixa}'\\], 30, 20`).exec(SQL)[1]);
-    const linha = new RegExp(`${faixa}: \\{ notas: '([^']+)', empresas: '(\\d+)', cheio: '([^']+)', fundador: '([^']+)', off: '(\\d+)% OFF', cupom: '(\\w+)', anual: '([^']+)', ano: '([^']+)' \\}`).exec(js);
+    const linha = new RegExp(`${faixa}: \\{ notas: '([^']+)', empresas: '(\\d+)', cheio: '([^']+)', fundador: '([^']+)', off: '(\\d+)% OFF', cupom: '(\\w+)', anual: '([^']+)', ano: '([^']+)', offAnual: '(\\d+)% OFF' \\}`).exec(js);
     assert.ok(linha, faixa + ' no fiscal.js');
     assert.equal(linha[1], Number(core[3]).toLocaleString('pt-BR'), faixa + ': notas');
     assert.equal(linha[2], core[2], faixa + ': empresas');
@@ -142,8 +143,11 @@ test('preços da página batem com o checkout, com o anual de 20% e com os cupon
     assert.equal(Number(linha[5]), Math.round(desconto / cheio * 100), faixa + ': % do selo');
     maior = Math.max(maior, Number(linha[5]));
     assert.equal(linha[6], cupom);
-    assert.equal(linha[7], reais(cheio * 0.8), faixa + ': mês no anual (20% OFF)');
-    assert.equal(linha[8], reais(cheio * 0.8 * 12), faixa + ': total do ano');
+    // Anual do Escritório: o desconto da faixa vem do checkout (DESCONTO_ANUAL_ESCRITORIO: 25%, 30% e 45%).
+    const pct = Number(new RegExp(`${faixa}: (\\d+)`).exec(/DESCONTO_ANUAL_ESCRITORIO[^=]*= \{([^}]*)\}/.exec(CORE)[1])[1]);
+    assert.equal(Number(linha[9]), pct, faixa + ': % do anual');
+    assert.equal(linha[7], reais(Math.round(cheio * (100 - pct) / 100)), faixa + ': mês no anual');
+    assert.equal(linha[8], reais(Math.round(cheio * 12 * (100 - pct) / 100)), faixa + ': total do ano');
   }
   assert.match(texto(secao('planos')), new RegExp(`até ${maior}% OFF no 1º ano`), 'a faixa da Black Friday promete o maior desconto que existe');
   // Inicial e Pro: o anual da página é o do checkout (centavosAnuais: 12 mensalidades com 20% off).
@@ -201,11 +205,11 @@ test('Escritório 50+: sob medida, sem preço, e o botão vai ao WhatsApp', () =
     assert.equal(cta.hidden, false);
     assert.equal(zap.hidden, true);
     assert.equal(p.el('fi-esc-por').hidden, false);
-    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 237,60');
+    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 222,75');
   }
 });
 
-test('Escritório no anual: 20% OFF nas três faixas, sem o cupom de fundador', () => {
+test('Escritório no anual: 25%, 30% e 45% OFF por faixa, sem o cupom de fundador', () => {
   for (const iso of ['2026-11-20T12:00:00-03:00', '2027-01-15T10:00:00-03:00']) {
     const { p, faixas, ciclos, cta } = pagina(iso);
     ciclos.anual.clicar();
@@ -213,15 +217,18 @@ test('Escritório no anual: 20% OFF nas três faixas, sem o cupom de fundador', 
     assert.equal(p.el('fi-esc-ticket').hidden, true, 'a Black Friday é só do mensal');
     assert.equal(p.el('fi-esc-de').hidden, false);
     assert.equal(p.el('fi-esc-de').textContent, 'R$ 297');
-    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 237,60');
-    assert.match(p.el('fi-esc-depois').innerHTML, /7 dias grátis<\/b> · R\$ 2\.851,20\/ano/);
+    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 222,75');
+    assert.equal(p.el('fi-esc-off').textContent, '25% OFF');
+    assert.match(p.el('fi-esc-depois').innerHTML, /7 dias grátis<\/b> · R\$ 2\.673\/ano/);
     assert.equal(cta.atributos.href, '/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_5&ciclo=anual');
     faixas[1].clicar();
-    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 637,60');
+    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 557,90');
+    assert.equal(p.el('fi-esc-off').textContent, '30% OFF');
     assert.equal(cta.atributos.href, '/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_20&ciclo=anual');
     faixas[2].clicar();
-    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 1.197,60');
-    assert.match(p.el('fi-esc-depois').innerHTML, /R\$ 14\.371,20\/ano/);
+    assert.equal(p.el('fi-esc-valor').textContent, 'R$ 823,35');
+    assert.equal(p.el('fi-esc-off').textContent, '45% OFF');
+    assert.match(p.el('fi-esc-depois').innerHTML, /R\$ 9\.880,20\/ano/);
     // de volta ao mensal, a faixa escolhida fica
     ciclos.mensal.clicar();
     assert.equal(cta.atributos['data-plano'], 'escritorio_50');

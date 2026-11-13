@@ -53,7 +53,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
 <script src="/agentes/fiscal/medicao.js?v=6" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=18" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=19" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -70,7 +70,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "Como funciona a procuração eletrônica?", "acceptedAnswer": {"@type": "Answer", "text": "É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só da empresa cliente para o escritório: a Nó nunca assina nota de cliente."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
-    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto."}},
+    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto no Inicial e no Pro e de 25% a 45% no Escritório."}},
     {"@type": "Question", "name": "Como emito várias notas de uma vez?", "acceptedAnswer": {"@type": "Answer", "text": "No plano Escritório, você manda uma planilha (.xlsx ou .csv) no WhatsApp, com uma linha por nota: quem emite, quem recebe, o valor e a descrição. O agente lê a planilha, mostra o resumo com as notas prontas e as linhas com problema, e só emite depois do seu “confirmar”. Cabem até 1.000 linhas por planilha. No fim, o retorno de cada linha e os PDFs vão para o e-mail do escritório e ficam em Minha conta, em Relatórios."}},
     {"@type": "Question", "name": "Posso ter várias empresas na mesma conta?", "acceptedAnswer": {"@type": "Answer", "text": "Sim, no plano Escritório: até 5, 20 ou 50 empresas, conforme a faixa. Você adiciona o CNPJ em Minha conta, os dados vêm da Receita Federal, e cada empresa emite com o próprio certificado A1 ou por procuração eletrônica ao escritório. As notas das empresas clientes saem pela planilha, e a nota do próprio escritório também pode ser pedida por mensagem."}},
     {"@type": "Question", "name": "Tenho mais de 50 empresas ou quero integrar por API. Como faço?", "acceptedAnswer": {"@type": "Answer", "text": "Aí o plano é sob medida. No card do Escritório, escolha “50+” e fale com a Nó pelo WhatsApp: combinamos o volume, o valor e, se você precisar, a integração da emissão com o sistema que você já usa."}},
@@ -245,7 +245,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     </div>
     <div class="fi-ciclo-toggle" role="group" aria-label="Ciclo de cobrança">
       <button type="button" aria-pressed="true" data-ciclo="mensal">Mensal</button>
-      <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>20% OFF</span></button>
+      <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>até 45% OFF</span></button>
     </div>
     <ul class="fi-planos fi-planos--teste fi-planos--tres fi-reveal" id="fi-planos" data-ciclo="mensal" data-fundador="off">
       <li class="fi-plano" data-plano="inicial">
@@ -294,7 +294,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <h3>Escritório<small>Contabilidade e volume</small></h3>
         </div>
         <div class="fi-plano-oferta">
-          <span class="fi-off" id="fi-esc-off" data-so-anual>20% OFF</span>
+          <span class="fi-off" id="fi-esc-off" data-so-anual>25% OFF</span>
           <div class="fi-faixas" role="group" aria-label="Quantas empresas">
             <span>Empresas</span>
             <button type="button" aria-pressed="true" data-faixa="escritorio_5">5</button>
@@ -384,7 +384,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Quanto custa?</summary>
-          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto.</p>
+          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto no Inicial e no Pro e de 25% a 45% no Escritório.</p>
         </details>
         <details>
           <summary>Como emito várias notas de uma vez?</summary>
