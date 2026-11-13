@@ -200,9 +200,63 @@
   Array.prototype.forEach.call(btnsPrefs, function (b) { b.addEventListener('click', function () { abrirCookies(true); }); });
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && cookies && !cookies.hidden) { ev.preventDefault(); fecharCookies(); } });
 
+  /* ---------- hero por ângulo (remarketing, Lucca 13/11/2026) ----------
+     O anúncio leva ?angulo=<chave> e o hero repete a promessa do anúncio. Quem já usou o simulador e volta sem ângulo
+     cai em "voltou". Chave fora da lista: página padrão. Textos fixos, sempre por textContent. */
+  var ANGULOS = {
+    voltou: {
+      h1: 'Agora a nota sai do seu CNPJ.',
+      sub: 'Na simulação, a NFS-e saiu numa mensagem. Na conta real, ela sai do seu CNPJ, assinada com o seu certificado A1, e chega no seu WhatsApp e no seu e-mail. Os primeiros 7 dias da assinatura são grátis.',
+      cta: 'Escolher meu plano', href: '#planos'
+    },
+    a1: {
+      h1: 'Só falta o certificado A1.',
+      sub: 'O A1 (e-CNPJ) é o arquivo que assina as suas notas. Muitas vezes o seu contador já tem o da empresa; se não tiver, ele é comprado numa certificadora, com validação por videoconferência. Com o A1 em mãos, a nota sai pelo WhatsApp.',
+      cta: 'Como conseguir um A1', href: '#certificado-a1'
+    },
+    preco: {
+      h1: '7 dias grátis pra emitir de verdade.',
+      sub: 'A partir de R$ 49 por mês, com 20 notas. A primeira cobrança só acontece depois dos 7 dias, e você cancela pela sua conta no site. Você pede no WhatsApp, confere o resumo e a nota sai.',
+      cta: 'Testar 7 dias grátis', href: '#planos'
+    },
+    escritorio: {
+      h1: 'As notas do mês de todos os clientes numa planilha.',
+      sub: 'Para escritório de contabilidade: várias empresas numa conta só, cada uma com o próprio certificado A1. Você manda a planilha no WhatsApp, confere o resumo e as notas saem de uma vez, com relatório e PDF no painel.',
+      cta: 'Ver o plano Escritório', href: '#planos'
+    }
+  };
+  function anguloDaVisita() {
+    var pedido = null;
+    try { pedido = new URLSearchParams(location.search).get('angulo'); } catch (e) { pedido = null; }
+    if (pedido && Object.prototype.hasOwnProperty.call(ANGULOS, pedido)) return pedido;
+    var simulou = 0; try { simulou = parseInt(localStorage.getItem(SIM_KEY) || '0', 10) || 0; } catch (e) {}
+    return simulou > 0 ? 'voltou' : null;
+  }
+  var angulo = anguloDaVisita();
+  if (angulo) {
+    var a = ANGULOS[angulo];
+    var h1 = document.getElementById('fi-titulo');
+    var sub = document.getElementById('fi-hero-sub');
+    var cta = document.getElementById('fi-hero-cta');
+    var ctaLink = document.getElementById('fi-hero-cta-link');
+    if (h1) h1.textContent = a.h1;
+    if (sub) sub.textContent = a.sub;
+    if (cta && ctaLink) {
+      ctaLink.textContent = a.cta;
+      ctaLink.setAttribute('href', a.href);
+      ctaLink.setAttribute('data-angulo', angulo);
+      ctaLink.addEventListener('click', function () {
+        dl({ event: 'fiscal_cta_hero', angulo: angulo });
+        if (a.href === '#certificado-a1') setTimeout(abrirPerguntaDoHash, 0);
+      });
+      cta.hidden = false;
+    }
+    document.documentElement.setAttribute('data-angulo', angulo);
+  }
+
   /* ---------- funil de compra (medicao.js) ---------- */
   var medir = window.noFiscalMedicao || null;
-  if (medir) medir.verPagina();
+  if (medir) medir.verPagina(angulo);
   /* Clique "comum" (botão principal, sem Ctrl/Cmd/Shift/Alt): só esse a página segura para o evento sair antes de
      trocar de página. Ctrl/Cmd-clique e o botão do meio abrem a nova aba normalmente (a página fica, o envio também). */
   function cliqueComum(ev) {
@@ -391,6 +445,7 @@
         '<ul class="fi-entregas"><li><i aria-hidden="true"></i>cópia no seu WhatsApp</li><li><i aria-hidden="true"></i>cópia no seu e-mail</li><li><i aria-hidden="true"></i>cópia para o cliente</li></ul>'
       );
       dl({ event: 'fiscal_simulacao_emitida', simulacoes: usadas });
+      if (medir) medir.simulacao(usadas, usadas >= LIMITE);
       return espera(1700);
     }).then(function () {
       var r = LIMITE - usadas;

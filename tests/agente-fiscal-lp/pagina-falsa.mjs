@@ -94,11 +94,11 @@ function doHtml(id, reg) {
 // Abre a página: mesmo `armazenamento` entre duas chamadas = recarregar no mesmo navegador.
 // `seletores`: o que document.querySelectorAll devolve por seletor (padrão: nada). `extras`: entra no window antes dos
 // scripts (fetch, noMarketingHostAllowed, cookie...), para os testes de medição.
-export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras = {} } = {}) {
+export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras = {}, search = '' } = {}) {
   const reg = { rede: [], criados: [], html: [], navegou: [] };
   const ids = {};
   const document = {
-    cookie: '', activeElement: null, documentElement: { classList: lista() },
+    cookie: '', activeElement: null, documentElement: { classList: lista(), atributos: {}, setAttribute(k, v) { this.atributos[k] = String(v); } },
     getElementById(id) { if (!(id in ids)) ids[id] = doHtml(id, reg); return ids[id]; },
     querySelectorAll: (sel) => seletores[sel] || [],
     // um <script> qualquer, para o snippet do GTM ter onde se inserir quando o teste simula o domínio de produção
@@ -118,8 +118,8 @@ export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras 
       removeItem: (k) => { armazenamento.delete(k); }
     },
     location: {
-      hostname: 'www.notechstack.com.br', origin: 'https://www.notechstack.com.br', pathname: '/agentes/fiscal/', search: '',
-      href: 'https://www.notechstack.com.br/agentes/fiscal/', assign: (u) => { reg.navegou.push(u); }
+      hostname: 'www.notechstack.com.br', origin: 'https://www.notechstack.com.br', pathname: '/agentes/fiscal/', search,
+      href: 'https://www.notechstack.com.br/agentes/fiscal/' + search, assign: (u) => { reg.navegou.push(u); }
     },
     navigator: { sendBeacon: grampo('navigator.sendBeacon') },
     fetch: grampo('fetch'), XMLHttpRequest: grampo('XMLHttpRequest'), WebSocket: grampo('WebSocket'),

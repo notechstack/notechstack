@@ -41,6 +41,9 @@
 .fi-hero h1{margin:0 auto 18px;max-width:18ch;font-weight:800;font-size:clamp(36px,6.2vw,74px);line-height:1;letter-spacing:-.035em;text-wrap:balance}
 .fi-sub{margin:0 auto;max-width:62ch;font-size:clamp(16px,1.6vw,19px);line-height:1.55;color:var(--fi-texto-sec);text-wrap:pretty}
 .fi-sub--centro{text-align:center}
+/* CTA do hero nos ângulos de remarketing (fiscal.js, ?angulo=) */
+.fi-hero-cta{margin:22px auto 0;text-align:center}
+.fi-hero-cta[hidden]{display:none}
 .fi-h2{margin:0 0 16px;font-weight:800;font-size:clamp(32px,5.2vw,64px);line-height:1.02;letter-spacing:-.03em;text-align:center;text-wrap:balance}
 .fi-h2--esq{text-align:left}
 .fi-secao{margin-top:clamp(72px,10vw,128px)}
