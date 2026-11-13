@@ -44,14 +44,15 @@
 
   /* Modo escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Cadastro do escritório"): o card Escritório
      da LP abre /comecar/?tipo=escritorio&plano=escritorio_5. A empresa do próprio escritório faz as mesmas 7 etapas; a
-     etapa 1 fala do escritório e a 3 mostra as faixas (só mensal: `ciclo` da URL é ignorado). O tipo e a faixa ficam na
+     etapa 1 fala do escritório e a 3 mostra as faixas (mensal ou anual, pelo `ciclo` da URL, desde 13/11/2026). O tipo e a faixa ficam na
      aba (sessionStorage) para sobreviver ao vai-e-volta do código de e-mail; o plano gravado na conta também liga o modo. */
   var TIPO_KEY = 'nofiscal.tipo';
   var FAIXA_KEY = 'nofiscal.faixa';
   var FAIXAS = { // assinatura-fiscal/core.ts, FAIXAS_ESCRITORIO
-    escritorio_5: { empresas: 5, notas: 500, centavos: 29700 },
-    escritorio_20: { empresas: 20, notas: 2000, centavos: 79700 },
-    escritorio_50: { empresas: 50, notas: 5000, centavos: 149700 }
+    // anual (13/11/2026): o ano inteiro, com 25%, 30% e 45% OFF (centavosAnuaisDoEscritorio)
+    escritorio_5: { empresas: 5, notas: 500, centavos: 29700, anual: 267300, off: 25 },
+    escritorio_20: { empresas: 20, notas: 2000, centavos: 79700, anual: 669480, off: 30 },
+    escritorio_50: { empresas: 50, notas: 5000, centavos: 149700, anual: 988020, off: 45 }
   };
   function ehFaixa(p) { return Object.prototype.hasOwnProperty.call(FAIXAS, p); }
   /* Link com tipo=escritorio ou plano=escritorio_* liga o modo; link com plano Inicial/Pro desliga; sem nada, vale a aba. */
@@ -81,8 +82,8 @@
   var st = {
     escritorio: modoEscritorio,
     plano: modoEscritorio ? faixaInicial() : nf.planoDaUrl(location.search),
-    // mensal | anual (toggle da LP); o anual não aceita cupom. O Escritório é só mensal e não mexe no ciclo guardado.
-    ciclo: modoEscritorio ? 'mensal' : cicloInicial(),
+    // mensal | anual (toggle da LP); o anual não aceita cupom. O Escritório também tem anual desde 13/11/2026.
+    ciclo: cicloInicial(),
     confirmarSemTeste: false, // anual sem teste: o servidor pede confirmação antes de cobrar o ano
     etapa: 0,
     maxEtapa: 0,             // etapa mais adiantada já aberta: até ela a trilha deixa voltar
@@ -110,7 +111,10 @@
   /** Centavos que a assinatura cobra por ciclo (sem cupom), pelo GET do checkout ou pela tabela da página. */
   function centavosDoPlano() {
     var p = st.checkout && st.checkout.planos && st.checkout.planos[st.plano];
-    if (st.escritorio && ehFaixa(st.plano)) return p && p.valor_centavos != null ? p.valor_centavos : FAIXAS[st.plano].centavos;
+    if (st.escritorio && ehFaixa(st.plano)) {
+      if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : FAIXAS[st.plano].anual;
+      return p && p.valor_centavos != null ? p.valor_centavos : FAIXAS[st.plano].centavos;
+    }
     if (anual()) return p && p.anual_centavos != null ? p.anual_centavos : null;
     return p ? p.valor_centavos : null;
   }
@@ -134,25 +138,22 @@
     ['fc-empresa-rotulo', 'Nome do escritório'],
     ['fc-telefone-rotulo', 'WhatsApp de quem vai mandar as planilhas'],
     ['fc-telefone-dica', 'É por este número que o escritório manda as planilhas e pede as notas de todas as empresas.'],
-    ['fc-a1-pergunta', 'Você já tem o certificado A1 do escritório?']
+    ['fc-a1-pergunta', 'Como as empresas vão assinar as notas?'],
+    ['fc-a1-op1-rotulo', 'Certificado A1 próprio'],
+    ['fc-a1-op2-rotulo', 'Tenho procurações dos meus clientes']
   ];
-  /* Procuração eletrônica (11/11/2026; migrações 20261111180000 e 20261111220000): a empresa cliente pode dar
-     procuração ao escritório, que assina as notas dela com o A1 do escritório. Por isso o A1 do escritório é obrigatório. */
-  var REQUISITO_A1_ESCRITORIO = '<b>O escritório precisa do próprio certificado digital A1 <span>(e-CNPJ)</span>.</b> Você envia na etapa 4. ' +
-    'Depois, em Minha conta, cada empresa cliente envia o A1 dela ou dá procuração eletrônica ao escritório, no Portal de Serviços ' +
-    'da Receita, e aí o escritório assina as notas dela com o A1 do escritório. O A3, em token ou cartão, não serve. ' +
-    '<a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
   var textosPadrao = null;
   function aplicarModo() {
     if (!textosPadrao) {
       textosPadrao = TEXTOS_ESCRITORIO.map(function (t) { var el = $(t[0]); return el ? el.textContent : null; });
-      textosPadrao.requisito = $('fc-requisito-a1') ? $('fc-requisito-a1').innerHTML : null;
     }
     TEXTOS_ESCRITORIO.forEach(function (t, i) {
       var el = $(t[0]);
       if (el && textosPadrao[i] != null) el.textContent = st.escritorio ? t[1] : textosPadrao[i];
     });
-    if ($('fc-requisito-a1') && textosPadrao.requisito != null) $('fc-requisito-a1').innerHTML = st.escritorio ? REQUISITO_A1_ESCRITORIO : textosPadrao.requisito;
+    // A segunda opção da pergunta do A1: "Ainda não tenho" (empresa) ou "Tenho procurações dos meus clientes" (escritório).
+    var op2 = $('fc-a1-op2');
+    if (op2) { op2.value = st.escritorio ? 'procuracao' : 'nao'; if (op2.checked) mostrarRetornoA1(op2.value); }
     $('fc-faixas').hidden = !st.escritorio;
     $('fc-escritorio-depois').hidden = !st.escritorio;
     // Escritório: a conta abre direto em Minhas empresas, onde entram as outras empresas.
@@ -168,7 +169,7 @@
     if (ehFaixa(plano)) {
       st.plano = plano;
       nf.aba.gravar(FAIXA_KEY, plano);
-      if (!st.escritorio) { st.escritorio = true; st.ciclo = 'mensal'; nf.aba.gravar(TIPO_KEY, 'escritorio'); aplicarModo(); }
+      if (!st.escritorio) { st.escritorio = true; nf.aba.gravar(TIPO_KEY, 'escritorio'); aplicarModo(); }
       else marcarFaixa();
       return;
     }
@@ -233,9 +234,24 @@
       : c.cortesia ? 'Plano ' + nf.nomePlano(st.plano) + ' · cortesia com o cupom ' + c.codigo
       : 'Plano ' + nf.nomePlano(st.plano) + ' · ' + nf.reais(c.valor_centavos_com_desconto) + '/mês com o cupom ' + c.codigo;
   }
+  /* Rótulos das faixas na etapa 3: preço do mês ou do ano, conforme o ciclo. */
+  function rotulosDasFaixas() {
+    var radios = document.getElementsByName('fc-faixa');
+    for (var i = 0; i < radios.length; i++) {
+      var f = FAIXAS[radios[i].value], span = radios[i].nextElementSibling;
+      if (!f || !span) continue;
+      span.innerHTML = '<b>Até ' + f.empresas + ' empresas</b> · ' + f.notas.toLocaleString('pt-BR') + ' notas/mês · ' +
+        (anual() ? nf.reais(f.anual) + '/ano (' + f.off + '% OFF)' : nf.reais(f.centavos) + '/mês');
+    }
+    var dica = $('fc-faixas-dica');
+    if (dica) dica.textContent = (anual() ? 'Cobrança anual, de uma vez.' : 'Cobrança mensal.') + ' Dá para trocar de faixa depois, em Minha conta.';
+  }
   function mostrarPlanoEscritorio() {
     var base = 'Plano ' + nomeFaixa(st.plano);
-    var rotulo = base + ' · ' + nf.reais(centavosDoPlano()) + '/mês · 7 dias grátis';
+    var rotulo = anual()
+      ? base + ' anual · ' + nf.reais(centavosDoPlano()) + '/ano (' + FAIXAS[st.plano].off + '% OFF) · 7 dias grátis'
+      : base + ' · ' + nf.reais(centavosDoPlano()) + '/mês · 7 dias grátis';
+    rotulosDasFaixas();
     $('fc-plano').textContent = rotulo;
     var c = st.cupom;
     $('fc-plano-pagamento').textContent = !c ? rotulo
@@ -291,14 +307,16 @@
     nf.aviso($('fc-aviso-1'), '');
   }
 
-  /* "Você já tem o certificado A1?" (Lucca, 22/10/2026): obrigatória, mas qualquer resposta segue; ela orienta e vai ao funil
-     (medicao.js, nofiscal_a1) com o regime do CNPJ, para medir quantos chegam sem A1 antes de vender o certificado. */
+  /* Como a empresa assina as notas (Lucca, 13/11/2026; antes eram quatro respostas e um aviso no topo): obrigatória, mas
+     qualquer resposta segue; ela orienta e vai ao funil (medicao.js, nofiscal_a1) com o regime do CNPJ.
+     Procuração eletrônica (migrações 20261111180000 e 20261111220000): a empresa cliente autoriza o escritório, que assina
+     as notas dela com o A1 do escritório. Por isso o A1 do escritório continua sendo pedido na etapa 4. */
   var LINK_A1 = ' <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a>';
   var RETORNO_A1 = {
     sim: 'Ótimo. Você envia o arquivo (.pfx ou .p12) e a senha na etapa 4, depois do pagamento.',
-    contador: 'Peça a ele o arquivo .pfx (ou .p12) do A1 da empresa e a senha. Você envia na etapa 4.',
     nao: 'Dá para seguir o cadastro agora. O A1 entra na etapa 4, e sem ele o agente não emite.' + LINK_A1,
-    nao_sei: 'Se você tem contador, pergunte a ele: muitas vezes o A1 da empresa já está com ele. Sem o A1, o agente não emite.' + LINK_A1
+    procuracao: 'Ótimo. As empresas clientes entram por procuração, em Minha conta, sem o A1 delas. Na etapa 4 você envia só o ' +
+      'A1 do escritório: é com ele que as notas delas são assinadas.'
   };
   function respostaA1() {
     var r = document.querySelector('input[name="fc-a1"]:checked');
@@ -489,7 +507,8 @@
       if (!r.ok) { nf.aviso($('fc-aviso-3'), 'Não deu para abrir o pagamento agora. Recarregue a página em alguns minutos.', 'erro'); return; }
       st.checkout = r.dados;
       // Anual sem os planos anuais no Pagar.me: segue no mensal e avisa.
-      if (anual() && r.dados.anual_disponivel !== true) {
+      var anualOk = st.escritorio ? r.dados.escritorio_anual_disponivel === true : r.dados.anual_disponivel === true;
+      if (anual() && !anualOk) {
         st.ciclo = 'mensal';
         cicloGuardado.apagar();
         nf.aviso($('fc-aviso-3'), 'O plano anual ainda não está disponível. Seguimos com o mensal.', 'info');

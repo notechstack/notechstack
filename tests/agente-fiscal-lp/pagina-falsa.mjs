@@ -56,6 +56,8 @@ function buscar(el, sel) {
   }
   // O ciclo "Simples assim" é só visual (conferido no navegador): aqui ele fica sem passos e não roda.
   if (sel === '.fi-roda-no') return [];
+  // Troca de ciclo (mudarCiclo): os preços e os links dos cards são conferidos no HTML; aqui não há o que percorrer.
+  if (sel === '.fi-plano-oferta [data-mensal]' || sel === 'a[data-plano]') return [];
   const m = /^\.([\w-]+) li$/.exec(sel);
   if (m) {
     const bloco = new RegExp(`<(\\w+)[^>]*class="[^"]*\\b${m[1]}\\b[^"]*"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
@@ -76,7 +78,9 @@ function no(tag, reg) {
     appendChild(c) { c.pai = this; this.filhos.push(c); return c; },
     remove() { if (this.pai) this.pai.filhos = this.pai.filhos.filter((x) => x !== this); this.pai = null; },
     querySelectorAll(sel) { return this._cache[sel] || (this._cache[sel] = buscar(this, sel)); },
-    closest() { return null; }, focus() {}, scrollIntoView() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }
+    closest() { return null; }, focus() {}, scrollIntoView() {}, atributos: {},
+    setAttribute(k, v) { this.atributos[k] = String(v); }, removeAttribute(k) { delete this.atributos[k]; },
+    getAttribute(k) { return k in this.atributos ? this.atributos[k] : null; }
   };
 }
 
@@ -94,11 +98,11 @@ function doHtml(id, reg) {
 // Abre a página: mesmo `armazenamento` entre duas chamadas = recarregar no mesmo navegador.
 // `seletores`: o que document.querySelectorAll devolve por seletor (padrão: nada). `extras`: entra no window antes dos
 // scripts (fetch, noMarketingHostAllowed, cookie...), para os testes de medição.
-export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras = {} } = {}) {
+export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras = {}, search = '' } = {}) {
   const reg = { rede: [], criados: [], html: [], navegou: [] };
   const ids = {};
   const document = {
-    cookie: '', activeElement: null, documentElement: { classList: lista() },
+    cookie: '', activeElement: null, documentElement: { classList: lista(), atributos: {}, setAttribute(k, v) { this.atributos[k] = String(v); } },
     getElementById(id) { if (!(id in ids)) ids[id] = doHtml(id, reg); return ids[id]; },
     querySelectorAll: (sel) => seletores[sel] || [],
     // um <script> qualquer, para o snippet do GTM ter onde se inserir quando o teste simula o domínio de produção
@@ -118,8 +122,8 @@ export function abrirPagina({ armazenamento = new Map(), seletores = {}, extras 
       removeItem: (k) => { armazenamento.delete(k); }
     },
     location: {
-      hostname: 'www.notechstack.com.br', origin: 'https://www.notechstack.com.br', pathname: '/agentes/fiscal/', search: '',
-      href: 'https://www.notechstack.com.br/agentes/fiscal/', assign: (u) => { reg.navegou.push(u); }
+      hostname: 'www.notechstack.com.br', origin: 'https://www.notechstack.com.br', pathname: '/agentes/fiscal/', search,
+      href: 'https://www.notechstack.com.br/agentes/fiscal/' + search, assign: (u) => { reg.navegou.push(u); }
     },
     navigator: { sendBeacon: grampo('navigator.sendBeacon') },
     fetch: grampo('fetch'), XMLHttpRequest: grampo('XMLHttpRequest'), WebSocket: grampo('WebSocket'),

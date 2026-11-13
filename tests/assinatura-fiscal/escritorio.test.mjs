@@ -23,6 +23,8 @@ const ENV_ESCRITORIO = Object.fromEntries(
     [`PAGARME_PLANO_FISCAL_ESCRITORIO_${f}_ID`, `plan_e${f}`],
     [`PAGARME_PLANO_FISCAL_ESCRITORIO_${f}_SEM_TESTE_ID`, `plan_e${f}s`],
     [`PAGARME_PLANO_FISCAL_ESCRITORIO_${f}_TESTE30_ID`, `plan_e${f}t30`],
+    [`PAGARME_PLANO_FISCAL_ESCRITORIO_${f}_ANUAL_ID`, `plan_e${f}a`],
+    [`PAGARME_PLANO_FISCAL_ESCRITORIO_${f}_ANUAL_SEM_TESTE_ID`, `plan_e${f}as`],
   ]),
 );
 const ENV = {
@@ -109,9 +111,9 @@ test("planos do Escritório no Pagar.me: 9 códigos, mensais, NOFISCAL, teste de
 test("configuração pública: as 3 faixas com preço, empresas e notas; escritorio_disponivel só com os 9 planos", () => {
   const c = configuracaoPublica(ENV);
   assert.equal(c.escritorio_disponivel, true);
-  assert.deepEqual(c.planos.escritorio_5, { valor_centavos: 29700, empresas: 5, notas: 500 });
-  assert.deepEqual(c.planos.escritorio_20, { valor_centavos: 79700, empresas: 20, notas: 2000 });
-  assert.deepEqual(c.planos.escritorio_50, { valor_centavos: 149700, empresas: 50, notas: 5000 });
+  assert.deepEqual(c.planos.escritorio_5, { valor_centavos: 29700, anual_centavos: 267300, empresas: 5, notas: 500 });
+  assert.deepEqual(c.planos.escritorio_20, { valor_centavos: 79700, anual_centavos: 669480, empresas: 20, notas: 2000 });
+  assert.deepEqual(c.planos.escritorio_50, { valor_centavos: 149700, anual_centavos: 988020, empresas: 50, notas: 5000 });
   assert.equal(configuracaoPublica({ ...ENV, PAGARME_PLANO_FISCAL_ESCRITORIO_50_TESTE30_ID: "" }).escritorio_disponivel, false);
   assert.doesNotMatch(JSON.stringify(c), /plan_|sk_test|sal/);
 });
@@ -182,20 +184,39 @@ test("cupom sem dias_de_teste no Escritório segue a regra do teste de 7 dias, c
   assert.equal(r.body.medicao.valor, 1347.3);
 });
 
-test("Escritório não tem anual: checkout e prévia do cupom recusam sem chamar ninguém", async () => {
-  for (const extra of [{ ciclo: "anual" }, { ciclo: "anual", cupom: "FUNDADOR5" }]) {
-    const { deps, c } = dubles();
-    const r = await processarCheckout({ ...PEDIDO, ...extra }, deps);
-    assert.equal(r.http, 400, JSON.stringify(extra));
-    assert.equal(r.body.error_code, "ESCRITORIO_SO_MENSAL");
-    assert.equal(r.body.mensagem, "O plano Escritório é só mensal. Escolha a cobrança mensal.");
-    assert.equal(c.fetch.length + c.reivindicar.length + c.registrar.length + c.cupom.length, 0);
+test("Escritório anual (13/11/2026): plano anual da faixa, valor do ano com 25%, 30% e 45% OFF; cupom só no mensal", async () => {
+  for (const [faixa, f, ano] of [["escritorio_5", "5", 267300], ["escritorio_20", "20", 669480], ["escritorio_50", "50", 988020]]) {
+    assert.equal(centavosDoCiclo(faixa, "anual"), ano, faixa);
+    for (const [comTeste, plan] of [[true, `plan_e${f}a`], [false, `plan_e${f}as`]]) {
+      const { deps, c } = dubles({ testeLiberado: comTeste });
+      const r = await processarCheckout({ ...PEDIDO, plano: faixa, ciclo: "anual", confirmar_sem_teste: !comTeste || undefined }, deps);
+      assert.equal(r.http, 200, JSON.stringify(r.body));
+      assert.equal(c.fetch[0].body.plan_id, plan, `${faixa} com teste: ${comTeste}`);
+      assert.equal(r.body.medicao.valor, ano / 100);
+    }
   }
+  // sem teste, o anual pede a confirmação antes de cobrar o ano
+  const { deps: d0, c: c0 } = dubles({ testeLiberado: false });
+  const sem = await processarCheckout({ ...PEDIDO, ciclo: "anual" }, d0);
+  assert.equal(sem.body.error_code, "CONFIRMAR_SEM_TESTE");
+  assert.equal(sem.body.valor_centavos, 267300);
+  assert.equal(c0.fetch.length, 0);
+  // cupom (fundador inclusive) não vale no anual, nem na prévia
   const { deps, c } = dubles();
+  const r = await processarCheckout({ ...PEDIDO, ciclo: "anual", cupom: "FUNDADOR5" }, deps);
+  assert.equal(r.body.error_code, "CUPOM_ANUAL");
+  assert.equal(c.fetch.length + c.registrar.length, 0);
   const p = await processarValidarCupom({ acao: "validar_cupom", codigo: "FUNDADOR5", plano: "escritorio_5", ciclo: "anual" }, deps);
-  assert.equal(p.http, 400);
-  assert.equal(p.body.error_code, "ESCRITORIO_SO_MENSAL");
-  assert.equal(c.cupom.length, 0);
+  assert.equal(p.body.error_code, "CUPOM_ANUAL");
+  // sem os ids anuais da faixa, o anual fica indisponível e o mensal segue
+  const semAnual = { ...ENV, PAGARME_PLANO_FISCAL_ESCRITORIO_5_ANUAL_SEM_TESTE_ID: "" };
+  const { deps: d1 } = dubles({ env: semAnual });
+  assert.equal((await processarCheckout({ ...PEDIDO, ciclo: "anual" }, d1)).body.error_code, "PLANO_INDISPONIVEL");
+  const { deps: d2 } = dubles({ env: semAnual });
+  assert.equal((await processarCheckout({ ...PEDIDO }, d2)).http, 200);
+  assert.equal(configuracaoPublica(semAnual).escritorio_anual_disponivel, false);
+  assert.equal(configuracaoPublica(semAnual).escritorio_disponivel, true);
+  assert.equal(configuracaoPublica(ENV).escritorio_anual_disponivel, true);
 });
 
 test("prévia com FUNDADOR5: R$ 297 vira R$ 247 por 12 ciclos, com 30 dias de teste", async () => {
@@ -282,7 +303,7 @@ test("script de planos cria os 9 do Escritório e imprime as variáveis", async 
     "escritorio_20_teste30", "escritorio_50", "escritorio_50_sem_teste", "escritorio_50_teste30"];
   const lista = await criarPlanosFiscal({ fetch, env: { PAGARME_SECRET_KEY: "sk_live" }, codigos });
   assert.deepEqual(criados.map((x) => x[1]), [7, 0, 30, 7, 0, 30, 7, 0, 30]);
-  assert.deepEqual(lista.map((p) => `${p.env}=${p.id}`), Object.keys(ENV_ESCRITORIO).map((k) => {
+  assert.deepEqual(lista.map((p) => `${p.env}=${p.id}`), Object.keys(ENV_ESCRITORIO).filter((k) => !/_ANUAL_/.test(k)).map((k) => {
     const codigo = codigos.find((c) => PLANOS_PAGARME[c].env === k);
     return `${k}=plan_${codigo}`;
   }));

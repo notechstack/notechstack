@@ -27,10 +27,94 @@
       if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
       a.setAttribute('href', u.pathname + u.search);
     });
+    desenharEscritorio();
   }
   if (planos) Array.prototype.forEach.call(cicloBtns, function (b) {
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
+
+  /* Card do Escritório (Lucca, 13/11/2026): faixas de 5, 20 e 50 empresas, mensal ou anual, e "50+" (sob medida).
+     - Anual: 25%, 30% e 45% OFF conforme a faixa (no Inicial e no Pro são 20%): o preço do mês no anual e o total do ano.
+     - Black Friday, só no mensal e até 30/11/2026: condição de fundador, cupons FUNDADOR5/20/50 (1º mês grátis e desconto
+       por 12 cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O selo diz o desconto da faixa
+       (R$ 50 em 297, R$ 150 em 797, R$ 300 em 1.497). O cupom vai no link e o cadastro o aplica (?cupom=).
+     - 50+: sem preço; o botão abre o WhatsApp comercial (Lead).
+     Depois do prazo, ou sem JS, a página mostra só o preço cheio. Só em localhost: ?fundador=off mostra o depois. */
+  var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
+  var FAIXAS = {
+    escritorio_5: { notas: '500', empresas: '5', cheio: 'R$ 297', fundador: 'R$ 247', off: '17% OFF', cupom: 'FUNDADOR5', anual: 'R$ 222,75', ano: 'R$ 2.673', offAnual: '25% OFF' },
+    escritorio_20: { notas: '2.000', empresas: '20', cheio: 'R$ 797', fundador: 'R$ 647', off: '19% OFF', cupom: 'FUNDADOR20', anual: 'R$ 557,90', ano: 'R$ 6.694,80', offAnual: '30% OFF' },
+    escritorio_50: { notas: '5.000', empresas: '50', cheio: 'R$ 1.497', fundador: 'R$ 1.197', off: '20% OFF', cupom: 'FUNDADOR50', anual: 'R$ 823,35', ano: 'R$ 9.880,20', offAnual: '45% OFF' }
+  };
+  var SOB_MEDIDA = 'sob_medida';
+  var fundador = Date.now() < FUNDADOR_ATE;
+  if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
+  var faixaBtns = document.querySelectorAll('[data-faixa]');
+  var faixaAtual = 'escritorio_5';
+  function desenharEscritorio() {
+    var el = function (id) { return document.getElementById(id); };
+    var por = function (id, texto) { var e = el(id); if (e) e.textContent = texto; return e; };
+    var mostrar = function (id, sim) { var e = el(id); if (e) e.hidden = !sim; };
+    var sobMedida = faixaAtual === SOB_MEDIDA;
+    var anual = !!planos && planos.getAttribute('data-ciclo') === 'anual';
+    Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === faixaAtual)); });
+    mostrar('fi-esc-cta', !sobMedida);
+    mostrar('fi-esc-zap', sobMedida);
+    mostrar('fi-esc-por', !sobMedida);
+    if (sobMedida) {
+      mostrar('fi-esc-de', false); mostrar('fi-esc-ticket', false); mostrar('fi-esc-off', false);
+      por('fi-esc-valor', 'Sob medida');
+      por('fi-esc-cabe', 'Volume combinado');
+      if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = 'Mais de 50 empresas';
+      return;
+    }
+    var f = FAIXAS[faixaAtual];
+    var oferta = fundador && !anual; // o cupom de fundador não vale no anual
+    mostrar('fi-esc-off', true); // no mensal o CSS o esconde ([data-so-anual])
+    por('fi-esc-off', f.offAnual);
+    por('fi-esc-de', f.cheio);
+    mostrar('fi-esc-de', anual || oferta);
+    por('fi-esc-valor', anual ? f.anual : oferta ? f.fundador : f.cheio);
+    por('fi-esc-cabe', f.notas + ' notas por mês');
+    if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = anual ? '<b>7 dias grátis</b> · ' + f.ano + '/ano' : oferta ? '<b>1º mês grátis</b> · preço do 1º ano' : '<b>7 dias grátis</b>';
+    por('fi-esc-ticket-off', f.off);
+    mostrar('fi-esc-ticket', oferta);
+    var cta = por('fi-esc-cta', oferta ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
+    if (cta) {
+      cta.setAttribute('data-plano', faixaAtual);
+      cta.setAttribute('href', CADASTRO_URL + '?tipo=escritorio&plano=' + faixaAtual + (anual ? '&ciclo=anual' : oferta ? '&cupom=' + f.cupom : ''));
+    }
+  }
+  if (planos) {
+    planos.setAttribute('data-fundador', fundador ? 'on' : 'off');
+    var faixaFundador = document.getElementById('fi-fundador');
+    if (faixaFundador) faixaFundador.hidden = !fundador;
+    Array.prototype.forEach.call(faixaBtns, function (b) {
+      b.addEventListener('click', function () {
+        var c = b.getAttribute('data-faixa');
+        if (FAIXAS[c] || c === SOB_MEDIDA) { faixaAtual = c; desenharEscritorio(); }
+      });
+    });
+    desenharEscritorio();
+  }
+
+  /* Mockups das funcionalidades: o vídeo só carrega e toca com a seção na tela, e pausa fora dela. Com movimento
+     reduzido não toca sozinho: fica o quadro de capa, com os controles do navegador. */
+  var videos = document.querySelectorAll('.fi-fx-video');
+  if (videos.length) {
+    if (reduzido || !('IntersectionObserver' in window)) {
+      Array.prototype.forEach.call(videos, function (v) { v.controls = true; });
+    } else {
+      var obsVideo = new IntersectionObserver(function (itens) {
+        itens.forEach(function (it) {
+          var v = it.target;
+          if (it.isIntersecting) { var t = v.play(); if (t && t.catch) t.catch(function () { v.controls = true; }); }
+          else v.pause();
+        });
+      }, { threshold: 0.35 });
+      Array.prototype.forEach.call(videos, function (v) { obsVideo.observe(v); });
+    }
+  }
 
   /* Cards dos planos: inclinam e ganham um brilho na direção do cursor (efeito do FlipCard do React Bits, em JS puro e
      sem o giro). Só com mouse e sem movimento reduzido; o CSS faz a suavização. */
@@ -200,9 +284,63 @@
   Array.prototype.forEach.call(btnsPrefs, function (b) { b.addEventListener('click', function () { abrirCookies(true); }); });
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && cookies && !cookies.hidden) { ev.preventDefault(); fecharCookies(); } });
 
+  /* ---------- hero por ângulo (remarketing, Lucca 13/11/2026) ----------
+     O anúncio leva ?angulo=<chave> e o hero repete a promessa do anúncio. Quem já usou o simulador e volta sem ângulo
+     cai em "voltou". Chave fora da lista: página padrão. Textos fixos, sempre por textContent. */
+  var ANGULOS = {
+    voltou: {
+      h1: 'Agora a nota sai do seu CNPJ.',
+      sub: 'Na simulação, a NFS-e saiu numa mensagem. Na conta real, ela sai do seu CNPJ, assinada com o seu certificado A1, e chega no seu WhatsApp e no seu e-mail. Os primeiros 7 dias da assinatura são grátis.',
+      cta: 'Escolher meu plano', href: '#planos'
+    },
+    a1: {
+      h1: 'Só falta o certificado A1.',
+      sub: 'O A1 (e-CNPJ) é o arquivo que assina as suas notas. Muitas vezes o seu contador já tem o da empresa; se não tiver, ele é comprado numa certificadora, com validação por videoconferência. Com o A1 em mãos, a nota sai pelo WhatsApp.',
+      cta: 'Como conseguir um A1', href: '#certificado-a1'
+    },
+    preco: {
+      h1: '7 dias grátis pra emitir de verdade.',
+      sub: 'A partir de R$ 49 por mês, com 20 notas. A primeira cobrança só acontece depois dos 7 dias, e você cancela pela sua conta no site. Você pede no WhatsApp, confere o resumo e a nota sai.',
+      cta: 'Testar 7 dias grátis', href: '#planos'
+    },
+    escritorio: {
+      h1: 'As notas do mês de todos os clientes numa planilha.',
+      sub: 'Para escritório de contabilidade: várias empresas numa conta só, cada uma com o próprio certificado A1. Você manda a planilha no WhatsApp, confere o resumo e as notas saem de uma vez, com relatório e PDF no painel.',
+      cta: 'Ver o plano Escritório', href: '#planos'
+    }
+  };
+  function anguloDaVisita() {
+    var pedido = null;
+    try { pedido = new URLSearchParams(location.search).get('angulo'); } catch (e) { pedido = null; }
+    if (pedido && Object.prototype.hasOwnProperty.call(ANGULOS, pedido)) return pedido;
+    var simulou = 0; try { simulou = parseInt(localStorage.getItem(SIM_KEY) || '0', 10) || 0; } catch (e) {}
+    return simulou > 0 ? 'voltou' : null;
+  }
+  var angulo = anguloDaVisita();
+  if (angulo) {
+    var a = ANGULOS[angulo];
+    var h1 = document.getElementById('fi-titulo');
+    var sub = document.getElementById('fi-hero-sub');
+    var cta = document.getElementById('fi-hero-cta');
+    var ctaLink = document.getElementById('fi-hero-cta-link');
+    if (h1) h1.textContent = a.h1;
+    if (sub) sub.textContent = a.sub;
+    if (cta && ctaLink) {
+      ctaLink.textContent = a.cta;
+      ctaLink.setAttribute('href', a.href);
+      ctaLink.setAttribute('data-angulo', angulo);
+      ctaLink.addEventListener('click', function () {
+        dl({ event: 'fiscal_cta_hero', angulo: angulo });
+        if (a.href === '#certificado-a1') setTimeout(abrirPerguntaDoHash, 0);
+      });
+      cta.hidden = false;
+    }
+    document.documentElement.setAttribute('data-angulo', angulo);
+  }
+
   /* ---------- funil de compra (medicao.js) ---------- */
   var medir = window.noFiscalMedicao || null;
-  if (medir) medir.verPagina();
+  if (medir) medir.verPagina(angulo);
   /* Clique "comum" (botão principal, sem Ctrl/Cmd/Shift/Alt): só esse a página segura para o evento sair antes de
      trocar de página. Ctrl/Cmd-clique e o botão do meio abrem a nova aba normalmente (a página fica, o envio também). */
   function cliqueComum(ev) {
@@ -391,6 +529,7 @@
         '<ul class="fi-entregas"><li><i aria-hidden="true"></i>cópia no seu WhatsApp</li><li><i aria-hidden="true"></i>cópia no seu e-mail</li><li><i aria-hidden="true"></i>cópia para o cliente</li></ul>'
       );
       dl({ event: 'fiscal_simulacao_emitida', simulacoes: usadas });
+      if (medir) medir.simulacao(usadas, usadas >= LIMITE);
       return espera(1700);
     }).then(function () {
       var r = LIMITE - usadas;

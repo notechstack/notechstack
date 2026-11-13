@@ -31,7 +31,9 @@ test('escritório: etapa 1, faixa, cupom de fundador e checkout mensal', async (
       : { status: 200, corpo: { ok: true, status: 'pendente', assinatura_id: 'a-1', com_teste: true, dias_de_teste: 30, medicao: { evento: 'StartTrial', event_id: 'nofiscal-trial-a-1', transaction_id: 'a-1', valor: 247, moeda: 'BRL' } } }),
     'fiscal-conta:estado': () => ({ status: 200, corpo: estado({ plano: 'escritorio_20', onboarding_etapa: 'pagamento' }) })
   });
-  const p = await abrir('/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_20&ciclo=anual', { rede });
+  // Até 13/11/2026 o `ciclo=anual` da URL era ignorado no Escritório; agora vale (anual com 25%, 30% e 45% OFF), então
+  // este teste do mensal abre sem ele.
+  const p = await abrir('/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_20', { rede });
   assert.equal(p.etapa(), 1);
   assert.equal(p.texto('fc-plano'), 'Plano Escritório até 20 empresas · R$ 797/mês · 7 dias grátis');
   assert.equal(p.texto('fc-titulo-1'), 'Dados do escritório');

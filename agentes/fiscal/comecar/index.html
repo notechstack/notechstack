@@ -67,9 +67,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="nf-cartao" id="fc-etapa-1" data-etapa="1" hidden aria-labelledby="fc-titulo-1">
     <p class="nf-passo" id="fc-passo-1">1 de 7 · Sua empresa</p>
     <h2 class="nf-h2" id="fc-titulo-1">Os dados da sua empresa</h2>
-    <!-- Requisito do A1 antes do pagamento (Lucca, 22/10/2026): quem não tinha A1 pagava e travava na etapa 4.
-         A Sefin exige a DPS assinada com o certificado do próprio emitente, inclusive MEI (Anexo I, regra E0718). -->
-    <p class="nf-aviso nf-aviso--info nf-requisito-a1" id="fc-requisito-a1"><b>Você vai precisar do certificado digital A1 da empresa <span>(e-CNPJ)</span>.</b> É ele que assina as notas, e o padrão nacional não aceita outro jeito, nem para MEI. O A1 é um arquivo comprado à parte, numa certificadora, e vale 1 ano. O A3, em token ou cartão, não serve. <a href="/agentes/fiscal/#certificado-a1" target="_blank" rel="noopener">Como conseguir um A1</a></p>
     <form id="fc-form-1" class="nf-form" novalidate>
       <div class="nf-campo nf-campo--largo">
         <label for="fc-cnpj" id="fc-cnpj-rotulo">CNPJ</label>
@@ -98,13 +95,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <small class="nf-dica" id="fc-telefone-dica">É por este número que você vai pedir as notas.</small>
         <small class="nf-erro" id="fc-telefone-erro" hidden></small>
       </div>
-      <!-- Pergunta medida no funil (nofiscal_a1): quantos chegam sem A1, por regime, antes de integrar a venda do certificado -->
+      <!-- Como a empresa assina as notas (Lucca, 13/11/2026): duas opções no lugar do aviso do topo e da pergunta de quatro
+           respostas. Empresa: tem o A1 ou ainda não. Escritório: tem o A1 ou tem procurações dos clientes (comecar.js troca
+           o texto e o valor da segunda opção). Qualquer resposta segue; ela orienta e vai ao funil (nofiscal_a1). -->
       <fieldset class="nf-grupo nf-a1-pergunta" id="fc-a1">
-        <legend id="fc-a1-pergunta">Você já tem o certificado A1?</legend>
-        <label class="nf-opcao"><input type="radio" name="fc-a1" value="sim"><span>Sim, tenho o arquivo e a senha</span></label>
-        <label class="nf-opcao"><input type="radio" name="fc-a1" value="contador"><span>Está com o meu contador</span></label>
-        <label class="nf-opcao"><input type="radio" name="fc-a1" value="nao"><span>Ainda não tenho</span></label>
-        <label class="nf-opcao"><input type="radio" name="fc-a1" value="nao_sei"><span>Não sei</span></label>
+        <legend id="fc-a1-pergunta">Você tem o certificado A1 da empresa?</legend>
+        <label class="nf-opcao"><input type="radio" name="fc-a1" value="sim"><span id="fc-a1-op1-rotulo">Sim, tenho</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-a1" value="nao" id="fc-a1-op2"><span id="fc-a1-op2-rotulo">Ainda não tenho</span></label>
         <p class="nf-dica nf-a1-retorno" id="fc-a1-retorno" aria-live="polite" hidden></p>
         <small class="nf-erro" id="fc-a1-erro" hidden></small>
       </fieldset>
@@ -141,15 +138,15 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <section class="nf-cartao" id="fc-etapa-3" data-etapa="3" hidden aria-labelledby="fc-titulo-3">
     <p class="nf-passo">3 de 7 · Pagamento</p>
     <h2 class="nf-h2" id="fc-titulo-3">Pagamento</h2>
-    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com 20% de desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
+    <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
     <form id="fc-form-3" class="nf-form" novalidate>
-      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio), só mensal -->
+      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio); mensal ou anual desde 13/11/2026 -->
       <fieldset class="nf-grupo nf-grupo--coluna nf-faixas" id="fc-faixas" hidden>
         <legend>Quantas empresas o escritório vai atender?</legend>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_5"><span><b>Até 5 empresas</b> · 500 notas/mês · R$ 297</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_20"><span><b>Até 20 empresas</b> · 2.000 notas/mês · R$ 797</span></label>
         <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_50"><span><b>Até 50 empresas</b> · 5.000 notas/mês · R$ 1.497</span></label>
-        <small class="nf-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
+        <small class="nf-dica" id="fc-faixas-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
       </fieldset>
       <div class="nf-cupom" id="fc-cupom">
         <button type="button" class="fi-link-btn" id="fc-cupom-abrir">Tem um cupom?</button>
@@ -356,7 +353,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=4"></script>
-<script src="/agentes/fiscal/medicao.js?v=4"></script>
-<script src="/agentes/fiscal/comecar/comecar.js?v=14"></script>
+<script src="/agentes/fiscal/medicao.js?v=7"></script>
+<script src="/agentes/fiscal/comecar/comecar.js?v=17"></script>
 </body>
 </html>

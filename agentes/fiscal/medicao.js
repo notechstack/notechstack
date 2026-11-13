@@ -26,8 +26,10 @@
   'use strict';
   var CONSENT_KEY = 'no_fiscal_consent';
   var PRECOS = { inicial: 49, pro: 129, escritorio_5: 297, escritorio_20: 797, escritorio_50: 1497 }; // reais por mês (assinatura-fiscal/core.ts, PLANOS_PAGARME)
-  var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4 }; // reais por ano no anual (20% off, core.ts centavosAnuais)
-  var NOMES = { inicial: 'Inicial', pro: 'Pro', escritorio: 'Escritório', escritorio_5: 'Escritório 5', escritorio_20: 'Escritório 20', escritorio_50: 'Escritório 50', agencia: 'Agência' };
+  // reais por ano no anual: Inicial e Pro com 20% off (core.ts centavosAnuais); Escritório com 25%, 30% e 45% off
+  // (centavosAnuaisDoEscritorio, 13/11/2026)
+  var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4, escritorio_5: 2673, escritorio_20: 6694.8, escritorio_50: 9880.2 };
+  var NOMES = { inicial: 'Inicial', pro: 'Pro', escritorio: 'Escritório', escritorio_5: 'Escritório 5', escritorio_20: 'Escritório 20', escritorio_50: 'Escritório 50', agencia: 'Agência', presumido: 'Lucro Presumido (lista de espera)' };
   var FN_CAPI = 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/meta-capi'; // a mesma da /agentes/
   var ESPERA_MAX_MS = 300; // quanto um clique que sai da página espera os envios confirmarem
 
@@ -115,7 +117,7 @@
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push(p);
     if (meta && meta.evento && consentido()) {
-      fbqQuandoPronto(['track', meta.evento, meta.dados || {}, { eventID: eventId }]);
+      fbqQuandoPronto([meta.custom ? 'trackCustom' : 'track', meta.evento, meta.dados || {}, { eventID: eventId }]);
       if (meta.capi) registrar(eventId, enviarCapi(meta.evento, eventId, meta.dados || {}));
     }
     return eventId;
@@ -144,8 +146,16 @@
       if (!consentido()) return { consent: 'denied' };
       return { consent: 'granted', fbp: cookie('_fbp') || undefined, fbc: fbc() || undefined, page_url: location.href };
     },
-    verPagina: function () {
-      return disparar('nofiscal_view_content', { pagina: location.pathname }, { evento: 'ViewContent' });
+    /** `angulo`: a variante do hero que o anúncio de remarketing pediu (?angulo=), para comparar por ângulo. */
+    verPagina: function (angulo) {
+      return disparar('nofiscal_view_content', { pagina: location.pathname, angulo: angulo || undefined },
+        { evento: 'ViewContent', dados: angulo ? { content_category: 'nofiscal', content_name: 'nó.fiscal LP ' + angulo } : {} });
+    },
+    /** Simulação concluída no simulador da LP (Lucca, 13/11/2026): o público mais quente do remarketing, quem viu a
+        nota sair e não assinou. Evento próprio no Pixel (SimulacaoNota), sem CAPI: é sinal de público, não conversão. */
+    simulacao: function (simulacoes, limite) {
+      return disparar('nofiscal_simulacao', { simulacoes: simulacoes, limite: limite ? true : undefined },
+        { evento: 'SimulacaoNota', custom: true, dados: { simulacoes: simulacoes } });
     },
     planoEscolhido: function (plano, origem, ciclo) {
       var anual = ciclo === 'anual';
@@ -169,7 +179,7 @@
       if (!primeiraVez('cadastro_inicio')) return null;
       return disparar('nofiscal_cadastro_inicio', { plano: plano });
     },
-    /** Resposta da etapa 1 (sim | contador | nao | nao_sei) com o regime do CNPJ (mei | simples). Vai também à fila do
+    /** Resposta da etapa 1 (sim | nao | procuracao; até 13/11/2026 também contador | nao_sei) com o regime do CNPJ (mei | simples). Vai também à fila do
         painel de percurso (telemetria.js), que só aceita nomes form_*, e sai do navegador só com a medição permitida. */
     a1: function (resposta, regime, plano) {
       if (!resposta || !primeiraVez('a1.' + resposta)) return null;
