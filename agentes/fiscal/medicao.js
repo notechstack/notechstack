@@ -26,7 +26,9 @@
   'use strict';
   var CONSENT_KEY = 'no_fiscal_consent';
   var PRECOS = { inicial: 49, pro: 129, escritorio_5: 297, escritorio_20: 797, escritorio_50: 1497 }; // reais por mês (assinatura-fiscal/core.ts, PLANOS_PAGARME)
-  var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4 }; // reais por ano no anual (20% off, core.ts centavosAnuais)
+  // reais por ano no anual: Inicial e Pro com 20% off (core.ts centavosAnuais); Escritório com 25%, 30% e 45% off
+  // (centavosAnuaisDoEscritorio, 13/11/2026)
+  var PRECOS_ANUAIS = { inicial: 470.4, pro: 1238.4, escritorio_5: 2673, escritorio_20: 6694.8, escritorio_50: 9880.2 };
   var NOMES = { inicial: 'Inicial', pro: 'Pro', escritorio: 'Escritório', escritorio_5: 'Escritório 5', escritorio_20: 'Escritório 20', escritorio_50: 'Escritório 50', agencia: 'Agência', presumido: 'Lucro Presumido (lista de espera)' };
   var FN_CAPI = 'https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/meta-capi'; // a mesma da /agentes/
   var ESPERA_MAX_MS = 300; // quanto um clique que sai da página espera os envios confirmarem
