@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=18">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=19">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -120,6 +120,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       </div>
     </div>
     <p class="fi-canvas-nota">Simulação no seu navegador: nenhuma nota é emitida e nada é enviado à Sefin. <span>Medição <b id="fi-consent-estado" aria-live="polite">recusada</b> · <button type="button" class="fi-link-btn" data-consent-prefs>Preferências de cookies</button></span></p>
+    <!-- Referências do sistema oficial (Lucca, 13/11/2026): quem chega não conhece "Sefin"; estes selos dizem, de relance,
+         que a nota sai pelo sistema do governo. Ícones próprios e nomes em texto, sem reproduzir marcas oficiais. -->
+    <ul class="fi-oficial fi-oficial--hero" aria-label="Integração com o sistema oficial"><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M4 10h16"/><path d="m12 3 9 5H3z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/></svg></span><span><b>NFS-e Nacional</b><small>API oficial do governo</small></span></li><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4M20 17v.01"/></svg></span><span><b>nfse.gov.br</b><small>Toda nota se confere lá</small></span></li><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9.5 9 1.8 1.8L15 7.3"/><path d="m8.5 13.6-1.5 7.4 5-2.6 5 2.6-1.5-7.4"/></svg></span><span><b>ICP-Brasil</b><small>Assinada com o seu A1</small></span></li><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-4.5"/></svg></span><span><b>Receita Federal</b><small>CNPJ conferido no cadastro</small></span></li></ul>
   </section>
 
   <!-- ── Funcionalidades (Lucca, 13/11/2026, v2): uma seção por recurso, com pouco texto. O mockup é o aparelho do
@@ -315,6 +318,19 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     </ul>
     <p class="fi-requisito-a1"><b>A nota é assinada</b> com o certificado A1 da empresa ou, no Escritório, por procuração eletrônica. <a href="#certificado-a1">Como conseguir um A1</a> · <a href="#procuracao">Como funciona a procuração</a></p>
     <p class="fi-planos-nota">O valor aparece de novo no cadastro, antes de você informar o cartão. Impostos continuam com a sua contabilidade.</p>
+  </section>
+
+  <!-- ── Sistema oficial: fecho antes do FAQ, com o caminho da nota até o portal do governo ── -->
+  <section class="fi-secao fi-oficial-sec fi-reveal" id="oficial" aria-labelledby="fi-oficial-titulo">
+    <h2 class="fi-h2" id="fi-oficial-titulo">Direto no sistema oficial do governo</h2>
+    <p class="fi-sub fi-sub--centro">Cada nota é transmitida à NFS-e Nacional e sai com chave de acesso e QR Code. Você e o seu cliente conferem no portal oficial.</p>
+    <ol class="fi-caminho" aria-label="O caminho da nota">
+      <li><span class="fi-caminho-ico fi-caminho-ico--zap"><svg viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg></span><b>WhatsApp</b><small>Você pede</small></li>
+      <li><span class="fi-caminho-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9.5 9 1.8 1.8L15 7.3"/><path d="m8.5 13.6-1.5 7.4 5-2.6 5 2.6-1.5-7.4"/></svg></span><b>Certificado A1</b><small>Assina a nota</small></li>
+      <li><span class="fi-caminho-ico fi-caminho-ico--gov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M4 10h16"/><path d="m12 3 9 5H3z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/></svg></span><b>NFS-e Nacional</b><small>O governo autoriza</small></li>
+      <li><span class="fi-caminho-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4M20 17v.01"/></svg></span><b>nfse.gov.br</b><small>Qualquer um confere</small></li>
+    </ol>
+    <p class="fi-oficial-link"><a href="https://www.nfse.gov.br/" target="_blank" rel="noopener noreferrer">Conhecer o portal oficial da NFS-e <span aria-hidden="true">↗</span></a></p>
   </section>
 
   <!-- ── FAQ ── -->
