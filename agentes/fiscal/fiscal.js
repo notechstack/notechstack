@@ -27,38 +27,45 @@
       if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
       a.setAttribute('href', u.pathname + u.search);
     });
+    desenharEscritorio();
   }
   if (planos) Array.prototype.forEach.call(cicloBtns, function (b) {
     b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
   });
 
-  /* Condição de fundador do Escritório (Lucca, 13/11/2026): cupons FUNDADOR5/20/50 (1º mês grátis e desconto por 12
-     cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql), anunciada até 30/11/2026. Depois do prazo, ou
-     sem JS, a página mostra só o preço cheio. O cupom vai no link e o cadastro o aplica sozinho (?cupom=).
-     Só em localhost: ?fundador=off mostra a página de depois do prazo. */
+  /* Card do Escritório (Lucca, 13/11/2026): três faixas (5, 20 e 50 empresas), mensal ou anual.
+     - Anual: 20% OFF, como no Inicial e no Pro (o preço do mês no anual e o total do ano).
+     - Fundador, só no mensal e até 30/11/2026: cupons FUNDADOR5/20/50 (1º mês grátis e desconto por 12 cobranças;
+       scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O cupom vai no link e o cadastro o aplica (?cupom=).
+     Depois do prazo, ou sem JS, a página mostra só o preço cheio. Só em localhost: ?fundador=off mostra o depois. */
   var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
   var FAIXAS = {
-    escritorio_5: { notas: '500', cheio: 'R$ 297', fundador: 'R$ 247', cupom: 'FUNDADOR5' },
-    escritorio_20: { notas: '2.000', cheio: 'R$ 797', fundador: 'R$ 647', cupom: 'FUNDADOR20' },
-    escritorio_50: { notas: '5.000', cheio: 'R$ 1.497', fundador: 'R$ 1.197', cupom: 'FUNDADOR50' }
+    escritorio_5: { notas: '500', cheio: 'R$ 297', fundador: 'R$ 247', cupom: 'FUNDADOR5', anual: 'R$ 237,60', ano: 'R$ 2.851,20' },
+    escritorio_20: { notas: '2.000', cheio: 'R$ 797', fundador: 'R$ 647', cupom: 'FUNDADOR20', anual: 'R$ 637,60', ano: 'R$ 7.651,20' },
+    escritorio_50: { notas: '5.000', cheio: 'R$ 1.497', fundador: 'R$ 1.197', cupom: 'FUNDADOR50', anual: 'R$ 1.197,60', ano: 'R$ 14.371,20' }
   };
   var fundador = Date.now() < FUNDADOR_ATE;
   if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
   var faixaBtns = document.querySelectorAll('[data-faixa]');
-  function mudarFaixa(codigo) {
-    var f = FAIXAS[codigo]; if (!f) return;
+  var faixaAtual = 'escritorio_5';
+  function desenharEscritorio() {
+    var f = FAIXAS[faixaAtual];
+    var anual = !!planos && planos.getAttribute('data-ciclo') === 'anual';
+    var oferta = fundador && !anual; // o cupom de fundador não vale no anual
     var por = function (id, texto) { var el = document.getElementById(id); if (el) el.textContent = texto; return el; };
-    Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === codigo)); });
+    Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === faixaAtual)); });
     por('fi-esc-notas', f.notas);
-    por('fi-esc-de', f.cheio);
-    por('fi-esc-valor', fundador ? f.fundador : f.cheio);
-    por('fi-esc-nota', fundador ? 'no 1º ano, com o cupom ' + f.cupom + ' já aplicado; depois, ' + f.cheio : '');
+    var de = por('fi-esc-de', f.cheio);
+    if (de) de.hidden = !(anual || oferta);
+    por('fi-esc-valor', anual ? f.anual : oferta ? f.fundador : f.cheio);
     var depois = document.getElementById('fi-esc-depois');
-    if (depois) depois.innerHTML = fundador ? '<b>1º mês grátis</b> na condição de fundador.' : '<b>7 dias grátis</b> para testar.';
-    var cta = por('fi-esc-cta', fundador ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
+    if (depois) depois.innerHTML = anual ? '<b>7 dias grátis</b> · ' + f.ano + '/ano' : oferta ? '<b>1º mês grátis</b> · 1º ano' : '<b>7 dias grátis</b>';
+    var ticket = document.getElementById('fi-esc-ticket');
+    if (ticket) ticket.hidden = !oferta;
+    var cta = por('fi-esc-cta', oferta ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
     if (cta) {
-      cta.setAttribute('data-plano', codigo);
-      cta.setAttribute('href', CADASTRO_URL + '?tipo=escritorio&plano=' + codigo + (fundador ? '&cupom=' + f.cupom : ''));
+      cta.setAttribute('data-plano', faixaAtual);
+      cta.setAttribute('href', CADASTRO_URL + '?tipo=escritorio&plano=' + faixaAtual + (anual ? '&ciclo=anual' : oferta ? '&cupom=' + f.cupom : ''));
     }
   }
   if (planos) {
@@ -66,9 +73,9 @@
     var faixaFundador = document.getElementById('fi-fundador');
     if (faixaFundador) faixaFundador.hidden = !fundador;
     Array.prototype.forEach.call(faixaBtns, function (b) {
-      b.addEventListener('click', function () { mudarFaixa(b.getAttribute('data-faixa')); });
+      b.addEventListener('click', function () { if (FAIXAS[b.getAttribute('data-faixa')]) { faixaAtual = b.getAttribute('data-faixa'); desenharEscritorio(); } });
     });
-    mudarFaixa('escritorio_5');
+    desenharEscritorio();
   }
 
   /* Mockups das funcionalidades: o vídeo só carrega e toca com a seção na tela, e pausa fora dela. Com movimento

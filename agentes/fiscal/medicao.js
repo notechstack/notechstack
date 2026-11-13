@@ -177,7 +177,7 @@
       if (!primeiraVez('cadastro_inicio')) return null;
       return disparar('nofiscal_cadastro_inicio', { plano: plano });
     },
-    /** Resposta da etapa 1 (sim | contador | nao | nao_sei) com o regime do CNPJ (mei | simples). Vai também à fila do
+    /** Resposta da etapa 1 (sim | nao | procuracao; até 13/11/2026 também contador | nao_sei) com o regime do CNPJ (mei | simples). Vai também à fila do
         painel de percurso (telemetria.js), que só aceita nomes form_*, e sai do navegador só com a medição permitida. */
     a1: function (resposta, regime, plano) {
       if (!resposta || !primeiraVez('a1.' + resposta)) return null;

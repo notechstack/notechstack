@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=16">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=17">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -53,7 +53,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
 <script src="/agentes/fiscal/medicao.js?v=6" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=16" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=17" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -70,7 +70,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "Como funciona a procuração eletrônica?", "acceptedAnswer": {"@type": "Answer", "text": "É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só da empresa cliente para o escritório: a Nó nunca assina nota de cliente."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
-    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual com 20% de desconto no Inicial e no Pro."}},
+    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto."}},
     {"@type": "Question", "name": "Qual a diferença entre Escritório e Agência?", "acceptedAnswer": {"@type": "Answer", "text": "O Escritório é para escritório de contabilidade e para quem emite em volume: várias empresas numa conta só (até 5, 20 ou 50), cada uma com o próprio certificado A1 ou por procuração eletrônica ao escritório, e a planilha do mês enviada no WhatsApp, que vira todas as notas de uma vez, com relatório e PDF no painel. A assinatura é feita no site, com 7 dias grátis. A Agência é para quem quer integrar a emissão no sistema dos próprios clientes, pela API, e é combinada direto com a Nó, pelo WhatsApp."}},
     {"@type": "Question", "name": "O agente substitui o meu contador?", "acceptedAnswer": {"@type": "Answer", "text": "Não. Ele emite e cancela as notas; o enquadramento, o percentual de tributos do Simples e a apuração continuam com a sua contabilidade. No plano Pro, dá para cadastrar o e-mail do contador para que cada nota chegue lá também, com PDF e XML."}},
     {"@type": "Question", "name": "E se a Sefin estiver fora do ar?", "acceptedAnswer": {"@type": "Answer", "text": "A nota entra numa fila e o agente tenta de novo sozinho, até 5 vezes, com intervalo crescente. Você acompanha pelo WhatsApp: o agente avisa quando a nota é autorizada ou se algo for rejeitado, com o motivo e o que fazer."}},
@@ -120,14 +120,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <p class="fi-canvas-nota">Simulação no seu navegador: nenhuma nota é emitida e nada é enviado à Sefin. <span>Medição <b id="fi-consent-estado" aria-live="polite">recusada</b> · <button type="button" class="fi-link-btn" data-consent-prefs>Preferências de cookies</button></span></p>
   </section>
 
-  <!-- ── Funcionalidades (Lucca, 13/11/2026): uma seção por recurso, com o mockup do tutorial (sem legenda nem
-       narração; render das camadas de celular do no-video-engine) e a explicação ao lado. Cada recurso leva o selo
-       do plano em que entra, e os cards de planos repetem esses nomes como diferenciais. Vídeos: fiscal.js. ── -->
+  <!-- ── Funcionalidades (Lucca, 13/11/2026, v2): uma seção por recurso, com pouco texto. O mockup é o aparelho do
+       tutorial sozinho, sem moldura, legenda, narração nem micro-animações (render das camadas do no-video-engine).
+       Cada recurso leva o selo do plano, e os cards de planos repetem esses nomes. Vídeos: fiscal.js. ── -->
   <section class="fi-secao fi-fxs" id="como-funciona" aria-labelledby="fi-fxs-titulo">
-    <h2 class="fi-h2" id="fi-fxs-titulo">Tudo o que ele faz, numa conversa</h2>
-    <p class="fi-sub fi-sub--centro">Você pede no WhatsApp e confere o resumo. Ele monta a <a class="no-termo" data-termo="dps" href="#como-funciona">DPS</a>, assina, transmite à <a class="no-termo" data-termo="sefin-nacional" href="#planos">Sefin Nacional</a> e devolve a nota. As telas abaixo são demonstrações, com dados fictícios.</p>
+    <h2 class="fi-h2" id="fi-fxs-titulo">Tudo numa conversa</h2>
+    <p class="fi-sub fi-sub--centro">Você pede, confere e recebe a nota. As telas são demonstrações, com dados fictícios.</p>
     <article class="fi-fx fi-reveal" id="fx-emitir">
-      <div class="fi-fx-midia">
+      <div class="fi-fx-midia fi-fx-midia--fone">
         <video class="fi-fx-video" muted playsinline loop preload="none" poster="/agentes/fiscal/midia/emitir.jpg" aria-label="Demonstração: pedido de nota pelo WhatsApp, resumo, confirmação e PDF na conversa">
           <source src="/agentes/fiscal/midia/emitir.mp4" type="video/mp4">
         </video>
@@ -135,55 +135,59 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--todos">Todos os planos</span>
         <h3>Você pede, ele emite</h3>
-        <p>Escreva como escreveria pra alguém: o cliente, o valor e o serviço. Nada sai sem o seu “confirmar”.</p>
-        <ol class="fi-fx-passos"><li><b>Pedido em uma frase. </b>“Nota pra Studio Lima, 350, consultoria de outubro.”</li><li><b>Cliente novo. </b>Na primeira nota, ele pede só o que falta: CPF ou CNPJ e e-mail.</li><li><b>Resumo antes de emitir. </b>Tomador, serviço, descrição e valor, pra você conferir.</li><li><b>Nota na conversa. </b>PDF no WhatsApp, e PDF e XML no seu e-mail.</li></ol>
+        <p>Escreva o cliente e o valor. Ele mostra o resumo e só emite com o seu “confirmar”.</p>
+        <ul class="fi-fx-pontos"><li>Pedido em uma frase</li><li>PDF e XML na hora</li></ul>
       </div>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-corrigir">
-      <div class="fi-fx-midia">
+      <div class="fi-fx-midia fi-fx-midia--fone">
         <video class="fi-fx-video" muted playsinline loop preload="none" poster="/agentes/fiscal/midia/corrigir.jpg" aria-label="Demonstração: correção do resumo e cancelamento de uma nota pelo WhatsApp">
           <source src="/agentes/fiscal/midia/corrigir.mp4" type="video/mp4">
         </video>
       </div>
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--todos">Todos os planos</span>
-        <h3>Errou? Corrige antes, cancela depois</h3>
-        <p>O erro mais comum é o valor. Antes de emitir, você corrige no próprio resumo. Depois de emitida, você cancela pelo mesmo chat.</p>
-        <ol class="fi-fx-passos"><li><b>Corrigir. </b>Responda “corrigir” e diga o que muda: valor, descrição ou cliente.</li><li><b>Cancelar. </b>“Cancela a nota da Studio Lima de hoje.” Ele mostra número, cliente, valor e data.</li><li><b>Confirmação da Sefin. </b>O evento oficial de cancelamento vai à Sefin, e o aviso chega na mesma conversa.</li><li><b>Nota certa no lugar. </b>É só pedir de novo, como um pedido novo.</li></ol>
+        <h3>Errou? Corrige ou cancela</h3>
+        <p>Antes de emitir, responda “corrigir”. Depois, peça o cancelamento no mesmo chat.</p>
+        <ul class="fi-fx-pontos"><li>Correção no resumo</li><li>Cancelamento oficial na Sefin</li></ul>
       </div>
     </article>
     <article class="fi-fx fi-reveal" id="fx-cliente">
-      <div class="fi-fx-midia">
+      <div class="fi-fx-midia fi-fx-midia--fone">
         <video class="fi-fx-video" muted playsinline loop preload="none" poster="/agentes/fiscal/midia/cliente.jpg" aria-label="Demonstração: cliente guardado como modelo e segunda via da nota pelo WhatsApp">
           <source src="/agentes/fiscal/midia/cliente.mp4" type="video/mp4">
         </video>
       </div>
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--todos">Todos os planos</span>
-        <h3>Cliente salvo e segunda via</h3>
-        <p>Depois da primeira nota, ele oferece guardar o cliente. Da segunda em diante, basta o nome e o valor.</p>
-        <ol class="fi-fx-passos"><li><b>Cliente como modelo. </b>CNPJ, e-mail e serviço ficam salvos pra repetir a nota.</li><li><b>Segunda via. </b>Escreva “nota 123” ou “nota Studio Lima” e o PDF volta na conversa.</li></ol>
+        <h3>Cliente salvo, segunda via</h3>
+        <p>Na próxima nota, basta o nome e o valor. Pra rever uma nota, escreva “nota 123”.</p>
+        <ul class="fi-fx-pontos"><li>Cliente vira modelo</li><li>PDF de volta na conversa</li></ul>
       </div>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-copias">
-      <div class="fi-fx-midia fi-fx-midia--cartoes" aria-hidden="true">
-        <div class="fi-fx-email">
-          <span class="fi-fx-email-de">notas@notechstack.com.br</span>
-          <b>NFS-e nº 123 · Studio Lima · R$ 350,00</b>
-          <span class="fi-fx-email-para">Para: financeiro@studiolima.com.br<br>Cópia: contador@seuescritorio.com.br</span>
-          <span class="fi-cv-arquivos"><span>danfse-123.pdf</span><span>nfse-123.xml</span></span>
+      <div class="fi-fx-midia fi-fx-midia--notifs" aria-hidden="true">
+        <div class="fi-notif">
+          <span class="fi-notif-app"><svg viewBox="52 42 88 66"><path fill="#4285F4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6"/><path fill="#34A853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15"/><path fill="#FBBC04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2"/><path fill="#EA4335" d="M72 74V48l24 18 24-18v26L96 92"/><path fill="#C5221F" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2"/></svg>Gmail<i>agora</i></span>
+          <b>nó.fiscal</b>
+          <span>NFS-e nº 123 · Studio Lima · R$ 350,00</span>
+          <span class="fi-arqs"><span class="fi-arq fi-arq--pdf"><i>PDF</i>danfse-123.pdf</span><span class="fi-arq fi-arq--xml"><i>XML</i>nfse-123.xml</span></span>
         </div>
-        <div class="fi-fx-resumo"><small>Resumo de novembro</small><span><b>42</b> emitidas</span><span><b>1</b> cancelada</span><span><b>R$ 18.430,00</b> no mês</span></div>
+        <div class="fi-notif fi-notif--zap">
+          <span class="fi-notif-app"><svg viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>WhatsApp<i>agora</i></span>
+          <b>nó.fiscal</b>
+          <span>Resumo de novembro: 42 notas emitidas, R$ 18.430,00.</span>
+        </div>
       </div>
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--pro">A partir do Pro</span>
-        <h3>A nota chega sozinha ao cliente e ao contador</h3>
-        <p>Você não precisa encaminhar nada. Cada nota emitida já sai com cópia para quem precisa dela.</p>
-        <ol class="fi-fx-passos"><li><b>Cópia para o cliente. </b>PDF e XML no e-mail do tomador, a cada nota.</li><li><b>Cópia para o contador. </b>O e-mail da contabilidade recebe as mesmas notas.</li><li><b>Resumo no WhatsApp. </b>Emitidas, canceladas e total do período, por mês ou por semana.</li></ol>
+        <h3>Cópia pro cliente e pro contador</h3>
+        <p>Cada nota já sai por e-mail pra quem precisa. E o resumo do mês chega no seu WhatsApp.</p>
+        <ul class="fi-fx-pontos"><li>E-mail automático</li><li>Resumo mensal ou semanal</li></ul>
       </div>
     </article>
     <article class="fi-fx fi-reveal" id="fx-planilha">
-      <div class="fi-fx-midia">
+      <div class="fi-fx-midia fi-fx-midia--largo">
         <video class="fi-fx-video" muted playsinline loop preload="none" poster="/agentes/fiscal/midia/planilha.jpg" aria-label="Demonstração: planilha de notas enviada pelo WhatsApp, resumo do lote e relatório no painel">
           <source src="/agentes/fiscal/midia/planilha.mp4" type="video/mp4">
         </video>
@@ -191,125 +195,125 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--escritorio">Só no Escritório</span>
         <h3>As notas do mês numa planilha</h3>
-        <p>Para quem emite em volume. Você exporta do seu sistema uma planilha com uma linha por nota e manda no WhatsApp.</p>
-        <ol class="fi-fx-passos"><li><b>Planilha no chat. </b>Um .xlsx ou .csv com quem emite, quem recebe e o valor. Até 1.000 linhas.</li><li><b>Resumo por empresa. </b>Quantas estão prontas, o total e as notas de cada empresa.</li><li><b>Linha com problema fica de fora. </b>Com o motivo: CNPJ inválido, linha repetida. O resto segue.</li><li><b>Retorno e painel. </b>CSV e PDFs por e-mail, e cada nota em Minha conta, com o PDF pra baixar.</li></ol>
+        <p>Mande a planilha no WhatsApp, confira o resumo e as notas saem de uma vez.</p>
+        <ul class="fi-fx-pontos"><li>Até 1.000 linhas</li><li>Linha com erro fica de fora</li><li>Relatório e PDFs no painel</li></ul>
       </div>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-empresas">
-      <div class="fi-fx-midia">
+      <div class="fi-fx-midia fi-fx-midia--note">
         <video class="fi-fx-video" muted playsinline loop preload="none" poster="/agentes/fiscal/midia/empresas.jpg" aria-label="Demonstração: cadastro de empresa cliente no painel, com certificado A1 ou procuração eletrônica">
           <source src="/agentes/fiscal/midia/empresas.mp4" type="video/mp4">
         </video>
       </div>
       <div class="fi-fx-texto">
         <span class="fi-fx-chip fi-fx-chip--escritorio">Só no Escritório</span>
-        <h3>Várias empresas, com A1 ou procuração</h3>
-        <p>Uma conta só para o escritório e as empresas clientes. Cada empresa assina com o próprio certificado A1 ou por procuração eletrônica ao escritório.</p>
-        <ol class="fi-fx-passos"><li><b>Adicione o CNPJ. </b>Os dados vêm da Receita Federal; você completa o código de serviço.</li><li><b>A1 da empresa. </b>Ela envia o próprio certificado e emite com ele.</li><li><b>Ou procuração eletrônica. </b>A empresa autoriza o escritório no Portal de Serviços da Receita Federal, com o serviço NFS-e, e as notas dela saem assinadas com o A1 do escritório.</li><li><b>Pronta pra emitir. </b>A situação fica “Pronta”, e as notas dela entram pela planilha.</li></ol>
+        <h3>Várias empresas numa conta</h3>
+        <p>Cada empresa cliente emite com o próprio A1 ou por procuração eletrônica ao escritório.</p>
+        <ul class="fi-fx-pontos"><li>Dados pela Receita</li><li>A1 ou procuração</li></ul>
       </div>
     </article>
   </section>
 
-  <!-- ── Planos (Lucca, 13/11/2026): cada card soma os recursos das seções acima ao plano anterior; Escritório com as
-       três faixas e a condição de fundador (cupons FUNDADOR5/20/50, só mensal) até 30/11/2026. Fora do prazo ou sem
-       JS a página mostra só o preço cheio (fiscal.js liga [data-fundador="on"]). Valores: assinatura-fiscal/core.ts. ── -->
+  <!-- ── Planos (Lucca, 13/11/2026, v2): cards curtos; cada um soma recursos ao anterior. Mensal ou anual (20% OFF) nos
+       três planos; Escritório com as faixas de 5, 20 e 50 empresas e a condição de fundador (cupons FUNDADOR5/20/50,
+       só no mensal) até 30/11/2026. Fora do prazo ou sem JS: preço cheio. Valores: assinatura-fiscal/core.ts. ── -->
   <section class="fi-secao fi-planos-sec" id="planos" aria-labelledby="fi-planos-titulo">
-    <h2 class="fi-h2" id="fi-planos-titulo">Escolha o volume que faz sentido para sua operação</h2>
-    <p class="fi-sub fi-sub--centro">Todo plano começa com 7 dias grátis: a primeira cobrança só acontece depois deles. O que muda entre os planos é o volume de notas e os recursos.</p>
-    <!-- Faixa de fundador: dois cartões sobrepostos; some fora do prazo -->
+    <h2 class="fi-h2" id="fi-planos-titulo">Escolha o seu volume</h2>
+    <p class="fi-sub fi-sub--centro">Todo plano começa com 7 dias grátis.</p>
     <div class="fi-fundador" id="fi-fundador" hidden>
       <span class="fi-fundador-tras" aria-hidden="true">Black Friday</span>
-      <p class="fi-fundador-frente"><b>Condição de fundador até 30/11.</b> No plano Escritório, o 1º mês é grátis e a mensalidade cai até R$ 300 durante o 1º ano. São 20 vagas por faixa.</p>
+      <p class="fi-fundador-frente"><b>Fundador até 30/11.</b> No Escritório: 1º mês grátis e até R$ 300 a menos por mês no 1º ano. 20 vagas por faixa.</p>
     </div>
     <div class="fi-ciclo-toggle" role="group" aria-label="Ciclo de cobrança">
       <button type="button" aria-pressed="true" data-ciclo="mensal">Mensal</button>
-      <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>-20%</span></button>
+      <button type="button" aria-pressed="false" data-ciclo="anual">Anual <span>20% OFF</span></button>
     </div>
     <ul class="fi-planos fi-planos--teste fi-reveal" id="fi-planos" data-ciclo="mensal" data-fundador="off">
       <li class="fi-plano" data-plano="inicial">
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></svg></span>
-          <h3>Inicial<small>Pra quem emite algumas notas por mês</small></h3>
+          <h3>Inicial<small>Algumas notas por mês</small></h3>
         </div>
         <div class="fi-plano-oferta">
+          <span class="fi-off" data-so-anual>20% OFF</span>
           <p class="fi-plano-gratis">20 <span>notas/mês</span></p>
-          <p class="fi-plano-preco"><s class="fi-preco-de" data-so-anual>R$ 49</s> <b data-mensal="R$ 49" data-anual="R$ 39,20">R$ 49</b>/mês <small data-mensal="" data-anual="R$ 470,40 cobrados por ano, 20% off"></small></p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar.</p>
+          <p class="fi-plano-preco"><s class="fi-preco-de" data-so-anual>R$ 49</s> <b data-mensal="R$ 49" data-anual="R$ 39,20">R$ 49</b>/mês</p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b><span data-mensal="" data-anual=" · R$ 470,40/ano"></span></p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="inicial" href="/agentes/fiscal/comecar/?plano=inicial">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
-          <li><a href="#fx-emitir">Emissão pelo WhatsApp</a>, com resumo antes de emitir</li>
-          <li><a href="#fx-corrigir">Correção e cancelamento</a> pelo mesmo chat</li>
-          <li><a href="#fx-cliente">Clientes salvos e segunda via</a></li>
-          <li>PDF e XML no WhatsApp e no e-mail</li>
-          <li>1 CNPJ, com o certificado A1 da empresa</li>
+          <li><a href="#fx-emitir">Emissão pelo WhatsApp</a></li>
+          <li><a href="#fx-corrigir">Corrigir e cancelar</a></li>
+          <li><a href="#fx-cliente">Cliente salvo e 2ª via</a></li>
         </ul>
       </li>
       <li class="fi-plano fi-plano--destaque" data-plano="pro">
         <span class="fi-plano-selo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Recomendado</span>
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/><path d="M15 6h3v3"/></svg></span>
-          <h3>Pro<small>Pra rotina de atendimento</small></h3>
+          <h3>Pro<small>Rotina de atendimento</small></h3>
         </div>
         <div class="fi-plano-oferta">
+          <span class="fi-off" data-so-anual>20% OFF</span>
           <p class="fi-plano-gratis">100 <span>notas/mês</span></p>
-          <p class="fi-plano-preco"><s class="fi-preco-de" data-so-anual>R$ 129</s> <b data-mensal="R$ 129" data-anual="R$ 103,20">R$ 129</b>/mês <small data-mensal="" data-anual="R$ 1.238,40 cobrados por ano, 20% off"></small></p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b> para testar.</p>
+          <p class="fi-plano-preco"><s class="fi-preco-de" data-so-anual>R$ 129</s> <b data-mensal="R$ 129" data-anual="R$ 103,20">R$ 129</b>/mês</p>
+          <p class="fi-plano-depois"><b>7 dias grátis</b><span data-mensal="" data-anual=" · R$ 1.238,40/ano"></span></p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="pro" href="/agentes/fiscal/comecar/?plano=pro">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Inicial, e mais:</li>
-          <li><a href="#fx-copias">Cópia automática</a> para o cliente e o contador</li>
-          <li><a href="#fx-copias">Resumo das notas</a> no WhatsApp, mensal ou semanal</li>
-          <li>5 vezes mais notas por mês</li>
+          <li><a href="#fx-copias">Cópia ao cliente e ao contador</a></li>
+          <li><a href="#fx-copias">Resumo no WhatsApp</a></li>
         </ul>
       </li>
       <li class="fi-plano fi-plano--fundador" data-plano="escritorio">
-        <span class="fi-plano-ticket" data-so-fundador>Fundador · até 30/11</span>
+        <span class="fi-plano-ticket" id="fi-esc-ticket" hidden>Fundador · até 30/11</span>
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01M12 11h.01"/></svg></span>
-          <h3>Escritório<small>Pra escritório de contabilidade e quem emite em volume</small></h3>
+          <div class="fi-plano-nome">
+            <h3>Escritório</h3>
+            <div class="fi-faixas" role="group" aria-label="Quantas empresas">
+              <button type="button" aria-pressed="true" data-faixa="escritorio_5">5</button>
+              <button type="button" aria-pressed="false" data-faixa="escritorio_20">20</button>
+              <button type="button" aria-pressed="false" data-faixa="escritorio_50">50</button>
+              <span>empresas</span>
+            </div>
+          </div>
         </div>
         <div class="fi-plano-oferta">
-          <div class="fi-faixas" role="group" aria-label="Quantas empresas">
-            <button type="button" aria-pressed="true" data-faixa="escritorio_5">até 5</button>
-            <button type="button" aria-pressed="false" data-faixa="escritorio_20">até 20</button>
-            <button type="button" aria-pressed="false" data-faixa="escritorio_50">até 50</button>
-            <span>empresas</span>
-          </div>
+          <span class="fi-off" data-so-anual>20% OFF</span>
           <p class="fi-plano-gratis"><span class="fi-plano-num" id="fi-esc-notas">500</span> <span>notas/mês</span></p>
-          <p class="fi-plano-preco"><s class="fi-preco-de" id="fi-esc-de" data-so-fundador>R$ 297</s> <b id="fi-esc-valor">R$ 297</b>/mês <small id="fi-esc-nota"></small></p>
-          <p class="fi-plano-depois" id="fi-esc-depois"><b>7 dias grátis</b> para testar.</p>
+          <p class="fi-plano-preco"><s class="fi-preco-de" id="fi-esc-de" hidden>R$ 297</s> <b id="fi-esc-valor">R$ 297</b>/mês</p>
+          <p class="fi-plano-depois" id="fi-esc-depois"><b>7 dias grátis</b></p>
         </div>
         <a class="fi-btn fi-btn--verde" id="fi-esc-cta" data-plano="escritorio_5" href="/agentes/fiscal/comecar/?tipo=escritorio&amp;plano=escritorio_5">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Pro, e mais:</li>
-          <li><a href="#fx-planilha">Planilha no WhatsApp</a>: as notas do mês de uma vez</li>
-          <li><a href="#fx-empresas">Várias empresas</a> (CNPJs) numa conta só</li>
-          <li>Emissão com A1 da empresa ou <a href="#procuracao">procuração eletrônica</a></li>
-          <li>Painel com relatório e PDF de cada nota</li>
+          <li><a href="#fx-planilha">Planilha no WhatsApp</a></li>
+          <li><a href="#fx-empresas">Várias empresas</a></li>
+          <li><a href="#procuracao">A1 ou procuração</a></li>
         </ul>
       </li>
       <li class="fi-plano" data-plano="agencia">
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
-          <h3>Agência<small>Pra integrar a emissão no sistema dos seus clientes</small></h3>
+          <h3>Agência<small>Integração por API</small></h3>
         </div>
         <div class="fi-plano-oferta">
           <p class="fi-plano-gratis">Vários <span>CNPJs</span></p>
-          <p class="fi-plano-depois"><b>Sob medida:</b> volume e valor combinados com a Nó.</p>
+          <p class="fi-plano-preco"><b>Sob medida</b></p>
+          <p class="fi-plano-depois">Volume e valor com a Nó</p>
         </div>
         <a class="fi-btn fi-btn--verde" data-lead="agencia" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Sou%20de%20uma%20ag%C3%AAncia%20e%20quero%20integrar%20o%20n%C3%B3.fiscal%20ao%20sistema%20dos%20meus%20clientes." target="_blank" rel="noopener noreferrer">Falar com a Nó</a>
         <ul class="fi-plano-itens">
-          <li>API para o sistema que você já usa</li>
-          <li>Um cadastro e um certificado A1 por cliente</li>
-          <li>Cadastro dos clientes feito junto com a Nó</li>
+          <li>API no seu sistema</li>
+          <li>Um A1 por cliente</li>
+          <li>Cadastro junto com a Nó</li>
         </ul>
       </li>
     </ul>
-    <!-- Como a nota é assinada (Lucca, 13/11/2026; antes a faixa dizia só "você vai precisar do A1") -->
-    <p class="fi-requisito-a1"><b>Como a nota é assinada:</b> com o certificado digital A1 da empresa <span>(e-CNPJ)</span>, comprado à parte numa certificadora. No Escritório, a empresa cliente também pode emitir por procuração eletrônica ao escritório, sem A1 próprio. <a href="#certificado-a1">Como conseguir um A1</a> · <a href="#procuracao">Como funciona a procuração</a></p>
-    <p class="fi-planos-nota">O valor aparece de novo no cadastro, na etapa de pagamento, antes de você informar o cartão. O teste grátis vale uma vez por empresa. O anual vale para o Inicial e o Pro. Impostos continuam com a sua contabilidade.</p>
+    <p class="fi-requisito-a1"><b>A nota é assinada</b> com o certificado A1 da empresa ou, no Escritório, por procuração eletrônica. <a href="#certificado-a1">Como conseguir um A1</a> · <a href="#procuracao">Como funciona a procuração</a></p>
+    <p class="fi-planos-nota">O valor aparece de novo no cadastro, antes de você informar o cartão. Impostos continuam com a sua contabilidade.</p>
   </section>
 
   <!-- ── FAQ ── -->
@@ -363,7 +367,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Quanto custa?</summary>
-          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual com 20% de desconto no Inicial e no Pro.</p>
+          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas. A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto.</p>
         </details>
         <details>
           <summary>Qual a diferença entre Escritório e Agência?</summary>

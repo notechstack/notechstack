@@ -224,8 +224,7 @@
 .fi-ciclo-toggle button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
 .fi-ciclo-toggle button span{padding:4px 8px;border-radius:999px;background:var(--fi-acento);color:var(--fi-texto);font-size:11.5px}
 .fi-ciclo-toggle+.fi-planos{margin-top:clamp(28px,3vw,36px)}
-.fi-planos[data-ciclo="anual"] [data-plano="escritorio"],.fi-planos[data-ciclo="anual"] [data-plano="agencia"]{display:none}
-@media(min-width:700px){.fi-planos[data-ciclo="anual"]{grid-template-columns:repeat(2,minmax(0,330px));justify-content:center}}
+/* o anual vale para Inicial, Pro e Escritório (13/11/2026); a Agência segue sob medida */
 .fi-planos-nota{margin:18px 0 0;text-align:center;font-size:12.5px;line-height:1.5;color:var(--fi-texto-sec)}
 
 /* ── Simples assim: ciclo em círculo (360°). Seis nós no anel; o arco âmbar carrega sem parar do topo até fechar a
@@ -339,60 +338,86 @@
   .fi-btn:hover,.fi-plano:hover,.fi-chip:hover{transform:none}
 }
 
-/* ── Funcionalidades (13/11/2026): mockup do tutorial de um lado, explicação do outro; alterna a cada seção ── */
-.fi-fxs>.fi-sub{margin-bottom:clamp(28px,4vw,48px)}
-.fi-fx{display:grid;gap:22px;align-items:center;margin-top:clamp(40px,6vw,88px);scroll-margin-top:110px}
-.fi-fx-midia{position:relative;width:100%;max-width:400px;margin:0 auto;border-radius:var(--fi-raio-lg);overflow:hidden;background:var(--fi-fundo);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-card)}
-.fi-fx-video{display:block;width:100%;height:auto;aspect-ratio:var(--fi-fx-ar,1080/1360);object-fit:cover;background:var(--fi-fundo)}
-.fi-fx-texto{max-width:520px;margin:0 auto}
-.fi-fx-texto h3{margin:14px 0 12px;font-weight:800;font-size:clamp(26px,3.4vw,40px);line-height:1.06;letter-spacing:-.025em;text-wrap:balance}
-.fi-fx-texto>p{margin:0;font-size:clamp(16px,1.5vw,18px);line-height:1.55;color:var(--fi-texto-sec);text-wrap:pretty}
+/* ── Funcionalidades (13/11/2026, v2): o aparelho sozinho de um lado, três linhas de texto do outro ── */
+.fi-fxs>.fi-sub{margin-bottom:clamp(8px,2vw,24px)}
+.fi-fx{display:grid;gap:26px;align-items:center;margin-top:clamp(56px,8vw,112px);scroll-margin-top:110px}
+.fi-fx-midia{position:relative;width:100%;margin:0 auto}
+.fi-fx-midia--fone{max-width:400px}
+.fi-fx-midia--largo{max-width:460px}
+.fi-fx-midia--note{max-width:540px}
+/* sem moldura: o fundo do vídeo é o osso da página; a máscara desfaz a borda, pra não aparecer o retângulo */
+.fi-fx-video{display:block;width:100%;height:auto;aspect-ratio:900/1460;object-fit:cover;background:transparent;-webkit-mask-image:linear-gradient(to right,transparent,#000 2%,#000 98%,transparent),linear-gradient(to bottom,transparent,#000 1.5%,#000 98.5%,transparent);-webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent,#000 2%,#000 98%,transparent),linear-gradient(to bottom,transparent,#000 1.5%,#000 98.5%,transparent);mask-composite:intersect}
+.fi-fx-midia--largo .fi-fx-video{aspect-ratio:1000/1270}
+.fi-fx-midia--note .fi-fx-video{aspect-ratio:1080/1080}
+@media(max-width:859px){
+  /* no celular o aparelho ocupa a largura toda da tela, pra conversa ficar legível */
+  .fi-fx-midia{width:min(100vw,460px);max-width:none;margin-left:50%;transform:translateX(-50%)}
+  .fi-fx-midia--notifs{width:100%;margin-left:0;transform:none}
+  .fi-fx-texto{order:-1}
+}
+.fi-fx-texto{max-width:460px;margin:0 auto}
+.fi-fx-texto h3{margin:14px 0 10px;font-weight:800;font-size:clamp(28px,3.6vw,44px);line-height:1.04;letter-spacing:-.03em;text-wrap:balance}
+.fi-fx-texto>p{margin:0;font-size:clamp(16px,1.5vw,18px);line-height:1.5;color:var(--fi-texto-sec);text-wrap:pretty}
 .fi-fx-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;font:600 12.5px/1 var(--font-core,'Sora',sans-serif);background:var(--fi-branco);border:1px solid var(--fi-borda);color:var(--fi-texto)}
 .fi-fx-chip::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--no-verde-escuro,#2A8459)}
 .fi-fx-chip--pro::before{background:var(--fi-acento)}
 .fi-fx-chip--escritorio{background:var(--fi-texto);border-color:var(--fi-texto);color:var(--fi-branco)}
 .fi-fx-chip--escritorio::before{background:var(--fi-acento)}
-.fi-fx-passos{margin:20px 0 0;padding:0;list-style:none;counter-reset:fx;display:grid;gap:12px}
-.fi-fx-passos li{position:relative;padding-left:40px;font-size:15px;line-height:1.5;color:var(--fi-texto-sec);counter-increment:fx;text-wrap:pretty}
-.fi-fx-passos li::before{content:counter(fx);position:absolute;left:0;top:-2px;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:var(--fi-acento-tint);color:var(--fi-acento-texto);font:700 12.5px/1 var(--font-mono,'JetBrains Mono',monospace)}
-.fi-fx-passos b{font-weight:600;color:var(--fi-texto)}
+.fi-fx-pontos{margin:18px 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px}
+.fi-fx-pontos li{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border-radius:999px;background:var(--fi-acento-tint);font-size:13.5px;font-weight:600;line-height:1.2;color:var(--fi-texto)}
+.fi-fx-pontos li::before{content:'';width:5px;height:9px;margin:-3px 2px 0 2px;border:solid var(--fi-acento-texto);border-width:0 2px 2px 0;transform:rotate(45deg)}
 @media(min-width:860px){
-  .fi-fx{grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(36px,6vw,88px)}
-  .fi-fx--inv{grid-template-columns:minmax(0,6fr) minmax(0,5fr)}
+  .fi-fx{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(40px,7vw,104px)}
   .fi-fx--inv .fi-fx-midia{order:2}
   .fi-fx-midia,.fi-fx-texto{margin:0}
   .fi-fx-midia{justify-self:end}
   .fi-fx--inv .fi-fx-midia{justify-self:start}
   .fi-fx--inv .fi-fx-texto{justify-self:end}
 }
-/* seção sem vídeo (cópias e resumo): dois cartões sobrepostos, no lugar do mockup */
-.fi-fx-midia--cartoes{overflow:visible;border:0;box-shadow:none;background:transparent;padding:18px 0 34px;display:grid}
-.fi-fx-email,.fi-fx-resumo{border-radius:20px;background:var(--fi-branco);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-card)}
-.fi-fx-email{display:grid;gap:10px;padding:22px 20px;font-size:14px;line-height:1.45;transform:rotate(-2deg)}
-.fi-fx-email b{font-size:15.5px;line-height:1.3}
-.fi-fx-email-de{font:500 12px/1 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-acento-texto)}
-.fi-fx-email-para{color:var(--fi-texto-sec);font-size:13px;overflow-wrap:anywhere}
-.fi-fx-email .fi-cv-arquivos{display:flex;flex-wrap:wrap;gap:8px}
-.fi-fx-email .fi-cv-arquivos span{padding:7px 11px;border-radius:10px;background:var(--fi-fundo);border:1px solid var(--fi-borda);font:500 12px/1 var(--font-mono,'JetBrains Mono',monospace)}
-.fi-fx-resumo{justify-self:end;width:72%;margin-top:-18px;padding:16px 18px;display:grid;gap:6px;font-size:14px;color:var(--fi-texto-sec);background:#D9FDD3;border-color:transparent;transform:rotate(3deg)}
-.fi-fx-resumo small{font:600 12px/1 var(--font-core,'Sora',sans-serif);color:var(--fi-texto)}
-.fi-fx-resumo b{color:var(--fi-texto)}
+/* seção sem vídeo (cópias e resumo): duas notificações, uma do Gmail e uma do WhatsApp, com os anexos */
+.fi-fx-midia--notifs{max-width:400px;display:grid;gap:14px;padding:10px 0}
+.fi-notif{display:grid;gap:5px;padding:16px 18px;border-radius:22px;background:var(--fi-branco);border:1px solid var(--fi-borda);box-shadow:var(--no-shadow-lg);font-size:14.5px;line-height:1.4;color:var(--fi-texto-sec);transform:rotate(-1.5deg)}
+.fi-notif--zap{margin-left:12%;transform:rotate(2deg)}
+.fi-notif b{font-size:15.5px;color:var(--fi-texto)}
+.fi-notif-app{display:flex;align-items:center;gap:8px;margin-bottom:3px;font:600 12.5px/1 var(--font-core,'Sora',sans-serif);color:var(--fi-texto-sec)}
+.fi-notif-app svg{width:22px;height:22px;flex:none}
+.fi-notif-app i{margin-left:auto;font-style:normal;font-weight:400}
+.fi-arqs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.fi-arq{display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 8px;border-radius:12px;background:var(--fi-fundo);border:1px solid var(--fi-borda);font:500 12.5px/1 var(--font-mono,'JetBrains Mono',monospace);color:var(--fi-texto)}
+.fi-arq i{display:grid;place-items:end center;width:24px;height:30px;padding-bottom:5px;border-radius:4px;font:800 8.5px/1 var(--font-core,'Sora',sans-serif);font-style:normal;letter-spacing:.02em;color:#fff;clip-path:polygon(0 0,68% 0,100% 24%,100% 100%,0 100%)}
+.fi-arq--pdf i{background:#E5484D}
+.fi-arq--xml i{background:#1D8348}
 
-/* ── Planos: fundador (até 30/11/2026), preço cortado e faixas do Escritório ── */
-.fi-fundador{position:relative;width:min(100%,720px);margin:clamp(34px,4vw,48px) auto 0}
+/* ── Planos (v2): cards curtos, 20% OFF grande no anual, faixas do Escritório e fundador até 30/11/2026 ── */
+.fi-fundador{position:relative;width:min(100%,640px);margin:clamp(34px,4vw,48px) auto 0}
 .fi-fundador[hidden]{display:none}
 .fi-fundador-tras{position:absolute;top:-22px;right:18px;padding:10px 16px 30px;border-radius:16px;background:var(--fi-erro);color:#fff;font:700 12.5px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.04em;text-transform:uppercase;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
-.fi-fundador-frente{position:relative;margin:0;padding:18px 22px;border-radius:20px;background:var(--fi-texto);color:var(--no-osso);font-size:15px;line-height:1.5;text-wrap:pretty;transform:rotate(-.6deg);box-shadow:var(--no-shadow-lg)}
+.fi-fundador-frente{position:relative;margin:0;padding:16px 22px;border-radius:20px;background:var(--fi-texto);color:var(--no-osso);font-size:15px;line-height:1.5;text-align:center;text-wrap:balance;transform:rotate(-.6deg);box-shadow:var(--no-shadow-lg)}
 .fi-fundador-frente b{color:var(--fi-acento)}
+.fi-ciclo-toggle button span{background:var(--fi-erro);color:#fff}
+@media(min-width:1000px){.fi-planos--teste{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.fi-planos--teste .fi-plano{padding:26px 20px 22px;row-gap:14px}
+.fi-plano-oferta{position:relative}
+.fi-plano-preco{margin-top:8px;color:var(--fi-texto-sec)}
+.fi-plano-preco b{font-size:24px}
+.fi-plano-depois{margin-top:6px;font-size:13px}
 .fi-preco-de{margin-right:4px;font-size:15px;font-weight:600;color:var(--fi-erro-texto);text-decoration:line-through;text-decoration-color:var(--fi-erro);text-decoration-thickness:2px}
-.fi-planos[data-ciclo="mensal"] [data-so-anual],.fi-planos[data-fundador="off"] [data-so-fundador]{display:none}
-.fi-plano-ticket{position:absolute;top:-18px;right:18px;z-index:1;padding:9px 14px;border-radius:12px;background:var(--fi-erro);color:#fff;font:700 12px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.02em;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
-.fi-planos[data-fundador="on"] .fi-plano--fundador{border-color:var(--fi-erro)}
-.fi-faixas{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 12px}
-.fi-faixas button{padding:7px 10px;border-radius:999px;border:1px solid var(--fi-borda);background:var(--fi-branco);color:var(--fi-texto-sec);font:600 12.5px/1 var(--font-core,'Sora',sans-serif);cursor:pointer}
+.fi-preco-de[hidden]{display:none}
+.fi-planos[data-ciclo="mensal"] [data-so-anual]{display:none}
+.fi-off{position:absolute;top:-20px;right:-12px;z-index:1;padding:9px 12px;border-radius:12px;background:var(--fi-erro);color:#fff;font:800 22px/1 var(--font-core,'Sora',sans-serif);letter-spacing:-.02em;transform:rotate(5deg);box-shadow:var(--no-shadow-card)}
+.fi-plano-ticket{position:absolute;top:-16px;right:16px;z-index:1;padding:9px 13px;border-radius:12px;background:var(--fi-erro);color:#fff;font:700 12px/1 var(--font-core,'Sora',sans-serif);letter-spacing:.02em;transform:rotate(4deg);box-shadow:var(--no-shadow-card)}
+.fi-plano-ticket[hidden]{display:none}
+.fi-planos[data-fundador="on"][data-ciclo="mensal"] .fi-plano--fundador{border-color:var(--fi-erro)}
+.fi-faixas{display:flex;align-items:center;gap:4px;margin:5px 0 0}
+.fi-plano-nome{min-width:0}
+.fi-faixas button{min-width:30px;padding:5px 7px;border-radius:999px;border:1px solid var(--fi-borda);background:var(--fi-branco);color:var(--fi-texto-sec);font:700 12.5px/1 var(--font-core,'Sora',sans-serif);cursor:pointer}
 .fi-faixas button[aria-pressed="true"]{background:var(--fi-texto);border-color:var(--fi-texto);color:var(--fi-branco)}
 .fi-faixas button:focus-visible{outline:2px solid var(--fi-acento);outline-offset:2px}
-.fi-faixas>span{margin-left:4px;font-size:12.5px;color:var(--fi-texto-sec)}
+.fi-faixas>span{margin-left:3px;font-size:12.5px;color:var(--fi-texto-sec)}
 .fi-plano-gratis .fi-plano-num{margin:0;font-size:1em;font-weight:800;letter-spacing:-.03em;color:var(--fi-texto)}
-.fi-plano-itens a{color:inherit;font-weight:600;text-decoration:underline;text-decoration-color:var(--fi-acento);text-decoration-thickness:2px;text-underline-offset:3px}
+/* os cards sem as faixas ganham a mesma altura de respiro, pra os números alinharem entre os quatro */
+.fi-planos--teste .fi-plano-oferta{display:flex;flex-direction:column;justify-content:center}
+.fi-planos--teste .fi-plano-itens{gap:8px;font-size:14px}
+.fi-plano-itens a{color:inherit;text-decoration:underline;text-decoration-color:var(--fi-acento);text-decoration-thickness:2px;text-underline-offset:3px}
+.fi-requisito-a1{max-width:640px;text-align:center}
 .fi-requisito-a1 a{white-space:normal}

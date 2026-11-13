@@ -56,6 +56,8 @@ function buscar(el, sel) {
   }
   // O ciclo "Simples assim" é só visual (conferido no navegador): aqui ele fica sem passos e não roda.
   if (sel === '.fi-roda-no') return [];
+  // Troca de ciclo (mudarCiclo): os preços e os links dos cards são conferidos no HTML; aqui não há o que percorrer.
+  if (sel === '.fi-plano-oferta [data-mensal]' || sel === 'a[data-plano]') return [];
   const m = /^\.([\w-]+) li$/.exec(sel);
   if (m) {
     const bloco = new RegExp(`<(\\w+)[^>]*class="[^"]*\\b${m[1]}\\b[^"]*"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
