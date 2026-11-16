@@ -104,6 +104,8 @@ export type EscritorioBanco = {
   escritorio_tenant_id: string;
   plano: string;
   max_empresas: number;
+  /** Pacote por notas: limite de empresas da conta, no lugar do da faixa (fica na troca de faixa). */
+  max_empresas_override?: number | null;
   empresas_ativas: number;
   notas_limite: number;
   notas_mes: number;
@@ -610,11 +612,12 @@ async function conferirTroca(
   if (planoDeEscritorio(pedido) !== escritorio) {
     return { ok: false, resultado: erro(409, "PLANO_DE_OUTRA_FAMILIA", MSG_OUTRA_FAMILIA) };
   }
-  // Antes do Pagar.me: uma faixa menor que as empresas ativas não chega a mudar o preço.
+  // Antes do Pagar.me: uma faixa menor que as empresas ativas não chega a mudar o preço. Com pacote por notas
+  // (max_empresas_override), o limite é o do pacote em qualquer faixa (o mesmo de public.fiscal_trocar_plano).
   if (planoDeEscritorio(pedido) && pedido !== estado.plano && deps.escritorio) {
     const esc = await deps.escritorio(userId);
     const ativas = Number(esc?.empresas_ativas ?? 0);
-    const limite = FAIXAS_ESCRITORIO[pedido].empresas;
+    const limite = Number(esc?.max_empresas_override) || FAIXAS_ESCRITORIO[pedido].empresas;
     if (ativas > limite) return { ok: false, resultado: limiteNaTroca(ativas, limite) };
   }
   return { ok: true, plano: pedido };
