@@ -444,3 +444,53 @@ test("consultar cnpj: a consulta vai com user-agent próprio (a BrasilAPI dá 40
   assert.equal(headers["User-Agent"], USER_AGENT);
   assert.match(USER_AGENT, /^no-fiscal\//);
 });
+
+test("CNPJ que a BrasilAPI não acha (404) é consultado na reserva CNPJ.ws", async () => {
+  const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  const urls = [];
+  const reserva = {
+    razao_social: "ESCRITORIO RESERVA LTDA.",
+    simples: { mei: "Não", simples: "Sim" },
+    estabelecimento: {
+      situacao_cadastral: "Ativa",
+      cidade: { nome: "Bragança Paulista", ibge_id: 3507605 },
+      estado: { sigla: "SP" },
+      atividade_principal: { id: "6920601" },
+    },
+  };
+  const r = await consultarCnpj(cnpj, {
+    fetch: async (url) => {
+      urls.push(url);
+      return url.includes("/api/cnpj/v1/")
+        ? new Response(JSON.stringify({ message: "não encontrado" }), { status: 404 })
+        : new Response(JSON.stringify(reserva), { status: 200 });
+    },
+  });
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], new RegExp(`/cnpj/${cnpj}$`));
+  assert.equal(r.ok, true);
+  assert.equal(r.dados.regime, "simples");
+  assert.equal(r.dados.codigo_municipio_ibge, "3507605");
+  assert.equal(r.dados.uf, "SP");
+});
+
+test("reserva: fora do Simples, inativo e reserva fora do ar", async () => {
+  const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  const base = {
+    razao_social: "X LTDA",
+    estabelecimento: { situacao_cadastral: "Ativa", cidade: { nome: "X", ibge_id: 3550308 }, estado: { sigla: "SP" } },
+  };
+  const com = (corpo, status = 200) => async (url) =>
+    url.includes("/api/cnpj/v1/") ? new Response("{}", { status: 404 }) : new Response(JSON.stringify(corpo), { status });
+  const fora = await consultarCnpj(cnpj, { fetch: com({ ...base, simples: { mei: "Não", simples: "Não" } }) });
+  assert.deepEqual(fora, { ok: false, motivo: "fora_do_simples" });
+  const inativo = await consultarCnpj(cnpj, {
+    fetch: com({ ...base, simples: { mei: "Não", simples: "Sim" }, estabelecimento: { ...base.estabelecimento, situacao_cadastral: "Baixada" } }),
+  });
+  assert.equal(inativo.ok, false);
+  assert.equal(inativo.motivo, "inativo");
+  const foraDoAr = await consultarCnpj(cnpj, { fetch: com({}, 503) });
+  assert.deepEqual(foraDoAr, { ok: false, motivo: "nao_encontrado" });
+});
