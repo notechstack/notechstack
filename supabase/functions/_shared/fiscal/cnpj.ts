@@ -57,7 +57,7 @@ function codigo(v: unknown, tamanho: number): string | null {
 
 export async function consultarCnpj(
   cnpj: string,
-  o: { apiUrl?: string; fetch?: (url: string, init?: RequestInit) => Promise<Response> } = {},
+  o: { apiUrl?: string; reservaUrl?: string; fetch?: (url: string, init?: RequestInit) => Promise<Response> } = {},
 ): Promise<Consulta> {
   const f = o.fetch ?? fetch;
   const base = (o.apiUrl || CNPJ_API_PADRAO).replace(/\/+$/, "");
@@ -74,7 +74,9 @@ export async function consultarCnpj(
   } finally {
     clearTimeout(relogio);
   }
-  if (resp.status === 404) return { ok: false, motivo: "nao_encontrado" };
+  // A BrasilAPI (e a base que ela espelha) não tem todo CNPJ: em 16/11/2026 respondeu 404 para um escritório
+  // ativo no Simples desde 2009 que a CNPJ.ws, a CNPJá e a ReceitaWS acharam. No 404, pergunta à reserva.
+  if (resp.status === 404) return await consultarReserva(cnpj, f, o.reservaUrl);
   if (!resp.ok) return { ok: false, motivo: "indisponivel" };
   const b = await resp.json().catch(() => null) as Record<string, unknown> | null;
   if (!b || typeof b !== "object") return { ok: false, motivo: "indisponivel" };
@@ -99,6 +101,69 @@ export async function consultarCnpj(
       uf: texto(b.uf).toUpperCase(),
       codigo_municipio_ibge: ibge,
       cnae: codigo(b.cnae_fiscal, 7),
+      regime,
+    },
+  };
+}
+
+/** Reserva: API pública da CNPJ.ws (`GET <reserva>/cnpj/<cnpj>`), usada só quando a BrasilAPI responde 404. */
+export const CNPJ_API_RESERVA = "https://publica.cnpj.ws";
+
+function simNao(v: unknown): boolean | null {
+  const s = texto(v).toUpperCase();
+  return s === "SIM" ? true : s === "NÃO" || s === "NAO" ? false : null;
+}
+
+async function consultarReserva(
+  cnpj: string,
+  f: (url: string, init?: RequestInit) => Promise<Response>,
+  reservaUrl?: string,
+): Promise<Consulta> {
+  const base = (reservaUrl || CNPJ_API_RESERVA).replace(/\/+$/, "");
+  let resp: Response;
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), TEMPO_MS);
+  try {
+    resp = await f(`${base}/cnpj/${cnpj}`, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      signal: controle.signal,
+    });
+  } catch {
+    return { ok: false, motivo: "nao_encontrado" };
+  } finally {
+    clearTimeout(relogio);
+  }
+  // A reserva fora do ar não muda a resposta original da BrasilAPI (não encontrado).
+  if (!resp.ok) return { ok: false, motivo: "nao_encontrado" };
+  const b = await resp.json().catch(() => null) as Record<string, unknown> | null;
+  if (!b || typeof b !== "object") return { ok: false, motivo: "nao_encontrado" };
+  const e = (b.estabelecimento && typeof b.estabelecimento === "object" ? b.estabelecimento : {}) as Record<string, unknown>;
+  const cidade = (e.cidade && typeof e.cidade === "object" ? e.cidade : {}) as Record<string, unknown>;
+  const estado = (e.estado && typeof e.estado === "object" ? e.estado : {}) as Record<string, unknown>;
+  const atividade = (e.atividade_principal && typeof e.atividade_principal === "object" ? e.atividade_principal : {}) as Record<string, unknown>;
+  const simples = (b.simples && typeof b.simples === "object" ? b.simples : null) as Record<string, unknown> | null;
+  const ibge = codigo(cidade.ibge_id, 7);
+  const razao = texto(b.razao_social);
+  if (!ibge || !razao) return { ok: false, motivo: "nao_encontrado" };
+  const situacao = texto(e.situacao_cadastral).toUpperCase();
+  if (!situacao) return { ok: false, motivo: "indisponivel" };
+  if (situacao !== "ATIVA") return { ok: false, motivo: "inativo", situacao };
+  // Sem o bloco `simples`, a reserva não confirma o regime: trata como fora do Simples só se ele disser "Não".
+  if (!simples) return { ok: false, motivo: "indisponivel" };
+  const mei = simNao(simples.mei);
+  const optante = simNao(simples.simples);
+  if (mei === null && optante === null) return { ok: false, motivo: "indisponivel" };
+  const regime: Regime | null = mei === true ? "mei" : optante === true ? "simples" : null;
+  if (!regime) return { ok: false, motivo: "fora_do_simples" };
+  return {
+    ok: true,
+    dados: {
+      cnpj,
+      razao_social: razao.slice(0, 150),
+      municipio: texto(cidade.nome).toUpperCase(),
+      uf: texto(estado.sigla).toUpperCase(),
+      codigo_municipio_ibge: ibge,
+      cnae: codigo(atividade.id, 7),
       regime,
     },
   };
