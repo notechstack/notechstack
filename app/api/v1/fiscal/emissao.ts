@@ -3,6 +3,7 @@
 // `SUPABASE_ANON_KEY`; banco: `NOFISCAL_DATABASE_URL` (papel `nofiscal_service`, o do agente); nome do código de
 // serviço: a lista publicada pelo site (`AGENTE_FISCAL_SITE_URL`). Lógica em _lib/painel-emissao.ts.
 import { catalogoDoSite } from '../../_lib/agente/catalogo-servicos.js'
+import { consultaCnpjBrasilApi } from '../../_lib/agente/consulta-cnpj.js'
 import { linksFromEnv } from '../../_lib/agente/links.js'
 import { dbFromEnv } from '../../_lib/db.js'
 import { errorResponse } from '../../_lib/http.js'
@@ -11,6 +12,9 @@ import { handlePainelEmissao } from '../../_lib/painel-emissao.js'
 import { sessionVerifierFromEnv } from '../../_lib/session.js'
 
 const catalogo = catalogoDoSite({ site: linksFromEnv().site })
+// Endereço do tomador com ISS retido (E0237): a mesma BrasilAPI do agente (`CNPJ_API_URL` opcional).
+const consulta = consultaCnpjBrasilApi({ baseUrl: process.env.CNPJ_API_URL })
+const enderecos = { endereco: (cnpj: string) => (consulta.endereco ? consulta.endereco(cnpj) : Promise.resolve(null)) }
 
 export default {
   async fetch(request: Request): Promise<Response> {
@@ -19,6 +23,7 @@ export default {
         db: dbFromEnv(),
         sessions: sessionVerifierFromEnv(),
         catalogo,
+        enderecos,
       })
     } catch {
       logEvent('nofiscal.painel_emissao_unavailable')

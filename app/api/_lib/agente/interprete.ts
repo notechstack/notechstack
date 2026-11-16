@@ -18,6 +18,16 @@ export type Parsed = {
    * só lê; quem acha a empresa entre as da conta é o código (emitente.ts). Ausente nos pedidos gravados antes disso.
    */
   prestador?: string | null
+  /**
+   * Retenção escrita no pedido (Lucca, 16/11/2026): `true` "com retenção de ISS", `false` "sem retenção"; `null` = o
+   * pedido não diz, e vale o padrão da empresa. A IA só lê; quem confere alíquota e valor é retencao.ts.
+   */
+  iss_retido?: boolean | null
+  /** Alíquota do ISS retido como escrita ("2", "2,5"). */
+  aliquota_iss?: string | null
+  inss_retido?: boolean | null
+  /** INSS retido como escrito: percentual com % ("11%") ou valor em reais ("38,50"). */
+  inss?: string | null
   intencao: Intencao
 }
 
@@ -46,7 +56,7 @@ export function valorValido(valor: unknown): string | null {
 }
 
 /**
- * Revalida a saída da IA: só os sete campos, cada um no formato que o código aceita. Campo
+ * Revalida a saída da IA: só os campos do tipo, cada um no formato que o código aceita. Campo
  * a mais é descartado; campo inválido vira `null` (e a conversa pergunta o que falta).
  */
 export function validarParsed(bruto: unknown): Parsed {
@@ -62,6 +72,10 @@ export function validarParsed(bruto: unknown): Parsed {
     // Mesmo limite do motor (servico.descricao em validation.ts).
     descricao: texto(obj.descricao, 2000),
     prestador: texto(obj.prestador, 150),
+    iss_retido: typeof obj.iss_retido === 'boolean' ? obj.iss_retido : null,
+    aliquota_iss: texto(obj.aliquota_iss, 10),
+    inss_retido: typeof obj.inss_retido === 'boolean' ? obj.inss_retido : null,
+    inss: texto(obj.inss, 20),
     intencao,
   }
 }

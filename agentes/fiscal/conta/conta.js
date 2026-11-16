@@ -621,6 +621,90 @@
     });
   }
 
+  /* ---------- Retenção de ISS e INSS (16/11/2026) ----------
+     As mesmas caixas em Adicionar empresa, em Dados fiscais (o padrão da empresa, gravado por /v1/fiscal/emissao
+     `empresa_retencao`) e na aba Emitir (só para a nota). Marcar abre o campo; MEI não tem retenção e não vê as caixas.
+     O servidor confere de novo (retencao.ts): aqui é só para o erro aparecer no campo. */
+  function numeroBR(t) {
+    t = String(t == null ? '' : t).replace(/%\s*$/, '').replace(/\s/g, '').replace(',', '.');
+    return /^\d{1,3}(\.\d{1,2})?$/.test(t) ? Number(t) : null;
+  }
+  function comVirgula(v) { return String(Number(v)).replace('.', ','); }
+  function formRetencao(pre, opcoes) {
+    opcoes = opcoes || {};
+    var iss = $(pre + '-retem-iss'), inss = $(pre + '-retem-inss');
+    function sync() {
+      $(pre + '-campo-iss').hidden = !iss.checked;
+      $(pre + '-campo-inss').hidden = !inss.checked;
+      iss.setAttribute('aria-expanded', iss.checked ? 'true' : 'false');
+      inss.setAttribute('aria-expanded', inss.checked ? 'true' : 'false');
+    }
+    function mudou(caixa, campo) {
+      sync();
+      if (caixa.checked) $(campo).focus(); else nf.erroCampo(campo, '');
+      if (opcoes.aoMudar) opcoes.aoMudar();
+    }
+    iss.addEventListener('change', function () { mudou(iss, pre + '-aliquota-iss'); });
+    inss.addEventListener('change', function () { mudou(inss, pre + '-inss'); });
+    if (opcoes.aoMudar) {
+      $(pre + '-aliquota-iss').addEventListener('input', opcoes.aoMudar);
+      $(pre + '-inss').addEventListener('input', opcoes.aoMudar);
+    }
+    var inicial = null;
+    var api = {
+      /* `padrao` = { retem_iss, aliquota_iss, retem_inss, inss_percentual } (ou null); `mei` esconde tudo. */
+      preencher: function (padrao, mei) {
+        padrao = padrao || {};
+        $(pre + '-retencao').hidden = !!mei;
+        iss.checked = !mei && !!padrao.retem_iss;
+        inss.checked = !mei && !!padrao.retem_inss;
+        $(pre + '-aliquota-iss').value = padrao.aliquota_iss ? comVirgula(padrao.aliquota_iss) : '';
+        $(pre + '-inss').value = padrao.inss_percentual ? comVirgula(padrao.inss_percentual) + (opcoes.inssLivre ? '%' : '') : '';
+        sync();
+        api.limpar();
+        inicial = JSON.stringify(api.ler());
+      },
+      /* As caixas ou os campos mudaram desde o último `preencher`. */
+      mudou: function () { return JSON.stringify(api.ler()) !== inicial; },
+      limpar: function () { nf.erroCampo(pre + '-aliquota-iss', ''); nf.erroCampo(pre + '-inss', ''); },
+      visivel: function () { return !$(pre + '-retencao').hidden; },
+      marcada: function () { return api.visivel() && (iss.checked || inss.checked); },
+      ler: function () {
+        return { retem_iss: api.visivel() && iss.checked, aliquota_iss: $(pre + '-aliquota-iss').value, retem_inss: api.visivel() && inss.checked, inss: $(pre + '-inss').value };
+      },
+      /* Devolve o id do primeiro campo com erro, ou null. */
+      validar: function () {
+        api.limpar();
+        if (!api.visivel()) return null;
+        var falhou = null;
+        if (iss.checked) {
+          var a = numeroBR($(pre + '-aliquota-iss').value);
+          if (a === null || a < 2 || a > 5) { nf.erroCampo(pre + '-aliquota-iss', 'Informe a alíquota do ISS retido, de 2% a 5% (por exemplo 2,5).'); falhou = pre + '-aliquota-iss'; }
+        }
+        if (inss.checked) {
+          var t = nf.texto($(pre + '-inss').value);
+          var ok = opcoes.inssLivre ? !!t : (function (n) { return n !== null && n > 0 && n < 100; })(numeroBR(t));
+          if (!ok) {
+            nf.erroCampo(pre + '-inss', opcoes.inssLivre ? 'Informe o INSS retido: o percentual (11%) ou o valor (165,00).' : 'Informe o percentual do INSS retido, por exemplo 11.');
+            if (!falhou) falhou = pre + '-inss';
+          }
+        }
+        return falhou;
+      }
+    };
+    return api;
+  }
+  /* Corpo de `empresa_retencao` a partir das caixas de uma empresa. */
+  function corpoRetencaoEmpresa(tenantId, r) {
+    return {
+      acao: 'empresa_retencao', tenant_id: tenantId,
+      retem_iss: r.retem_iss, aliquota_iss: r.retem_iss ? r.aliquota_iss : null,
+      retem_inss: r.retem_inss, inss_percentual: r.retem_inss ? r.inss : null
+    };
+  }
+  var retAdd = formRetencao('fa-add');
+  var retEmp = formRetencao('fa-emp');
+
   /* ---------- Minhas empresas ---------- */
   function botaoLinha(acao, emp, rotulo) {
     return '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="' + acao + '" data-tenant="' + nf.esc(emp.tenant_id) +
@@ -731,6 +815,14 @@
     var mei = emp.regime === 'mei';
     $('fa-emp-campo-percentual').hidden = mei;
     $('fa-emp-percentual').value = !mei && emp.p_tot_trib_sn != null ? String(emp.p_tot_trib_sn).replace('.', ',') : '';
+    // O padrão de retenção vem da API do painel (a mesma da aba Emitir); até chegar, as caixas ficam desmarcadas.
+    retEmp.preencher(null, mei);
+    if (mei) return;
+    var id = emp.tenant_id;
+    nf.app(EMISSAO, { acao: 'contexto' }).then(function (r) {
+      if (!r.ok || !ec.acao || ec.acao.tenantId !== id) return;
+      (r.dados.empresas || []).forEach(function (e) { if (e.tenant_id === id) retEmp.preencher(e.retencao, e.regime === 'mei'); });
+    });
   }
   var CAMPO_EMP_FISCAL = { codigo_servico_nacional: 'fa-emp-codigo-servico', p_tot_trib_sn: 'fa-emp-percentual' };
   function salvarFiscalEmpresa(ev) {
@@ -745,13 +837,28 @@
     var falhou = false;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-emp-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
     if (!mei && pct === null) { nf.erroCampo('fa-emp-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
-    if (falhou) return;
+    var erroRet = retEmp.validar();
+    if (falhou || erroRet) { if (erroRet && !falhou) $(erroRet).focus(); return; }
     var corpo = { acao: 'empresa_configurar', tenant_id: ac.tenantId, codigo_servico_nacional: codigo };
     if (!mei) corpo.p_tot_trib_sn = pct;
     var botao = $('fa-emp-salvar-fiscal');
     var nome = nomeEmpresa(ac.empresa);
     nf.ocupado(botao, true, 'Salvando…');
-    nf.funcao('fiscal-conta', corpo).then(function (r) {
+    // Primeiro a retenção (API do painel), depois o código e o percentual (fiscal-conta).
+    var retencao = mei || !retEmp.mudou() ? Promise.resolve({ ok: true }) : nf.app(EMISSAO, corpoRetencaoEmpresa(ac.tenantId, retEmp.ler()));
+    retencao.then(function (rr) {
+      if (!rr.ok) {
+        nf.ocupado(botao, false);
+        if (rr.status === 401) return;
+        var campoRet = rr.dados && { aliquota_iss: 'fa-emp-aliquota-iss', inss_percentual: 'fa-emp-inss' }[rr.dados.campo];
+        if (campoRet) { nf.erroCampo(campoRet, rr.mensagem || 'Confira este campo.'); return; }
+        nf.aviso($('fa-aviso-emp-fiscal'), nf.esc(rr.mensagem || GENERICO), 'erro');
+        return null;
+      }
+      em.carregado = false; // a aba Emitir relê o padrão da empresa
+      return nf.funcao('fiscal-conta', corpo);
+    }).then(function (r) {
+      if (!r) return;
       nf.ocupado(botao, false);
       if (r.ok) {
         fecharAcao();
@@ -788,7 +895,7 @@
     $('fa-abrir-adicionar').setAttribute('aria-expanded', abrir ? 'true' : 'false');
     nf.erroCampo('fa-add-cnpj', '');
     nf.aviso($('fa-aviso-adicionar'), '');
-    if (abrir) $('fa-add-cnpj').focus();
+    if (abrir) { retAdd.preencher(null, false); $('fa-add-cnpj').focus(); }
   }
   function adicionarEmpresa(ev) {
     ev.preventDefault();
@@ -796,6 +903,9 @@
     nf.erroCampo('fa-add-cnpj', '');
     nf.aviso($('fa-aviso-adicionar'), '');
     if (!nf.cnpjValido(cnpj)) { nf.erroCampo('fa-add-cnpj', 'CNPJ inválido. Confira os 14 números.'); return; }
+    var erroRet = retAdd.validar();
+    if (erroRet) { $(erroRet).focus(); return; }
+    var retencao = retAdd.marcada() ? retAdd.ler() : null;
     var botao = $('fa-adicionar');
     nf.ocupado(botao, true, 'Consultando a Receita…');
     nf.funcao('fiscal-conta', { acao: 'empresa_adicionar', cnpj: cnpj }).then(function (r) {
@@ -806,17 +916,27 @@
         $('fa-form-adicionar').hidden = true;
         $('fa-abrir-adicionar').setAttribute('aria-expanded', 'false');
         var nova = r.dados.adicionada && r.dados.adicionada.tenant_id;
+        var avisoRetencao = '';
         var depois = function () {
           var escolha = nova
             ? ' <span class="nf-acoes-linha"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="cert" data-tenant="' + nf.esc(nova) +
               '">Enviar o A1 da empresa</button><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="proc" data-tenant="' + nf.esc(nova) +
               '">Usar procuração ao escritório</button></span>'
             : '';
-          nf.aviso($('fa-aviso-empresas'), (reativada ? 'Empresa reativada.' : 'Empresa adicionada.') +
+          nf.aviso($('fa-aviso-empresas'), (reativada ? 'Empresa reativada.' : 'Empresa adicionada.') + avisoRetencao +
             ' Agora escolha como ela vai assinar as notas: com o certificado A1 dela ou com procuração ao escritório. Depois, os dados fiscais.' + escolha, 'ok');
         };
-        if (r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
-        return carregar().then(depois);
+        // As caixas de retenção marcadas viram o padrão da empresa nova (API do painel).
+        var salvarRetencao = retencao && nova
+          ? nf.app(EMISSAO, corpoRetencaoEmpresa(nova, retencao)).then(function (rr) {
+            em.carregado = false;
+            avisoRetencao = rr.ok ? ' Retenção salva.' : ' A retenção não foi salva: ' + nf.esc(rr.mensagem || GENERICO) + ' Ajuste em Dados fiscais.';
+          })
+          : Promise.resolve();
+        return salvarRetencao.then(function () {
+          if (r.dados.tenant_id) { st.estado = r.dados; desenhar(); depois(); return; }
+          return carregar().then(depois);
+        });
       }
       if (r.status === 401) return;
       if (r.codigo === 'EMPRESAS_ACIMA_DO_LIMITE') {
@@ -934,7 +1054,8 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
   function novaChave() {
@@ -981,6 +1102,7 @@
     var emp = empresaDaEmissao($('fa-av-empresa').value);
     fecharResumoAvulsa();
     desenharBloqueioDaEmissao();
+    retAv.preencher(emp && emp.retencao, !emp || emp.regime === 'mei');
     prepararSeletorAvulsa(emp ? emp.codigo_servico_nacional : '', emp && emp.tenant_id);
     carregarModelos(emp);
   }
@@ -1024,11 +1146,19 @@
   }
 
   function lerAvulsa() {
-    return {
+    var corpo = {
       tenant_id: $('fa-av-empresa').value, documento: $('fa-av-documento').value, nome: $('fa-av-nome').value,
       email: $('fa-av-email').value, valor: $('fa-av-valor').value, codigo: em.seletor ? em.seletor.valor() : '',
       descricao: $('fa-av-descricao').value
     };
+    // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
+    if (retAv.visivel()) {
+      var r = retAv.ler();
+      corpo.retem_iss = r.retem_iss; corpo.retem_inss = r.retem_inss;
+      if (r.retem_iss) corpo.aliquota_iss = r.aliquota_iss;
+      if (r.retem_inss) corpo.inss = r.inss;
+    }
+    return corpo;
   }
   function limparErrosAvulsa() {
     Object.keys(CAMPO_AVULSA).forEach(function (k) { nf.erroCampo(CAMPO_AVULSA[k], ''); });
@@ -1044,7 +1174,8 @@
     if (!nf.texto(corpo.nome)) erro('nome', 'Informe o nome do cliente.');
     if (nf.texto(corpo.email) && !nf.emailValido(nf.texto(corpo.email))) erro('email', 'E-mail inválido. Confira ou deixe em branco.');
     if (!nf.texto(corpo.valor)) erro('valor', 'Informe o valor.');
-    if (falhou) { var f = $(CAMPO_AVULSA[falhou]); if (f) f.focus(); return; }
+    var erroRet = retAv.validar();
+    if (falhou || erroRet) { var f = $(falhou ? CAMPO_AVULSA[falhou] : erroRet); if (f) f.focus(); return; }
     corpo.acao = 'avulsa_conferir';
     var botao = $('fa-av-conferir');
     nf.ocupado(botao, true, 'Conferindo…');
@@ -1066,7 +1197,7 @@
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
       ['Descrição na nota', sv.descricao],
       ['Valor', s.valor_texto]
-    ]);
+    ].concat(linhasRetencaoDoResumo(s)));
     var avisos = (d.bloqueio ? ['<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc('Não dá para emitir: ' + d.bloqueio.motivo + '.') + '</p>'] : [])
       .concat((d.avisos || []).map(function (a) { return '<p class="nf-aviso nf-aviso--info">' + nf.esc(a) + '</p>'; }));
     $('fa-av-avisos').innerHTML = avisos.join('');
@@ -1074,6 +1205,18 @@
     $('fa-form-avulsa').hidden = true;
     $('fa-av-resumo').hidden = false;
     $('fa-av-resumo-titulo').focus();
+  }
+  /* Retenção no resumo: ISS (alíquota e valor), INSS, valor líquido e o endereço do cliente que vai na nota. */
+  function linhasRetencaoDoResumo(s) {
+    var r = s.retencao;
+    if (!r) return [];
+    var out = [];
+    if (r.iss) out.push(['ISS retido pelo tomador', comVirgula(r.iss.aliquota) + '% (R$ ' + valorTexto(r.iss.valor) + ')']);
+    if (r.inss) out.push(['INSS retido', 'R$ ' + valorTexto(r.inss.valor)]);
+    out.push(['Valor líquido', 'R$ ' + valorTexto(r.liquido)]);
+    var e = s.endereco_tomador;
+    if (e) out.push(['Endereço do cliente (Receita)', e.logradouro + ', ' + e.numero + (e.complemento ? ' ' + e.complemento : '') + ' · ' + e.bairro + ' · CEP ' + e.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')]);
+    return out;
   }
   function fecharResumoAvulsa() {
     $('fa-av-resumo').hidden = true;
@@ -1094,6 +1237,8 @@
         fecharResumoAvulsa();
         $('fa-av-modelo').value = '';
         escolherModelo();
+        var empAtual = empresaDaEmissao($('fa-av-empresa').value);
+        retAv.preencher(empAtual && empAtual.retencao, !empAtual || empAtual.regime === 'mei');
         ec.relCarregado = false; // Relatórios busca de novo na próxima visita
         nf.aviso($('fa-aviso-emitir'), nf.esc('Nota de ' + nf.texto(pedido.nome) + ' na fila da Sefin. Em instantes ela é autorizada, e o cliente com e-mail recebe a nota.') + BOTAO_RELATORIOS, 'ok');
         var aviso = $('fa-aviso-emitir');

@@ -13,6 +13,7 @@ import { runEmission } from '../_lib/emission.js'
 import { handleOnboardingProcuracao } from '../_lib/onboarding-procuracao.js'
 import { handlePainelEmissao } from '../_lib/painel-emissao.js'
 import { createSefinClient } from '../_lib/sefin-client.js'
+import type { EnderecoDoTomador, EnderecoNacional } from '../_lib/retencao.js'
 import type { SessionVerifier } from '../_lib/session.js'
 import {
   allowTestUserToAssume,
@@ -54,7 +55,11 @@ type Resposta = { status: number; corpo: Corpo }
 type EmpresaDoContexto = { tenant_id: string; bloqueio: unknown }
 type NotaDoRelatorio = { invoice_id: string; situacao: string; entregas: { canal: string; destino: string }[] }
 
-async function chamar(userId: string | null, corpo: Record<string, unknown> | FormData, opcoes: { metodo?: string; agora?: Date } = {}): Promise<Resposta> {
+async function chamar(
+  userId: string | null,
+  corpo: Record<string, unknown> | FormData,
+  opcoes: { metodo?: string; agora?: Date; enderecos?: EnderecoDoTomador } = {},
+): Promise<Resposta> {
   const headers: Record<string, string> = {}
   if (userId) headers.authorization = `Bearer token-${userId}`
   const form = corpo instanceof FormData
@@ -62,7 +67,7 @@ async function chamar(userId: string | null, corpo: Record<string, unknown> | Fo
   const metodo = opcoes.metodo ?? 'POST'
   const response = await handlePainelEmissao(
     new Request(URL_DA_ROTA, { method: metodo, headers, body: metodo === 'GET' ? undefined : form ? corpo : JSON.stringify(corpo) }),
-    { db: servico.db, sessions, catalogo, now: () => opcoes.agora ?? new Date() },
+    { db: servico.db, sessions, catalogo, enderecos: opcoes.enderecos, now: () => opcoes.agora ?? new Date() },
   )
   return { status: response.status, corpo: (await response.json()) as Corpo }
 }
@@ -154,6 +159,8 @@ describe('nota avulsa', () => {
       servico: { codigo: '010701', nome: 'Suporte técnico em informática', descricao: 'Prestação de serviços' },
       valor: '1234.50',
       valor_texto: 'R$ 1.234,50',
+      retencao: null,
+      endereco_tomador: null,
     })
     expect(conferido.corpo.bloqueio).toBeNull()
     expect(conferido.corpo.avisos).toEqual([])
@@ -366,5 +373,68 @@ describe('lote por planilha pelo painel', () => {
     expect(colunas.status).toBe(422)
     expect(colunas.corpo.motivo).toBe('colunas')
     expect(colunas.corpo.error.message).toContain('Faltam as colunas: cpf_cnpj_tomador')
+  })
+})
+
+describe('retenção pelo painel (16/11/2026)', () => {
+  const ENDERECO: EnderecoNacional = { cMun: '3550308', cep: '01310100', logradouro: 'AVENIDA PAULISTA', numero: '1000', complemento: null, bairro: 'BELA VISTA' }
+  const enderecos: EnderecoDoTomador = { endereco: async (cnpj) => (cnpj === CNPJ_TOMADOR ? ENDERECO : null) }
+
+  it('o padrão da empresa grava, volta no contexto e recusa MEI e empresa de outra conta', async () => {
+    const { e, dono, cliente } = await novoEscritorio()
+    const salvar = (extra: Record<string, unknown>) => chamar(dono, { acao: 'empresa_retencao', tenant_id: cliente.id, ...extra })
+
+    expect((await salvar({ retem_iss: true, aliquota_iss: '7' })).corpo).toMatchObject({ campo: 'aliquota_iss', error: { code: 'VALIDATION_FAILED' } })
+    expect((await salvar({ retem_inss: true })).corpo).toMatchObject({ campo: 'inss_percentual' })
+    const ok = await salvar({ retem_iss: true, aliquota_iss: '2,5', retem_inss: true, inss_percentual: '11' })
+    expect(ok.status).toBe(200)
+    const { rows } = await admin.db.query(
+      'select retem_iss, aliquota_iss::text, retem_inss, inss_percentual::text from nofiscal.fiscal_tenants where id = $1',
+      [cliente.id],
+    )
+    expect(rows[0]).toEqual({ retem_iss: true, aliquota_iss: '2.50', retem_inss: true, inss_percentual: '11.00' })
+    const contexto = await chamar(dono, { acao: 'contexto' })
+    const daEmpresa = (contexto.corpo.empresas as (EmpresaDoContexto & { retencao: unknown })[]).find((x) => x.tenant_id === cliente.id)
+    expect(daEmpresa?.retencao).toEqual({ retem_iss: true, aliquota_iss: '2.50', retem_inss: true, inss_percentual: '11.00' })
+
+    // MEI: o painel recusa (e o banco também, pelo check).
+    await admin.db.query("update nofiscal.fiscal_tenants set regime = 'mei', retem_iss = false, retem_inss = false where id = $1", [e.empresas[1].id])
+    const mei = await chamar(dono, { acao: 'empresa_retencao', tenant_id: e.empresas[1].id, retem_inss: true, inss_percentual: '11' })
+    expect(mei.corpo).toMatchObject({ campo: 'retencao', error: { code: 'VALIDATION_FAILED' } })
+    await expect(admin.db.query('update nofiscal.fiscal_tenants set retem_inss = true, inss_percentual = 11 where id = $1', [e.empresas[1].id])).rejects.toThrow(
+      /fiscal_tenants_retencao_mei_check/,
+    )
+
+    const outro = await novoEscritorio()
+    expect((await chamar(dono, { acao: 'empresa_retencao', tenant_id: outro.cliente.id, retem_iss: false })).status).toBe(404)
+  })
+
+  it('nota avulsa herda o padrão, mostra a retenção no resumo e grava retenção e endereço no payload', async () => {
+    const { dono, cliente } = await novoEscritorio()
+    await chamar(dono, { acao: 'empresa_retencao', tenant_id: cliente.id, retem_iss: true, aliquota_iss: '2', retem_inss: true, inss_percentual: '11' })
+    const pedido = { tenant_id: cliente.id, documento: CNPJ_TOMADOR, nome: 'Clínica Saúde', valor: '1.500,00', codigo: '010701' }
+
+    const conferido = await chamar(dono, { ...pedido, acao: 'avulsa_conferir' }, { enderecos })
+    expect(conferido.status).toBe(200)
+    expect((conferido.corpo.resumo as Record<string, unknown>).retencao).toEqual({
+      iss: { aliquota: '2.00', valor: '30.00' },
+      inss: { valor: '165.00' },
+      liquido: '1305.00',
+      linhas: ['ISS retido pelo tomador: 2% (R$ 30,00)', 'INSS retido: R$ 165,00', 'Valor líquido: R$ 1.305,00'],
+    })
+    expect((conferido.corpo.resumo as Record<string, unknown>).endereco_tomador).toEqual(ENDERECO)
+
+    // Sem a consulta de endereço, o ISS retido não sai; tomador CPF com ISS retido também não.
+    expect((await chamar(dono, { ...pedido, acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'retencao' })
+    expect((await chamar(dono, { ...pedido, documento: CPF, acao: 'avulsa_conferir' }, { enderecos })).corpo).toMatchObject({ campo: 'documento' })
+    // As caixas do formulário mudam só esta nota.
+    const soInss = await chamar(dono, { ...pedido, documento: CPF, retem_iss: false, retem_inss: true, inss: '100,00', acao: 'avulsa_conferir' }, { enderecos })
+    expect((soInss.corpo.resumo as { retencao: unknown }).retencao).toMatchObject({ iss: null, inss: { valor: '100.00' } })
+
+    const emitida = await chamar(dono, { ...pedido, acao: 'avulsa_emitir', chave: randomUUID() }, { enderecos })
+    expect(emitida.status).toBe(200)
+    const [nota] = await notasDoTenant(cliente.id)
+    expect(nota.payload.retencao).toEqual({ iss: { aliquota: '2.00' }, inss: { valor: '165.00' } })
+    expect((nota.payload.tomador as Record<string, unknown>).endereco).toEqual(ENDERECO)
   })
 })

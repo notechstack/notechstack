@@ -26,7 +26,7 @@ import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb, sefinDouble } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
-import { DESCRICAO_PADRAO, ehConfirmarEmissao, TEXTO_SEM_RETENCAO, ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
+import { DESCRICAO_PADRAO, ehConfirmarEmissao, ehPedidoDeAtendimento, expirarPedidos, processarMensagem, TEXTOS, WHATSAPP_COMERCIAL, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
 import { comNonoDigito } from './normalizacao.js'
 import { mensagensDaNotificacao } from './webhook.js'
@@ -553,7 +553,7 @@ describe('conversa no WhatsApp', () => {
     let pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0].status).toBe('awaiting_confirmation')
-    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['descricao', 'documento', 'intencao', 'modelo', 'prestador', 'tomador', 'valor'])
+    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['aliquota_iss', 'descricao', 'documento', 'inss', 'inss_retido', 'intencao', 'iss_retido', 'modelo', 'prestador', 'tomador', 'valor'])
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     await c.enviar(s.ownerPhone, 'cancela a nota da Prontia já')
@@ -966,35 +966,7 @@ describe('conversa no WhatsApp', () => {
   })
 })
 
-describe('trava de retenção (até a retenção sair)', () => {
-  // Caso real de 16/11/2026: o pedido citava a retenção e a nota saiu sem ela (tpRetISSQN 1).
-  const BRAGANTINA =
-    'Emitir uma nota fiscal da 4 ESTACOES BRAGANCA LTDA para tomadora CONTABILIDADE BRAGANTINA LTDA no valor de 1,00. Tem retenção de ISS pela tomadora na alíquota de 2,01%.'
-
-  it('pedido que fala de retenção não vira nota: avisa e manda ao Emissor Nacional', async () => {
-    const s = await cenario()
-    await criarModelo(admin.db, s.tenant.id, PRONTIA_CNPJ)
-    const correcao = 'é com ISS retido de 2%'
-    const c = conversa({
-      [BRAGANTINA]: { tomador: 'Prontia Saúde', valor: '1.00', intencao: 'emitir' },
-      [PEDIDO_PRONTIA]: { tomador: 'Prontia Saúde', valor: '10.00', intencao: 'emitir' },
-      [correcao]: { intencao: 'outro' },
-    })
-
-    await c.enviar(s.ownerPhone, BRAGANTINA)
-    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTO_SEM_RETENCAO)
-    expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(0)
-    await c.enviar(s.ownerPhone, 'confirmar')
-    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
-
-    // Na correção também.
-    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
-    await c.enviar(s.ownerPhone, 'corrigir')
-    await c.enviar(s.ownerPhone, correcao)
-    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTO_SEM_RETENCAO)
-    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
-  })
-
+describe('pedido que fala de retenção', () => {
   it('reconhece as formas de falar de retenção, e só elas', async () => {
     const { mencionaRetencao } = await import('./conversa.js')
     for (const t of ['Tem retenção de ISS pela tomadora', 'ISS retido 2%', 'retém INSS 11%', 'com retencao', 'sem retenção']) expect(mencionaRetencao(t), t).toBe(true)

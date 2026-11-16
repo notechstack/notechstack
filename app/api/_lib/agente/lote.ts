@@ -12,6 +12,21 @@ import { createOrGetInvoice } from '../invoices.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
 import {
+  COLUNAS_DA_RETENCAO,
+  lerAliquotaIss,
+  lerSimNao,
+  motivoDaRetencao,
+  padraoDaLinha,
+  PROBLEMAS_DE_RETENCAO,
+  resolverRetencao,
+  SEM_RETENCAO_PADRAO,
+  type EnderecoDoTomador,
+  type EnderecoNacional,
+  type Retencao,
+  type RetencaoDoPedido,
+  type RetencaoPadrao,
+} from '../retencao.js'
+import {
   DESCRICAO_PADRAO,
   ehConfirmar,
   ehConfirmarEmissao,
@@ -38,7 +53,9 @@ export const MAX_PROBLEMAS_NO_RESUMO = 15
 /** Descompactado, o .xlsx não passa disto (defesa contra zip bomb antes de entregar o arquivo ao leitor). */
 const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 
-export const CAMPOS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao'] as const
+// `iss_retido` e `inss_retido` (Lucca, 16/11/2026) são opcionais: a planilha de 6 colunas continua valendo, e a coluna
+// vazia deixa o padrão de retenção da empresa.
+export const CAMPOS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido'] as const
 export type Campo = (typeof CAMPOS)[number]
 
 export const CODIGOS_DE_PROBLEMA = [
@@ -52,6 +69,8 @@ export const CODIGOS_DE_PROBLEMA = [
   'DESCRICAO_LONGA',
   'LINHA_REPETIDA',
   'JA_EMITIDA_NO_MES',
+  'ISS_RETIDO_INVALIDO',
+  ...PROBLEMAS_DE_RETENCAO,
 ] as const
 
 export const TEXTOS_DO_LOTE = {
@@ -344,7 +363,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor e descricao (opcional).',
+    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional) e inss_retido (opcional).',
     `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   ]
     .filter(Boolean)
@@ -441,6 +460,10 @@ export type Empresa = {
   razao_social: string
   active: boolean
   codigo_servico_nacional: string | null
+  /** 'mei' ou 'simples' (MEI não tem retenção). Ausente = não conferido. */
+  regime?: string | null
+  /** Padrão de retenção da empresa (`fiscal_tenants`); ausente = sem retenção. */
+  retencao?: RetencaoPadrao
 }
 
 export type ModeloDoTomador = { codigo: string; descricao: string; email: string | null }
@@ -496,6 +519,16 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     if (emailEscrito && !email) return falha('EMAIL_INVALIDO', empresa.id)
     const descricaoEscrita = textoDaCelula(celulas.descricao)
     if (descricaoEscrita.length > 2000) return falha('DESCRICAO_LONGA', empresa.id)
+    const pedidoDeRetencao = lerRetencaoDaLinha(celulas)
+    if (pedidoDeRetencao === 'ISS_RETIDO_INVALIDO') return falha('ISS_RETIDO_INVALIDO', empresa.id)
+    const resolvida = resolverRetencao({
+      padrao: empresa.retencao ?? SEM_RETENCAO_PADRAO,
+      pedido: pedidoDeRetencao,
+      valor,
+      regime: empresa.regime ?? null,
+      tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
+    })
+    if (!resolvida.ok) return falha(resolvida.problema, empresa.id)
 
     // Como no pedido avulso (conversa.ts): com modelo do tomador, código e descrição do modelo; sem modelo, o
     // código da empresa e a descrição padrão. A descrição escrita na planilha vale para esta nota.
@@ -504,7 +537,8 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       codigo: modelo?.codigo ?? empresa.codigo_servico_nacional ?? '',
       descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO,
     }
-    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor)
+    // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
+    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
       linha,
       tenantId: empresa.id,
@@ -524,6 +558,57 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     if (ctx.jaEmitidas.has(chave)) return pronta('JA_EMITIDA_NO_MES')
     return pronta(null)
   })
+}
+
+/**
+ * As colunas de retenção da linha. `iss_retido`: sim/não, ou a alíquota ("2%", "2,5"); `inss_retido`: sim/não, o
+ * percentual ("11%") ou o valor ("38,50"). Célula numérica do Excel abaixo de 1 é percentual formatado (0,11 = 11%).
+ * Vazia = o padrão da empresa.
+ */
+export function lerRetencaoDaLinha(celulas: LinhaLida['celulas']): RetencaoDoPedido | 'ISS_RETIDO_INVALIDO' {
+  const r: RetencaoDoPedido = {}
+  const iss = celulas.iss_retido
+  const simNaoIss = lerSimNao(typeof iss === 'number' ? '' : iss)
+  if (typeof iss === 'number' && Number.isFinite(iss) && iss > 0) {
+    r.iss = true
+    r.aliquotaIss = String(iss < 1 ? Math.round(iss * 10000) / 100 : iss).replace('.', ',')
+  } else if (simNaoIss === true || simNaoIss === false) {
+    r.iss = simNaoIss
+  } else if (simNaoIss === null) {
+    if (!lerAliquotaIss(textoDaCelula(iss))) return 'ISS_RETIDO_INVALIDO'
+    r.iss = true
+    r.aliquotaIss = textoDaCelula(iss)
+  }
+  const inss = celulas.inss_retido
+  if (typeof inss === 'number' && Number.isFinite(inss) && inss > 0) {
+    r.inss = true
+    r.inssTexto = inss < 1 ? `${Math.round(inss * 10000) / 100}%` : String(inss)
+  } else {
+    const simNaoInss = lerSimNao(inss)
+    if (simNaoInss === true || simNaoInss === false) r.inss = simNaoInss
+    else if (simNaoInss === null) {
+      r.inss = true
+      r.inssTexto = textoDaCelula(inss)
+    }
+  }
+  return r
+}
+
+/**
+ * ISS retido leva o endereço do tomador (E0237), da Receita. Um pedido por CNPJ; sem endereço, a linha fica com
+ * `ENDERECO_TOMADOR`. Sem consulta configurada, toda linha com ISS retido fica de fora.
+ */
+export async function completarEnderecos(itens: ItemDoLote[], consulta: EnderecoDoTomador | null | undefined): Promise<void> {
+  const cache = new Map<string, Promise<EnderecoNacional | null>>()
+  for (const item of itens) {
+    const p = item.payload as { tomador?: { cnpj?: string; endereco?: EnderecoNacional }; retencao?: Retencao }
+    if (!p.retencao?.iss || !p.tomador) continue
+    const cnpj = p.tomador.cnpj ?? ''
+    if (!cache.has(cnpj)) cache.set(cnpj, consulta ? consulta.endereco(cnpj).catch(() => null) : Promise.resolve(null))
+    const endereco = await (cache.get(cnpj) as Promise<EnderecoNacional | null>)
+    if (endereco) p.tomador.endereco = endereco
+    else if (!item.problema) item.problema = 'ENDERECO_TOMADOR'
+  }
 }
 
 /** O motivo que a pessoa lê, por código (o do `emission_block` nomeia a empresa). */
@@ -552,6 +637,17 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return d.igualA ? `igual à linha ${d.igualA} (mesmo prestador, tomador e valor)` : 'linha repetida (mesmo prestador, tomador e valor)'
     case 'JA_EMITIDA_NO_MES':
       return 'já há nota igual neste mês (mesmo prestador, tomador e valor)'
+    case 'ISS_RETIDO_INVALIDO':
+      return 'iss_retido inválido: escreva sim, não ou a alíquota (de 2% a 5%)'
+    case 'RETENCAO_MEI':
+    case 'ISS_RETIDO_CPF':
+    case 'ALIQUOTA_ISS_FALTANDO':
+    case 'ALIQUOTA_ISS_INVALIDA':
+    case 'INSS_FALTANDO':
+    case 'INSS_INVALIDO':
+    case 'RETENCOES_ACIMA_DO_VALOR':
+    case 'ENDERECO_TOMADOR':
+      return motivoDaRetencao(codigo)
     case 'CERT_MISSING':
       return `${empresa} ainda não tem certificado A1`
     case 'CERT_EXPIRED':
@@ -585,6 +681,15 @@ export type Franquia = { limite: number; noMes: number }
 
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`
 
+/** "Com retenção: 3 notas com ISS retido, 2 com INSS retido." (nada sem retenção). */
+export function textoDasRetencoes(prontas: ItemDoLote[]): string | null {
+  const ret = (i: ItemDoLote) => (i.payload as { retencao?: Retencao }).retencao
+  const iss = prontas.filter((i) => ret(i)?.iss).length
+  const inss = prontas.filter((i) => ret(i)?.inss).length
+  if (!iss && !inss) return null
+  return `Com retenção: ${[iss ? `${plural(iss, 'nota', 'notas')} com ISS retido` : null, inss ? `${plural(inss, 'nota', 'notas')} com INSS retido` : null].filter(Boolean).join(', ')}.`
+}
+
 export function textoDoResumoDoLote(dados: {
   arquivo: string | null
   itens: ItemDoLote[]
@@ -607,6 +712,8 @@ export function textoDoResumoDoLote(dados: {
   if (porEmpresa.size) {
     linhas.push(`Empresas: ${[...porEmpresa].map(([id, n]) => `${nomeDe.get(id) ?? id} (${plural(n, 'nota', 'notas')})`).join(', ')}.`)
   }
+  const retencoes = textoDasRetencoes(prontas)
+  if (retencoes) linhas.push(retencoes)
   if (comProblema.length) {
     linhas.push(`Com problema (ficam de fora): ${plural(comProblema.length, 'linha', 'linhas')}.`)
     for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
@@ -658,14 +765,22 @@ async function donoDoTenant(db: Queryable, tenantId: string): Promise<Dono | nul
 }
 
 export async function empresasDoDono(db: Queryable, donoId: string): Promise<Empresa[]> {
-  const { rows } = await db.query<Empresa>(
-    `select t.id, t.cnpj, t.razao_social, t.active, t.codigo_servico_nacional
+  const { rows } = await db.query<Omit<Empresa, 'retencao'> & Record<string, unknown>>(
+    `select t.id, t.cnpj, t.razao_social, t.active, t.codigo_servico_nacional, t.regime, ${COLUNAS_DA_RETENCAO.replace(/(^|, )/g, '$1t.')}
        from nofiscal.fiscal_tenants t
       where t.id = $1 or t.escritorio_tenant_id = $1
       order by t.id = $1 desc, t.razao_social`,
     [donoId],
   )
-  return rows
+  return rows.map((r) => ({
+    id: r.id,
+    cnpj: r.cnpj,
+    razao_social: r.razao_social,
+    active: r.active,
+    codigo_servico_nacional: r.codigo_servico_nacional,
+    regime: r.regime ?? null,
+    retencao: padraoDaLinha(r as Parameters<typeof padraoDaLinha>[0]),
+  }))
 }
 
 const valorDoPayload = (valor: unknown): bigint | null => {
@@ -847,7 +962,17 @@ export type LoteLido = {
  */
 export async function lerLoteDaPlanilha(
   db: Db,
-  dados: { donoId: string; limite: number; phoneId: string | null; arquivo: string | null; conteudo: Uint8Array; tipo: TipoDePlanilha; agora: Date },
+  dados: {
+    donoId: string
+    limite: number
+    phoneId: string | null
+    arquivo: string | null
+    conteudo: Uint8Array
+    tipo: TipoDePlanilha
+    agora: Date
+    /** Endereço do tomador na Receita, para as linhas com ISS retido. */
+    consulta?: EnderecoDoTomador | null
+  },
 ): Promise<LoteLido | PlanilhaRecusada> {
   const { donoId, conteudo, tipo, agora } = dados
   await expirarLotes(db, agora, { tenantIds: [donoId] })
@@ -879,6 +1004,7 @@ export async function lerLoteDaPlanilha(
 
   const contexto = await contextoDoBanco(db, empresas, agora)
   const itens = validarLinhas(planilha.linhas, contexto)
+  await completarEnderecos(itens, dados.consulta)
   const nome = nomeDoArquivo(dados.arquivo)
   const franquia = { limite: dados.limite, noMes: await notasDoMes(db, donoId, agora) }
   // Tudo o que pode falhar vem antes de gravar: se a mensagem falhar depois do lote gravado, a reentrega da Meta
@@ -914,6 +1040,10 @@ export async function lerLoteDaPlanilha(
  * Documento .xlsx/.csv de um telefone que emite. Conta de plano Escritório: baixa, lê, valida, grava o lote
  * (`aguardando_confirmacao`, 24 h) e responde o resumo. Outros planos: a resposta curta do plano.
  */
+/** A consulta de CNPJ da conversa, se ela sabe buscar endereço. */
+export const enderecoDaConsulta = (c: { endereco?: EnderecoDoTomador['endereco'] } | undefined): EnderecoDoTomador | null =>
+  c?.endereco ? { endereco: (cnpj) => (c.endereco as EnderecoDoTomador['endereco'])(cnpj) } : null
+
 export async function receberPlanilha(ctx: Contexto, arquivo: MensagemRecebida['arquivo']): Promise<void> {
   const { db } = ctx.deps
   const dono = await donoDoTenant(db, ctx.tenantId)
@@ -953,6 +1083,7 @@ export async function receberPlanilha(ctx: Contexto, arquivo: MensagemRecebida['
     conteudo,
     tipo,
     agora: ctx.agora,
+    consulta: enderecoDaConsulta(ctx.deps.consultaCnpj),
   })
   await responder(ctx, lido.ok ? lido.resumo : lido.texto)
 }

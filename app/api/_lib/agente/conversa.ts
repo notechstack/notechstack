@@ -8,6 +8,17 @@ import type { Db, Queryable } from '../db.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
+import {
+  COLUNAS_DA_RETENCAO,
+  linhasDaRetencao,
+  motivoDaRetencao,
+  padraoDaLinha,
+  resolverRetencao,
+  SEM_RETENCAO_PADRAO,
+  type EnderecoNacional,
+  type Retencao,
+  type RetencaoDoPedido,
+} from '../retencao.js'
 import { tratarAtivacao } from './ativacao.js'
 import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
@@ -63,6 +74,8 @@ export type MensagemRecebida = {
 /** Nome do CNPJ nos dados públicos (porta; sem cliente real neste lote). */
 export interface ConsultaCnpj {
   razaoSocial(cnpj: string): Promise<string | null>
+  /** Endereço do CNPJ na Receita, para a nota com ISS retido (E0237). Sem ele, o ISS retido não sai. */
+  endereco?(cnpj: string): Promise<EnderecoNacional | null>
 }
 
 export type ConversaDeps = {
@@ -228,6 +241,13 @@ type Conversa = {
   /** Etapa `escolher_prestador`: o pedido lido, à espera da empresa, e as empresas listadas na pergunta (na ordem). */
   pendente?: Parsed
   opcoes?: string[]
+  /** O que o pedido disse da retenção ("sem retenção", "ISS retido 2%", "retém INSS 11%"); o resto vem da empresa. */
+  retencao_pedido?: RetencaoDoPedido
+  /** Retenção resolvida no último resumo (a que vai na nota) e o endereço do tomador (só com ISS retido, E0237). */
+  retencao?: Retencao | null
+  endereco?: EnderecoNacional | null
+  /** O último resumo achou um problema na retenção: o *confirmar* não emite até corrigir. */
+  retencao_problema?: string | null
 }
 
 type Pedido = {
@@ -369,6 +389,7 @@ export function textoDoResumo(
   valor: string,
   nomeDoServico?: string | null,
   emitente?: EmitenteDoPedido | null,
+  retencao?: Retencao | null,
 ): string {
   return [
     'Resumo da nota:',
@@ -378,14 +399,92 @@ export function textoDoResumo(
     `Serviço: ${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
     `Descrição na nota: ${servico.descricao}`,
     `Valor: ${formatarReais(valor)}`,
+    ...linhasDaRetencao(valor, retencao),
     PERGUNTA_DE_EMISSAO,
   ].join('\n')
 }
 
-/** O resumo com a descrição do código buscada no catálogo (sem catálogo, só o código). */
-async function resumo(ctx: Contexto, tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string, emitente?: EmitenteDoPedido | null): Promise<string> {
+export const TEXTO_SEM_RETENCAO_POSSIVEL =
+  'Responda *corrigir* e me diga a retenção certa (por exemplo: ISS retido 2%, INSS 11%, ou sem retenção), ou *descartar*.'
+
+/**
+ * Retenção pedida no WhatsApp e não cadastrada no painel (Lucca, 16/11/2026): o pedido só retém o que a empresa tem
+ * marcado em Minha conta → Minhas empresas (Adicionar empresa ou Dados fiscais). A alíquota ou o valor escritos no
+ * pedido valem para a nota; o que precisa estar cadastrado é o tipo de retenção (ISS, INSS).
+ */
+export const NAO_CADASTRADA = { ISS_NAO_CADASTRADO: 'ISS', INSS_NAO_CADASTRADO: 'INSS' } as const
+
+function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: string, empresa?: string | null): string {
+  const tipo = NAO_CADASTRADA[problema as keyof typeof NAO_CADASTRADA]
+  if (tipo) {
+    return [
+      `A retenção de ${tipo} não está cadastrada para ${empresa ?? 'a empresa que emite'}, e nada foi emitido.`,
+      `Cadastre em Minha conta → Minhas empresas → Dados fiscais (${ctx.links.conta}#empresas), marcando "Tem retenção de ${tipo}?", e depois responda *corrigir* com a retenção.`,
+      'Se a nota não tem retenção, responda *corrigir* e diga sem retenção.',
+    ].join('\n')
+  }
+  return `Não dá para emitir esta nota assim: ${motivoDaRetencao(problema)}.\n${TEXTO_SEM_RETENCAO_POSSIVEL}`
+}
+
+/**
+ * Retenção desta nota (Lucca, 16/11/2026): o pedido manda, o resto é o padrão da empresa que emite. Com ISS retido, o
+ * endereço do tomador vem da Receita (E0237). Grava o resultado no pedido, na etapa `confirmar`, e devolve o resumo
+ * (com a descrição do código buscada no catálogo) ou o problema; com problema, o *confirmar* não emite.
+ */
+async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string, conversa: Conversa): Promise<string> {
+  const tomador = conversa.tomador as TomadorDoPedido
+  const servico = conversa.servico as ServicoDoPedido
+  const valor = conversa.valor as string
+  const { rows } = await ctx.deps.db.query<Record<string, unknown>>(
+    `select regime, razao_social, ${COLUNAS_DA_RETENCAO} from nofiscal.fiscal_tenants where id = $1`,
+    [tenantId],
+  )
+  const linha = rows[0]
+  const padrao = linha ? padraoDaLinha(linha) : SEM_RETENCAO_PADRAO
+  const regime = typeof linha?.regime === 'string' ? linha.regime : null
+  const resolvida = resolverRetencao({ padrao, pedido: conversa.retencao_pedido, valor, regime, tomadorTipo: tipoDoDocumento(tomador.documento) })
+  let problema: string | null = resolvida.ok ? null : resolvida.problema
+  // O tipo de retenção pedido precisa estar cadastrado no painel (o MEI cai antes, em RETENCAO_MEI).
+  if (resolvida.ok && resolvida.retencao) {
+    if (resolvida.retencao.iss && !padrao.retem_iss) problema = 'ISS_NAO_CADASTRADO'
+    else if (resolvida.retencao.inss && !padrao.retem_inss) problema = 'INSS_NAO_CADASTRADO'
+  }
+  const nomeDaEmpresa = typeof linha?.razao_social === 'string' ? linha.razao_social : null
+  const retencao = resolvida.ok && !problema ? resolvida.retencao : null
+  let endereco: EnderecoNacional | null = null
+  if (retencao?.iss) {
+    const consulta = ctx.deps.consultaCnpj
+    endereco = consulta?.endereco ? await consulta.endereco(tomador.documento).catch(() => null) : null
+    if (!endereco) problema = 'ENDERECO_TOMADOR'
+  }
+  const atualizada: Conversa = { ...conversa, retencao, endereco, retencao_problema: problema, corrigindo: false }
+  await atualizarPedido(ctx.deps.db, pedidoId, 'confirmar', atualizada, ctx.agora)
+  if (problema) {
+    logEvent('agente.retencao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
+    return textoDoProblemaDeRetencao(ctx, problema, nomeDaEmpresa)
+  }
   const nome = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(servico.codigo).catch(() => null) : null
-  return textoDoResumo(tomador, servico, valor, nome, emitente)
+  return textoDoResumo(tomador, servico, valor, nome, conversa.emitente, retencao)
+}
+
+/**
+ * O texto fala de retenção ("tem retenção de ISS pela tomadora na alíquota de 2,01%", "ISS retido", "retém INSS").
+ * Caso real de 16/11/2026: o pedido citava a retenção e a nota saiu sem ela. Se a IA não ler qual é a retenção, o
+ * pedido não segue (TEXTO_RETENCAO_NAO_ENTENDIDA): nota com retenção nunca sai sem ela.
+ */
+export const mencionaRetencao = (texto: string) => /\b(retenc\w*|retid[oa]s?|retem|reter)\b/.test(semAcento(texto))
+
+export const TEXTO_RETENCAO_NAO_ENTENDIDA =
+  'Vi que o pedido fala de retenção, mas não entendi qual. Mande o pedido de novo dizendo a retenção assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção. Nada foi emitido.'
+
+/** O que o pedido escrito diz da retenção (campos do intérprete); `undefined` quando não diz nada. */
+export function retencaoDoParsed(parsed: Parsed): RetencaoDoPedido | undefined {
+  const r: RetencaoDoPedido = {}
+  if (typeof parsed.iss_retido === 'boolean') r.iss = parsed.iss_retido
+  if (parsed.aliquota_iss) r.aliquotaIss = parsed.aliquota_iss
+  if (typeof parsed.inss_retido === 'boolean') r.inss = parsed.inss_retido
+  if (parsed.inss) r.inssTexto = parsed.inss
+  return Object.keys(r).length ? r : undefined
 }
 
 /**
@@ -717,11 +816,6 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, TEXTOS.naoEntendi)
     return true
   }
-  // Trava temporária: correção que fala de retenção também não segue (ver `mencionaRetencao`).
-  if (mencionaRetencao(texto)) {
-    await responder(ctx, TEXTO_SEM_RETENCAO)
-    return true
-  }
   const atual = pedido.conversa
   const nomeAtual = (atual.tomador?.nome ?? '').toLowerCase()
   const outroCliente = Boolean(
@@ -771,13 +865,19 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     }
   }
   const valor = parsed.valor ?? atual.valor
-  if ((parsed.valor || parsed.descricao) && valor && atual.tomador && atual.servico) {
+  const retencaoNova = retencaoDoParsed(parsed)
+  if (mencionaRetencao(texto) && !retencaoNova) {
+    // O pedido continua em correção: a próxima mensagem é lida de novo como a correção.
+    await responder(ctx, 'Vi que a correção fala de retenção, mas não entendi qual. Me diga assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção.')
+    return true
+  }
+  if ((parsed.valor || parsed.descricao || retencaoNova) && valor && atual.tomador && atual.servico) {
     const servico: ServicoDoPedido = parsed.descricao ? { ...atual.servico, descricao: parsed.descricao } : atual.servico
-    const conversa: Conversa = { ...atual, servico, valor, corrigindo: false }
-    await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-    const mudou = parsed.valor && parsed.descricao ? 'valor e descricao' : parsed.valor ? 'valor' : 'descricao'
+    const retencao_pedido = retencaoNova ? { ...atual.retencao_pedido, ...retencaoNova } : atual.retencao_pedido
+    const conversa: Conversa = { ...atual, servico, valor, retencao_pedido, corrigindo: false }
+    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao'].filter(Boolean).join(' e ')
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
-    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, valor, atual.emitente))
+    await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
     return true
   }
   await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não entendi a correção do pedido' })
@@ -807,6 +907,10 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
     }
     const { tomador, servico, valor } = pedido.conversa
     if (!tomador?.documento || !tomador.nome || !servico || !valor) throw new Error('pedido sem os dados do resumo')
+    if (pedido.conversa.retencao_problema) {
+      await responder(ctx, textoDoProblemaDeRetencao(ctx, pedido.conversa.retencao_problema, pedido.conversa.emitente?.razao_social))
+      return
+    }
     const criada = await db.transaction(async (tx) => {
       // Duas confirmações simultâneas: só uma muda o estado (Unresolved 14).
       const { rowCount } = await tx.query(
@@ -820,6 +924,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
         { documento: tomador.documento as string, nome: tomador.nome as string, email: tomador.email ?? null },
         servico,
         valor,
+        { retencao: pedido.conversa.retencao, endereco: pedido.conversa.endereco },
       )
       const nota = await createOrGetInvoice(tx, pedido.tenant_id, { external_id: pedido.id, payload: payload as unknown as InvoicePayload })
       await tx.query('update nofiscal.fiscal_requests set invoice_id = $2 where id = $1', [pedido.id, nota.id])
@@ -894,13 +999,12 @@ async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): P
     if (razao) tomador.nome = razao.trim().slice(0, 150)
   }
   conversa.pedindoDescricao = precisaDeDescricao(conversa.servico)
-  await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-  await responder(
-    ctx,
-    conversa.pedindoDescricao
-      ? TEXTOS.perguntaDeDescricao
-      : await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string, conversa.emitente),
-  )
+  if (conversa.pedindoDescricao) {
+    await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
+    await responder(ctx, TEXTOS.perguntaDeDescricao)
+  } else {
+    await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
+  }
   return true
 }
 
@@ -931,8 +1035,7 @@ async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): 
   }
   const servico: ServicoDoPedido = { ...atual.servico, descricao }
   const conversa: Conversa = { ...atual, servico, pedindoDescricao: false }
-  await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-  await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, atual.valor, atual.emitente))
+  await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
   return true
 }
 
@@ -1127,25 +1230,14 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
     await responder(ctx, (await ehEscritorio(ctx)) ? TEXTOS.ajudaEscritorio : TEXTOS.ajuda)
     return
   }
-  if (mencionaRetencao(texto)) {
+  if (mencionaRetencao(texto) && !retencaoDoParsed(parsed)) {
     semPedido()
-    await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'pedido com retenção: recusado até a retenção sair' })
-    await responder(ctx, TEXTO_SEM_RETENCAO)
+    await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'pedido fala de retenção, e a IA não leu qual' })
+    await responder(ctx, TEXTO_RETENCAO_NAO_ENTENDIDA)
     return
   }
   await pedidoDeEmissao(ctx, parsed, tokens)
 }
-
-/**
- * Trava temporária (caso real de 16/11/2026, Contabilidade Bragantina): o pedido dizia "Tem retenção de ISS pela
- * tomadora na alíquota de 2,01%" e a nota saiu com tpRetISSQN 1, sem retenção. Até a retenção de ISS e INSS entrar
- * (branch claude/nofiscal-retencoes, .design/agente-fiscal-retencoes.md), pedido que fala de retenção não vira nota:
- * o agente avisa e manda emitir pelo Emissor Nacional. Sai quando a retenção for publicada.
- */
-export const mencionaRetencao = (texto: string) => /\b(retenc\w*|retid[oa]s?|retem|reter)\b/.test(semAcento(texto))
-
-export const TEXTO_SEM_RETENCAO =
-  'Ainda não emito nota com retenção de ISS ou de INSS, e nada foi emitido. Emita esta nota pelo Emissor Nacional (https://www.nfse.gov.br/EmissorNacional) ou, se não houver retenção, me mande o pedido de novo sem falar em retenção.'
 
 
 /**
@@ -1230,16 +1322,17 @@ async function pedidoDeEmissao(
     // A descrição escrita no pedido vale para esta nota; o modelo continua com a dele.
     const servico: ServicoDoPedido = { codigo: modelo.codigo_servico_nacional, descricao: parsed.descricao ?? modelo.descricao }
     const pedindoDescricao = precisaDeDescricao(servico)
-    await criarPedido(ctx, {
-      kind: 'emitir',
-      etapa: 'confirmar',
-      parsed,
-      tokens,
-      conversa: { tomador, servico, valor, modelo_id: modelo.id, pedindoDescricao, emitente },
-      tenantId,
-      reusar: opcoes.reusar,
-    })
-    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumo(ctx, tomador, servico, valor, emitente))
+    const conversa: Conversa = {
+      tomador,
+      servico,
+      valor,
+      modelo_id: modelo.id,
+      pedindoDescricao,
+      emitente,
+      retencao_pedido: retencaoDoParsed(parsed),
+    }
+    const id = await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
+    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumoDoPedido(ctx, id, tenantId, conversa))
     return
   }
 
@@ -1255,6 +1348,7 @@ async function pedidoDeEmissao(
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),
     emitente,
+    retencao_pedido: retencaoDoParsed(parsed),
   }
   await criarPedido(ctx, { kind: 'emitir', etapa: 'dados_tomador', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
   await responder(

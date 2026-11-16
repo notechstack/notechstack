@@ -4,12 +4,16 @@
 // Tomador: `cpf` (11 dígitos) ou `cnpj` (14 dígitos), exatamente um dos dois (Landing de
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
 
+import type { EnderecoNacional, Retencao } from './retencao.js'
+
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
 
 export type InvoicePayload = {
-  tomador: TomadorPayload
+  tomador: TomadorPayload & { email?: string; endereco?: EnderecoNacional }
   servico: { codigo_servico_nacional: string; descricao: string }
   valor: string
+  /** Só do agente e do painel (retencao.ts); a API `/v1/nfse` não aceita retenção. */
+  retencao?: Retencao
 }
 
 export type NewInvoice = { external_id: string; payload: InvoicePayload }
