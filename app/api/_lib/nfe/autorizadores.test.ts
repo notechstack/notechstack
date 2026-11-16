@@ -4,6 +4,7 @@ import {
   CODIGO_UF,
   CONTINGENCIA_DA_UF,
   destino,
+  destinoCadastro,
   ServicoIndisponivel,
   UFS,
   URLS,
@@ -242,5 +243,47 @@ describe('autorizadores da NF-e', () => {
 
   it('SVC-RS não inutiliza', () => {
     expect(() => destino('PR', 'producao', 'inutilizacao', true)).toThrow(ServicoIndisponivel)
+  })
+})
+
+describe('consulta de cadastro', () => {
+  // Captura literal do portal em 16/11/2026 (linhas NfeConsultaCadastro), produção e homologação.
+  const PROD: Record<string, string> = {
+    AM: 'https://nfe.sefaz.am.gov.br/services2/services/CadConsultaCadastro4',
+    BA: 'https://nfe.sefaz.ba.gov.br/webservices/CadConsultaCadastro4/CadConsultaCadastro4.asmx',
+    GO: 'https://nfe.sefaz.go.gov.br/nfe/services/CadConsultaCadastro4',
+    MG: 'https://nfe.fazenda.mg.gov.br/nfe2/services/CadConsultaCadastro4',
+    MS: 'https://nfe.sefaz.ms.gov.br/ws/CadConsultaCadastro4',
+    MT: 'https://nfe.sefaz.mt.gov.br/nfews/v2/services/CadConsultaCadastro4',
+    PE: 'https://nfe.sefaz.pe.gov.br/nfe-service/services/CadConsultaCadastro4',
+    PR: 'https://nfe.sefa.pr.gov.br/nfe/CadConsultaCadastro4',
+    RS: 'https://cad.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx',
+    SP: 'https://nfe.fazenda.sp.gov.br/ws/cadconsultacadastro4.asmx',
+    SVRS: 'https://cad.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx',
+  }
+  const HOM: Record<string, string> = {
+    AM: 'https://homnfe.sefaz.am.gov.br/services2/services/CadConsultaCadastro4',
+    BA: 'https://hnfe.sefaz.ba.gov.br/webservices/CadConsultaCadastro4/CadConsultaCadastro4.asmx',
+    GO: 'https://homolog.sefaz.go.gov.br/nfe/services/CadConsultaCadastro4',
+    MG: 'https://hnfe.fazenda.mg.gov.br/nfe2/services/CadConsultaCadastro4',
+    MS: 'https://hom.nfe.sefaz.ms.gov.br/ws/CadConsultaCadastro4',
+    MT: 'https://homologacao.sefaz.mt.gov.br/nfews/v2/services/CadConsultaCadastro4',
+    PE: 'https://nfehomolog.sefaz.pe.gov.br/nfe-service/services/CadConsultaCadastro4',
+    PR: 'https://homologacao.nfe.sefa.pr.gov.br/nfe/CadConsultaCadastro4',
+    RS: 'https://cad-homologacao.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx',
+    SP: 'https://homologacao.nfe.fazenda.sp.gov.br/ws/cadconsultacadastro4.asmx',
+    SVRS: 'https://cad-homologacao.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx',
+  }
+
+  it('15 UFs com o serviço, nas URLs da captura; as outras 12 sem', () => {
+    const com = UFS.filter((uf) => destinoCadastro(uf, 'producao'))
+    expect([...com].sort()).toEqual(['AC', 'AM', 'BA', 'ES', 'GO', 'MG', 'MS', 'MT', 'PB', 'PE', 'PR', 'RN', 'RS', 'SC', 'SP'])
+    for (const uf of com) {
+      const chave = ['AC', 'ES', 'RN', 'PB', 'SC'].includes(uf) ? 'SVRS' : uf
+      expect(destinoCadastro(uf, 'producao')?.url).toBe(PROD[chave])
+      expect(destinoCadastro(uf, 'homologacao')?.url).toBe(HOM[chave])
+    }
+    expect(destinoCadastro('RJ', 'producao')).toBeNull()
+    expect(destinoCadastro('MA', 'producao')).toBeNull()
   })
 })

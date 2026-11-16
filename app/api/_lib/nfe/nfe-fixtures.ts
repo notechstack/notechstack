@@ -1,6 +1,10 @@
 // Notas de exemplo dos testes da NF-e: emitente em Bragança Paulista/SP (Simples Nacional), destinatário em SP e em
 // outras UFs. Documentos fictícios com dígito verificador válido.
+import type { Db } from '../db.js'
+import type { HttpRequest, HttpResponse } from '../sefin-client.js'
+import { conferirEmpresaNfe } from './conferencia.js'
 import type { NfeInput } from './nfe-builder.js'
+import { criarSefazClient } from './sefaz-client.js'
 
 export const EMITENTE_SP: NfeInput['emitente'] = {
   cnpj: '12.345.678/0001-95',
@@ -51,4 +55,26 @@ export function notaExemplo(over: Partial<NfeInput> = {}): NfeInput {
     codigoNumerico: '12345678',
     ...over,
   }
+}
+
+const NS = 'http://www.portalfiscal.inf.br/nfe'
+
+/** Sefaz dublê da conferência: cadastro com a IE pedida, habilitada e credenciada; nota de teste autorizada. */
+export function sefazQueAprova(ie: string) {
+  const transport = async (req: HttpRequest): Promise<HttpResponse> => {
+    const body = req.body ?? ''
+    if (body.includes('<ConsCad')) {
+      const cnpj = /<CNPJ>(\d{14})<\/CNPJ>/.exec(body)?.[1] ?? ''
+      return { status: 200, body: `<r><retConsCad xmlns="${NS}"><infCons><cStat>111</cStat><xMotivo>ok</xMotivo><infCad><IE>${ie}</IE><CNPJ>${cnpj}</CNPJ><cSit>1</cSit><indCredNFe>1</indCredNFe></infCad></infCons></retConsCad></r>` }
+    }
+    const chave = /Id="NFe(\d{44})"/.exec(body)?.[1] ?? ''
+    return { status: 200, body: `<r><retEnviNFe xmlns="${NS}"><cStat>104</cStat><xMotivo>ok</xMotivo><protNFe><infProt><chNFe>${chave}</chNFe><nProt>135260000000001</nProt><cStat>100</cStat><xMotivo>Autorizado</xMotivo></infProt></protNFe></retEnviNFe></r>` }
+  }
+  return criarSefazClient({ transport })
+}
+
+/** Passa a empresa na conferência de NF-e (testes que só precisam dela pronta). */
+export async function aprovarConferencia(db: Db, tenantId: string, ie: string): Promise<void> {
+  const r = await conferirEmpresaNfe({ db, sefaz: sefazQueAprova(ie), now: () => new Date(), esperarMs: 1 }, tenantId)
+  if (r.status !== 'aprovada') throw new Error(`conferência não aprovada: ${r.codigo} ${r.motivo}`)
 }

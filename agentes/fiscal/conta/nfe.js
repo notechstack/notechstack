@@ -13,7 +13,7 @@
     authorized: ['Autorizada', 'ok'], denied: ['Denegada', 'erro'], rejected: ['Rejeitada', 'erro'],
     cancel_requested: ['Cancelamento pedido', ''], cancelled: ['Cancelada', 'off'], voided: ['Número inutilizado', 'off']
   };
-  var st = { carregado: false, empresas: [], arquivo: null };
+  var st = { carregado: false, empresas: [], arquivo: null, pedida: null };
   function $(id) { return document.getElementById(id); }
   function empresa(id) {
     for (var i = 0; i < st.empresas.length; i++) if (st.empresas[i].tenant_id === id) return st.empresas[i];
@@ -41,7 +41,7 @@
     sel.innerHTML = st.empresas.map(function (e) {
       return '<option value="' + nf.esc(e.tenant_id) + '">' + nf.esc(e.razao_social + ' · ' + nf.formatarCnpj(e.cnpj)) + '</option>';
     }).join('');
-    if (antes && empresa(antes)) sel.value = antes;
+    if (st.pedida && empresa(st.pedida)) { sel.value = st.pedida; st.pedida = null; } else if (antes && empresa(antes)) sel.value = antes;
     preencherDados();
   }
   function preencherDados() {
@@ -59,6 +59,57 @@
     $('fa-nfe-proximo').value = e.proximo_numero ? String(e.proximo_numero) : '1';
     var b = e.bloqueio;
     nf.aviso($('fa-nfe-bloqueio'), b ? nf.esc('Esta empresa ainda não emite NF-e: ' + b.motivo + '.') : (e.tenant_id ? 'Pronta para emitir NF-e' + (e.ambiente === 'homologacao' ? ' (em homologação, sem valor fiscal).' : '.') : ''), b ? 'erro' : 'ok');
+    $('fa-nfe-regime').textContent = e.tenant_id ? 'Regime: ' + (e.crt === '4' ? 'MEI (CRT 4)' : 'Simples Nacional (CRT 1)') + '. A NF-e sai assinada com o A1 desta empresa' + (e.modo_nfse === 'procuracao' ? '; a NFS-e dela continua pela procuração.' : '.') : '';
+    $('fa-nfe-a1-atual').textContent = e.certificado
+      ? 'Certificado A1 gravado, válido até ' + new Date(e.certificado.not_after).toLocaleDateString('pt-BR') + (e.modo_nfse === 'procuracao' ? ' (usado só na NF-e).' : '.')
+      : 'Nenhum certificado A1 desta empresa gravado.';
+    var c = e.conferencia;
+    var textoConf = !c ? 'Ainda não conferida na Sefaz.'
+      : c.status === 'aprovada' ? 'Conferida: a nota de teste foi autorizada' + (c.conferida_em ? ' em ' + new Date(c.conferida_em).toLocaleDateString('pt-BR') : '') + '.'
+      : c.status === 'pendente' ? 'Conferência pendente.'
+      : 'Última conferência: ' + (c.motivo || c.codigo) + '.';
+    nf.aviso($('fa-nfe-conferencia'), nf.esc(textoConf), !c || c.status === 'pendente' ? '' : c.status === 'aprovada' ? 'ok' : 'erro');
+  }
+  function conferir() {
+    var id = $('fa-nfe-empresa').value;
+    if (!id) return Promise.resolve();
+    var botao = $('fa-nfe-conferir');
+    nf.ocupado(botao, true, 'Conferindo na Sefaz…');
+    return nf.app(ROTA, { acao: 'conferir', tenant_id: id }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) { desenharContexto(r.dados); return; }
+      if (r.status !== 401) nf.aviso($('fa-nfe-conferencia'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+  function enviarA1(ev) {
+    ev.preventDefault();
+    nf.erroCampo('fa-nfe-pfx', ''); nf.erroCampo('fa-nfe-pfx-senha', '');
+    var arquivo = $('fa-nfe-pfx').files && $('fa-nfe-pfx').files[0], senha = $('fa-nfe-pfx-senha').value;
+    if (!arquivo) { nf.erroCampo('fa-nfe-pfx', 'Escolha o arquivo do certificado.'); return; }
+    if (!senha) { nf.erroCampo('fa-nfe-pfx-senha', 'Informe a senha do certificado.'); return; }
+    var form = new FormData();
+    form.append('tenant_id', $('fa-nfe-empresa').value);
+    form.append('pfx', arquivo, arquivo.name || 'certificado.pfx');
+    form.append('senha', senha);
+    form.append('uso', 'nfe');
+    var botao = $('fa-nfe-enviar-a1');
+    nf.ocupado(botao, true, 'Enviando…');
+    nf.app('/v1/onboarding/certificate', form).then(function (r) {
+      nf.ocupado(botao, false);
+      $('fa-nfe-pfx-senha').value = '';
+      if (!r.ok) {
+        if (r.status === 401) return;
+        var msg = r.codigo === 'CERT_CNPJ_DIFERENTE' ? 'Este certificado não é desta empresa (nem da matriz dela).'
+          : r.codigo === 'CERT_SENHA_INVALIDA' ? 'A senha não abre este certificado.'
+          : r.codigo === 'CERT_VENCIDO' ? 'Este certificado está vencido.'
+          : (r.mensagem || GENERICO);
+        nf.erroCampo('fa-nfe-pfx', msg);
+        return;
+      }
+      $('fa-nfe-pfx').value = '';
+      // Com o A1 gravado, a conferência roda em seguida.
+      conferir();
+    });
   }
   function salvarDados(ev) {
     ev.preventDefault();
@@ -73,7 +124,14 @@
       serie: $('fa-nfe-serie').value, proximo_numero: $('fa-nfe-proximo').value
     }).then(function (r) {
       nf.ocupado(botao, false);
-      if (r.ok) { desenharContexto(r.dados); nf.aviso($('fa-aviso-nfe'), 'Dados da NF-e salvos.', 'ok'); return; }
+      if (r.ok) {
+        desenharContexto(r.dados);
+        nf.aviso($('fa-aviso-nfe'), 'Dados da NF-e salvos.', 'ok');
+        // Dados novos pedem conferência nova; com o A1 gravado, ela roda em seguida.
+        var e = empresa($('fa-nfe-empresa').value);
+        if (e && e.certificado && e.bloqueio && /CONFERI|NAO_CONFERIDA/.test(e.bloqueio.codigo)) conferir();
+        return;
+      }
       if (r.status !== 401) nf.aviso($('fa-nfe-bloqueio'), nf.esc(r.mensagem || GENERICO), 'erro');
     });
   }
@@ -194,6 +252,15 @@
   $('fa-form-nfe-planilha').addEventListener('submit', conferir);
   $('fa-nfe-emitir').addEventListener('click', emitir);
   $('fa-nfe-atualizar').addEventListener('click', listar);
+  $('fa-form-nfe-a1').addEventListener('submit', enviarA1);
+  $('fa-nfe-conferir').addEventListener('click', conferir);
+  // Botão NF-e na linha da empresa (Minhas empresas): abre a aba já nela.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('[data-nfe-empresa]');
+    if (!b) return;
+    st.pedida = b.getAttribute('data-nfe-empresa');
+    if (st.carregado && empresa(st.pedida)) { $('fa-nfe-empresa').value = st.pedida; st.pedida = null; preencherDados(); }
+  });
   $('fa-nfe-linhas').addEventListener('click', clique);
   // Outra conta entrou (sair e entrar de novo): recarrega na próxima vez que a aba abrir.
   window.addEventListener('nofiscal:sessao-vencida', function () { st.carregado = false; });

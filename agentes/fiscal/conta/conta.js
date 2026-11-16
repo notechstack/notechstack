@@ -713,6 +713,24 @@
     return '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="' + acao + '" data-tenant="' + nf.esc(emp.tenant_id) +
       '" aria-label="' + nf.esc(rotulo + ': ' + nomeEmpresa(emp)) + '">' + nf.esc(rotulo) + '</button>';
   }
+  /* Situação da NF-e na linha da empresa (`nfe.bloqueio` de fiscal_escritorio_estado = nfe_emission_block). */
+  var SITUACAO_NFE = {
+    NFE_SEM_IE: 'falta IE', NFE_SEM_ENDERECO: 'falta endereço', NFE_SEM_SERIE: 'falta numeração',
+    NFE_CERT_MISSING: 'falta A1 próprio para NF-e', CERT_EXPIRED: 'A1 vencido', CERT_DE_OUTRO_CNPJ: 'A1 de outro CNPJ',
+    NFE_NAO_CONFERIDA: 'falta conferir na Sefaz', NFE_CONFERIR_DE_NOVO: 'conferir de novo na Sefaz',
+    NFE_NAO_CREDENCIADA: 'falta credenciamento NF-e', NFE_IE_NAO_E_DO_CNPJ: 'IE não é do CNPJ', NFE_IE_NAO_HABILITADA: 'IE não habilitada',
+    NFE_IE_INVALIDA: 'IE recusada pela Sefaz', SEFAZ_INDISPONIVEL: 'Sefaz não respondeu; confira de novo',
+    NFE_REGIME_NAO_SUPORTADO: 'regime ainda não suportado'
+  };
+  var BLOQUEIOS_DA_CONTA = ['NO_SUBSCRIPTION', 'SUBSCRIPTION_CANCELLED', 'PAYMENT_NOT_APPROVED', 'TENANT_INACTIVE'];
+  function situacaoNfe(emp) {
+    if (!emp.nfe || emp.ativa === false) return '';
+    var b = emp.nfe.bloqueio;
+    // Bloqueio da conta inteira (assinatura) já aparece no aviso de cima.
+    if (b && BLOQUEIOS_DA_CONTA.indexOf(b) >= 0) return '';
+    var texto = b ? 'NF-e: ' + (SITUACAO_NFE[b] || 'não emite (' + b + ')') : 'NF-e: pronta';
+    return '<small class="nf-dica nf-situacao-nfe' + (b ? '' : ' nf-situacao-nfe--ok') + '">' + nf.esc(texto) + '</small>';
+  }
   function linhaEmpresa(emp) {
     var ativa = emp.ativa !== false, acoes = [];
     var porProcuracao = emp.modo_autenticacao === 'procuracao';
@@ -721,12 +739,13 @@
       // A empresa do escritório é a procuradora das outras: ela assina com o A1 dela.
       if (!emp.principal) acoes.push(botaoLinha('proc', emp, 'Procuração'));
       acoes.push(botaoLinha('fiscal', emp, 'Dados fiscais'));
+      acoes.push('<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="nfe" data-nfe-empresa="' + nf.esc(emp.tenant_id) + '">NF-e</button>');
     }
     if (!emp.principal) acoes.push(botaoLinha(ativa ? 'desativar' : 'reativar', emp, ativa ? 'Desativar' : 'Reativar'));
     return '<tr' + (ativa ? '' : ' class="nf-linha-off"') + '><th scope="row">' + nf.esc(nomeEmpresa(emp)) +
       (emp.principal ? ' <span class="nf-selo">Escritório</span>' : '') + '</th>' +
       '<td class="nf-nowrap">' + nf.esc(nf.formatarCnpj(emp.cnpj)) + '</td>' +
-      '<td>' + pill(situacaoEmpresa(emp)) + (porProcuracao ? '<small class="nf-dica nf-por-procuracao">por procuração ao escritório</small>' : '') + '</td>' +
+      '<td>' + pill(situacaoEmpresa(emp)) + (porProcuracao ? '<small class="nf-dica nf-por-procuracao">por procuração ao escritório</small>' : '') + situacaoNfe(emp) + '</td>' +
       '<td class="nf-num">' + nf.esc(String(emp.notas_mes || 0)) + '</td>' +
       '<td><div class="nf-acoes-linha">' + acoes.join('') + '</div></td></tr>';
   }

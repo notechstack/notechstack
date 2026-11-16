@@ -15,6 +15,7 @@ import { interpretarPlanilhaNfe, lerNumero } from './planilha.js'
 import { lerCsvTexto } from '../agente/lote.js'
 import { criarSefazClient } from './sefaz-client.js'
 import { processarNfes } from './servico.js'
+import { sefazQueAprova } from './nfe-fixtures.js'
 
 const NS = 'http://www.portalfiscal.inf.br/nfe'
 const MODELO = readFileSync(new URL('../../../../agentes/fiscal/dados/modelo-nfe.csv', import.meta.url), 'utf8')
@@ -100,6 +101,7 @@ describe('rota do painel', () => {
       for (const t of [e.mae.tenant, ...e.empresas]) {
         await admin.db.query('delete from nofiscal.fiscal_nfe_eventos where tenant_id = $1', [t.id])
         await admin.db.query('delete from nofiscal.fiscal_nfe where tenant_id = $1', [t.id])
+        await admin.db.query('delete from nofiscal.fiscal_nfe_conferencias where tenant_id = $1', [t.id])
         await admin.db.query('delete from nofiscal.fiscal_nfe_series where tenant_id = $1', [t.id])
       }
       await dropEscritorio(admin.db, e)
@@ -114,7 +116,7 @@ describe('rota do painel', () => {
     if (corpo && !(corpo instanceof FormData)) headers['content-type'] = 'application/json'
     const res = await handlePainelNfe(
       new Request(`https://app.notechstack.com.br/api/v1/fiscal/nfe${query}`, { method: metodo, headers, body: corpo instanceof FormData ? corpo : corpo ? JSON.stringify(corpo) : undefined }),
-      { db: servico.db, sessions, now: () => new Date('2026-11-17T13:00:00Z') },
+      { db: servico.db, sessions, now: () => new Date('2026-11-17T13:00:00Z'), sefaz: sefazQueAprova('222333444555') },
     )
     return res
   }
@@ -144,8 +146,12 @@ describe('rota do painel', () => {
       proximo_numero: 501,
     })
     expect(r.status).toBe(200)
-    const depois = (await r.json()) as { empresas: { tenant_id: string; bloqueio: unknown; proximo_numero: number }[] }
-    expect(depois.empresas.find((e) => e.tenant_id === esc.empresas[0].id)).toMatchObject({ bloqueio: null, proximo_numero: 501 })
+    const salvo = (await r.json()) as { empresas: { tenant_id: string; bloqueio: { codigo: string } | null; proximo_numero: number }[] }
+    expect(salvo.empresas.find((e) => e.tenant_id === esc.empresas[0].id)).toMatchObject({ bloqueio: { codigo: 'NFE_NAO_CONFERIDA' }, proximo_numero: 501 })
+    // Conferir na Sefaz (cadastro + nota de teste em homologação) libera a empresa.
+    const conferida = await chamar(esc.mae.ownerUserId, { acao: 'conferir', tenant_id: esc.empresas[0].id })
+    const depois = (await conferida.json()) as { empresas: { tenant_id: string; bloqueio: unknown; conferencia: { status: string } }[] }
+    expect(depois.empresas.find((e) => e.tenant_id === esc.empresas[0].id)).toMatchObject({ bloqueio: null, conferencia: { status: 'aprovada' } })
   })
 
   it('planilha: ler confere; emitir põe na fila sem duplicar; worker autoriza; DANFE e XML baixam; cancelar entra na fila', async () => {

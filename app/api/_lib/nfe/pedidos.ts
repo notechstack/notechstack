@@ -151,3 +151,7 @@ export function pedidoInutilizacao(p: {
   )
   return { xml, id }
 }
+
+/** Consulta de cadastro (consCad 2.00) pelo CNPJ: devolve as IEs do CNPJ na UF, a situação e o credenciamento. */
+export const consultaCadastro = (uf: Uf, cnpj: string) =>
+  `<ConsCad xmlns="${NS_NFE}" versao="2.00"><infCons><xServ>CONS-CAD</xServ><UF>${uf}</UF><CNPJ>${soDigitos(cnpj)}</CNPJ></infCons></ConsCad>`

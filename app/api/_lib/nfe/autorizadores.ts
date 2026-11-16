@@ -167,3 +167,55 @@ export function destino(uf: Uf, ambiente: AmbienteNfe, servico: ServicoNfe, cont
   if (!url) throw new ServicoIndisponivel(autorizador, servico)
   return { autorizador, url, ...OPERACAO[servico] }
 }
+
+// --- Consulta de cadastro (CadConsultaCadastro4, consCad 2.00) ---------------------------------------------
+// Só 15 UFs oferecem: as 10 com Sefaz própria (AM, BA, GO, MG, MS, MT, PE, PR, RS, SP) e, pela SVRS, AC, ES, RN, PB e
+// SC ("UF que utilizam a SVRS, para serviço de Consulta Cadastro", portal em 16/11/2026). Nas outras 12, não há.
+// URLs da mesma captura do portal. O RS usa o servidor de cadastro da SVRS.
+
+export type AutorizadorCadastro = 'AM' | 'BA' | 'GO' | 'MG' | 'MS' | 'MT' | 'PE' | 'PR' | 'SP' | 'SVRS'
+
+export const CADASTRO_DA_UF: Readonly<Partial<Record<Uf, AutorizadorCadastro>>> = {
+  AM: 'AM', BA: 'BA', GO: 'GO', MG: 'MG', MS: 'MS', MT: 'MT', PE: 'PE', PR: 'PR', SP: 'SP',
+  RS: 'SVRS', AC: 'SVRS', ES: 'SVRS', RN: 'SVRS', PB: 'SVRS', SC: 'SVRS',
+}
+
+export const URLS_CADASTRO: Readonly<Record<AutorizadorCadastro, Readonly<Record<AmbienteNfe, string>>>> = {
+  AM: { producao: 'https://nfe.sefaz.am.gov.br/services2/services/CadConsultaCadastro4', homologacao: 'https://homnfe.sefaz.am.gov.br/services2/services/CadConsultaCadastro4' },
+  BA: { producao: 'https://nfe.sefaz.ba.gov.br/webservices/CadConsultaCadastro4/CadConsultaCadastro4.asmx', homologacao: 'https://hnfe.sefaz.ba.gov.br/webservices/CadConsultaCadastro4/CadConsultaCadastro4.asmx' },
+  GO: { producao: 'https://nfe.sefaz.go.gov.br/nfe/services/CadConsultaCadastro4', homologacao: 'https://homolog.sefaz.go.gov.br/nfe/services/CadConsultaCadastro4' },
+  MG: { producao: 'https://nfe.fazenda.mg.gov.br/nfe2/services/CadConsultaCadastro4', homologacao: 'https://hnfe.fazenda.mg.gov.br/nfe2/services/CadConsultaCadastro4' },
+  MS: { producao: 'https://nfe.sefaz.ms.gov.br/ws/CadConsultaCadastro4', homologacao: 'https://hom.nfe.sefaz.ms.gov.br/ws/CadConsultaCadastro4' },
+  MT: { producao: 'https://nfe.sefaz.mt.gov.br/nfews/v2/services/CadConsultaCadastro4', homologacao: 'https://homologacao.sefaz.mt.gov.br/nfews/v2/services/CadConsultaCadastro4' },
+  PE: { producao: 'https://nfe.sefaz.pe.gov.br/nfe-service/services/CadConsultaCadastro4', homologacao: 'https://nfehomolog.sefaz.pe.gov.br/nfe-service/services/CadConsultaCadastro4' },
+  PR: { producao: 'https://nfe.sefa.pr.gov.br/nfe/CadConsultaCadastro4', homologacao: 'https://homologacao.nfe.sefa.pr.gov.br/nfe/CadConsultaCadastro4' },
+  SP: { producao: 'https://nfe.fazenda.sp.gov.br/ws/cadconsultacadastro4.asmx', homologacao: 'https://homologacao.nfe.fazenda.sp.gov.br/ws/cadconsultacadastro4.asmx' },
+  SVRS: { producao: 'https://cad.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx', homologacao: 'https://cad-homologacao.svrs.rs.gov.br/ws/cadconsultacadastro/cadconsultacadastro4.asmx' },
+}
+
+/**
+ * O nome do método no SOAPAction não é igual em todo autorizador (o NFePHP registra `consultaCadastro` em BA, GO, MS,
+ * MT e SP, e `consultaCadastro4` em MG, PE, PR e SVRS). O cliente tenta o primeiro e, se a resposta vier sem cStat,
+ * tenta o outro. A confirmar no primeiro uso real de cada UF.
+ */
+export const METODOS_CADASTRO: Readonly<Record<AutorizadorCadastro, readonly [string, string]>> = {
+  AM: ['consultaCadastro', 'consultaCadastro4'],
+  BA: ['consultaCadastro', 'consultaCadastro4'],
+  GO: ['consultaCadastro', 'consultaCadastro4'],
+  MS: ['consultaCadastro', 'consultaCadastro4'],
+  MT: ['consultaCadastro', 'consultaCadastro4'],
+  SP: ['consultaCadastro', 'consultaCadastro4'],
+  MG: ['consultaCadastro4', 'consultaCadastro'],
+  PE: ['consultaCadastro4', 'consultaCadastro'],
+  PR: ['consultaCadastro4', 'consultaCadastro'],
+  SVRS: ['consultaCadastro4', 'consultaCadastro'],
+}
+
+export type DestinoCadastro = { autorizador: AutorizadorCadastro; url: string; operacao: 'CadConsultaCadastro4'; metodos: readonly [string, string] }
+
+/** Para onde vai a consulta de cadastro da UF; `null` nas 12 UFs sem o serviço. */
+export function destinoCadastro(uf: Uf, ambiente: AmbienteNfe): DestinoCadastro | null {
+  const autorizador = CADASTRO_DA_UF[uf]
+  if (!autorizador) return null
+  return { autorizador, url: URLS_CADASTRO[autorizador][ambiente], operacao: 'CadConsultaCadastro4', metodos: METODOS_CADASTRO[autorizador] }
+}

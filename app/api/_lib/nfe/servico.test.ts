@@ -9,7 +9,7 @@ import type { Db } from '../db.js'
 import { notasDoMes } from '../agente/lote.js'
 import type { HttpRequest, HttpResponse } from '../sefin-client.js'
 import { lerNfeProc } from './danfe.js'
-import { notaExemplo } from './nfe-fixtures.js'
+import { aprovarConferencia, notaExemplo } from './nfe-fixtures.js'
 import { criarSefazClient } from './sefaz-client.js'
 import {
   bloqueioNfe,
@@ -90,6 +90,7 @@ afterAll(async () => {
 async function limpar(t: TestTenant) {
   await admin.query('delete from nofiscal.fiscal_nfe_eventos where tenant_id = $1', [t.id])
   await admin.query('delete from nofiscal.fiscal_nfe where tenant_id = $1', [t.id])
+  await admin.query('delete from nofiscal.fiscal_nfe_conferencias where tenant_id = $1', [t.id])
   await admin.query('delete from nofiscal.fiscal_nfe_series where tenant_id = $1', [t.id])
   await admin.query('delete from nofiscal.fiscal_subscriptions where tenant_id = $1', [t.id])
   await dropTestTenant(admin, t.id)
@@ -117,6 +118,9 @@ describe('dados da empresa e bloqueio', () => {
   it('sem IE, endereço ou série a empresa não emite NF-e; com eles, emite', async () => {
     expect(await bloqueioNfe(db, tenant.id)).toBe('NFE_SEM_IE')
     await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222.333.444.555', endereco: ENDERECO, serie: 1, proximoNumero: 150 })
+    // Com os dados, falta a conferência (cadastro + nota de teste em homologação).
+    expect(await bloqueioNfe(db, tenant.id)).toBe('NFE_NAO_CONFERIDA')
+    await aprovarConferencia(db, tenant.id, '222333444555')
     expect(await bloqueioNfe(db, tenant.id)).toBeNull()
     const { rows } = await admin.query<{ next_number: string }>('select next_number from nofiscal.fiscal_nfe_series where tenant_id = $1', [tenant.id])
     expect(rows[0].next_number).toBe('150')
@@ -139,6 +143,7 @@ describe('dados da empresa e bloqueio', () => {
 describe('emissão', () => {
   beforeEach(async () => {
     await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 1, proximoNumero: 42 })
+    await aprovarConferencia(db, tenant.id, '222333444555')
   })
 
   it('cria com o próximo número, é idempotente e o worker autoriza com o A1 da empresa', async () => {
@@ -233,14 +238,14 @@ describe('emissão', () => {
     expect(await notasDoMes(db, tenant.id, agora())).toBe(antes + 1)
   })
 
-  it('A1 de outro CNPJ: a nota não sai e espera o certificado certo', async () => {
+  it('A1 trocado depois da conferência (aqui, por um de outro CNPJ): a nota não sai até conferir de novo', async () => {
+    await criarNfe(db, { tenantId: tenant.id, externalId: 'o', origem: 'painel', pedido: pedido(), agora: agora() })
     const outro = makeTestCertificate({ commonName: 'ESCRITORIO:11222333000181' })
     await admin.query('select nofiscal.upsert_certificate($1, $2, $3, $4, $5)', [tenant.id, outro.certificado.pfxBase64, outro.certificado.password, 'CN=ESCRITORIO', new Date(Date.now() + 86400_000 * 30)])
-    await criarNfe(db, { tenantId: tenant.id, externalId: 'o', origem: 'painel', pedido: pedido(), agora: agora() })
     const d = sefazDuble()
     expect(await processarNfes({ db, sefaz: d.sefaz, now: agora, tenantId: tenant.id })).toMatchObject({ bloqueadas: 1 })
     expect(d.chamadas).toHaveLength(0)
     const { rows } = await admin.query<{ status: string; last_error_code: string }>('select status, last_error_code from nofiscal.fiscal_nfe where tenant_id = $1', [tenant.id])
-    expect(rows[0]).toEqual({ status: 'queued', last_error_code: 'CERT_DE_OUTRO_CNPJ' })
+    expect(rows[0]).toEqual({ status: 'queued', last_error_code: 'NFE_CONFERIR_DE_NOVO' })
   })
 })

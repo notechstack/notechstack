@@ -43,6 +43,8 @@ export type EmpresaNfe = {
   regime: string
   codigo_municipio_ibge: string
   ambiente: string
+  /** Modo da NFS-e (`certificado_proprio` ou `procuracao`); a NF-e sempre usa o A1 da própria empresa. */
+  modo_autenticacao?: string | null
   endereco: { logradouro: string; numero: string; complemento?: string | null; bairro: string; cep: string; uf: Uf; fone?: string | null } | null
 }
 
@@ -59,7 +61,7 @@ export function emitenteDaEmpresa(e: EmpresaNfe): Emitente {
   }
 }
 
-const SELECT_EMPRESA = `select t.id, t.cnpj, t.razao_social, t.inscricao_estadual, t.regime, t.codigo_municipio_ibge, t.ambiente, t.endereco
+const SELECT_EMPRESA = `select t.id, t.cnpj, t.razao_social, t.inscricao_estadual, t.regime, t.codigo_municipio_ibge, t.ambiente, t.endereco, t.modo_autenticacao
                           from nofiscal.fiscal_tenants t`
 
 export async function empresaNfe(db: Queryable, tenantId: string): Promise<EmpresaNfe | null> {

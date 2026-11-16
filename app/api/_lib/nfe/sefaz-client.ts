@@ -8,10 +8,11 @@ import { CertificateError, pfxToPem, type PemCredentials } from '../pfx.js'
 import { httpsTransport, type HttpResponse, type SefinTransport } from '../sefin-client.js'
 import type { Certificado } from '../sefin.js'
 import { signXml } from '../xml-signer.js'
-import { destino, type AmbienteNfe, type ServicoNfe, type Uf } from './autorizadores.js'
+import { destino, destinoCadastro, type AmbienteNfe, type ServicoNfe, type Uf } from './autorizadores.js'
 import { RAIZES_ICP_BRASIL } from './icp-brasil.js'
 import { NS_NFE, VERSAO_NFE } from './nfe-builder.js'
 import {
+  consultaCadastro,
   consultaChave,
   consultaRecibo,
   consultaStatus,
@@ -89,6 +90,23 @@ export type ResultadoEvento =
 export type ResultadoInutilizacao =
   | { kind: 'homologada'; protocolo: string; xmlProc: string }
   | { kind: 'rejeitada'; cStat: string; motivo: string }
+  | { kind: 'indisponivel'; motivo: string }
+
+/** Uma inscrição estadual do CNPJ, como a Sefaz da UF devolve na consulta de cadastro. */
+export type InscricaoNaSefaz = {
+  ie: string
+  cnpj: string
+  /** cSit: 1 habilitado, 0 não habilitado. */
+  habilitada: boolean
+  /** indCredNFe: 0 não credenciado, 1 credenciado, 2 obrigatório total, 3 obrigatório parcial, 4 a Sefaz não informa. */
+  credenciamentoNfe: '0' | '1' | '2' | '3' | '4' | ''
+  nome: string
+}
+
+export type ResultadoCadastro =
+  | { kind: 'encontrado'; inscricoes: InscricaoNaSefaz[]; cStat: string }
+  | { kind: 'nao_encontrado'; cStat: string; motivo: string }
+  | { kind: 'sem_servico' }
   | { kind: 'indisponivel'; motivo: string }
 
 export type ResultadoStatus = { kind: 'ok' | 'fora'; cStat: string; motivo: string } | { kind: 'indisponivel'; motivo: string }
@@ -266,6 +284,54 @@ export function criarSefazClient(options: SefazOptions = {}) {
         }
       }
       return { kind: 'rejeitado', cStat, motivo }
+    },
+
+    /**
+     * Consulta de cadastro da UF (só nas 15 UFs que têm o serviço; nas outras, `sem_servico`). Sempre no ambiente de
+     * produção: é leitura, e só o cadastro de produção diz se a empresa está credenciada. Assinada pelo mTLS do A1 da
+     * própria empresa. O nome do método no SOAPAction varia entre autorizadores: tenta um e, sem cStat, o outro.
+     */
+    async consultarCadastro(uf: Uf, cnpj: string, cred: Credencial): Promise<ResultadoCadastro> {
+      const d = destinoCadastro(uf, 'producao')
+      if (!d) return { kind: 'sem_servico' }
+      let ultimoErro = ''
+      for (const metodo of d.metodos) {
+        let res: HttpResponse
+        try {
+          res = await transport(
+            {
+              method: 'POST',
+              url: d.url,
+              headers: { 'content-type': `application/soap+xml; charset=utf-8; action="${WSDL}/${d.operacao}/${metodo}"` },
+              body: envelope(d.operacao, consultaCadastro(uf, cnpj)),
+            },
+            { key: cred.pem.keyPem, cert: [cred.pem.certPem, ...cred.pem.chainPem].join(String.fromCharCode(10)) },
+          )
+        } catch (error) {
+          return { kind: 'indisponivel', motivo: `${d.autorizador} cadastro: ${error instanceof Error ? error.message : 'falha de transporte'}` }
+        }
+        const doc = parse(res.body)
+        const infCons = doc ? first(doc, 'infCons') : null
+        const cStat = text(infCons, 'cStat')
+        if (!cStat) {
+          ultimoErro = `${d.autorizador} cadastro: resposta sem cStat (HTTP ${res.status})`
+          continue
+        }
+        if (cStat !== '111' && cStat !== '112') return { kind: 'nao_encontrado', cStat, motivo: text(infCons, 'xMotivo') }
+        const inscricoes = Array.from({ length: infCons!.getElementsByTagNameNS(NS_NFE, 'infCad').length }, (_, i) => {
+          const cad = infCons!.getElementsByTagNameNS(NS_NFE, 'infCad')[i] as El
+          const ind = text(cad, 'indCredNFe')
+          return {
+            ie: text(cad, 'IE'),
+            cnpj: text(cad, 'CNPJ'),
+            habilitada: text(cad, 'cSit') === '1',
+            credenciamentoNfe: (['0', '1', '2', '3', '4'].includes(ind) ? ind : '') as InscricaoNaSefaz['credenciamentoNfe'],
+            nome: text(cad, 'xNome'),
+          }
+        })
+        return { kind: 'encontrado', inscricoes, cStat }
+      }
+      return { kind: 'indisponivel', motivo: ultimoErro }
     },
 
     async inutilizar(uf: Uf, ambiente: AmbienteNfe, pedido: PedidoInutilizacao, cred: Credencial): Promise<ResultadoInutilizacao> {

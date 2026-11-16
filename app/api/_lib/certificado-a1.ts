@@ -4,7 +4,7 @@
 import forge from 'node-forge'
 
 export type LeituraDoA1 =
-  | { ok: true; subject: string; notAfter: Date }
+  | { ok: true; subject: string; notAfter: Date; certPem: string }
   | { ok: false; motivo: 'ARQUIVO_INVALIDO' | 'SENHA_INVALIDA' }
 
 function subjectDe(cert: forge.pki.Certificate): string {
@@ -38,5 +38,5 @@ export function lerCertificadoA1(pfx: Uint8Array, senha: string): LeituraDoA1 {
     return Boolean(publicKey?.n && key.n && publicKey.n.equals(key.n))
   })
   if (!leaf) return { ok: false, motivo: 'ARQUIVO_INVALIDO' }
-  return { ok: true, subject: subjectDe(leaf), notAfter: leaf.validity.notAfter }
+  return { ok: true, subject: subjectDe(leaf), notAfter: leaf.validity.notAfter, certPem: forge.pki.certificateToPem(leaf) }
 }

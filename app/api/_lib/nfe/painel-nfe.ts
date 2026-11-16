@@ -17,7 +17,10 @@ import { planoDeEscritorio } from '../agente/planos.js'
 import { donoDoUsuario, MAX_BYTES_DO_PAINEL } from '../painel-emissao.js'
 import type { SessionVerifier } from '../session.js'
 import type { Uf } from './autorizadores.js'
+import { conferenciaDaEmpresa, conferirEmpresaNfe } from './conferencia.js'
 import { renderDanfe } from './danfe.js'
+import type { ResponsavelTecnico } from './nfe-builder.js'
+import type { SefazClient } from './sefaz-client.js'
 import { lerPlanilhaNfe } from './planilha.js'
 import {
   conferirPedido,
@@ -31,7 +34,14 @@ import {
   salvarDadosNfe,
 } from './servico.js'
 
-export type PainelNfeDeps = { db: Db; sessions: SessionVerifier; now?: () => Date }
+export type PainelNfeDeps = {
+  db: Db
+  sessions: SessionVerifier
+  now?: () => Date
+  /** Sefaz para a conferência da empresa (consulta de cadastro e nota de teste); sem ela, `conferir` responde 503. */
+  sefaz?: SefazClient
+  responsavelTecnico?: ResponsavelTecnico | null
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const texto = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : typeof v === 'number' ? String(v) : '')
@@ -44,6 +54,14 @@ export const MOTIVO_DO_BLOQUEIO: Record<string, string> = {
   NFE_SEM_ENDERECO: 'falta o endereço da empresa',
   NFE_SEM_SERIE: 'falta a série e o próximo número da NF-e',
   NFE_CERT_MISSING: 'falta o certificado A1 da própria empresa (a NF-e não aceita procuração)',
+  NFE_NAO_CONFERIDA: 'falta a conferência da empresa na Sefaz (clique em Conferir na Sefaz)',
+  NFE_CONFERIR_DE_NOVO: 'o certificado, a IE ou a UF mudaram desde a última conferência; confira de novo na Sefaz',
+  NFE_NAO_CREDENCIADA: 'a empresa não está credenciada para emitir NF-e na Sefaz do estado',
+  NFE_IE_NAO_E_DO_CNPJ: 'a Sefaz não encontra a inscrição estadual neste CNPJ',
+  NFE_IE_NAO_HABILITADA: 'a inscrição estadual não está habilitada na Sefaz',
+  NFE_IE_INVALIDA: 'a Sefaz recusou a inscrição estadual',
+  SEFAZ_INDISPONIVEL: 'a Sefaz não respondeu na última conferência; tente de novo',
+  CERT_SEM_CNPJ: 'o certificado não é um e-CNPJ A1',
   CERT_EXPIRED: 'o certificado A1 venceu',
   NO_SUBSCRIPTION: 'a conta não tem assinatura',
   SUBSCRIPTION_CANCELLED: 'a assinatura foi cancelada',
@@ -52,7 +70,7 @@ export const MOTIVO_DO_BLOQUEIO: Record<string, string> = {
 }
 export const motivoDoBloqueio = (codigo: string) => MOTIVO_DO_BLOQUEIO[codigo] ?? codigo
 
-type Ctx = { db: Db; dono: { id: string; plan: string; limite: number }; empresas: { id: string; cnpj: string; razao_social: string; active: boolean }[]; agora: Date }
+type Ctx = { deps: PainelNfeDeps; db: Db; dono: { id: string; plan: string; limite: number }; empresas: { id: string; cnpj: string; razao_social: string; active: boolean }[]; agora: Date }
 
 export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Promise<Response> {
   try {
@@ -61,7 +79,7 @@ export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Pr
     const dono = await donoDoUsuario(deps.db, userId)
     if (!dono) return errorResponse('CONTA_SEM_EMPRESA', 'Não achamos uma empresa nesta conta.')
     if (!planoDeEscritorio(dono.plan)) return errorResponse('SO_ESCRITORIO', 'A NF-e pelo painel é do plano Escritório.')
-    const ctx: Ctx = { db: deps.db, dono, empresas: await empresasDoDono(deps.db, dono.id), agora: (deps.now ?? (() => new Date()))() }
+    const ctx: Ctx = { deps, db: deps.db, dono, empresas: await empresasDoDono(deps.db, dono.id), agora: (deps.now ?? (() => new Date()))() }
 
     if (request.method === 'GET') return baixar(ctx, new URL(request.url))
     if (request.method !== 'POST') return errorResponse('METHOD_NOT_ALLOWED', 'use GET ou POST')
@@ -80,6 +98,8 @@ export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Pr
         return contexto(ctx)
       case 'dados_salvar':
         return dadosSalvar(ctx, corpo)
+      case 'conferir':
+        return conferir(ctx, corpo)
       case 'listar':
         return listar(ctx, corpo)
       case 'cancelar':
@@ -106,6 +126,10 @@ async function contexto(ctx: Ctx): Promise<Response> {
       [e.id],
     )
     const bloqueio = await bloqueioNfe(ctx.db, e.id)
+    const conf = await conferenciaDaEmpresa(ctx.db, e.id)
+    const { rows: cert } = await ctx.db.query<{ not_after: Date }>('select not_after from nofiscal.fiscal_certificates where tenant_id = $1', [e.id])
+    // Reprovação da conferência: o texto dela diz o que houve e o que fazer.
+    const motivo = bloqueio && conf?.codigo === bloqueio && conf.motivo ? conf.motivo : bloqueio ? motivoDoBloqueio(bloqueio) : null
     empresas.push({
       tenant_id: e.id,
       razao_social: e.razao_social,
@@ -115,10 +139,22 @@ async function contexto(ctx: Ctx): Promise<Response> {
       endereco: dados?.endereco ?? null,
       serie: rows[0]?.serie ?? null,
       proximo_numero: rows[0] ? Number(rows[0].next_number) : null,
-      bloqueio: bloqueio ? { codigo: bloqueio, motivo: motivoDoBloqueio(bloqueio) } : null,
+      bloqueio: bloqueio ? { codigo: bloqueio, motivo } : null,
+      modo_nfse: dados?.modo_autenticacao ?? null,
+      certificado: cert[0] ? { not_after: cert[0].not_after } : null,
+      crt: dados?.regime === 'mei' ? '4' : '1',
+      conferencia: conf ? { status: conf.status, etapa: conf.etapa, codigo: conf.codigo, motivo: conf.motivo, conferida_em: conf.conferida_em } : null,
     })
   }
   return json(200, { empresas, franquia: { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) } })
+}
+
+async function conferir(ctx: Ctx, b: Record<string, unknown>): Promise<Response> {
+  const empresa = daConta(ctx, texto(b.tenant_id))
+  if (!empresa) return errorResponse('NOT_FOUND', 'Esta empresa não é da sua conta.')
+  if (!ctx.deps.sefaz) return errorResponse('SEFIN_NOT_CONFIGURED', 'conferência indisponível agora')
+  await conferirEmpresaNfe({ db: ctx.db, sefaz: ctx.deps.sefaz, now: () => ctx.agora, responsavelTecnico: ctx.deps.responsavelTecnico ?? null }, empresa.id)
+  return contexto(ctx)
 }
 
 async function dadosSalvar(ctx: Ctx, b: Record<string, unknown>): Promise<Response> {
