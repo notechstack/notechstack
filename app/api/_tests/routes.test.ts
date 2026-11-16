@@ -55,10 +55,12 @@ describe('rotas do Nó Fiscal', () => {
     // (29/10/2026) lê e manda mensagens do WhatsApp e não toca no A1. O PDF da nota no painel do
     // Escritório (05/11/2026) só lê o XML da nota emitida. A procuração do cadastro (11/11/2026) só grava a
     // declaração e confere no ADN com o A1 do procurador, lido por `read_certificate`, sem receber certificado.
+    // A emissão pelo painel (16/11/2026) só cria a nota na fila, como o "confirmar" do agente: quem assina é o worker.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
       'api/v1/fiscal/central.ts',
+      'api/v1/fiscal/emissao.ts',
       'api/v1/fiscal/nota-pdf.ts',
       'api/v1/nfse.ts',
       'api/v1/onboarding/ativacao.ts',

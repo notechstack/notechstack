@@ -149,6 +149,8 @@ function rota(url, metodo, corpo) {
     if (caminho === '/agentes/fiscal/api/v1/onboarding/ativacao/') return 'app:ativacao';
     if (caminho === '/agentes/fiscal/api/v1/onboarding/clientes/') return 'app:clientes:' + (corpo && corpo.acao);
     if (caminho === '/agentes/fiscal/api/v1/onboarding/procuracao/') return 'app:procuracao:' + (corpo && corpo.acao);
+    // Aba Emitir do painel: JSON com `acao`; a planilha vai em multipart (sem `acao`).
+    if (caminho === '/agentes/fiscal/api/v1/fiscal/emissao/') return 'app:emissao:' + ((corpo && corpo.acao) || 'lote_ler');
     const d = /^\/agentes\/fiscal\/dados\/([\w-]+\.json)$/.exec(caminho);
     if (d) return 'dados:' + d[1];
   }

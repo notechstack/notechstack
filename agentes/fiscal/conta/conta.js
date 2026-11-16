@@ -437,7 +437,7 @@
      Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
      seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
      empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
-  var ABAS = ['dados', 'empresas', 'relatorios'];
+  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios'];
   var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   var SITUACAO = {
     pronta: ['Pronta', 'ok'],
@@ -498,6 +498,7 @@
     }
     if (opcoes.foco) $('fa-aba-' + aba).focus();
     if (aba === 'relatorios' && !ec.relCarregado) carregarRelatorio();
+    if (aba === 'emitir' && !em.carregado) carregarEmissao();
   }
 
   function proximaCobranca(a) {
@@ -510,7 +511,9 @@
 
   function desenharEscritorio() {
     var x = escritorio();
-    ['dados', 'empresas', 'relatorios'].forEach(function (a) {
+    // Empresas, bloqueios e franquia da aba Emitir vêm de novo na próxima vez que ela abrir.
+    em.carregado = false;
+    ABAS.forEach(function (a) {
       var p = $('fa-painel-' + a);
       if (x) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'fa-aba-' + a); }
       else { p.removeAttribute('role'); p.removeAttribute('aria-labelledby'); }
@@ -524,6 +527,7 @@
     if (!x) {
       $('fa-painel-dados').hidden = false;
       $('fa-painel-empresas').hidden = true;
+      $('fa-painel-emitir').hidden = true;
       $('fa-painel-relatorios').hidden = true;
       $('fa-faixas').hidden = true;
       return;
@@ -923,6 +927,298 @@
     });
   }
 
+  /* ---------- Emitir: nota avulsa e lote por planilha (/v1/fiscal/emissao) ----------
+     O mesmo motor do WhatsApp: o servidor confere (emission_block, franquia, nota igual no mês) e só emite no segundo
+     clique. Cada resumo conferido ganha uma chave nova, que torna o "Emitir nota" idempotente (clique duplo, rede
+     caindo no meio). A planilha é a mesma do WhatsApp, com a mesma leitura e o mesmo "confirmar". */
+  var EMISSAO = '/v1/fiscal/emissao';
+  var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
+  var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao' };
+  var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
+
+  function novaChave() {
+    var c = window.crypto;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    var b = new Uint8Array(16);
+    c.getRandomValues(b);
+    b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+    var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  function comQuebras(t) { return nf.esc(t || '').replace(/\n/g, '<br>'); }
+  function centavosDoTexto(v) { return Math.round(Number(v || 0) * 100); }
+  function empresaDaEmissao(id) {
+    for (var i = 0; i < em.empresas.length; i++) if (em.empresas[i].tenant_id === id) return em.empresas[i];
+    return null;
+  }
+
+  function carregarEmissao() {
+    em.carregado = true;
+    return nf.app(EMISSAO, { acao: 'contexto' }).then(function (r) {
+      if (r.ok) { em.empresas = r.dados.empresas || []; desenharEmpresasDaEmissao(); return; }
+      em.carregado = false;
+      if (r.status === 401) return;
+      nf.aviso($('fa-aviso-emitir'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+  function desenharEmpresasDaEmissao() {
+    var sel = $('fa-av-empresa'), antes = sel.value;
+    sel.innerHTML = em.empresas.map(function (e) {
+      return '<option value="' + nf.esc(e.tenant_id) + '">' + nf.esc(e.razao_social + (e.principal ? ' (escritório)' : '') + ' · ' + nf.formatarCnpj(e.cnpj)) + '</option>';
+    }).join('');
+    if (antes && empresaDaEmissao(antes)) sel.value = antes;
+    // A mesma empresa continua escolhida: o que já foi digitado fica; só o aviso de bloqueio é refeito.
+    if (sel.value && sel.value === antes) desenharBloqueioDaEmissao(); else trocarEmpresaDaEmissao();
+  }
+  function desenharBloqueioDaEmissao() {
+    var emp = empresaDaEmissao($('fa-av-empresa').value);
+    nf.aviso($('fa-av-bloqueio'), emp && emp.bloqueio
+      ? nf.esc('Esta empresa não emite agora: ' + emp.bloqueio.motivo + '.') + ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="empresas">Resolver em Minhas empresas</button>'
+      : '', 'erro');
+  }
+  function trocarEmpresaDaEmissao() {
+    var emp = empresaDaEmissao($('fa-av-empresa').value);
+    fecharResumoAvulsa();
+    desenharBloqueioDaEmissao();
+    prepararSeletorAvulsa(emp ? emp.codigo_servico_nacional : '', emp && emp.tenant_id);
+    carregarModelos(emp);
+  }
+  /* Um seletor de código novo a cada empresa ou modelo, com as sugestões pelo CNAE da empresa. */
+  function prepararSeletorAvulsa(codigo, tenantId) {
+    var velho = $('fa-av-seletor'), novo = moldeSeletorAvulsa.cloneNode(true);
+    velho.parentNode.replaceChild(novo, velho);
+    var emp = empresaPorId(tenantId) || {};
+    var cnae = emp.cnae || (emp.principal ? (st.estado.empresa || {}).cnae : null);
+    em.seletor = nf.seletorCodigo(novo, { cnae: cnae, atual: codigo || '' });
+  }
+  function carregarModelos(emp) {
+    var sel = $('fa-av-modelo');
+    sel.innerHTML = '<option value="">Cliente novo</option>';
+    if (!emp) return;
+    var pedido = ++em.pedidoModelos;
+    var lista = em.modelos[emp.tenant_id]
+      ? Promise.resolve(em.modelos[emp.tenant_id])
+      : nf.app(EMISSAO, { acao: 'modelos', tenant_id: emp.tenant_id }).then(function (r) {
+        if (!r.ok) return [];
+        em.modelos[emp.tenant_id] = r.dados.modelos || [];
+        return em.modelos[emp.tenant_id];
+      });
+    lista.then(function (modelos) {
+      if (pedido !== em.pedidoModelos) return; // trocou de empresa no meio
+      sel.innerHTML = '<option value="">Cliente novo</option>' + modelos.map(function (m, i) {
+        return '<option value="' + i + '">' + nf.esc(m.nome + ' · ' + nf.formatarDocumento(m.documento)) + '</option>';
+      }).join('');
+    });
+  }
+  function escolherModelo() {
+    var emp = empresaDaEmissao($('fa-av-empresa').value);
+    var m = emp && $('fa-av-modelo').value !== '' ? (em.modelos[emp.tenant_id] || [])[Number($('fa-av-modelo').value)] : null;
+    fecharResumoAvulsa();
+    $('fa-av-documento').value = m ? nf.formatarDocumento(m.documento) : '';
+    $('fa-av-nome').value = m ? m.nome_tomador : '';
+    $('fa-av-email').value = m ? (m.email || '') : '';
+    $('fa-av-valor').value = m && m.valor_padrao ? valorTexto(m.valor_padrao) : '';
+    $('fa-av-descricao').value = m ? (m.descricao || '') : '';
+    prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
+  }
+
+  function lerAvulsa() {
+    return {
+      tenant_id: $('fa-av-empresa').value, documento: $('fa-av-documento').value, nome: $('fa-av-nome').value,
+      email: $('fa-av-email').value, valor: $('fa-av-valor').value, codigo: em.seletor ? em.seletor.valor() : '',
+      descricao: $('fa-av-descricao').value
+    };
+  }
+  function limparErrosAvulsa() {
+    Object.keys(CAMPO_AVULSA).forEach(function (k) { nf.erroCampo(CAMPO_AVULSA[k], ''); });
+    nf.aviso($('fa-aviso-emitir'), '');
+  }
+  function conferirAvulsa(ev) {
+    ev.preventDefault();
+    limparErrosAvulsa();
+    var corpo = lerAvulsa(), falhou = null;
+    function erro(campo, msg) { nf.erroCampo(CAMPO_AVULSA[campo], msg); if (!falhou) falhou = campo; }
+    if (!corpo.tenant_id) erro('tenant_id', 'Escolha a empresa que emite a nota.');
+    if (!nf.documentoValido(corpo.documento)) erro('documento', 'CPF ou CNPJ inválido. Confira os números.');
+    if (!nf.texto(corpo.nome)) erro('nome', 'Informe o nome do cliente.');
+    if (nf.texto(corpo.email) && !nf.emailValido(nf.texto(corpo.email))) erro('email', 'E-mail inválido. Confira ou deixe em branco.');
+    if (!nf.texto(corpo.valor)) erro('valor', 'Informe o valor.');
+    if (falhou) { var f = $(CAMPO_AVULSA[falhou]); if (f) f.focus(); return; }
+    corpo.acao = 'avulsa_conferir';
+    var botao = $('fa-av-conferir');
+    nf.ocupado(botao, true, 'Conferindo…');
+    nf.app(EMISSAO, corpo).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) { em.pedido = corpo; em.chave = novaChave(); desenharResumoAvulsa(r.dados); return; }
+      if (r.status === 401) return;
+      if (r.dados && CAMPO_AVULSA[r.dados.campo]) { erro(r.dados.campo, r.mensagem || 'Confira este campo.'); var c = $(CAMPO_AVULSA[r.dados.campo]); if (c) c.focus(); return; }
+      nf.aviso($('fa-aviso-emitir'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+  function desenharResumoAvulsa(d) {
+    var s = d.resumo || {}, t = s.tomador || {}, sv = s.servico || {}, emp = s.empresa || {};
+    $('fa-av-resumo-dados').innerHTML = linhas([
+      ['Empresa', (emp.razao_social || '') + ' · ' + nf.formatarCnpj(emp.cnpj || '')],
+      ['Cliente', t.nome],
+      [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
+      ['E-mail', t.email || 'Sem e-mail'],
+      ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
+      ['Descrição na nota', sv.descricao],
+      ['Valor', s.valor_texto]
+    ]);
+    var avisos = (d.bloqueio ? ['<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc('Não dá para emitir: ' + d.bloqueio.motivo + '.') + '</p>'] : [])
+      .concat((d.avisos || []).map(function (a) { return '<p class="nf-aviso nf-aviso--info">' + nf.esc(a) + '</p>'; }));
+    $('fa-av-avisos').innerHTML = avisos.join('');
+    $('fa-av-emitir').disabled = !!d.bloqueio;
+    $('fa-form-avulsa').hidden = true;
+    $('fa-av-resumo').hidden = false;
+    $('fa-av-resumo-titulo').focus();
+  }
+  function fecharResumoAvulsa() {
+    $('fa-av-resumo').hidden = true;
+    $('fa-form-avulsa').hidden = false;
+    em.pedido = null; em.chave = null;
+  }
+  function emitirAvulsa() {
+    if (!em.pedido || !em.chave) return;
+    var pedido = em.pedido, corpo = {};
+    Object.keys(pedido).forEach(function (k) { corpo[k] = pedido[k]; });
+    corpo.acao = 'avulsa_emitir';
+    corpo.chave = em.chave;
+    var botao = $('fa-av-emitir');
+    nf.ocupado(botao, true, 'Emitindo…');
+    nf.app(EMISSAO, corpo).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) {
+        fecharResumoAvulsa();
+        $('fa-av-modelo').value = '';
+        escolherModelo();
+        ec.relCarregado = false; // Relatórios busca de novo na próxima visita
+        nf.aviso($('fa-aviso-emitir'), nf.esc('Nota de ' + nf.texto(pedido.nome) + ' na fila da Sefin. Em instantes ela é autorizada, e o cliente com e-mail recebe a nota.') + BOTAO_RELATORIOS, 'ok');
+        var aviso = $('fa-aviso-emitir');
+        if (typeof aviso.scrollIntoView === 'function') aviso.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (r.status === 401) return;
+      if (r.codigo === 'EMISSAO_BLOQUEADA') {
+        $('fa-av-emitir').disabled = true;
+        $('fa-av-avisos').innerHTML = '<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc(r.mensagem) + '</p>';
+        return;
+      }
+      $('fa-av-avisos').innerHTML = '<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc(r.mensagem || GENERICO) + '</p>';
+    });
+  }
+
+  /* Lote por planilha: ler → resumo com os problemas por linha → confirmar ou descartar. */
+  function lerLote(ev) {
+    ev.preventDefault();
+    nf.erroCampo('fa-lote-arquivo', '');
+    nf.aviso($('fa-aviso-lote'), '');
+    var arquivo = $('fa-lote-arquivo').files && $('fa-lote-arquivo').files[0];
+    if (!arquivo) { nf.erroCampo('fa-lote-arquivo', 'Escolha a planilha (.xlsx ou .csv).'); return; }
+    if (!/\.(xlsx|csv)$/i.test(arquivo.name || '')) { nf.erroCampo('fa-lote-arquivo', 'Envie a planilha em .xlsx ou .csv.'); return; }
+    if (arquivo.size > 4 * 1024 * 1024) { nf.erroCampo('fa-lote-arquivo', 'A planilha passou de 4 MB. Divida em duas e envie uma de cada vez.'); return; }
+    var form = new FormData();
+    form.append('arquivo', arquivo, arquivo.name);
+    var botao = $('fa-lote-ler');
+    nf.ocupado(botao, true, 'Lendo a planilha…');
+    $('fa-lote-resumo').hidden = true;
+    em.lote = null;
+    nf.app(EMISSAO, form).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) { em.lote = r.dados; desenharLote(r.dados); return; }
+      if (r.status === 401) return;
+      var extra = r.dados && r.dados.motivo === 'repetida' && r.dados.lote_id
+        ? ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-descartar-lote="' + nf.esc(r.dados.lote_id) + '">Descartar a anterior</button>'
+        : '';
+      nf.aviso($('fa-aviso-lote'), comQuebras(r.mensagem || GENERICO) + extra, 'erro');
+    });
+  }
+  function plural(n, um, varios) { return n.toLocaleString('pt-BR') + ' ' + (n === 1 ? um : varios); }
+  function desenharLote(d) {
+    $('fa-lote-resumo-titulo').textContent = 'Planilha' + (d.arquivo ? ' ' + d.arquivo : '') + ': ' + plural(d.linhas, 'linha', 'linhas');
+    $('fa-lote-linhas').textContent = String(d.linhas);
+    $('fa-lote-prontas').textContent = String(d.prontas);
+    $('fa-lote-total').textContent = nf.reais(centavosDoTexto(d.total));
+    $('fa-lote-problemas-n').textContent = String((d.problemas || []).length);
+    $('fa-lote-empresas').innerHTML = (d.por_empresa || []).map(function (p) {
+      return '<li>' + nf.esc(p.razao_social + ': ' + plural(p.notas, 'nota', 'notas') + ', ' + nf.reais(centavosDoTexto(p.total))) + '</li>';
+    }).join('');
+    var f = d.franquia || {};
+    nf.aviso($('fa-lote-franquia'), f.acima > 0
+      ? nf.esc('Franquia: com estas notas, o mês chega a ' + plural(f.no_mes + d.prontas, 'nota', 'notas') + ', ' + f.acima.toLocaleString('pt-BR') + ' acima das ' + f.limite.toLocaleString('pt-BR') + ' do seu plano. As notas saem normalmente.')
+      : '', 'info');
+    var problemas = d.problemas || [];
+    $('fa-lote-rolagem').hidden = problemas.length === 0;
+    $('fa-lote-problemas').innerHTML = problemas.map(function (p) {
+      return '<tr><td class="nf-num">' + nf.esc(String(p.linha)) + '</td><td>' + nf.esc(p.motivo) + '</td></tr>';
+    }).join('');
+    var aguardando = d.status === 'aguardando_confirmacao';
+    $('fa-lote-acoes').hidden = !aguardando;
+    $('fa-lote-confirmar').textContent = aguardando ? (d.prontas === 1 ? 'Emitir a nota pronta' : 'Emitir as ' + d.prontas.toLocaleString('pt-BR') + ' notas prontas') : '';
+    $('fa-lote-validade').textContent = aguardando
+      ? 'As linhas com problema ficam de fora. Esta leitura vale até ' + nf.dataBR(d.expira_em) + ' às ' + nf.horaBR(d.expira_em) + '.'
+      : 'Nenhuma linha está pronta para emitir. Corrija a planilha e envie de novo.';
+    $('fa-lote-resumo').hidden = false;
+    $('fa-lote-resumo-titulo').focus();
+  }
+  function confirmarLote() {
+    var lote = em.lote;
+    if (!lote) return;
+    var botao = $('fa-lote-confirmar');
+    nf.ocupado(botao, true, 'Confirmando…');
+    nf.app(EMISSAO, { acao: 'lote_confirmar', lote_id: lote.lote_id }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.status === 401) return;
+      $('fa-lote-resumo').hidden = true;
+      em.lote = null;
+      if (!r.ok) { nf.aviso($('fa-aviso-lote'), nf.esc(r.mensagem || GENERICO), 'erro'); return; }
+      $('fa-lote-arquivo').value = '';
+      ec.relCarregado = false;
+      var d = r.dados, barradas = d.barradas || [];
+      var partes = [];
+      if (d.emitindo) partes.push('Confirmado: ' + plural(d.emitindo, 'nota', 'notas') + ' na fila da Sefin.');
+      if (barradas.length) partes.push(plural(barradas.length, 'linha ficou', 'linhas ficaram') + ' de fora desde a leitura: ' + barradas.map(function (b) { return 'linha ' + b.linha + ' (' + b.motivo + ')'; }).join('; ') + '.');
+      partes.push(d.emitindo
+        ? 'Cada cliente com e-mail recebe a nota. Quando todas fecharem, o retorno de cada linha vai para o e-mail da conta.'
+        : 'Nenhuma nota foi emitida. Corrija e envie a planilha de novo.');
+      nf.aviso($('fa-aviso-lote'), nf.esc(partes.join(' ')) + (d.emitindo ? BOTAO_RELATORIOS : ''), d.emitindo ? 'ok' : 'erro');
+    });
+  }
+  function descartarLote(id, botao, depois) {
+    nf.ocupado(botao, true, 'Descartando…');
+    nf.app(EMISSAO, { acao: 'lote_descartar', lote_id: id }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.status === 401) return;
+      if (r.ok) { depois(); return; }
+      nf.aviso($('fa-aviso-lote'), nf.esc(r.mensagem || GENERICO), 'erro');
+    });
+  }
+
+  $('fa-av-empresa').addEventListener('change', trocarEmpresaDaEmissao);
+  $('fa-av-modelo').addEventListener('change', escolherModelo);
+  $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
+  $('fa-av-emitir').addEventListener('click', emitirAvulsa);
+  $('fa-av-corrigir').addEventListener('click', function () { fecharResumoAvulsa(); $('fa-av-documento').focus(); });
+  $('fa-form-lote').addEventListener('submit', lerLote);
+  $('fa-lote-confirmar').addEventListener('click', confirmarLote);
+  $('fa-lote-descartar').addEventListener('click', function () {
+    if (!em.lote) return;
+    descartarLote(em.lote.lote_id, $('fa-lote-descartar'), function () {
+      $('fa-lote-resumo').hidden = true;
+      em.lote = null;
+      nf.aviso($('fa-aviso-lote'), 'Planilha descartada. Nenhuma nota foi emitida.', 'ok');
+    });
+  });
+  $('fa-aviso-lote').addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-descartar-lote]');
+    if (!b) return;
+    descartarLote(b.getAttribute('data-descartar-lote'), b, function () {
+      nf.aviso($('fa-aviso-lote'), 'A planilha anterior foi descartada. Toque em “Ler a planilha” de novo.', 'ok');
+    });
+  });
+
   $('fa-abas').addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('[role=tab]');
     if (b) mostrarAba(b.getAttribute('data-aba'));
@@ -949,6 +1245,8 @@
   $('fa-painel').addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('[data-ir-faixa]');
     if (b) irParaFaixas();
+    var aba = ev.target.closest && ev.target.closest('[data-ir-aba]');
+    if (aba && escritorio()) mostrarAba(aba.getAttribute('data-ir-aba'), { foco: true });
   });
   $('fa-abrir-adicionar').addEventListener('click', abrirAdicionar);
   $('fa-adicionar-cancelar').addEventListener('click', abrirAdicionar);

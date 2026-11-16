@@ -160,3 +160,8 @@
 .nf-proc summary{cursor:pointer;font-weight:600;color:var(--fi-acento-texto);text-decoration:underline;text-underline-offset:3px}
 .nf-proc[open] summary{margin-bottom:12px}
 .nf-por-procuracao{display:block;margin-top:4px}
+/* Aba Emitir (16/11/2026): nota avulsa e lote por planilha no painel. */
+.nf-lote-empresas{margin:14px 0 0;padding-left:20px;display:grid;gap:4px;font-size:15px;line-height:1.5}
+.nf-lote-empresas:empty{display:none}
+#fa-painel-emitir textarea{min-height:76px}
+#fa-av-avisos .nf-aviso{margin-top:10px}
