@@ -8,6 +8,7 @@ import { lerCertificadoA1 } from './certificado-a1.js'
 import type { Queryable } from './db.js'
 import { errorResponse, json, type ErrorCode } from './http.js'
 import { logEvent } from './log.js'
+import { cnpjDoCertificado } from './nfe/sefaz-client.js'
 import type { SessionVerifier } from './session.js'
 
 export type OnboardingCertificateDeps = {
@@ -58,6 +59,8 @@ async function upload(request: Request, deps: OnboardingCertificateDeps): Promis
     return fail('VALIDATION_FAILED', 'envie multipart/form-data com tenant_id, pfx e senha')
   }
   const tenantId = form.get('tenant_id')
+  // `uso=nfe` (aba NF-e do painel): grava o A1 sem mudar o modo da NFS-e e aceita a raiz do CNPJ na procuração.
+  const paraNfe = form.get('uso') === 'nfe'
   const pfx = form.get('pfx')
   const senha = form.get('senha')
   if (typeof tenantId !== 'string' || !UUID.test(tenantId)) return fail('VALIDATION_FAILED', 'tenant_id inválido')
@@ -76,17 +79,20 @@ async function upload(request: Request, deps: OnboardingCertificateDeps): Promis
   else if (leitura.notAfter.getTime() <= now.getTime()) localFailure = 'CERT_VENCIDO'
 
   const send = leitura.ok && !localFailure
-  const { rows } = await deps.db.query<{ result: DbResult }>(
-    'select nofiscal.onboarding_set_certificate($1, $2, $3, $4, $5, $6) as result',
-    [
-      userId,
-      tenantId,
-      send ? Buffer.from(bytes).toString('base64') : null,
-      send ? senha : null,
-      send ? leitura.subject : null,
-      send ? leitura.notAfter : null,
-    ],
-  )
+  const parametros = [
+    userId,
+    tenantId,
+    send ? Buffer.from(bytes).toString('base64') : null,
+    send ? senha : null,
+    send ? leitura.subject : null,
+    send ? leitura.notAfter : null,
+  ]
+  const { rows } = paraNfe
+    ? await deps.db.query<{ result: DbResult }>('select nofiscal.onboarding_set_certificate_nfe($1, $2, $3, $4, $5, $6, $7) as result', [
+        ...parametros,
+        send ? cnpjDoCertificado(leitura.certPem) : null,
+      ])
+    : await deps.db.query<{ result: DbResult }>('select nofiscal.onboarding_set_certificate($1, $2, $3, $4, $5, $6) as result', parametros)
   const dbResult = rows[0]?.result
   if (dbResult === 'FORBIDDEN') return result('upload', tenantId, 'FORBIDDEN')
   if (dbResult === 'RATE_LIMITED') return result('upload', tenantId, 'RATE_LIMITED')
@@ -98,7 +104,7 @@ async function upload(request: Request, deps: OnboardingCertificateDeps): Promis
   if (dbResult === 'CERT_VENCIDO' || dbResult === 'CERT_CNPJ_DIFERENTE') return result('upload', tenantId, dbResult)
   if (dbResult !== 'OK' || !leitura.ok) return result('upload', tenantId, 'VALIDATION_FAILED')
 
-  logEvent('nofiscal.onboarding_certificate', { action: 'upload', tenant_id: tenantId, result: 'OK' })
+  logEvent('nofiscal.onboarding_certificate', { action: paraNfe ? 'upload_nfe' : 'upload', tenant_id: tenantId, result: 'OK' })
   return json(201, { subject: leitura.subject, not_after: leitura.notAfter.toISOString() })
 }
 

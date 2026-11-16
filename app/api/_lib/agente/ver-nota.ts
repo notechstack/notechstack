@@ -6,6 +6,7 @@
 // mensagem é exatamente "nota <número>" (com o CNPJ ou o nome da empresa depois, no escritório) ou "nota <nome>" sem
 // algarismo e sem preposição na frente.
 import { renderDanfse } from '../danfse-renderer.js'
+import { formatarChave, renderDanfe } from '../nfe/danfe.js'
 import type { Queryable } from '../db.js'
 import { logEvent } from '../log.js'
 import { saiuComRetentativa } from './canais.js'
@@ -207,8 +208,81 @@ async function porNome(ctx: Contexto, escopo: Escopo, nome: string): Promise<boo
   return true
 }
 
-/** `true` quando a mensagem era o comando *nota* e foi respondida; `false` segue para a conversa de pedidos. */
+// ---------- NF-e (nota de produto): "nfe 123", "danfe 123", "nfe Maria" ----------
+// Comando próprio, porque o mesmo número pode existir na NFS-e e na NF-e. Manda o DANFE gerado do XML autorizado.
+
+export type PedidoDeNfe = { tipo: 'numero'; numero: string } | { tipo: 'nome'; nome: string }
+
+export function lerPedidoDeNfe(texto: string): PedidoDeNfe | null {
+  const m = /^(\S+)\s+(.+)$/.exec(texto.replace(/\s+/g, ' ').trim())
+  if (!m || !/^(nfe|nf-e|danfe)$/.test(semAcento(m[1]))) return null
+  const arg = m[2].replace(/[.!?]+$/, '').trim()
+  const numero = /^(?:n[º°o]?\.?\s*)?(\d{1,9})$/i.exec(arg)
+  if (numero) return { tipo: 'numero', numero: String(Number(numero[1])) }
+  if (/\d/.test(arg) || semAcento(arg).replace(/[^a-z]/g, '').length < 2) return null
+  return { tipo: 'nome', nome: arg }
+}
+
+const QUEBRA = String.fromCharCode(10)
+
+type NfeAchada = { id: string; tenant_id: string; numero: string; serie: number; status: string; chave: string; destinatario_nome: string; valor_total: string; razao_social: string; xml_proc: string; authorized_at: Date }
+
+async function mandarNfe(ctx: Contexto, n: NfeAchada, escritorio: boolean): Promise<void> {
+  const resumo = [`NF-e ${n.numero}`, n.destinatario_nome, formatarReais(n.valor_total), ...(escritorio ? [n.razao_social] : []), ...(n.status === 'cancelled' ? ['cancelada'] : [])]
+  const legenda = resumo.join(' · ') + QUEBRA + `Chave: ${formatarChave(n.chave)}`
+  let pdf: Uint8Array | null = null
+  try {
+    pdf = await renderDanfe(n.xml_proc, { cancelada: n.status === 'cancelled' })
+  } catch (error) {
+    logEvent('agente.danfe_falhou', { nfe_id: n.id, error_name: error instanceof Error ? error.name : 'unknown' })
+  }
+  if (!pdf) {
+    await responder(ctx, `${legenda}${QUEBRA}Não consegui gerar o DANFE agora. Ele também fica em Minha conta → NF-e: ${ctx.links.conta}#nfe`)
+    return
+  }
+  const whatsapp = ctx.whatsappBruto ?? ctx.whatsapp
+  const enviado = await saiuComRetentativa('whatsapp', () => whatsapp.enviarDocumento(ctx.para, { nome: `danfe-${n.numero}.pdf`, tipo: 'application/pdf', conteudo: pdf }, legenda))
+  ctx.enviadas++
+  logEvent('agente.nfe_vista', { tenant_id: n.tenant_id, nfe_id: n.id, enviado })
+}
+
+async function tratarVerNfe(ctx: Contexto, pedido: PedidoDeNfe): Promise<boolean> {
+  const escopo = await escopoDoTelefone(ctx.deps.db, ctx.tenantId)
+  const { rows } = await ctx.deps.db.query<NfeAchada>(
+    `select n.id, n.tenant_id, n.numero, n.serie, n.status, n.chave, n.destinatario_nome, n.valor_total, t.razao_social, n.xml_proc, n.authorized_at
+       from nofiscal.fiscal_nfe n join nofiscal.fiscal_tenants t on t.id = n.tenant_id
+      where n.tenant_id = any($1::uuid[]) and n.status in ('authorized', 'cancel_requested', 'cancelled') and n.xml_proc is not null
+        and ($2::bigint is null or n.numero = $2::bigint)
+        and ($2::bigint is not null or n.authorized_at >= now() - interval '62 days')
+      order by n.authorized_at desc
+      limit 500`,
+    [escopo.tenantIds, pedido.tipo === 'numero' ? pedido.numero : null],
+  )
+  const achadas = pedido.tipo === 'numero' ? rows : rows.filter((r) => semAcento(r.destinatario_nome).includes(semAcento(pedido.nome)))
+  if (!achadas.length) {
+    await responder(ctx, pedido.tipo === 'numero' ? `Não achei NF-e autorizada com o número ${pedido.numero}.` : `Não achei NF-e para ${pedido.nome} nos últimos 2 meses.`)
+    return true
+  }
+  if (achadas.length === 1) {
+    await mandarNfe(ctx, achadas[0], escopo.escritorio)
+    return true
+  }
+  await responder(
+    ctx,
+    [
+      `Achei ${achadas.length} NF-e:`,
+      ...achadas.slice(0, MAX_NA_LISTA).map((r) => `- nº ${r.numero} (série ${r.serie}) · ${dataBr(r.authorized_at)} · ${r.destinatario_nome} · ${formatarReais(r.valor_total)}${escopo.escritorio ? ` · ${r.razao_social}` : ''}`),
+      ...(achadas.length > MAX_NA_LISTA ? [`e mais ${achadas.length - MAX_NA_LISTA}.`] : []),
+      'O DANFE de cada uma também fica em Minha conta → NF-e.',
+    ].join(QUEBRA),
+  )
+  return true
+}
+
+/** `true` quando a mensagem era o comando *nota* (ou *nfe*) e foi respondida; `false` segue para a conversa de pedidos. */
 export async function tratarVerNota(ctx: Contexto, texto: string): Promise<boolean> {
+  const nfe = lerPedidoDeNfe(texto)
+  if (nfe) return tratarVerNfe(ctx, nfe)
   const pedido = lerPedidoDeNota(texto)
   if (!pedido) return false
   const escopo = await escopoDoTelefone(ctx.deps.db, ctx.tenantId)

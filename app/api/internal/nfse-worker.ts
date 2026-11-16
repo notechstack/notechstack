@@ -7,6 +7,8 @@ import { agenteFromEnv } from '../_lib/agente/ambiente.js'
 import { dbFromEnv } from '../_lib/db.js'
 import { errorResponse } from '../_lib/http.js'
 import { logEvent } from '../_lib/log.js'
+import { criarSefazClient } from '../_lib/nfe/sefaz-client.js'
+import { responsavelTecnicoFromEnv } from '../_lib/nfe/servico.js'
 import { sefinClientFromEnv } from '../_lib/sefin-client.js'
 import { handleWorkerRequest } from '../_lib/worker-route.js'
 
@@ -21,6 +23,7 @@ export default {
         fetch: (url, init) => fetch(url, init),
         agente: agenteFromEnv(db) ?? undefined,
         adn: createAdnClient(),
+        nfe: { sefaz: criarSefazClient(), responsavelTecnico: responsavelTecnicoFromEnv() },
       })
     } catch {
       logEvent('nofiscal.worker_unavailable')

@@ -30,8 +30,11 @@ export const DEFAULT_SIGNATURE_PROFILE: SignatureProfile = 'sha256-exc-c14n'
 
 export type SignInput = {
   xml: string
-  /** Elemento com atributo `Id` a assinar: `infDPS` ou `infPedReg`. */
-  signedElement: 'infDPS' | 'infPedReg'
+  /**
+   * Elemento com atributo `Id` a assinar: `infDPS` ou `infPedReg` (NFS-e); `infNFe`, `infEvento` ou `infInut`
+   * (NF-e modelo 55, sempre com o perfil `sha1-c14n`, que é o do leiaute 4.00).
+   */
+  signedElement: 'infDPS' | 'infPedReg' | 'infNFe' | 'infEvento' | 'infInut'
   keyPem: string
   certPem: string
   profile?: SignatureProfile

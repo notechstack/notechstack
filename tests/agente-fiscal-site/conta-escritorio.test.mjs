@@ -86,7 +86,7 @@ test('abas e Meus dados do escritório', async () => {
   assert.ok(p.visivel('fa-abas'));
   assert.equal(p.$('fa-abas').getAttribute('role'), 'tablist');
   const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')];
-  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios']);
+  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios', 'NF-e']);
   assert.equal(p.$('fa-aba-dados').getAttribute('aria-selected'), 'true');
   assert.equal(p.$('fa-painel-dados').getAttribute('role'), 'tabpanel');
   assert.ok(p.visivel('fa-painel-dados'));

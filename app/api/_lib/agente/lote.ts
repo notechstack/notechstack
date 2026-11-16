@@ -843,14 +843,18 @@ export function chaveDoPayload(tenantId: string, payload: unknown): string | nul
   return documento && centavos !== null ? `${tenantId}:${documento}:${centavos}` : null
 }
 
-/** Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). */
+/**
+ * Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). A NF-e
+ * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia.
+ */
 export async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
   const local = partesLocais(agora)
   const { inicio, fim } = limitesDoMes(local.ano, local.mes)
   const { rows } = await db.query<{ n: string }>(
-    `select count(*) as n from nofiscal.fiscal_invoices i
-      where i.tenant_id in (select nofiscal.empresas_do_dono($1))
-        and ((i.issued_at >= $2 and i.issued_at < $3) or i.status in ('queued', 'signing', 'sent'))`,
+    `select (select count(*) from nofiscal.fiscal_invoices i
+              where i.tenant_id in (select nofiscal.empresas_do_dono($1))
+                and ((i.issued_at >= $2 and i.issued_at < $3) or i.status in ('queued', 'signing', 'sent')))
+            + nofiscal.nfe_do_mes($1, $2, $3) as n`,
     [donoId, inicio, fim],
   )
   return Number(rows[0]?.n ?? 0)
