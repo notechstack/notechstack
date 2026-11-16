@@ -561,7 +561,7 @@
   /* ---------- trocar faixa ---------- */
   function desenharFaixas(x) {
     $('fa-faixas-lista').innerHTML = Object.keys(nf.FAIXAS).map(function (c) {
-      var f = nf.FAIXAS[c], atual = c === x.plano, pequena = Number(x.empresas_ativas) > f.empresas;
+      var f = nf.FAIXAS[c], atual = c === x.plano, pequena = Number(x.empresas_ativas) > (Number(x.max_empresas_override) || f.empresas);
       return '<button type="button" class="nf-faixa' + (atual ? ' nf-faixa--atual' : '') + '" data-faixa="' + c + '"' +
         (atual ? ' disabled aria-current="true"' : '') + '><b>' + nf.esc(f.nome) + '</b><span>' + nf.esc(nf.reais(f.centavos)) +
         '/mês · ' + f.notas + ' notas por mês</span>' +
@@ -642,7 +642,7 @@
   function desenharEmpresas(x) {
     var f = nf.FAIXAS[x.plano];
     $('fa-empresas-resumo').textContent = x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' +
-      (f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
+      (x.max_empresas_override ? ' no seu pacote' : f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
     var a = st.estado.assinatura, motivo = '';
     if (!a) motivo = 'Sem assinatura ativa: nenhuma empresa emite.';
     else if (a.status === 'recusada') motivo = 'Pagamento recusado: nenhuma empresa emite até o cartão ser trocado em Meus dados.';

@@ -388,3 +388,15 @@ test('situação mostra quem emite por procuração e o que falta à empresa cli
   assert.equal(p.texto(linhaDe(p, EMP_PRONTA).querySelector('.nf-por-procuracao')), 'por procuração ao escritório');
   assert.equal(linhaDe(p, EMP_VENCENDO).querySelector('.nf-por-procuracao'), null);
 });
+
+test('pacote por notas: limite da conta no resumo e nas faixas', async () => {
+  const p = await painel({
+    'fiscal-conta:estado': r(200, estadoEscritorio({}, { plano: 'escritorio_20', max_empresas: 200, max_empresas_override: 200, empresas_ativas: 180, notas_limite: 2000 }))
+  }, '/agentes/fiscal/conta/#empresas');
+  assert.ok(p.texto('fa-empresas-resumo').startsWith('180 de 200 empresas ativas no seu pacote.'));
+  // Com pacote, o limite vale em qualquer faixa: nenhuma faixa avisa "Você tem 180 empresas ativas".
+  await p.clicar('fa-aba-dados');
+  assert.ok(p.texto('fa-plano-uso').includes('180 de 200'));
+  await p.clicar('fa-abrir-faixas');
+  assert.equal(p.texto(p.$('fa-faixas-lista')).includes('Você tem 180 empresas ativas'), false);
+});
