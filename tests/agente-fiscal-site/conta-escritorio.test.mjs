@@ -484,7 +484,7 @@ test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com conf
   await p.enviar('fa-form-avulsa');
   assert.deepEqual(p.rede.de('app:emissao:avulsa_conferir')[0].corpo, {
     tenant_id: EMP_PRONTA, documento: '529.982.247-25', nome: 'Maria Tomadora', email: 'maria@tomador.test', valor: '350',
-    codigo: '170201', descricao: 'Honorários de novembro', acao: 'avulsa_conferir'
+    codigo: '170201', descricao: 'Honorários de novembro', retem_iss: false, retem_inss: false, acao: 'avulsa_conferir'
   });
   assert.ok(p.visivel('fa-av-resumo'));
   assert.equal(p.visivel('fa-form-avulsa'), false);
@@ -559,4 +559,82 @@ test('Emitir: planilha repetida oferece descartar a anterior, e bloqueio no emit
   assert.equal(p.$('fa-av-emitir').disabled, true);
   assert.equal(p.texto('fa-av-avisos'), 'Não dá para emitir: a assinatura da conta não está ativa.');
   assert.deepEqual(p.erros, []);
+});
+
+test('retenção: as caixas do Adicionar empresa viram o padrão; no Emitir vêm marcadas e aparecem no resumo', async () => {
+  const NOVA = '1a2b3c4d-0000-4000-8000-000000000006';
+  const novo = empresas().concat([{ tenant_id: NOVA, cnpj: '11444777000161', razao_social: 'CLIENTE NOVO LTDA', regime: 'simples', principal: false, ativa: true, certificado: null, notas_mes: 0, situacao: 'falta_certificado' }]);
+  const padrao = { retem_iss: true, aliquota_iss: '2.50', retem_inss: true, inss_percentual: '11.00' };
+  const contexto = {
+    empresas: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null, regime: 'simples', retencao: { retem_iss: false, aliquota_iss: null, retem_inss: false, inss_percentual: null } },
+      { tenant_id: EMP_PRONTA, razao_social: 'PADARIA BOA LTDA', cnpj: '11444777000161', principal: false, codigo_servico_nacional: '170201', bloqueio: null, regime: 'simples', retencao: padrao },
+      { tenant_id: EMP_MEI, razao_social: 'JOANA MEI', cnpj: '04252011000110', principal: false, codigo_servico_nacional: '170201', bloqueio: null, regime: 'mei', retencao: { retem_iss: false, aliquota_iss: null, retem_inss: false, inss_percentual: null } }
+    ],
+    franquia: { limite: 500, no_mes: 3 }
+  };
+  const resumo = {
+    resumo: {
+      empresa: { tenant_id: EMP_PRONTA, razao_social: 'PADARIA BOA LTDA', cnpj: '11444777000161' },
+      tomador: { documento: '11222333000181', tipo: 'cnpj', nome: 'Clínica Saúde', email: null },
+      servico: { codigo: '170201', nome: 'Contabilidade', descricao: 'Manutenção' },
+      valor: '1500.00', valor_texto: 'R$ 1.500,00',
+      retencao: { iss: { aliquota: '2.50', valor: '37.50' }, inss: { valor: '165.00' }, liquido: '1297.50' },
+      endereco_tomador: { cMun: '3550308', cep: '01310100', logradouro: 'AVENIDA PAULISTA', numero: '1000', complemento: null, bairro: 'BELA VISTA' }
+    },
+    bloqueio: null,
+    avisos: []
+  };
+  const p = await painel({
+    'fiscal-conta:empresa_adicionar': r(200, { ...estadoEscritorio({}, { empresas: novo, empresas_ativas: 5 }), adicionada: { tenant_id: NOVA, reativada: false } }),
+    'app:emissao:empresa_retencao': (c) => ({ status: 200, corpo: { tenant_id: c.tenant_id, retencao: {} } }),
+    'app:emissao:contexto': r(200, contexto),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:avulsa_conferir': r(200, resumo)
+  }, '/agentes/fiscal/conta/#empresas');
+
+  // Adicionar empresa: marcar abre o campo; o campo errado nem chama o servidor.
+  await p.clicar('fa-abrir-adicionar');
+  assert.equal(p.visivel('fa-add-campo-iss'), false);
+  await p.clicar('fa-add-retem-iss');
+  assert.ok(p.visivel('fa-add-campo-iss'), 'marcar ISS abre a alíquota');
+  await p.clicar('fa-add-retem-inss');
+  assert.ok(p.visivel('fa-add-campo-inss'), 'marcar INSS abre o percentual');
+  await p.preencher('fa-add-cnpj', '11.444.777/0001-61');
+  await p.preencher('fa-add-aliquota-iss', '7');
+  await p.enviar('fa-form-adicionar');
+  assert.equal(p.texto('fa-add-aliquota-iss-erro'), 'Informe a alíquota do ISS retido, de 2% a 5% (por exemplo 2,5).');
+  assert.equal(p.texto('fa-add-inss-erro'), 'Informe o percentual do INSS retido, por exemplo 11.');
+  assert.equal(p.rede.de('fiscal-conta:empresa_adicionar').length, 0);
+
+  await p.preencher('fa-add-aliquota-iss', '2,5');
+  await p.preencher('fa-add-inss', '11');
+  await p.enviar('fa-form-adicionar');
+  assert.equal(p.rede.de('fiscal-conta:empresa_adicionar').length, 1);
+  assert.deepEqual(p.rede.de('app:emissao:empresa_retencao')[0].corpo, {
+    acao: 'empresa_retencao', tenant_id: NOVA, retem_iss: true, aliquota_iss: '2,5', retem_inss: true, inss_percentual: '11'
+  });
+  assert.match(p.texto('fa-aviso-empresas'), /^Empresa adicionada\. Retenção salva\. Agora escolha/);
+
+  // Emitir: as caixas vêm com o padrão da empresa; MEI não vê as caixas.
+  await p.clicar('fa-aba-emitir');
+  await p.preencher('fa-av-empresa', EMP_MEI);
+  assert.equal(p.visivel('fa-av-retencao'), false, 'MEI não tem retenção');
+  await p.preencher('fa-av-empresa', EMP_PRONTA);
+  assert.ok(p.visivel('fa-av-retencao'));
+  assert.equal(p.$('fa-av-retem-iss').checked, true);
+  assert.equal(p.$('fa-av-aliquota-iss').value, '2,5');
+  assert.equal(p.$('fa-av-retem-inss').checked, true);
+  assert.equal(p.$('fa-av-inss').value, '11%');
+
+  await p.preencher('fa-av-documento', '11.222.333/0001-81');
+  await p.preencher('fa-av-nome', 'Clínica Saúde');
+  await p.preencher('fa-av-valor', '1500');
+  await p.enviar('fa-form-avulsa');
+  const corpo = p.rede.de('app:emissao:avulsa_conferir')[0].corpo;
+  assert.deepEqual([corpo.retem_iss, corpo.aliquota_iss, corpo.retem_inss, corpo.inss], [true, '2,5', true, '11%']);
+  const doResumo = p.texto('fa-av-resumo');
+  for (const s of ['ISS retido pelo tomador', '2,5% (R$ 37,50)', 'INSS retido', 'R$ 165,00', 'Valor líquido', 'R$ 1.297,50', 'AVENIDA PAULISTA, 1000 · BELA VISTA · CEP 01310-100']) {
+    assert.ok(doResumo.includes(s), `"${s}" no resumo`);
+  }
 });

@@ -5,6 +5,7 @@ import { pedirJson, type Ia } from '../ia/claude.js'
 import { validarParsed, type Interprete } from './interprete.js'
 
 const TEXTO_OU_NULO = { anyOf: [{ type: 'string' }, { type: 'null' }] }
+const SIM_NAO_OU_NULO = { anyOf: [{ type: 'boolean' }, { type: 'null' }] }
 
 export const SCHEMA_PARSED = {
   type: 'object',
@@ -15,9 +16,13 @@ export const SCHEMA_PARSED = {
     modelo: TEXTO_OU_NULO,
     descricao: TEXTO_OU_NULO,
     prestador: TEXTO_OU_NULO,
+    iss_retido: SIM_NAO_OU_NULO,
+    aliquota_iss: TEXTO_OU_NULO,
+    inss_retido: SIM_NAO_OU_NULO,
+    inss: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'intencao'],
   additionalProperties: false,
 }
 
@@ -31,6 +36,10 @@ export const INSTRUCOES = [
   '- valor: o valor em reais com ponto decimal e duas casas, por exemplo "1500.00" para "mil e quinhentos" ou "1.500,00".',
   '- descricao: o serviço prestado, quando a pessoa disser o que foi, para ir na descrição da nota (por exemplo "Consultoria de outubro" em "nota pra Studio Lima, 350, consultoria de outubro"). Sem o nome do cliente, o valor ou o CPF/CNPJ; primeira letra maiúscula; senão null.',
   '- prestador: a empresa que EMITE a nota, só quando a mensagem diz por qual empresa a nota sai ("nota pela Oficina Trilho pra Clínica Saúde", "em nome da Studio Lima", "emitente Studio Lima", "pelo escritório", ou o CNPJ dela). Escreva o nome ou o CNPJ como a pessoa escreveu, sem "pela" ou "da". É diferente do tomador, que é para quem a nota vai: em "nota pra Studio Lima" ou "nota da Studio Lima, 350" não há prestador. Senão null.',
+  '- iss_retido: true quando a mensagem diz que o ISS é retido ("com retenção de ISS", "ISS retido", "retém ISS 2%"); false quando diz que não há retenção ("sem retenção", "sem retenção de ISS"); senão null.',
+  '- aliquota_iss: a alíquota do ISS retido, só o número como escrito ("2", "2,5"), quando aparecer; senão null.',
+  '- inss_retido: true quando diz que o INSS (ou a contribuição previdenciária) é retido ("retém INSS 11%", "INSS retido de 38,50"); false quando diz sem retenção de INSS ou "sem retenção"; senão null.',
+  '- inss: o INSS retido como escrito: percentual com o símbolo ("11%") ou valor em reais com vírgula ("38,50"); senão null. Não confunda com o valor da nota.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

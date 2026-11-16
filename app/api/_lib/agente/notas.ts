@@ -1,6 +1,7 @@
 // Notas vistas pelo agente: o número que a pessoa lê e o que vai no payload do motor
 // (Landing, lote B - conversa: número exibido e payload gravado).
 import { parseNfseXml } from '../nfse-xml.js'
+import type { EnderecoNacional, Retencao } from '../retencao.js'
 import { tipoDoDocumento } from './documentos.js'
 
 /** `nNFSe` do XML da NFS-e; sem XML legível, o número da DPS. */
@@ -19,15 +20,27 @@ export function numeroDaNota(nota: { xml_nfse: string | null; dps_numero: string
 export type TomadorDoPedido = { documento: string; nome: string; email: string | null }
 export type ServicoDoPedido = { codigo: string; descricao: string }
 
-export function payloadDaNota(tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string) {
+/**
+ * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção: a nota sem retenção tem o mesmo
+ * payload de antes.
+ */
+export function payloadDaNota(
+  tomador: TomadorDoPedido,
+  servico: ServicoDoPedido,
+  valor: string,
+  extra: { retencao?: Retencao | null; endereco?: EnderecoNacional | null } = {},
+) {
+  const retencao = extra.retencao && (extra.retencao.iss || extra.retencao.inss) ? extra.retencao : null
   return {
     tomador: {
       [tipoDoDocumento(tomador.documento)]: tomador.documento,
       nome: tomador.nome,
       ...(tomador.email ? { email: tomador.email } : {}),
+      ...(retencao?.iss && extra.endereco ? { endereco: extra.endereco } : {}),
     },
     servico: { codigo_servico_nacional: servico.codigo, descricao: servico.descricao },
     valor,
+    ...(retencao ? { retencao } : {}),
   }
 }
 

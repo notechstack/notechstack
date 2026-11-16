@@ -3,6 +3,7 @@
 // ou CNPJ e nome (o CNPJ entrou no lote B2 do agente fiscal; XSD 1.01 `TCInfoPessoa`), sem
 // endereço do tomador e sem o grupo IBSCBS. O XML sai sem indentação: quem assina
 // é o `xml-signer`, e o texto assinado não é reformatado.
+import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
 import type { SefinTenant } from './sefin.js'
 import { el, leaf } from './xml.js'
 
@@ -14,9 +15,11 @@ export const DH_EMI_SKEW_MS = 60_000
 
 export type DpsPayload = {
   /** `tag` é o elemento do leiaute: `<CPF>` ou `<CNPJ>`. */
-  tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string }
+  tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string; endereco: EnderecoNacional | null }
   servico: { codigo_servico_nacional: string; descricao: string }
   valor: string
+  /** Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. */
+  retencao: { iss: { aliquota: string } | null; inss: { valor: string } | null }
 }
 
 export class DpsInvalidError extends Error {
@@ -58,15 +61,57 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
   if (typeof valor !== 'string' || !/^\d{1,13}\.\d{2}$/.test(valor) || Number(valor) <= 0) {
     throw new DpsInvalidError('valor deve ser decimal positivo com 2 casas')
   }
+  let endereco: EnderecoNacional | null = null
+  if (payload.tomador.endereco !== undefined && payload.tomador.endereco !== null) {
+    endereco = enderecoValido(payload.tomador.endereco)
+    if (!endereco) throw new DpsInvalidError('endereço do tomador inválido')
+  }
   return {
     tomador: {
       tag: cnpj === undefined ? 'CPF' : 'CNPJ',
       documento: (cnpj ?? cpf) as string,
       nome: textField(payload.tomador.nome, 'nome do tomador', 150),
+      endereco,
     },
     servico: { codigo_servico_nacional: codigo, descricao: textField(payload.servico.descricao, 'descrição do serviço', 2000) },
     valor,
+    retencao: parseRetencao(payload.retencao, valor),
   }
+}
+
+const centavos = (v: string) => {
+  const [i, f = '0'] = v.split('.')
+  return BigInt(i) * 100n + BigInt(f.padEnd(2, '0').slice(0, 2))
+}
+
+/** `retencao` do payload: ausente = sem retenção. Formatos do leiaute (TSDec1V2 e TSDec15V2), E0595, E0699, E0428. */
+function parseRetencao(bruto: unknown, valor: string): DpsPayload['retencao'] {
+  if (bruto === undefined || bruto === null) return { iss: null, inss: null }
+  if (!isObject(bruto)) throw new DpsInvalidError('retencao deve ser um objeto')
+  let iss: { aliquota: string } | null = null
+  if (bruto.iss !== undefined && bruto.iss !== null) {
+    const aliquota = isObject(bruto.iss) ? bruto.iss.aliquota : undefined
+    if (typeof aliquota !== 'string' || !/^\d\.\d{2}$/.test(aliquota)) {
+      throw new DpsInvalidError('alíquota do ISS retido (pAliq) deve ter o formato 0.00')
+    }
+    const n = Number(aliquota)
+    if (n < ALIQUOTA_ISS_MIN || n > ALIQUOTA_ISS_MAX) throw new DpsInvalidError('alíquota do ISS retido fora de 2%–5%')
+    iss = { aliquota }
+  }
+  let inss: { valor: string } | null = null
+  if (bruto.inss !== undefined && bruto.inss !== null) {
+    const v = isObject(bruto.inss) ? bruto.inss.valor : undefined
+    if (typeof v !== 'string' || !/^\d{1,13}\.\d{2}$/.test(v) || Number(v) <= 0) {
+      throw new DpsInvalidError('INSS retido (vRetCP) deve ser decimal positivo com 2 casas')
+    }
+    // E0699: maior que zero e menor que o valor do serviço.
+    if (centavos(v) >= centavos(valor)) throw new DpsInvalidError('INSS retido (vRetCP) deve ser menor que o valor do serviço')
+    inss = { valor: v }
+  }
+  // E0428: o serviço cobre o ISS retido mais o INSS retido.
+  const iss$ = iss ? (centavos(valor) * centavos(iss.aliquota) + 5000n) / 10000n : 0n
+  if (iss$ + (inss ? centavos(inss.valor) : 0n) > centavos(valor)) throw new DpsInvalidError('retenções passam do valor do serviço')
+  return { iss, inss }
 }
 
 function checkSerie(serie: string): number {
@@ -140,6 +185,30 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
     : [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]
   const totTrib = mei ? leaf('indTotTrib', '0') : leaf('pTotTribSN', formatPercent(tenant.p_tot_trib_sn))
 
+  const { iss, inss } = data.retencao
+  // MEI não tem retenção: nem ISS (E0583) nem o grupo tribFed (E0676).
+  if (mei && (iss || inss)) throw new DpsInvalidError('MEI não tem retenção de ISS nem de INSS')
+  const end = data.tomador.endereco
+  if (iss) {
+    // E0237: ISS retido pelo tomador exige o endereço nacional dele. Tomador CPF: E0667 (decisão de 16/11/2026).
+    if (data.tomador.tag !== 'CNPJ') throw new DpsInvalidError('ISS retido só para tomador com CNPJ')
+    if (!end) throw new DpsInvalidError('ISS retido exige o endereço do tomador')
+  }
+  const tomaEnd = end
+    ? el('end', [
+        el('endNac', [leaf('cMun', end.cMun), leaf('CEP', end.cep)]),
+        leaf('xLgr', end.logradouro),
+        leaf('nro', end.numero),
+        leaf('xCpl', end.complemento ?? null),
+        leaf('xBairro', end.bairro),
+      ])
+    : null
+  // Sem retenção, pAliq fica de fora (E0625); com ISS retido de ME/EPP, é obrigatório (E0621/E0628).
+  const tribMun = iss
+    ? el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '2'), leaf('pAliq', iss.aliquota)])
+    : el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '1')])
+  const tribFed = inss ? el('tribFed', leaf('vRetCP', inss.valor)) : null
+
   const infDps = el(
     'infDPS',
     [
@@ -156,17 +225,14 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
         leaf('IM', im),
         el('regTrib', regTrib),
       ]),
-      el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome)]),
+      el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]),
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', ibge)),
         el('cServ', [leaf('cTribNac', data.servico.codigo_servico_nacional), leaf('xDescServ', data.servico.descricao)]),
       ]),
       el('valores', [
         el('vServPrest', leaf('vServ', data.valor)),
-        el('trib', [
-          el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '1')]),
-          el('totTrib', totTrib),
-        ]),
+        el('trib', [tribMun, tribFed, el('totTrib', totTrib)]),
       ]),
     ],
     { Id: id },

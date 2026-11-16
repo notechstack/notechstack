@@ -221,6 +221,14 @@
         <form id="fa-form-adicionar" class="nf-form nf-bloco" novalidate hidden>
           <div class="nf-campo"><label for="fa-add-cnpj">CNPJ da empresa</label><input id="fa-add-cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00"><small class="nf-erro" id="fa-add-cnpj-erro" hidden></small></div>
           <p class="nf-dica nf-campo--largo">Razão social, município e regime vêm da Receita Federal. A empresa precisa ser MEI ou do Simples Nacional.</p>
+          <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-add-retencao">
+            <legend>Retenção nas notas desta empresa</legend>
+            <label class="nf-aceite"><input type="checkbox" id="fa-add-retem-iss" aria-controls="fa-add-campo-iss" aria-expanded="false"> <span>Tem retenção de ISS? O cliente que recebe a nota retém o ISS.</span></label>
+            <div class="nf-campo" id="fa-add-campo-iss" hidden><label for="fa-add-aliquota-iss">Alíquota do ISS retido (%)</label><input id="fa-add-aliquota-iss" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="2,5"><small class="nf-dica">De 2% a 5%. Só para cliente com CNPJ: o endereço dele vem da Receita.</small><small class="nf-erro" id="fa-add-aliquota-iss-erro" hidden></small></div>
+            <label class="nf-aceite"><input type="checkbox" id="fa-add-retem-inss" aria-controls="fa-add-campo-inss" aria-expanded="false"> <span>Tem retenção de INSS? O cliente retém a contribuição previdenciária.</span></label>
+            <div class="nf-campo" id="fa-add-campo-inss" hidden><label for="fa-add-inss">Percentual do INSS retido (%)</label><input id="fa-add-inss" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="11"><small class="nf-dica">Sobre o valor de cada nota, por exemplo 11.</small><small class="nf-erro" id="fa-add-inss-erro" hidden></small></div>
+            <small class="nf-dica" id="fa-add-retencao-dica">Vale para todas as notas desta empresa, e cada pedido pode mudar (por exemplo, "sem retenção"). MEI não tem retenção. O nó.fiscal não calcula a regra: a contabilidade informa.</small>
+          </fieldset>
           <p class="nf-aviso" id="fa-aviso-adicionar" role="alert" hidden></p>
           <div class="nf-acoes">
             <button type="submit" class="fi-btn fi-btn--tinta" id="fa-adicionar">Adicionar</button>
@@ -262,6 +270,14 @@
               <small class="nf-erro" id="fa-emp-codigo-servico-erro" hidden></small>
             </fieldset>
             <div class="nf-campo" id="fa-emp-campo-percentual"><label for="fa-emp-percentual">Percentual de tributos do Simples (%)</label><input id="fa-emp-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-percentual-erro" hidden></small></div>
+            <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-emp-retencao">
+              <legend>Retenção nas notas desta empresa</legend>
+              <label class="nf-aceite"><input type="checkbox" id="fa-emp-retem-iss" aria-controls="fa-emp-campo-iss" aria-expanded="false"> <span>Tem retenção de ISS? O cliente que recebe a nota retém o ISS.</span></label>
+              <div class="nf-campo" id="fa-emp-campo-iss" hidden><label for="fa-emp-aliquota-iss">Alíquota do ISS retido (%)</label><input id="fa-emp-aliquota-iss" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="2,5"><small class="nf-dica">De 2% a 5%. Só para cliente com CNPJ: o endereço dele vem da Receita.</small><small class="nf-erro" id="fa-emp-aliquota-iss-erro" hidden></small></div>
+              <label class="nf-aceite"><input type="checkbox" id="fa-emp-retem-inss" aria-controls="fa-emp-campo-inss" aria-expanded="false"> <span>Tem retenção de INSS? O cliente retém a contribuição previdenciária.</span></label>
+              <div class="nf-campo" id="fa-emp-campo-inss" hidden><label for="fa-emp-inss">Percentual do INSS retido (%)</label><input id="fa-emp-inss" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="11"><small class="nf-dica">Sobre o valor de cada nota, por exemplo 11.</small><small class="nf-erro" id="fa-emp-inss-erro" hidden></small></div>
+              <small class="nf-dica" id="fa-emp-retencao-dica">Vale para todas as notas desta empresa, e cada pedido pode mudar. MEI não tem retenção.</small>
+            </fieldset>
             <p class="nf-aviso" id="fa-aviso-emp-fiscal" role="alert" hidden></p>
             <div class="nf-acoes">
               <button type="submit" class="fi-btn fi-btn--tinta" id="fa-emp-salvar-fiscal">Salvar dados fiscais</button>
@@ -302,6 +318,14 @@
             <div class="nf-resultados" aria-live="polite"></div>
             <p class="nf-escolhido" hidden></p>
             <small class="nf-erro" id="fa-av-codigo-erro" hidden></small>
+          </fieldset>
+          <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-av-retencao">
+            <legend>Retenção nesta nota</legend>
+            <label class="nf-aceite"><input type="checkbox" id="fa-av-retem-iss" aria-controls="fa-av-campo-iss" aria-expanded="false"> <span>Tem retenção de ISS? O cliente que recebe a nota retém o ISS.</span></label>
+            <div class="nf-campo" id="fa-av-campo-iss" hidden><label for="fa-av-aliquota-iss">Alíquota do ISS retido (%)</label><input id="fa-av-aliquota-iss" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="2,5"><small class="nf-dica">De 2% a 5%. Só para cliente com CNPJ: o endereço dele vem da Receita.</small><small class="nf-erro" id="fa-av-aliquota-iss-erro" hidden></small></div>
+            <label class="nf-aceite"><input type="checkbox" id="fa-av-retem-inss" aria-controls="fa-av-campo-inss" aria-expanded="false"> <span>Tem retenção de INSS? O cliente retém a contribuição previdenciária.</span></label>
+            <div class="nf-campo" id="fa-av-campo-inss" hidden><label for="fa-av-inss">INSS retido (percentual ou valor)</label><input id="fa-av-inss" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="11%"><small class="nf-dica">O percentual (11%) ou o valor em reais (165,00).</small><small class="nf-erro" id="fa-av-inss-erro" hidden></small></div>
+            <small class="nf-dica" id="fa-av-retencao-dica">Vem marcada com a retenção cadastrada na empresa; mude só para esta nota.</small>
           </fieldset>
           <div class="nf-campo nf-campo--largo"><label for="fa-av-descricao">Descrição na nota (opcional)</label><textarea id="fa-av-descricao" rows="3" maxlength="2000" placeholder="Prestação de serviços"></textarea><small class="nf-erro" id="fa-av-descricao-erro" hidden></small></div>
           <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-av-conferir">Conferir a nota</button></div>

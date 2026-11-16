@@ -165,3 +165,6 @@
 .nf-lote-empresas:empty{display:none}
 #fa-painel-emitir textarea{min-height:76px}
 #fa-av-avisos .nf-aviso{margin-top:10px}
+
+/* Retenção (16/11/2026): o campo aberto pela caixa fica recuado e estreito, embaixo dela. */
+.nf-retencao .nf-campo{max-width:320px;margin-left:28px}

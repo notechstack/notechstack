@@ -8,7 +8,8 @@
 //
 // Sessão Supabase do site (Authorization: Bearer). A conta é a do login (`fiscal_accounts` com e-mail confirmado);
 // toda empresa pedida tem de ser do dono (`nofiscal.empresas_do_dono`), e todo lote, da conta-mãe. Ações (JSON,
-// `acao`): `contexto`, `modelos`, `avulsa_conferir`, `avulsa_emitir`, `lote_confirmar`, `lote_descartar`. A planilha
+// `acao`): `contexto`, `modelos`, `avulsa_conferir`, `avulsa_emitir`, `lote_confirmar`, `lote_descartar` e
+// `empresa_retencao` (o padrão de retenção de ISS/INSS da empresa, marcado ao adicionar a empresa cliente). A planilha
 // (`lote_ler`) chega em multipart/form-data com o campo `arquivo`.
 import type { Db, Queryable } from './db.js'
 import { errorResponse, json } from './http.js'
@@ -38,6 +39,18 @@ import { payloadDaNota } from './agente/notas.js'
 import { planoDeEscritorio } from './agente/planos.js'
 import type { InvoicePayload } from './validation.js'
 import type { SessionVerifier } from './session.js'
+import {
+  lerAliquotaIss,
+  lerPercentualInss,
+  motivoDaRetencao,
+  resolverRetencao,
+  SEM_RETENCAO_PADRAO,
+  visaoDaRetencao,
+  type EnderecoDoTomador,
+  type EnderecoNacional,
+  type Retencao,
+  type RetencaoDoPedido,
+} from './retencao.js'
 
 export type PainelEmissaoDeps = {
   /** Conexão como `nofiscal_service`, a mesma do agente. */
@@ -45,6 +58,8 @@ export type PainelEmissaoDeps = {
   sessions: SessionVerifier
   /** Nome do código de serviço no resumo; sem ele, só o código. */
   catalogo?: CatalogoDeServicos
+  /** Endereço do tomador na Receita (ISS retido, E0237); sem ela, nota com ISS retido não sai. */
+  enderecos?: EnderecoDoTomador | null
   now?: () => Date
 }
 
@@ -104,9 +119,11 @@ export type PedidoDoPainel = {
   valor: string
   codigo: string
   descricao: string
+  /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
+  retencao?: RetencaoDoPedido
 }
 
-export type CampoDoPainel = 'tenant_id' | 'documento' | 'nome' | 'email' | 'valor' | 'codigo' | 'descricao'
+export type CampoDoPainel = 'tenant_id' | 'documento' | 'nome' | 'email' | 'valor' | 'codigo' | 'descricao' | 'aliquota_iss' | 'inss' | 'retencao'
 
 export type LeituraDoPedido = { ok: true; pedido: PedidoDoPainel } | { ok: false; campo: CampoDoPainel; mensagem: string }
 
@@ -139,11 +156,39 @@ export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa,
   const descricao = typeof corpo.descricao === 'string' ? corpo.descricao.trim() : ''
   if (descricao.length > 2000) return falha('descricao', 'A descrição passa de 2.000 caracteres.')
 
-  return { ok: true, pedido: { tenantId, documento, nome, email, valor, codigo, descricao: descricao || DESCRICAO_PADRAO } }
+  let retencao: RetencaoDoPedido | undefined
+  if (typeof corpo.retem_iss === 'boolean' || typeof corpo.retem_inss === 'boolean') {
+    retencao = { iss: corpo.retem_iss === true, inss: corpo.retem_inss === true }
+    if (retencao.iss) {
+      const aliquota = texto(corpo.aliquota_iss)
+      if (!lerAliquotaIss(aliquota)) return falha('aliquota_iss', 'Informe a alíquota do ISS retido, de 2% a 5% (por exemplo 2,5).')
+      retencao.aliquotaIss = aliquota
+    }
+    if (retencao.inss) {
+      const inss = texto(corpo.inss)
+      if (!inss) return falha('inss', 'Informe o INSS retido: o percentual (11%) ou o valor (165,00).')
+      retencao.inssTexto = inss
+    }
+  }
+
+  return { ok: true, pedido: { tenantId, documento, nome, email, valor, codigo, descricao: descricao || DESCRICAO_PADRAO, retencao } }
 }
 
-const payloadDoPedido = (p: PedidoDoPainel) =>
-  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao }, p.valor)
+const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
+  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao }, p.valor, {
+    retencao,
+    endereco,
+  })
+
+/** Campo do formulário que mostra cada problema de retenção. */
+const CAMPO_DA_RETENCAO: Record<string, CampoDoPainel> = {
+  ALIQUOTA_ISS_FALTANDO: 'aliquota_iss',
+  ALIQUOTA_ISS_INVALIDA: 'aliquota_iss',
+  INSS_FALTANDO: 'inss',
+  INSS_INVALIDO: 'inss',
+  RETENCOES_ACIMA_DO_VALOR: 'inss',
+  ISS_RETIDO_CPF: 'documento',
+}
 
 // ---------------------------------------------------------------------------------------
 // Entrada.
@@ -183,6 +228,8 @@ export async function handlePainelEmissao(request: Request, deps: PainelEmissaoD
         return await loteConfirmar(ctx, b)
       case 'lote_descartar':
         return await loteDescartar(ctx, b)
+      case 'empresa_retencao':
+        return await empresaRetencao(ctx, b)
       default:
         return errorResponse('VALIDATION_FAILED', 'ação desconhecida')
     }
@@ -206,6 +253,8 @@ async function contexto(ctx: Contexto): Promise<Response> {
       ...visao(e),
       principal: e.id === ctx.dono.id,
       codigo_servico_nacional: e.codigo_servico_nacional,
+      regime: e.regime ?? null,
+      retencao: e.retencao ?? SEM_RETENCAO_PADRAO,
       bloqueio: bloqueio ? { codigo: bloqueio, motivo: motivoDoProblema(bloqueio, { empresa: e.razao_social }) } : null,
     })
   }
@@ -254,7 +303,24 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
     return errorResponse('EMISSAO_BLOQUEADA', `Não dá para emitir: ${motivo}.`, { bloqueio })
   }
 
-  const payload = payloadDoPedido(pedido)
+  // Retenção: as caixas do formulário (ou o padrão da empresa) e, com ISS retido, o endereço do tomador na Receita.
+  const resolvida = resolverRetencao({
+    padrao: emp.retencao ?? SEM_RETENCAO_PADRAO,
+    pedido: pedido.retencao,
+    valor: pedido.valor,
+    regime: emp.regime ?? null,
+    tomadorTipo: tipoDoDocumento(pedido.documento),
+  })
+  if (!resolvida.ok) {
+    return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao(resolvida.problema)}.`, { campo: CAMPO_DA_RETENCAO[resolvida.problema] ?? 'retencao' })
+  }
+  let endereco: EnderecoNacional | null = null
+  if (resolvida.retencao?.iss) {
+    endereco = ctx.deps.enderecos ? await ctx.deps.enderecos.endereco(pedido.documento).catch(() => null) : null
+    if (!endereco) return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao('ENDERECO_TOMADOR')}.`, { campo: 'retencao' })
+  }
+
+  const payload = payloadDoPedido(pedido, resolvida.retencao, endereco)
   if (emitir) {
     const nota = await ctx.db.transaction((tx) =>
       createOrGetInvoice(tx, emp.id, { external_id: `painel:${chave}`, payload: payload as unknown as InvoicePayload }),
@@ -284,6 +350,8 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       servico: { codigo: pedido.codigo, nome: nomeDoServico, descricao: pedido.descricao },
       valor: pedido.valor,
       valor_texto: formatarReais(pedido.valor),
+      retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),
+      endereco_tomador: endereco,
     },
     bloqueio: bloqueio ? { codigo: bloqueio, motivo } : null,
     avisos,
@@ -313,6 +381,7 @@ async function loteLer(ctx: Contexto, request: Request): Promise<Response> {
     conteudo: new Uint8Array(await arquivo.arrayBuffer()),
     tipo,
     agora: ctx.agora,
+    consulta: ctx.deps.enderecos ?? null,
   })
   if (!lido.ok) {
     // A resposta do WhatsApp para a planilha repetida manda responder *cancelar*; no painel, o botão descarta.
@@ -398,4 +467,42 @@ async function loteDescartar(ctx: Contexto, b: Record<string, unknown>): Promise
   if (rowCount !== 1) return errorResponse('LOTE_FECHADO', TEXTOS_DO_PAINEL.loteFechado)
   logEvent('nofiscal.painel_lote_descartado', { tenant_id: ctx.dono.id, lote_id: lote.id })
   return json(200, { descartado: true })
+}
+
+// ---------------------------------------------------------------------------------------
+// Padrão de retenção da empresa (Lucca, 16/11/2026): as caixas "tem retenção de ISS?" e "tem retenção de INSS?" ao
+// adicionar a empresa cliente (e depois, em Minhas empresas). Vale para as notas dela; cada pedido pode mudar.
+
+export type LeituraDaRetencao =
+  | { ok: true; valores: { retem_iss: boolean; aliquota_iss: string | null; retem_inss: boolean; inss_percentual: string | null } }
+  | { ok: false; campo: 'aliquota_iss' | 'inss_percentual' | 'retencao'; mensagem: string }
+
+/** O formulário do padrão: alíquota de 2% a 5% com ISS retido, percentual de 0 a 100 com INSS retido; MEI não retém. */
+export function lerRetencaoDaEmpresa(corpo: Record<string, unknown>, regime: string | null | undefined): LeituraDaRetencao {
+  const retemIss = corpo.retem_iss === true
+  const retemInss = corpo.retem_inss === true
+  if ((retemIss || retemInss) && regime === 'mei') {
+    return { ok: false, campo: 'retencao', mensagem: 'MEI não tem retenção de ISS nem de INSS na nota (a Sefin recusa).' }
+  }
+  const aliquota = retemIss ? lerAliquotaIss(texto(corpo.aliquota_iss)) : null
+  if (retemIss && !aliquota) return { ok: false, campo: 'aliquota_iss', mensagem: 'Informe a alíquota do ISS retido, de 2% a 5% (por exemplo 2,5).' }
+  const percentual = retemInss ? lerPercentualInss(texto(corpo.inss_percentual)) : null
+  if (retemInss && !percentual) return { ok: false, campo: 'inss_percentual', mensagem: 'Informe o percentual do INSS retido (por exemplo 11).' }
+  return { ok: true, valores: { retem_iss: retemIss, aliquota_iss: aliquota, retem_inss: retemInss, inss_percentual: percentual } }
+}
+
+async function empresaRetencao(ctx: Contexto, b: Record<string, unknown>): Promise<Response> {
+  const empresa = ctx.empresas.find((e) => e.id === b.tenant_id)
+  if (!empresa) return errorResponse('NOT_FOUND', TEXTOS_DO_PAINEL.empresaDesconhecida)
+  const lido = lerRetencaoDaEmpresa(b, empresa.regime)
+  if (!lido.ok) return errorResponse('VALIDATION_FAILED', lido.mensagem, { campo: lido.campo })
+  const v = lido.valores
+  await ctx.db.query(
+    `update nofiscal.fiscal_tenants
+        set retem_iss = $2, aliquota_iss = $3, retem_inss = $4, inss_percentual = $5, updated_at = $6
+      where id = $1`,
+    [empresa.id, v.retem_iss, v.aliquota_iss, v.retem_inss, v.inss_percentual, ctx.agora],
+  )
+  logEvent('nofiscal.painel_retencao_salva', { tenant_id: empresa.id, retem_iss: v.retem_iss, retem_inss: v.retem_inss })
+  return json(200, { tenant_id: empresa.id, retencao: v })
 }
