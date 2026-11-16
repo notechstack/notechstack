@@ -407,8 +407,24 @@ export function textoDoResumo(
 export const TEXTO_SEM_RETENCAO_POSSIVEL =
   'Responda *corrigir* e me diga a retenção certa (por exemplo: ISS retido 2%, INSS 11%, ou sem retenção), ou *descartar*.'
 
-const textoDoProblemaDeRetencao = (problema: string) =>
-  `Não dá para emitir esta nota assim: ${motivoDaRetencao(problema)}.\n${TEXTO_SEM_RETENCAO_POSSIVEL}`
+/**
+ * Retenção pedida no WhatsApp e não cadastrada no painel (Lucca, 16/11/2026): o pedido só retém o que a empresa tem
+ * marcado em Minha conta → Minhas empresas (Adicionar empresa ou Dados fiscais). A alíquota ou o valor escritos no
+ * pedido valem para a nota; o que precisa estar cadastrado é o tipo de retenção (ISS, INSS).
+ */
+export const NAO_CADASTRADA = { ISS_NAO_CADASTRADO: 'ISS', INSS_NAO_CADASTRADO: 'INSS' } as const
+
+function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: string, empresa?: string | null): string {
+  const tipo = NAO_CADASTRADA[problema as keyof typeof NAO_CADASTRADA]
+  if (tipo) {
+    return [
+      `A retenção de ${tipo} não está cadastrada para ${empresa ?? 'a empresa que emite'}, e nada foi emitido.`,
+      `Cadastre em Minha conta → Minhas empresas → Dados fiscais (${ctx.links.conta}#empresas), marcando "Tem retenção de ${tipo}?", e depois responda *corrigir* com a retenção.`,
+      'Se a nota não tem retenção, responda *corrigir* e diga sem retenção.',
+    ].join('\n')
+  }
+  return `Não dá para emitir esta nota assim: ${motivoDaRetencao(problema)}.\n${TEXTO_SEM_RETENCAO_POSSIVEL}`
+}
 
 /**
  * Retenção desta nota (Lucca, 16/11/2026): o pedido manda, o resto é o padrão da empresa que emite. Com ISS retido, o
@@ -420,19 +436,21 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   const servico = conversa.servico as ServicoDoPedido
   const valor = conversa.valor as string
   const { rows } = await ctx.deps.db.query<Record<string, unknown>>(
-    `select regime, ${COLUNAS_DA_RETENCAO} from nofiscal.fiscal_tenants where id = $1`,
+    `select regime, razao_social, ${COLUNAS_DA_RETENCAO} from nofiscal.fiscal_tenants where id = $1`,
     [tenantId],
   )
   const linha = rows[0]
-  const resolvida = resolverRetencao({
-    padrao: linha ? padraoDaLinha(linha) : SEM_RETENCAO_PADRAO,
-    pedido: conversa.retencao_pedido,
-    valor,
-    regime: typeof linha?.regime === 'string' ? linha.regime : null,
-    tomadorTipo: tipoDoDocumento(tomador.documento),
-  })
+  const padrao = linha ? padraoDaLinha(linha) : SEM_RETENCAO_PADRAO
+  const regime = typeof linha?.regime === 'string' ? linha.regime : null
+  const resolvida = resolverRetencao({ padrao, pedido: conversa.retencao_pedido, valor, regime, tomadorTipo: tipoDoDocumento(tomador.documento) })
   let problema: string | null = resolvida.ok ? null : resolvida.problema
-  const retencao = resolvida.ok ? resolvida.retencao : null
+  // O tipo de retenção pedido precisa estar cadastrado no painel (o MEI cai antes, em RETENCAO_MEI).
+  if (resolvida.ok && resolvida.retencao) {
+    if (resolvida.retencao.iss && !padrao.retem_iss) problema = 'ISS_NAO_CADASTRADO'
+    else if (resolvida.retencao.inss && !padrao.retem_inss) problema = 'INSS_NAO_CADASTRADO'
+  }
+  const nomeDaEmpresa = typeof linha?.razao_social === 'string' ? linha.razao_social : null
+  const retencao = resolvida.ok && !problema ? resolvida.retencao : null
   let endereco: EnderecoNacional | null = null
   if (retencao?.iss) {
     const consulta = ctx.deps.consultaCnpj
@@ -443,7 +461,7 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   await atualizarPedido(ctx.deps.db, pedidoId, 'confirmar', atualizada, ctx.agora)
   if (problema) {
     logEvent('agente.retencao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
-    return textoDoProblemaDeRetencao(problema)
+    return textoDoProblemaDeRetencao(ctx, problema, nomeDaEmpresa)
   }
   const nome = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(servico.codigo).catch(() => null) : null
   return textoDoResumo(tomador, servico, valor, nome, conversa.emitente, retencao)
@@ -890,7 +908,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
     const { tomador, servico, valor } = pedido.conversa
     if (!tomador?.documento || !tomador.nome || !servico || !valor) throw new Error('pedido sem os dados do resumo')
     if (pedido.conversa.retencao_problema) {
-      await responder(ctx, textoDoProblemaDeRetencao(pedido.conversa.retencao_problema))
+      await responder(ctx, textoDoProblemaDeRetencao(ctx, pedido.conversa.retencao_problema, pedido.conversa.emitente?.razao_social))
       return
     }
     const criada = await db.transaction(async (tx) => {

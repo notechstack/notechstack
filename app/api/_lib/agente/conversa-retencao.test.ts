@@ -95,13 +95,26 @@ describe('retenção no pedido pelo WhatsApp', () => {
   const BRAGANTINA =
     'Emitir uma nota fiscal da 4 ESTACOES BRAGANCA LTDA para tomadora CONTABILIDADE BRAGANTINA LTDA no valor de 1,00. Tem retenção de ISS pela tomadora na alíquota de 2,01%.'
 
-  it('pedido real da Bragantina: a retenção de 2,01% aparece no resumo e vai na nota', async () => {
+  it('pedido real da Bragantina: sem cadastro no painel não emite; cadastrada, a retenção de 2,01% aparece no resumo e vai na nota', async () => {
     const s = await cenario()
     await criarModelo(admin.db, s.tenant.id, { ...modelo(CNPJ_TOMADOR), nome: 'Contabilidade Bragantina', nomeTomador: 'CONTABILIDADE BRAGANTINA LTDA' })
+    const retencao = 'é com ISS retido de 2,01%'
     const c = conversa({
       [BRAGANTINA]: { tomador: 'CONTABILIDADE BRAGANTINA LTDA', valor: '1.00', iss_retido: true, aliquota_iss: '2,01', intencao: 'emitir' },
+      [retencao]: { iss_retido: true, aliquota_iss: '2,01', intencao: 'outro' },
     })
+    // Sem a retenção de ISS cadastrada para a empresa: explica onde cadastrar e não emite.
     await c.enviar(s.ownerPhone, BRAGANTINA)
+    const aviso = c.ultimaPara(s.ownerPhone)
+    expect(aviso).toContain('A retenção de ISS não está cadastrada para')
+    expect(aviso).toContain(`${LINKS_DE_TESTE.conta}#empresas`)
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
+
+    // Cadastrada no painel (padrão 2,5%): a alíquota do pedido (2,01%) vale para esta nota.
+    await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.50' })
+    await c.enviar(s.ownerPhone, 'corrigir')
+    await c.enviar(s.ownerPhone, retencao)
     expect(c.ultimaPara(s.ownerPhone)).toContain('Valor: R$ 1,00\nISS retido pelo tomador: 2,01% (R$ 0,02)\nValor líquido: R$ 0,98\nPosso emitir?')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toEqual({ iss: { aliquota: '2.01' } })
@@ -154,9 +167,11 @@ describe('retenção no pedido pelo WhatsApp', () => {
 
   it('ISS retido de tomador CPF não emite; corrigir com "sem retenção de ISS" e "retém INSS 11%" libera', async () => {
     const s = await cenario()
+    await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.00' })
     await criarModelo(admin.db, s.tenant.id, modelo('52998224725'))
     const texto = 'nota pra Clínica, 1500, com retenção de ISS 2%'
     const correcao = 'sem retenção de ISS, retém INSS 11%'
+    // INSS cadastrado no painel depois do primeiro pedido: a correção já o encontra.
     const c = conversa({ [texto]: pedido({ iss_retido: true, aliquota_iss: '2' }), [correcao]: { iss_retido: false, inss_retido: true, inss: '11%', intencao: 'outro' } })
 
     await c.enviar(s.ownerPhone, texto)
@@ -165,6 +180,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
     expect(c.ultimaPara(s.ownerPhone)).toContain('Não dá para emitir esta nota assim')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
+    await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.00', retem_inss: true, inss_percentual: '5.00' })
     await c.enviar(s.ownerPhone, 'corrigir')
     await c.enviar(s.ownerPhone, correcao)
     const resumo = c.ultimaPara(s.ownerPhone)
