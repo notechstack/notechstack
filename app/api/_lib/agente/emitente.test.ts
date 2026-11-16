@@ -30,6 +30,7 @@ import { fakeSefin } from '../../_tests/sefin-fake.js'
 import { createSefinClient } from '../sefin-client.js'
 import { processarMensagem, TEXTOS, type ConversaDeps } from './conversa.js'
 import { formatarDocumento } from './documentos.js'
+import { dataBr } from './tempo.js'
 import { empresasDaResposta, empresasQueBatem, perguntaDoEmitente, type EmpresaDaConta } from './emitente.js'
 import type { Parsed } from './interprete.js'
 
@@ -480,12 +481,12 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
     const lista = c.ultimaPara(e.mae.ownerPhone)
     expect(lista).toContain('Achei mais de uma nota.')
     expect(lista).toContain('R$ 100,00')
-    expect(lista).toContain('· Contábil Aurora Ltda')
-    expect(lista).toContain('· Oficina Trilho Ltda')
+    expect(lista).toContain('1) nº 5 de Oficina Trilho Ltda para Clínica Saúde · R$ 450,00')
+    expect(lista).toContain('2) nº 5 de Contábil Aurora Ltda para Clínica Saúde · R$ 100,00')
 
-    // O número sozinho não escolhe entre as duas empresas.
-    await c.enviar(e.mae.ownerPhone, '5')
-    expect(c.ultimaPara(e.mae.ownerPhone).split('\n')[0]).toBe('Há mais de uma nota nº 5. Cancele uma de cada vez, dizendo a empresa e o cliente no pedido:')
+    // O nº da nota sozinho não escolhe entre as duas empresas: a lista volta com as duas.
+    await c.enviar(e.mae.ownerPhone, 'nº 5')
+    expect(c.ultimaPara(e.mae.ownerPhone).split('\n')[0]).toBe('2 notas batem com isso. Qual delas você quer cancelar?')
     expect(await situacaoDa(doEscritorio)).toBe('issued')
     expect(await situacaoDa(daOficina)).toBe('issued')
 
@@ -496,6 +497,132 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
     await c.enviar(e.mae.ownerPhone, 'confirmar')
     expect(await situacaoDa(daOficina)).toBe('cancel_requested')
     expect(await situacaoDa(doEscritorio)).toBe('issued')
+  })
+
+  // Caso real (16/11/2026, conta Escritório): duas empresas da conta com a NFS-e nº 2. A pessoa respondeu "2", colou a
+  // linha da lista, escreveu "N.º 2 - 1,00" e o nome da empresa, e o agente ficou em laço (ou mandou a ajuda genérica)
+  // até a nota ser cancelada pelo banco. Cada uma dessas respostas agora escolhe ou estreita a lista.
+  describe('duas notas nº 2 na mesma conta (caso de 16/11/2026)', () => {
+    const PEDIDO = 'cancelar a nota fiscal'
+    const roteiro = { [PEDIDO]: { intencao: 'cancelar' as const }, 'hein?': { intencao: 'outro' as const } }
+
+    /** Escritório Contabilidade Bragantina com a empresa cliente 4 Estações; a lista sai na ordem 1) 4 Estações nº 2, 2) escritório nº 2, 3) escritório nº 1. */
+    async function bragantina() {
+      const certificado = sharedTestCertificate().certificado
+      const e = await createEscritorio(admin.db, {
+        certificado,
+        razaoSocial: 'CONTABILIDADE BRAGANTINA LTDA.',
+        empresas: [{ certificado, razaoSocial: '4 ESTACOES BRAGANCA LTDA' }],
+      })
+      escritorios.push(e)
+      const [estacoes] = e.empresas
+      const n1 = await notaEmitida(e.mae.tenant.id, { numero: 1, nome: 'Soares de Campos Holding Ltda', valor: '250.00' })
+      const n2DoEscritorio = await notaEmitida(e.mae.tenant.id, { numero: 2, nome: 'Soares de Campos Holding Ltda', valor: '1.00' })
+      const n2Da4Estacoes = await notaEmitida(estacoes.id, { numero: 2, nome: 'CONTABILIDADE BRAGANTINA LTDA', valor: '1.00' })
+      return { e, estacoes, n1, n2DoEscritorio, n2Da4Estacoes, fone: e.mae.ownerPhone }
+    }
+
+    const nenhumaCancelada = async (ids: string[]) => {
+      for (const id of ids) expect(await situacaoDa(id)).toBe('issued')
+    }
+
+    it('a lista numera pela posição e põe o prestador antes do cliente', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+      const hoje = dataBr(new Date())
+      expect(c.ultimaPara(b.fone).split('\n')).toEqual([
+        'Achei mais de uma nota. Qual delas você quer cancelar?',
+        `1) nº 2 de 4 ESTACOES BRAGANCA LTDA para CONTABILIDADE BRAGANTINA LTDA · R$ 1,00 · ${hoje}`,
+        `2) nº 2 de CONTABILIDADE BRAGANTINA LTDA. para Soares de Campos Holding Ltda · R$ 1,00 · ${hoje}`,
+        `3) nº 1 de CONTABILIDADE BRAGANTINA LTDA. para Soares de Campos Holding Ltda · R$ 250,00 · ${hoje}`,
+        'Responda com o número da opção (1, 2…). Também vale o nome da empresa, do cliente ou o valor. Para sair, escreva *sair*.',
+      ])
+    })
+
+    it('"2" escolhe a opção 2, não a nota nº 2: sem laço', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+      await c.enviar(b.fone, '2')
+      const pergunta = c.ultimaPara(b.fone).split('\n')
+      expect(pergunta.slice(0, 3)).toEqual(['Nota nº 2', 'Emitente: CONTABILIDADE BRAGANTINA LTDA.', 'Tomador: Soares de Campos Holding Ltda'])
+      expect(pergunta.at(-1)).toContain('Cancelo esta nota?')
+      await c.enviar(b.fone, 'confirmar')
+      expect(await situacaoDa(b.n2DoEscritorio)).toBe('cancel_requested')
+      await nenhumaCancelada([b.n2Da4Estacoes, b.n1])
+    })
+
+    it('"N.º 2 - 1,00" estreita para as duas nº 2; a linha colada da lista antiga escolhe a da 4 Estações', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+
+      await c.enviar(b.fone, 'N.º 2 - 1,00')
+      const restantes = c.ultimaPara(b.fone).split('\n')
+      expect(restantes[0]).toBe('2 notas batem com isso. Qual delas você quer cancelar?')
+      expect(restantes[1]).toMatch(/^1\) nº 2 de 4 ESTACOES BRAGANCA LTDA para /)
+      expect(restantes[2]).toMatch(/^2\) nº 2 de CONTABILIDADE BRAGANTINA LTDA\. para /)
+      expect(restantes).toHaveLength(4)
+      await nenhumaCancelada([b.n2Da4Estacoes, b.n2DoEscritorio, b.n1])
+
+      // A linha como a lista antiga mostrava, colada inteira.
+      await c.enviar(b.fone, `nº 2 · CONTABILIDADE BRAGANTINA LTDA · R$ 1,00 · ${dataBr(new Date())} · 4 ESTACOES BRAGANCA LTDA`)
+      const pergunta = c.ultimaPara(b.fone).split('\n')
+      expect(pergunta.slice(0, 3)).toEqual(['Nota nº 2', 'Emitente: 4 ESTACOES BRAGANCA LTDA', 'Tomador: CONTABILIDADE BRAGANTINA LTDA'])
+      expect((await pedidosDo(admin.db, b.estacoes.id))[0]).toMatchObject({ kind: 'cancelar', etapa: 'confirmar', invoice_id: b.n2Da4Estacoes })
+
+      await c.enviar(b.fone, 'confirmar')
+      expect(await situacaoDa(b.n2Da4Estacoes)).toBe('cancel_requested')
+      await nenhumaCancelada([b.n2DoEscritorio, b.n1])
+    })
+
+    it('o nome da empresa escolhe; "4 ESTACOES" não vira a nota nº 4', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+      await c.enviar(b.fone, '4 ESTACOES BRAGANCA LTDA')
+      const pergunta = c.ultimaPara(b.fone)
+      expect(pergunta).not.toContain('Não achei a nota nº 4')
+      expect(pergunta.split('\n').slice(0, 2)).toEqual(['Nota nº 2', 'Emitente: 4 ESTACOES BRAGANCA LTDA'])
+    })
+
+    it('o que não se entende repete a lista, nunca a ajuda genérica; "sair" larga sem cancelar', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+
+      await c.enviar(b.fone, 'hein?')
+      const deNovo = c.ultimaPara(b.fone).split('\n')
+      expect(deNovo[0]).toBe('Não entendi qual nota você quer cancelar.')
+      expect(deNovo.slice(1, 4).map((l) => l.slice(0, 2))).toEqual(['1)', '2)', '3)'])
+      expect(deNovo.at(-1)).toContain('*sair*')
+      expect(c.respostasPara(b.fone)).not.toContain(TEXTOS.ajudaEscritorio)
+
+      // Mensagem que nem a IA lê (o dublê sem roteiro falha como a IA fora do ar): a lista também volta.
+      await c.enviar(b.fone, 'qual mesmo')
+      expect(c.ultimaPara(b.fone).split('\n')[0]).toBe('Não entendi qual nota você quer cancelar.')
+
+      await c.enviar(b.fone, 'R$ 99,00')
+      expect(c.ultimaPara(b.fone).split('\n')[0]).toBe('Nenhuma nota da lista bate com isso. Qual delas você quer cancelar?')
+
+      await c.enviar(b.fone, 'confirmar')
+      expect(c.ultimaPara(b.fone).split('\n')[0]).toBe(TEXTOS.escolherAntes)
+
+      await c.enviar(b.fone, 'sair')
+      expect(c.ultimaPara(b.fone)).toBe(TEXTOS.cancelamentoDesistido)
+      await nenhumaCancelada([b.n2Da4Estacoes, b.n2DoEscritorio, b.n1])
+      expect((await pedidosDo(admin.db, b.e.mae.tenant.id))[0]).toMatchObject({ status: 'rejected_by_user', etapa: null })
+    })
+
+    it('"cancelar pedido" também sai', async () => {
+      const b = await bragantina()
+      const c = conversa(roteiro)
+      await c.enviar(b.fone, PEDIDO)
+      await c.enviar(b.fone, 'cancelar pedido')
+      expect(c.ultimaPara(b.fone)).toBe(TEXTOS.cancelamentoDesistido)
+      await nenhumaCancelada([b.n2Da4Estacoes, b.n2DoEscritorio, b.n1])
+    })
   })
 
   it('nota de outra conta não aparece', async () => {

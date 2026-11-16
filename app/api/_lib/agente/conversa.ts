@@ -35,6 +35,7 @@ import { MODELO_DA_PLANILHA, planoDeEscritorio, TEXTO_VER_NOTA } from './planos.
 import { tratarPedidoDeModelo } from './modelo-emissao.js'
 import { tratarVerNota } from './ver-nota.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
+import { ehSairDaEscolha, lerEscolhaDeNota, listaDeOpcoes, type Candidata } from './escolher-nota.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 import type { BaixaMidia } from './whatsapp-cloud.js'
 
@@ -102,7 +103,7 @@ export const TEXTOS = {
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
-  escolherAntes: 'Antes, me diga o número da nota que você quer cancelar.',
+  escolherAntes: 'Antes, me diga qual nota você quer cancelar.',
   numeroConfirmado: 'Número confirmado. Você já pode pedir notas por aqui.',
   codigoRecusado: 'Esse código não vale (errado ou vencido). Peça um novo ao dono da conta no site da Nó.',
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
@@ -397,12 +398,6 @@ function textoDoBloqueioDoEmitente(ctx: Contexto, codigo: string, emitente?: Emi
   return `Não dá para emitir por ${emitente.razao_social}: ${motivoDoProblema(codigo, { empresa: emitente.razao_social })}. Resolva em Minha conta → Minhas empresas: ${ctx.links.conta}#empresas`
 }
 
-/** `empresa` = a razão social de quem emitiu, só na conta Escritório com mais de uma empresa (a numeração é por empresa). */
-type Candidata = { id: string; tenantId: string; numero: string; nome: string; valor: string | null; emitidaEm: Date; empresa: string | null }
-
-const linhaDaCandidata = (c: Candidata) =>
-  `nº ${c.numero} · ${c.nome} · ${c.valor ? formatarReais(c.valor) : '-'} · ${dataBr(c.emitidaEm)}${c.empresa ? ` · ${c.empresa}` : ''}`
-
 const perguntaDeCancelamento = (c: Candidata) =>
   [
     `Nota nº ${c.numero}`,
@@ -517,7 +512,7 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
     if (!(pedido && (await responderEtapa(ctx, pedido, texto)))) {
       if (ehConfirmar(texto)) await confirmarSemEtapa(ctx, pedido)
-      else await novoPedido(ctx, texto)
+      else await novoPedido(ctx, texto, escolhendoNota(pedido, agora))
     }
   } finally {
     // A mensagem recebida e as respostas contam no pedido a que pertencem (C39).
@@ -650,13 +645,12 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
 
     case 'escolher_nota':
       if (pedido.status !== 'awaiting_confirmation') return false
-      if (ehManterNota(texto) || ehDesistir(texto)) {
+      if (ehManterNota(texto) || ehDesistir(texto) || ehSairDaEscolha(texto)) {
         await descartar(ctx, pedido, TEXTOS.cancelamentoDesistido)
         return true
       }
       if (ehConfirmar(texto)) {
-        ctx.pedidoId = pedido.id
-        await responder(ctx, TEXTOS.escolherAntes)
+        await repetirOpcoes(ctx, pedido, TEXTOS.escolherAntes)
         return true
       }
       return escolherNota(ctx, pedido, texto)
@@ -937,27 +931,54 @@ async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): 
   return true
 }
 
-async function escolherNota(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
-  const m = /^\D*(\d{1,15})\D*$/.exec(texto)
-  if (!m) return false
+/** As notas do pedido, na ordem da lista mostrada; `null` onde a nota não está mais emitida. */
+async function opcoesDoPedido(ctx: Contexto, pedido: Pedido): Promise<(Candidata | null)[]> {
+  const ids = (pedido.conversa.candidatas ?? []).map((c) => c.id)
+  if (!ids.length) return []
+  const notas = await buscarNotas(ctx.deps.db, await escopoDeNotas(ctx), { ids })
+  return ids.map((id) => notas.find((n) => n.id === id) ?? null)
+}
+
+/** A lista de novo, com o que ainda está emitido, e o jeito de responder: dentro da escolha, nunca a ajuda genérica. */
+async function repetirOpcoes(ctx: Contexto, pedido: Pedido, cabecalho: string): Promise<void> {
   ctx.pedidoId = pedido.id
-  const candidatas = pedido.conversa.candidatas ?? []
-  // Na conta Escritório duas empresas podem ter a nota de mesmo número: aí o número não basta.
-  const comEsseNumero = candidatas.filter((c) => c.numero === String(BigInt(m[1])))
-  if (comEsseNumero.length > 1) {
-    const escopo = await escopoDeNotas(ctx)
-    const notas = await buscarNotas(ctx.deps.db, escopo, { ids: comEsseNumero.map((c) => c.id) })
-    await responder(ctx, [`Há mais de uma nota nº ${m[1]}. Cancele uma de cada vez, dizendo a empresa e o cliente no pedido:`, ...notas.map(linhaDaCandidata)].join('\n'))
+  const opcoes = (await opcoesDoPedido(ctx, pedido)).filter((c): c is Candidata => c !== null)
+  if (!opcoes.length) {
+    await descartar(ctx, pedido, 'As notas da lista não estão mais emitidas. Se precisar, me mande o pedido de novo.')
+    return
+  }
+  // A lista mostrada passa a ser só a das notas ainda emitidas, para os números das opções baterem.
+  const candidatas = opcoes.map((c) => ({ id: c.id, numero: c.numero }))
+  await atualizarPedido(ctx.deps.db, pedido.id, 'escolher_nota', { ...pedido.conversa, candidatas }, ctx.agora)
+  await responder(ctx, listaDeOpcoes(cabecalho, opcoes))
+}
+
+/**
+ * A resposta à lista de notas (caso de 16/11/2026: duas empresas da conta com a nota nº 2): o número da opção, a
+ * linha colada, a empresa, o cliente, o valor, o nº ou a data. Só segue com uma; com várias, a lista volta só com
+ * elas. Palavras que não batem com nenhuma nota vão para a IA (pode ser um pedido novo); se ela também não achar
+ * pedido, a lista volta (`novoPedido` com `escolhendo`), nunca a ajuda genérica.
+ */
+async function escolherNota(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
+  const lista = await opcoesDoPedido(ctx, pedido)
+  const leitura = lerEscolhaDeNota(lista, texto)
+  if (leitura.tipo === 'nada') return false
+  ctx.pedidoId = pedido.id
+  if (leitura.tipo === 'filtro') {
+    if (!leitura.indices.length) {
+      await repetirOpcoes(ctx, pedido, 'Nenhuma nota da lista bate com isso. Qual delas você quer cancelar?')
+      return true
+    }
+    const restantes = leitura.indices.map((i) => lista[i] as Candidata)
+    const candidatas = restantes.map((c) => ({ id: c.id, numero: c.numero }))
+    await atualizarPedido(ctx.deps.db, pedido.id, 'escolher_nota', { ...pedido.conversa, candidatas }, ctx.agora)
+    await responder(ctx, listaDeOpcoes(`${restantes.length} notas batem com isso. Qual delas você quer cancelar?`, restantes))
     return true
   }
-  const escolhida = comEsseNumero[0]
-  if (!escolhida) {
-    await responder(ctx, `Não achei a nota nº ${m[1]} entre as candidatas. Me mande um destes números: ${candidatas.map((c) => c.numero).join(', ')}.`)
-    return true
-  }
-  const [nota] = await buscarNotas(ctx.deps.db, await escopoDeNotas(ctx), { ids: [escolhida.id] })
+  const nota = lista[leitura.indice]
   if (!nota) {
-    await responder(ctx, `A nota nº ${escolhida.numero} não está mais emitida. Me mande o pedido de novo.`)
+    const numero = pedido.conversa.candidatas?.[leitura.indice]?.numero
+    await repetirOpcoes(ctx, pedido, `A nota nº ${numero} não está mais emitida. Qual das outras você quer cancelar?`)
     return true
   }
   await ctx.deps.db.query(
@@ -1057,7 +1078,17 @@ export async function resolverModelo(db: Queryable, tenantId: string, parsed: Pa
 // ---------------------------------------------------------------------------------------
 // Mensagem nova: a IA interpreta, o código decide.
 
-async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
+/** O pedido de cancelamento ainda à espera da escolha da nota, se for ele o aberto. */
+const escolhendoNota = (pedido: Pedido | null | undefined, agora: Date) =>
+  pedido?.etapa === 'escolher_nota' && pedido.status === 'awaiting_confirmation' && pedido.expires_at.getTime() > agora.getTime()
+    ? pedido
+    : undefined
+
+/** `escolhendo`: há uma lista de notas esperando escolha; se a mensagem não for pedido, a lista volta no lugar da ajuda. */
+async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Promise<void> {
+  const naoEntendeuAEscolha = escolhendo
+    ? () => repetirOpcoes(ctx, escolhendo, 'Não entendi qual nota você quer cancelar.')
+    : null
   let parsed: Parsed
   let tokens: { entrada: number; saida: number }
   try {
@@ -1070,7 +1101,8 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   } catch (error) {
     logEvent('agente.interprete_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
     await registrarEvento(ctx.deps.db, ctx.para, 'ia_falhou', { detalhe: 'na mensagem nova' })
-    await responder(ctx, TEXTOS.naoEntendi)
+    if (naoEntendeuAEscolha) await naoEntendeuAEscolha()
+    else await responder(ctx, TEXTOS.naoEntendi)
     return
   }
   const semPedido = () => logEvent('agente.ia_sem_pedido', { tokens_entrada: tokens.entrada, tokens_saida: tokens.saida, intencao: parsed.intencao })
@@ -1081,6 +1113,11 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   }
   if (parsed.intencao !== 'emitir') {
     semPedido()
+    if (naoEntendeuAEscolha) {
+      await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'escolhendo a nota a cancelar; repeti a lista' })
+      await naoEntendeuAEscolha()
+      return
+    }
     await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não era pedido de nota; mandei a ajuda' })
     await responder(ctx, (await ehEscritorio(ctx)) ? TEXTOS.ajudaEscritorio : TEXTOS.ajuda)
     return
@@ -1367,8 +1404,5 @@ async function novoCancelamento(
     return
   }
   await criarPedido(ctx, { kind: 'cancelar', etapa: 'escolher_nota', parsed, tokens, conversa })
-  await responder(
-    ctx,
-    ['Achei mais de uma nota. Qual delas você quer cancelar? Me mande o número.', ...candidatas.map(linhaDaCandidata)].join('\n'),
-  )
+  await responder(ctx, listaDeOpcoes('Achei mais de uma nota. Qual delas você quer cancelar?', candidatas))
 }
