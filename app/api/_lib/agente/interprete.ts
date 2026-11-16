@@ -13,6 +13,11 @@ export type Parsed = {
   modelo: string | null
   /** O que foi o serviço, quando a pessoa diz (Lucca, 30/10/2026); sem ela, vale a descrição do modelo ou a padrão. */
   descricao: string | null
+  /**
+   * Conta Escritório (16/11/2026): a empresa que emite, como a pessoa escreveu ("pela Oficina Trilho", um CNPJ). A IA
+   * só lê; quem acha a empresa entre as da conta é o código (emitente.ts). Ausente nos pedidos gravados antes disso.
+   */
+  prestador?: string | null
   intencao: Intencao
 }
 
@@ -41,7 +46,7 @@ export function valorValido(valor: unknown): string | null {
 }
 
 /**
- * Revalida a saída da IA: só os seis campos, cada um no formato que o código aceita. Campo
+ * Revalida a saída da IA: só os sete campos, cada um no formato que o código aceita. Campo
  * a mais é descartado; campo inválido vira `null` (e a conversa pergunta o que falta).
  */
 export function validarParsed(bruto: unknown): Parsed {
@@ -56,6 +61,7 @@ export function validarParsed(bruto: unknown): Parsed {
     modelo: texto(obj.modelo, 60),
     // Mesmo limite do motor (servico.descricao em validation.ts).
     descricao: texto(obj.descricao, 2000),
+    prestador: texto(obj.prestador, 150),
     intencao,
   }
 }

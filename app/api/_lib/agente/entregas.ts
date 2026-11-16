@@ -238,7 +238,8 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     const pdf = await pdfDaNota(nota, numero)
     const titulo = `NFS-e nº ${numero} autorizada`
     // Lote por planilha: nenhum WhatsApp por nota; o retorno agregado sai quando o lote fecha (lote-retorno.ts).
-    if (!nota.do_lote) await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: titulo, anexo: pdf })
+    // Nota de outra empresa do escritório (pedido por mensagem ou painel): a legenda diz de qual empresa é.
+    if (!nota.do_lote) await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${titulo}${daEmpresa(nota)}`, anexo: pdf })
 
     const anexos: AnexoEmail[] = []
     if (pdf) anexos.push(pdf)
@@ -273,7 +274,7 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     if (nota.do_lote) return
     const pedido = await pedidoDaNota(deps.db, invoiceId, 'emitir')
     const texto = [
-      `A Sefin recusou a nota para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
+      `A Sefin recusou a nota${daEmpresa(nota)} para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
       `Código ${nota.last_error_code ?? '-'}: ${nota.last_error ?? 'sem motivo informado'}`,
       oQueCorrigir(nota.last_error_code),
     ].join('\n')
@@ -285,7 +286,7 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
   if (status === 'cancelled') {
     const pedido = await pedidoDaNota(deps.db, invoiceId, 'cancelar')
     const texto = `Nota ${numero} cancelada`
-    await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
+    await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${texto}${daEmpresa(nota)}` })
     for (const destino of await destinatariosDoEmail(deps.db, nota.tenant_id, { tomadorEmail: tomador.email })) {
       await emailDaNota(canais, deps.db, invoiceId, destino, {
         assunto: texto,
@@ -299,7 +300,7 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
   // cancel_refused (critério 34)
   const pedido = await pedidoDaNota(deps.db, invoiceId, 'cancelar')
   const texto = [
-    `A Sefin recusou o cancelamento da nota nº ${numero}: ${nota.last_error ?? 'sem motivo informado'} (código ${nota.last_error_code ?? '-'}).`,
+    `A Sefin recusou o cancelamento da nota nº ${numero}${daEmpresa(nota)}: ${nota.last_error ?? 'sem motivo informado'} (código ${nota.last_error_code ?? '-'}).`,
     'A nota continua valendo. Para cancelar, use o portal da prefeitura (Emissor Nacional) ou peça ao seu contador.',
   ].join('\n')
   await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
