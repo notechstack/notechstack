@@ -26,7 +26,12 @@ import { createSefinClient } from '../sefin-client.js'
 import { processarMensagem, TEXTOS } from './conversa.js'
 import { formatarDocumento } from './documentos.js'
 import { MODELO_DA_PLANILHA } from './planos.js'
-import { lerPedidoDeNota } from './ver-nota.js'
+import { lerPedidoDeNfe, lerPedidoDeNota } from './ver-nota.js'
+import { makeTestCertificate } from '../../_tests/certs.js'
+import { signXml } from '../xml-signer.js'
+import { montarNfe } from '../nfe/nfe-builder.js'
+import { notaExemplo } from '../nfe/nfe-fixtures.js'
+import { nfeProc } from '../nfe/sefaz-client.js'
 
 const admin = openTestDb()
 const servico = openRoleDb('nofiscal_service')
@@ -218,3 +223,50 @@ describe('ver uma nota pelo WhatsApp', () => {
     expect(doPro.texto).not.toContain('planilha')
   })
 })
+
+describe('ver uma NF-e pelo WhatsApp ("nfe 123", "danfe 123", "nfe <nome>")', () => {
+  it('lerPedidoDeNfe: número ou nome; "nota 123" continua sendo da NFS-e', () => {
+    expect(lerPedidoDeNfe('nfe 502')).toEqual({ tipo: 'numero', numero: '502' })
+    expect(lerPedidoDeNfe('DANFE nº 00502')).toEqual({ tipo: 'numero', numero: '502' })
+    expect(lerPedidoDeNfe('NF-e Maria')).toEqual({ tipo: 'nome', nome: 'Maria' })
+    expect(lerPedidoDeNfe('nota 502')).toBeNull()
+    expect(lerPedidoDeNfe('nfe 350 reais')).toBeNull()
+  })
+
+  it('manda o DANFE da NF-e autorizada da conta, com chave na legenda; de outra conta não', async () => {
+    const pro = await createSelfServiceTenant(admin.db, { plan: 'pro' })
+    const outra = await createSelfServiceTenant(admin.db, { plan: 'pro' })
+    avulsos.push(pro, outra)
+    const { proc, chave } = procDeTeste(pro.tenant.cnpj)
+    const { rows } = await admin.db.query<{ id: string }>(
+      `insert into nofiscal.fiscal_nfe (tenant_id, external_id, origem, status, ambiente, payload, serie, numero, valor_total,
+         destinatario_documento, destinatario_nome, chave, xml_assinado, xml_proc, protocolo, authorized_at)
+       values ($1, 'teste', 'painel', 'authorized', 'homologacao', '{}'::jsonb, 1, 42, 89.56, '11222333000181', 'Padaria Exemplo Ltda', $2, 'x', $3, '135260000012345', now())
+       returning id`,
+      [pro.tenant.id, chave, proc],
+    )
+    const limpar = () => admin.db.query('delete from nofiscal.fiscal_nfe where id = $1', [rows[0].id])
+    try {
+      const a = agente()
+      const [d] = await a.texto(pro.ownerPhone, 'nfe 42')
+      expect(ehPdf(d)).toBe(true)
+      expect(d.anexo?.nome).toBe('danfe-42.pdf')
+      expect(d.texto).toBe(`NF-e 42 · Padaria Exemplo Ltda · R$ 89,56\nChave: ${chave.replace(/(\d{4})(?=\d)/g, '$1 ')}`)
+      expect((await a.texto(pro.ownerPhone, 'nfe Padaria'))[0].anexo?.nome).toBe('danfe-42.pdf')
+      const [nada] = await a.texto(outra.ownerPhone, 'nfe 42')
+      expect(nada.texto).toBe('Não achei NF-e autorizada com o número 42.')
+    } finally {
+      await limpar()
+    }
+  })
+})
+
+/** nfeProc de teste (montado e assinado como o worker faz) para o CNPJ da conta. */
+function procDeTeste(cnpj: string) {
+  const c = makeTestCertificate()
+  const base = notaExemplo({ numero: 42 })
+  const { xml, chave } = montarNfe({ ...base, emitente: { ...base.emitente, cnpj } })
+  const assinada = signXml({ xml, signedElement: 'infNFe', keyPem: c.keyPem, certPem: c.certPem, profile: 'sha1-c14n' })
+  const prot = `<protNFe versao="4.00"><infProt><tpAmb>2</tpAmb><chNFe>${chave}</chNFe><dhRecbto>2026-11-17T10:00:00-03:00</dhRecbto><nProt>135260000012345</nProt><cStat>100</cStat><xMotivo>Autorizado</xMotivo></infProt></protNFe>`
+  return { proc: nfeProc(assinada, prot), chave }
+}

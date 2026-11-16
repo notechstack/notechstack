@@ -437,7 +437,7 @@
      Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
      seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
      empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
-  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios'];
+  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe'];
   var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   var SITUACAO = {
     pronta: ['Pronta', 'ok'],
@@ -499,6 +499,8 @@
     if (opcoes.foco) $('fa-aba-' + aba).focus();
     if (aba === 'relatorios' && !ec.relCarregado) carregarRelatorio();
     if (aba === 'emitir' && !em.carregado) carregarEmissao();
+    // A aba NF-e mora em nfe.js (carregado depois deste arquivo).
+    if (aba === 'nfe' && window.contaNfe) window.contaNfe.abrir();
   }
 
   function proximaCobranca(a) {
@@ -529,6 +531,7 @@
       $('fa-painel-empresas').hidden = true;
       $('fa-painel-emitir').hidden = true;
       $('fa-painel-relatorios').hidden = true;
+      $('fa-painel-nfe').hidden = true;
       $('fa-faixas').hidden = true;
       return;
     }
