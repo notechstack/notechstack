@@ -21,6 +21,12 @@ export type ErrorCode =
   // Rota da procuração do cadastro (migração 20261111180000).
   | 'PROCURADOR_INDISPONIVEL'
   | 'VALIDADE_PASSADA'
+  // Emissão pelo painel "Minha conta" (painel-emissao.ts).
+  | 'CONTA_SEM_EMPRESA'
+  | 'SO_ESCRITORIO'
+  | 'EMISSAO_BLOQUEADA'
+  | 'PLANILHA_RECUSADA'
+  | 'LOTE_FECHADO'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -40,6 +46,11 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CERT_CNPJ_DIFERENTE: 422,
   PROCURADOR_INDISPONIVEL: 409,
   VALIDADE_PASSADA: 422,
+  CONTA_SEM_EMPRESA: 404,
+  SO_ESCRITORIO: 403,
+  EMISSAO_BLOQUEADA: 409,
+  PLANILHA_RECUSADA: 422,
+  LOTE_FECHADO: 409,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }
@@ -48,6 +59,7 @@ export function json(status: number, body: unknown): Response {
   return Response.json(body, { status, headers: NO_STORE })
 }
 
-export function errorResponse(code: ErrorCode, message: string): Response {
-  return json(STATUS_BY_CODE[code], { error: { code, message } })
+/** `extra` vai ao lado de `error` (ex.: o campo do formulário), nunca dentro dele. */
+export function errorResponse(code: ErrorCode, message: string, extra: Record<string, unknown> = {}): Response {
+  return json(STATUS_BY_CODE[code], { ...extra, error: { code, message } })
 }

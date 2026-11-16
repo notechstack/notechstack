@@ -1,5 +1,5 @@
-// /agentes/fiscal/conta/ no plano Escritório (.design/agente-fiscal-escritorio.md, "Painel do escritório"): as três
-// abas (#dados, #empresas, #relatorios), as ações por empresa, a troca de faixa, o relatório do mês e o PDF da nota.
+// /agentes/fiscal/conta/ no plano Escritório (.design/agente-fiscal-escritorio.md, "Painel do escritório"): as quatro
+// abas (#dados, #empresas, #emitir, #relatorios), as ações por empresa, a troca de faixa, o relatório do mês e o PDF da nota.
 // Mesma página falsa de conta.test.mjs; a rota do PDF (binária) é respondida aqui, antes do dublê da Surface.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -86,7 +86,7 @@ test('abas e Meus dados do escritório', async () => {
   assert.ok(p.visivel('fa-abas'));
   assert.equal(p.$('fa-abas').getAttribute('role'), 'tablist');
   const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')];
-  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Relatórios']);
+  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios']);
   assert.equal(p.$('fa-aba-dados').getAttribute('aria-selected'), 'true');
   assert.equal(p.$('fa-painel-dados').getAttribute('role'), 'tabpanel');
   assert.ok(p.visivel('fa-painel-dados'));
@@ -399,4 +399,164 @@ test('pacote por notas: limite da conta no resumo e nas faixas', async () => {
   assert.ok(p.texto('fa-plano-uso').includes('180 de 200'));
   await p.clicar('fa-abrir-faixas');
   assert.equal(p.texto(p.$('fa-faixas-lista')).includes('Você tem 180 empresas ativas'), false);
+});
+
+test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com confirmação', async () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const LOTE_ID = '5e5e5e5e-0000-4000-8000-000000000001';
+  const contexto = {
+    empresas: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null },
+      { tenant_id: EMP_PRONTA, razao_social: 'PADARIA BOA LTDA', cnpj: '11444777000161', principal: false, codigo_servico_nacional: '170201', bloqueio: null },
+      { tenant_id: EMP_VENCENDO, razao_social: 'OFICINA RAPIDA LTDA', cnpj: '04252011000110', principal: false, codigo_servico_nacional: '170201', bloqueio: { codigo: 'CERT_EXPIRED', motivo: 'o certificado A1 de OFICINA RAPIDA LTDA venceu' } }
+    ],
+    franquia: { limite: 500, no_mes: 37 }
+  };
+  const resumo = {
+    resumo: {
+      empresa: { tenant_id: EMP_PRONTA, razao_social: 'PADARIA BOA LTDA', cnpj: '11444777000161' },
+      tomador: { documento: '52998224725', tipo: 'cpf', nome: 'Maria Tomadora', email: 'maria@tomador.test' },
+      servico: { codigo: '170201', nome: 'Contabilidade', descricao: 'Honorários de novembro' },
+      valor: '350.00', valor_texto: 'R$ 350,00'
+    },
+    bloqueio: null,
+    avisos: ['Já há uma nota igual neste mês (mesma empresa, cliente e valor). Confira antes de emitir de novo.']
+  };
+  const lote = {
+    lote_id: LOTE_ID, status: 'aguardando_confirmacao', arquivo: 'novembro.csv', expira_em: '2026-11-17T15:30:00.000Z',
+    linhas: 3, prontas: 2, total: '1150.00',
+    por_empresa: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', notas: 1, total: '150.00' },
+      { tenant_id: EMP_PRONTA, razao_social: 'PADARIA BOA LTDA', notas: 1, total: '1000.00' }
+    ],
+    problemas: [{ linha: 4, codigo: 'CERT_EXPIRED', motivo: 'o certificado A1 de OFICINA RAPIDA LTDA venceu' }],
+    franquia: { limite: 500, no_mes: 499, acima: 1 },
+    resumo_texto: 'Li a planilha novembro.csv: 3 linhas.'
+  };
+  const p = await painel({
+    'app:emissao:contexto': r(200, contexto),
+    'app:emissao:modelos': (c) => ({
+      status: 200,
+      corpo: { modelos: c.tenant_id === EMP_PRONTA ? [{ id: 'm1', nome: 'Prontia', documento: '11444777000161', nome_tomador: 'Prontia Ltda', email: 'fin@prontia.test', codigo: '170201', descricao: 'Consultoria mensal', valor_padrao: '350.00' }] : [] }
+    }),
+    'app:emissao:avulsa_conferir': r(200, resumo),
+    'app:emissao:avulsa_emitir': r(200, { invoice_id: NOTA, status: 'queued' }),
+    'app:emissao:lote_ler': r(200, lote),
+    'app:emissao:lote_confirmar': r(200, { emitindo: 2, barradas: [] }),
+    'fiscal-conta:relatorio': (c) => ({ status: 200, corpo: { ok: true, mes: c.mes, tenant_id: null, totais: { emitidas: 0, valor_emitido: 0, recusadas: 0, na_fila: 2, canceladas: 0 }, notas: [] } })
+  });
+  assert.equal(p.rede.de('app:emissao:contexto').length, 0, 'só carrega ao abrir a aba');
+  await p.clicar('fa-aba-emitir');
+  assert.equal(p.window.location.hash, '#emitir');
+  assert.ok(p.visivel('fa-painel-emitir'));
+  assert.equal(p.rede.de('app:emissao:contexto').length, 1);
+  assert.deepEqual([...p.$('fa-av-empresa').options].map((o) => p.texto(o)), [
+    'CONTABIL SANDRA LTDA (escritório) · 11.222.333/0001-81', 'PADARIA BOA LTDA · 11.444.777/0001-61', 'OFICINA RAPIDA LTDA · 04.252.011/0001-10'
+  ]);
+
+  // Empresa bloqueada: o mesmo motivo do agente, com o caminho para resolver.
+  await p.preencher('fa-av-empresa', EMP_VENCENDO);
+  assert.ok(p.visivel('fa-av-bloqueio'));
+  assert.equal(p.texto('fa-av-bloqueio'), 'Esta empresa não emite agora: o certificado A1 de OFICINA RAPIDA LTDA venceu. Resolver em Minhas empresas');
+
+  // Cliente salvo preenche o formulário; "Cliente novo" limpa.
+  await p.preencher('fa-av-empresa', EMP_PRONTA);
+  assert.equal(p.visivel('fa-av-bloqueio'), false);
+  assert.deepEqual(p.rede.de('app:emissao:modelos').map((c) => c.corpo.tenant_id), [TENANT, EMP_VENCENDO, EMP_PRONTA]);
+  assert.deepEqual([...p.$('fa-av-modelo').options].map((o) => p.texto(o)), ['Cliente novo', 'Prontia · 11.444.777/0001-61']);
+  await p.preencher('fa-av-modelo', '0');
+  assert.deepEqual(['fa-av-documento', 'fa-av-nome', 'fa-av-email', 'fa-av-valor', 'fa-av-descricao'].map((id) => p.$(id).value),
+    ['11.444.777/0001-61', 'Prontia Ltda', 'fin@prontia.test', '350,00', 'Consultoria mensal']);
+  await p.preencher('fa-av-modelo', '');
+  assert.equal(p.$('fa-av-nome').value, '');
+
+  // Conferir: sem documento válido nem chama o servidor.
+  await p.preencher('fa-av-documento', '123');
+  await p.enviar('fa-form-avulsa');
+  assert.equal(p.texto('fa-av-documento-erro'), 'CPF ou CNPJ inválido. Confira os números.');
+  assert.equal(p.rede.de('app:emissao:avulsa_conferir').length, 0);
+
+  await p.preencher('fa-av-documento', '529.982.247-25');
+  await p.preencher('fa-av-nome', 'Maria Tomadora');
+  await p.preencher('fa-av-email', 'maria@tomador.test');
+  await p.preencher('fa-av-valor', '350');
+  await p.preencher('fa-av-descricao', 'Honorários de novembro');
+  await p.enviar('fa-form-avulsa');
+  assert.deepEqual(p.rede.de('app:emissao:avulsa_conferir')[0].corpo, {
+    tenant_id: EMP_PRONTA, documento: '529.982.247-25', nome: 'Maria Tomadora', email: 'maria@tomador.test', valor: '350',
+    codigo: '170201', descricao: 'Honorários de novembro', acao: 'avulsa_conferir'
+  });
+  assert.ok(p.visivel('fa-av-resumo'));
+  assert.equal(p.visivel('fa-form-avulsa'), false);
+  const doResumo = p.texto('fa-av-resumo');
+  for (const s of ['PADARIA BOA LTDA · 11.444.777/0001-61', 'Maria Tomadora', '529.982.247-25', 'maria@tomador.test', '17.02.01 Contabilidade', 'Honorários de novembro', 'R$ 350,00', 'Já há uma nota igual neste mês']) {
+    assert.ok(doResumo.includes(s), `"${s}" no resumo`);
+  }
+  assert.equal(p.rede.de('app:emissao:avulsa_emitir').length, 0, 'só emite no segundo clique');
+
+  // Emitir: o mesmo pedido conferido, com uma chave (idempotência no servidor).
+  await p.clicar('fa-av-emitir');
+  const emitir = p.rede.de('app:emissao:avulsa_emitir');
+  assert.equal(emitir.length, 1);
+  assert.match(emitir[0].corpo.chave, UUID);
+  assert.equal(emitir[0].corpo.tenant_id, EMP_PRONTA);
+  assert.equal(emitir[0].corpo.valor, '350');
+  assert.ok(p.visivel('fa-form-avulsa'));
+  assert.equal(p.$('fa-av-nome').value, '');
+  assert.match(p.texto('fa-aviso-emitir'), /^Nota de Maria Tomadora na fila da Sefin\./);
+
+  // Lote: sem arquivo, avisa; com a planilha, mostra o resumo e só emite no "confirmar".
+  await p.enviar('fa-form-lote');
+  assert.equal(p.texto('fa-lote-arquivo-erro'), 'Escolha a planilha (.xlsx ou .csv).');
+  await p.arquivos('fa-lote-arquivo', [['novembro.csv', 'cnpj_prestador;cpf_cnpj_tomador;nome_tomador;valor\n', 'text/csv']]);
+  await p.enviar('fa-form-lote');
+  const ler = p.rede.de('app:emissao:lote_ler');
+  assert.equal(ler.length, 1);
+  assert.equal(ler[0].corpo.arquivo.name, 'novembro.csv');
+  assert.equal(p.texto('fa-lote-resumo-titulo'), 'Planilha novembro.csv: 3 linhas');
+  assert.deepEqual(['fa-lote-linhas', 'fa-lote-prontas', 'fa-lote-total', 'fa-lote-problemas-n'].map((id) => p.texto(id)), ['3', '2', 'R$ 1.150', '1']);
+  assert.match(p.texto('fa-lote-empresas'), /PADARIA BOA LTDA: 1 nota, R\$ 1\.000/);
+  assert.equal(p.texto('fa-lote-franquia'), 'Franquia: com estas notas, o mês chega a 501 notas, 1 acima das 500 do seu plano. As notas saem normalmente.');
+  assert.deepEqual([...p.$('fa-lote-problemas').querySelectorAll('td')].map((td) => p.texto(td)), ['4', 'o certificado A1 de OFICINA RAPIDA LTDA venceu']);
+  assert.equal(p.texto('fa-lote-confirmar'), 'Emitir as 2 notas prontas');
+  assert.equal(p.rede.de('app:emissao:lote_confirmar').length, 0);
+  await p.clicar('fa-lote-confirmar');
+  assert.deepEqual(p.rede.de('app:emissao:lote_confirmar')[0].corpo, { acao: 'lote_confirmar', lote_id: LOTE_ID });
+  assert.equal(p.visivel('fa-lote-resumo'), false);
+  assert.match(p.texto('fa-aviso-lote'), /^Confirmado: 2 notas na fila da Sefin\. Cada cliente com e-mail recebe a nota\./);
+
+  // "Ver em Relatórios" leva à aba, que busca de novo.
+  await p.clicar(p.$('fa-aviso-lote').querySelector('[data-ir-aba]'));
+  assert.equal(p.window.location.hash, '#relatorios');
+  assert.equal(p.rede.de('fiscal-conta:relatorio').length, 1);
+  assert.deepEqual(p.erros, []);
+});
+
+test('Emitir: planilha repetida oferece descartar a anterior, e bloqueio no emitir trava o botão', async () => {
+  const ANTERIOR = '5e5e5e5e-0000-4000-8000-000000000002';
+  const p = await painel({
+    'app:emissao:contexto': r(200, { empresas: [{ tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null }], franquia: { limite: 500, no_mes: 0 } }),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:lote_ler': r(422, { motivo: 'repetida', lote_id: ANTERIOR, error: { code: 'PLANILHA_RECUSADA', message: 'Esta planilha já foi lida e está esperando confirmação (aqui ou no WhatsApp). Descarte a anterior para ler de novo.' } }),
+    'app:emissao:lote_descartar': r(200, { descartado: true }),
+    'app:emissao:avulsa_conferir': r(200, { resumo: { empresa: { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181' }, tomador: { documento: '52998224725', tipo: 'cpf', nome: 'Zé', email: null }, servico: { codigo: '170201', nome: null, descricao: 'Prestação de serviços' }, valor: '10.00', valor_texto: 'R$ 10,00' }, bloqueio: null, avisos: [] }),
+    'app:emissao:avulsa_emitir': r(409, { bloqueio: 'PAYMENT_NOT_APPROVED', error: { code: 'EMISSAO_BLOQUEADA', message: 'Não dá para emitir: a assinatura da conta não está ativa.' } })
+  }, '/agentes/fiscal/conta/#emitir');
+  assert.ok(p.visivel('fa-painel-emitir'), 'abre na aba do endereço');
+
+  await p.arquivos('fa-lote-arquivo', [['novembro.xlsx', 'PK', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']]);
+  await p.enviar('fa-form-lote');
+  assert.match(p.texto('fa-aviso-lote'), /^Esta planilha já foi lida e está esperando confirmação/);
+  await p.clicar(p.$('fa-aviso-lote').querySelector('[data-descartar-lote]'));
+  assert.deepEqual(p.rede.de('app:emissao:lote_descartar')[0].corpo, { acao: 'lote_descartar', lote_id: ANTERIOR });
+  assert.match(p.texto('fa-aviso-lote'), /^A planilha anterior foi descartada\./);
+
+  await p.preencher('fa-av-documento', '52998224725');
+  await p.preencher('fa-av-nome', 'Zé');
+  await p.preencher('fa-av-valor', '10');
+  await p.enviar('fa-form-avulsa');
+  await p.clicar('fa-av-emitir');
+  assert.equal(p.$('fa-av-emitir').disabled, true);
+  assert.equal(p.texto('fa-av-avisos'), 'Não dá para emitir: a assinatura da conta não está ativa.');
+  assert.deepEqual(p.erros, []);
 });

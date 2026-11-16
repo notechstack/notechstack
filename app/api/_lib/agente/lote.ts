@@ -657,7 +657,7 @@ async function donoDoTenant(db: Queryable, tenantId: string): Promise<Dono | nul
   return rows[0] ?? null
 }
 
-async function empresasDoDono(db: Queryable, donoId: string): Promise<Empresa[]> {
+export async function empresasDoDono(db: Queryable, donoId: string): Promise<Empresa[]> {
   const { rows } = await db.query<Empresa>(
     `select t.id, t.cnpj, t.razao_social, t.active, t.codigo_servico_nacional
        from nofiscal.fiscal_tenants t
@@ -701,7 +701,7 @@ async function contextoDoBanco(db: Queryable, empresas: Empresa[], agora: Date):
  * Nota duplicada: as chaves `${tenant}:${documento}:${centavos}` das notas emitidas no mês de Brasília e das que
  * ainda estão na fila (um lote anterior que não fechou conta também). Usada no resumo e de novo no "confirmar".
  */
-async function notasIguaisDoMes(db: Queryable, tenantIds: string[], agora: Date): Promise<Set<string>> {
+export async function notasIguaisDoMes(db: Queryable, tenantIds: string[], agora: Date): Promise<Set<string>> {
   const local = partesLocais(agora)
   const { inicio, fim } = limitesDoMes(local.ano, local.mes)
   const { rows: notas } = await db.query<{ tenant_id: string; documento: string | null; valor: unknown }>(
@@ -721,7 +721,7 @@ async function notasIguaisDoMes(db: Queryable, tenantIds: string[], agora: Date)
 }
 
 /** A chave de nota duplicada de um payload do motor. */
-function chaveDoPayload(tenantId: string, payload: unknown): string | null {
+export function chaveDoPayload(tenantId: string, payload: unknown): string | null {
   const p = (payload ?? {}) as { tomador?: { cpf?: string; cnpj?: string }; valor?: unknown }
   const documento = p.tomador?.cpf ?? p.tomador?.cnpj
   const centavos = valorDoPayload(p.valor)
@@ -729,7 +729,7 @@ function chaveDoPayload(tenantId: string, payload: unknown): string | null {
 }
 
 /** Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). */
-async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
+export async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
   const local = partesLocais(agora)
   const { inicio, fim } = limitesDoMes(local.ano, local.mes)
   const { rows } = await db.query<{ n: string }>(
@@ -774,7 +774,7 @@ const ehViolacaoDeUnicidade = (error: unknown) => (error as { code?: string } | 
 
 async function gravarLote(
   db: Db,
-  dados: { donoId: string; phoneId: string; arquivo: string | null; hash: string; agora: Date; itens: ItemDoLote[] },
+  dados: { donoId: string; phoneId: string | null; arquivo: string | null; hash: string; agora: Date; itens: ItemDoLote[] },
 ): Promise<string> {
   // Sem linha pronta, o lote nasce descartado: fica o registro, e a mesma planilha (com a empresa já acertada no
   // painel) pode voltar.
@@ -784,7 +784,7 @@ async function gravarLote(
 
 async function gravarLoteNa(
   db: Queryable,
-  dados: { donoId: string; phoneId: string; arquivo: string | null; hash: string; agora: Date; itens: ItemDoLote[] },
+  dados: { donoId: string; phoneId: string | null; arquivo: string | null; hash: string; agora: Date; itens: ItemDoLote[] },
   status: string,
 ): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
@@ -814,6 +814,100 @@ const nomeDoArquivo = (nome: string | null | undefined) => {
   // Sem caracteres de controle (o nome vem do remetente).
   const limpo = [...(nome ?? '')].filter((c) => c >= ' ').join('').trim()
   return limpo ? limpo.slice(0, 200) : null
+}
+
+/** Por que a planilha não virou lote; `texto` é a resposta que a pessoa lê (a mesma no WhatsApp e no painel). */
+export type PlanilhaRecusada = {
+  ok: false
+  motivo: 'repetida' | 'grande_demais' | 'aba_grande_demais' | 'ilegivel' | 'colunas' | 'vazia' | 'linhas_demais' | 'indisponivel'
+  texto: string
+  /** Só em `repetida`: o lote da mesma planilha que espera o "confirmar". */
+  loteId?: string
+}
+
+export type LoteLido = {
+  ok: true
+  loteId: string
+  /** `descartado` quando nenhuma linha ficou pronta (fica o registro, nada para confirmar). */
+  status: 'aguardando_confirmacao' | 'descartado'
+  arquivo: string | null
+  itens: ItemDoLote[]
+  empresas: Empresa[]
+  franquia: Franquia
+  expiraEm: Date
+  /** O resumo de texto fixo, o mesmo do WhatsApp. */
+  resumo: string
+}
+
+/**
+ * Da planilha já baixada ao lote gravado: expira os lotes vencidos da conta, recusa a mesma planilha aguardando,
+ * lê, valida cada linha contra o banco e grava o lote (`aguardando_confirmacao`, 24 h). O WhatsApp (`receberPlanilha`)
+ * e o painel "Minha conta" (`painel-emissao.ts`) passam por aqui; no painel não há telefone (`phoneId` null), e o
+ * retorno do lote vai ao `owner` da conta-mãe e ao e-mail da conta (lote-retorno.ts).
+ */
+export async function lerLoteDaPlanilha(
+  db: Db,
+  dados: { donoId: string; limite: number; phoneId: string | null; arquivo: string | null; conteudo: Uint8Array; tipo: TipoDePlanilha; agora: Date },
+): Promise<LoteLido | PlanilhaRecusada> {
+  const { donoId, conteudo, tipo, agora } = dados
+  await expirarLotes(db, agora, { tenantIds: [donoId] })
+  const hash = sha256(conteudo)
+  const repetido = await loteComOMesmoArquivo(db, donoId, hash)
+  if (repetido) return { ok: false, motivo: 'repetida', texto: textoDoArquivoRepetido(repetido), loteId: repetido.id }
+
+  let grade: Celula[][]
+  try {
+    grade = await lerPlanilha(conteudo, tipo)
+  } catch (error) {
+    if (error instanceof MidiaGrandeDemais) return { ok: false, motivo: 'grande_demais', texto: TEXTOS_DO_LOTE.grandeDemais }
+    if (error instanceof PlanilhaGrandeDemais) return { ok: false, motivo: 'aba_grande_demais', texto: TEXTOS_DO_LOTE.abaGrandeDemais }
+    return { ok: false, motivo: 'ilegivel', texto: TEXTOS_DO_LOTE.ilegivel }
+  }
+
+  const empresas = await empresasDoDono(db, donoId)
+  const planilha = interpretarGrade(grade, {
+    prestadorObrigatorio: empresas.filter((e) => e.active).length > 1,
+    contarCampos: tipo === 'csv' && separadorDoCsv(decodificarTexto(conteudo)) === ',',
+  })
+  if (!planilha.ok) {
+    logEvent('agente.planilha_recusada', { tenant_id: donoId, erro: planilha.erro })
+    if (planilha.erro === 'COLUNAS') return { ok: false, motivo: 'colunas', texto: textoDasColunas(planilha) }
+    return planilha.erro === 'VAZIA'
+      ? { ok: false, motivo: 'vazia', texto: TEXTOS_DO_LOTE.vazia }
+      : { ok: false, motivo: 'linhas_demais', texto: TEXTOS_DO_LOTE.linhasDemais }
+  }
+
+  const contexto = await contextoDoBanco(db, empresas, agora)
+  const itens = validarLinhas(planilha.linhas, contexto)
+  const nome = nomeDoArquivo(dados.arquivo)
+  const franquia = { limite: dados.limite, noMes: await notasDoMes(db, donoId, agora) }
+  // Tudo o que pode falhar vem antes de gravar: se a mensagem falhar depois do lote gravado, a reentrega da Meta
+  // cairia em "já foi enviada" sem a pessoa ter visto o resumo.
+  const resumo = textoDoResumoDoLote({ arquivo: nome, itens, empresas, franquia })
+  let loteId: string
+  try {
+    loteId = await gravarLote(db, { donoId, phoneId: dados.phoneId, arquivo: nome, hash, agora, itens })
+  } catch (error) {
+    // Duas mensagens com a mesma planilha ao mesmo tempo: o índice único deixa uma só passar.
+    if (!ehViolacaoDeUnicidade(error)) throw error
+    const outro = await loteComOMesmoArquivo(db, donoId, hash)
+    return outro
+      ? { ok: false, motivo: 'repetida', texto: textoDoArquivoRepetido(outro), loteId: outro.id }
+      : { ok: false, motivo: 'indisponivel', texto: TEXTOS_DO_LOTE.semDownload }
+  }
+  const prontas = itens.filter((i) => !i.problema).length
+  logEvent('agente.lote_recebido', { tenant_id: donoId, lote_id: loteId, linhas: itens.length, prontas, origem: dados.phoneId ? 'whatsapp' : 'painel' })
+  return {
+    ok: true,
+    loteId,
+    status: prontas ? 'aguardando_confirmacao' : 'descartado',
+    arquivo: nome,
+    itens,
+    empresas,
+    franquia,
+    expiraEm: new Date(agora.getTime() + VALIDADE_DO_LOTE_MS),
+    resumo,
+  }
 }
 
 /**
@@ -851,67 +945,16 @@ export async function receberPlanilha(ctx: Contexto, arquivo: MensagemRecebida['
     return
   }
 
-  await expirarLotes(db, ctx.agora, { tenantIds: [dono.id] })
-  const hash = sha256(conteudo)
-  const repetido = await loteComOMesmoArquivo(db, dono.id, hash)
-  if (repetido) {
-    await responder(ctx, textoDoArquivoRepetido(repetido))
-    return
-  }
-
-  let grade: Celula[][]
-  try {
-    grade = await lerPlanilha(conteudo, tipo)
-  } catch (error) {
-    await responder(
-      ctx,
-      error instanceof MidiaGrandeDemais
-        ? TEXTOS_DO_LOTE.grandeDemais
-        : error instanceof PlanilhaGrandeDemais
-          ? TEXTOS_DO_LOTE.abaGrandeDemais
-          : TEXTOS_DO_LOTE.ilegivel,
-    )
-    return
-  }
-
-  const empresas = await empresasDoDono(db, dono.id)
-  const planilha = interpretarGrade(grade, {
-    prestadorObrigatorio: empresas.filter((e) => e.active).length > 1,
-    contarCampos: tipo === 'csv' && separadorDoCsv(decodificarTexto(conteudo)) === ',',
+  const lido = await lerLoteDaPlanilha(db, {
+    donoId: dono.id,
+    limite: dono.limite,
+    phoneId: ctx.phoneId,
+    arquivo: arquivo?.nome ?? null,
+    conteudo,
+    tipo,
+    agora: ctx.agora,
   })
-  if (!planilha.ok) {
-    logEvent('agente.planilha_recusada', { tenant_id: dono.id, erro: planilha.erro })
-    await responder(
-      ctx,
-      planilha.erro === 'COLUNAS' ? textoDasColunas(planilha) : planilha.erro === 'VAZIA' ? TEXTOS_DO_LOTE.vazia : TEXTOS_DO_LOTE.linhasDemais,
-    )
-    return
-  }
-
-  const contexto = await contextoDoBanco(db, empresas, ctx.agora)
-  const itens = validarLinhas(planilha.linhas, contexto)
-  const nome = nomeDoArquivo(arquivo?.nome)
-  // Tudo o que pode falhar vem antes de gravar: se a mensagem falhar depois do lote gravado, a reentrega da Meta
-  // cairia em "já foi enviada" sem a pessoa ter visto o resumo.
-  const resumo = textoDoResumoDoLote({
-    arquivo: nome,
-    itens,
-    empresas,
-    franquia: { limite: dono.limite, noMes: await notasDoMes(db, dono.id, ctx.agora) },
-  })
-  let loteId: string
-  try {
-    loteId = await gravarLote(db, { donoId: dono.id, phoneId: ctx.phoneId, arquivo: nome, hash, agora: ctx.agora, itens })
-  } catch (error) {
-    // Duas mensagens com a mesma planilha ao mesmo tempo: o índice único deixa uma só passar.
-    if (!ehViolacaoDeUnicidade(error)) throw error
-    const outro = await loteComOMesmoArquivo(db, dono.id, hash)
-    await responder(ctx, outro ? textoDoArquivoRepetido(outro) : TEXTOS_DO_LOTE.semDownload)
-    return
-  }
-  const prontas = itens.filter((i) => !i.problema).length
-  logEvent('agente.lote_recebido', { tenant_id: dono.id, lote_id: loteId, linhas: itens.length, prontas })
-  await responder(ctx, resumo)
+  await responder(ctx, lido.ok ? lido.resumo : lido.texto)
 }
 
 // ---------------------------------------------------------------------------------------

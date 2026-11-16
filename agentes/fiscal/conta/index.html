@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
 <link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=8">
-<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=4">
+<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=5">
 <script src="/shared/card-nav.js" defer></script>
 </head>
 <body class="fi-body nf-body">
@@ -71,10 +71,11 @@
     <p class="nf-aviso nf-aviso--info" id="fa-retomar" hidden>A configuração ainda não terminou. <a class="fi-btn fi-btn--tinta" href="/agentes/fiscal/comecar/">Retomar configuração</a></p>
     <p class="nf-aviso" id="fa-aviso" role="status" hidden></p>
 
-    <!-- Conta Escritório: três abas (#dados, #empresas, #relatorios). Contas Inicial/Pro não veem as abas. -->
+    <!-- Conta Escritório: quatro abas (#dados, #empresas, #emitir, #relatorios). Contas Inicial/Pro não veem as abas. -->
     <div class="nf-abas" id="fa-abas" role="tablist" aria-label="Minha conta" hidden>
       <button type="button" class="nf-aba" role="tab" id="fa-aba-dados" data-aba="dados" aria-controls="fa-painel-dados" aria-selected="true">Meus dados</button>
       <button type="button" class="nf-aba" role="tab" id="fa-aba-empresas" data-aba="empresas" aria-controls="fa-painel-empresas" aria-selected="false" tabindex="-1">Minhas empresas</button>
+      <button type="button" class="nf-aba" role="tab" id="fa-aba-emitir" data-aba="emitir" aria-controls="fa-painel-emitir" aria-selected="false" tabindex="-1">Emitir</button>
       <button type="button" class="nf-aba" role="tab" id="fa-aba-relatorios" data-aba="relatorios" aria-controls="fa-painel-relatorios" aria-selected="false" tabindex="-1">Relatórios</button>
     </div>
 
@@ -278,6 +279,78 @@
       </section>
     </div>
 
+    <!-- Emitir (só Escritório): nota avulsa e lote por planilha, sem passar pelo WhatsApp (/v1/fiscal/emissao) -->
+    <div class="nf-secoes" id="fa-painel-emitir" hidden>
+      <section class="nf-cartao" aria-labelledby="fa-av-titulo">
+        <p class="nf-passo">Nota avulsa</p>
+        <h2 class="nf-h2" id="fa-av-titulo">Emitir uma nota</h2>
+        <p class="nf-texto">A nota sai pelo mesmo motor do WhatsApp: assinada com o A1 da empresa ou, se ela emite por procuração, com o A1 do escritório. O cliente com e-mail recebe a nota, e ela aparece em Relatórios.</p>
+        <p class="nf-aviso" id="fa-aviso-emitir" role="status" hidden></p>
+        <form id="fa-form-avulsa" class="nf-form" novalidate>
+          <div class="nf-campo nf-campo--largo"><label for="fa-av-empresa">Empresa que emite</label><select id="fa-av-empresa"></select><small class="nf-erro" id="fa-av-empresa-erro" hidden></small></div>
+          <p class="nf-aviso nf-aviso--erro nf-campo--largo" id="fa-av-bloqueio" role="status" hidden></p>
+          <div class="nf-campo nf-campo--largo"><label for="fa-av-modelo">Cliente</label><select id="fa-av-modelo"><option value="">Cliente novo</option></select><small class="nf-dica">Os clientes salvos pelo WhatsApp aparecem aqui.</small></div>
+          <div class="nf-campo"><label for="fa-av-documento">CPF ou CNPJ do cliente</label><input id="fa-av-documento" inputmode="numeric" autocomplete="off" maxlength="18"><small class="nf-erro" id="fa-av-documento-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-av-nome">Nome ou razão social</label><input id="fa-av-nome" autocomplete="off" maxlength="150"><small class="nf-erro" id="fa-av-nome-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-av-email">E-mail do cliente (opcional)</label><input id="fa-av-email" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-av-email-erro" hidden></small></div>
+          <div class="nf-campo"><label for="fa-av-valor">Valor (R$)</label><input id="fa-av-valor" inputmode="decimal" autocomplete="off" maxlength="20" placeholder="1.234,56"><small class="nf-erro" id="fa-av-valor-erro" hidden></small></div>
+          <fieldset class="nf-grupo nf-grupo--coluna nf-seletor" id="fa-av-seletor">
+            <legend>Código de serviço nacional</legend>
+            <div class="nf-sugestoes"></div>
+            <label class="nf-rotulo-lista" for="fa-av-busca-codigo">Buscar na lista nacional</label>
+            <input id="fa-av-busca-codigo" class="nf-busca" autocomplete="off">
+            <div class="nf-resultados" aria-live="polite"></div>
+            <p class="nf-escolhido" hidden></p>
+            <small class="nf-erro" id="fa-av-codigo-erro" hidden></small>
+          </fieldset>
+          <div class="nf-campo nf-campo--largo"><label for="fa-av-descricao">Descrição na nota (opcional)</label><textarea id="fa-av-descricao" rows="3" maxlength="2000" placeholder="Prestação de serviços"></textarea><small class="nf-erro" id="fa-av-descricao-erro" hidden></small></div>
+          <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-av-conferir">Conferir a nota</button></div>
+        </form>
+        <div class="nf-bloco" id="fa-av-resumo" hidden>
+          <h3 class="nf-h3" id="fa-av-resumo-titulo" tabindex="-1">Confira antes de emitir</h3>
+          <dl class="nf-dados" id="fa-av-resumo-dados"></dl>
+          <div id="fa-av-avisos"></div>
+          <div class="nf-acoes">
+            <button type="button" class="fi-btn fi-btn--tinta" id="fa-av-emitir">Emitir nota</button>
+            <button type="button" class="fi-link-btn" id="fa-av-corrigir">Corrigir</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="nf-cartao" aria-labelledby="fa-lote-titulo">
+        <p class="nf-passo">Lote por planilha</p>
+        <h2 class="nf-h2" id="fa-lote-titulo">Emitir pela planilha</h2>
+        <p class="nf-texto">A mesma planilha do WhatsApp (.xlsx ou .csv, até 1.000 linhas). Primeiro mostramos o que está pronto e o que tem problema; nada sai antes de você confirmar. Modelo: <a href="/agentes/fiscal/dados/modelo-lote.xlsx" download>.xlsx</a> ou <a href="/agentes/fiscal/dados/modelo-lote.csv" download>.csv</a>.</p>
+        <form id="fa-form-lote" class="nf-form" novalidate>
+          <div class="nf-campo nf-campo--largo"><label for="fa-lote-arquivo">Planilha</label><input id="fa-lote-arquivo" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><small class="nf-erro" id="fa-lote-arquivo-erro" hidden></small></div>
+          <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-lote-ler">Ler a planilha</button></div>
+        </form>
+        <p class="nf-aviso" id="fa-aviso-lote" role="status" hidden></p>
+        <div class="nf-bloco" id="fa-lote-resumo" hidden>
+          <h3 class="nf-h3" id="fa-lote-resumo-titulo" tabindex="-1"></h3>
+          <dl class="nf-totais">
+            <div><dt>Linhas</dt><dd id="fa-lote-linhas">—</dd></div>
+            <div><dt>Prontas</dt><dd id="fa-lote-prontas">—</dd></div>
+            <div><dt>Valor</dt><dd id="fa-lote-total">—</dd></div>
+            <div><dt>Com problema</dt><dd id="fa-lote-problemas-n">—</dd></div>
+          </dl>
+          <ul class="nf-lote-empresas" id="fa-lote-empresas"></ul>
+          <p class="nf-aviso nf-aviso--info" id="fa-lote-franquia" hidden></p>
+          <div class="nf-tabela-rolagem" id="fa-lote-rolagem" role="region" aria-label="Linhas com problema" tabindex="0" hidden>
+            <table class="nf-tabela">
+              <thead><tr><th scope="col" class="nf-num">Linha</th><th scope="col">Problema (fica de fora)</th></tr></thead>
+              <tbody id="fa-lote-problemas"></tbody>
+            </table>
+          </div>
+          <p class="nf-dica" id="fa-lote-validade"></p>
+          <div class="nf-acoes" id="fa-lote-acoes">
+            <button type="button" class="fi-btn fi-btn--tinta" id="fa-lote-confirmar"></button>
+            <button type="button" class="fi-link-btn" id="fa-lote-descartar">Descartar a planilha</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <!-- Relatórios (só Escritório) -->
     <div class="nf-secoes" id="fa-painel-relatorios" hidden>
       <section class="nf-cartao" aria-labelledby="fa-rel-titulo">
@@ -321,6 +394,6 @@
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=5"></script>
-<script src="/agentes/fiscal/conta/conta.js?v=8"></script>
+<script src="/agentes/fiscal/conta/conta.js?v=9"></script>
 </body>
 </html>
