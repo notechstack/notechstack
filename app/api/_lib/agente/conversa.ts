@@ -16,12 +16,23 @@ import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import { conversaAssumida, registrarEvento } from './central.js'
 import { tratarComando } from './comandos.js'
 import { documentoNoTexto, emailNoTexto, formatarDocumento, formatarReais, tipoDoDocumento } from './documentos.js'
+import {
+  empresasDaConta,
+  empresasDaResposta,
+  empresasParaEscolher,
+  empresasQueBatem,
+  linhaDoEmitente,
+  perguntaDoEmitente,
+  type EmitenteDoPedido,
+  type EmpresaDaConta,
+} from './emitente.js'
 import { validarParsed, type Interprete, type Parsed } from './interprete.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
 import { registrarJanela } from './janela.js'
-import { receberPlanilha, responderAoLote, tipoDaPlanilha } from './lote.js'
+import { motivoDoProblema, receberPlanilha, responderAoLote, tipoDaPlanilha } from './lote.js'
 import { MODELO_DA_PLANILHA, planoDeEscritorio, TEXTO_VER_NOTA } from './planos.js'
+import { tratarPedidoDeModelo } from './modelo-emissao.js'
 import { tratarVerNota } from './ver-nota.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
@@ -86,8 +97,8 @@ export const TEXTOS = {
   faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
-  /** Conta Escritório: a ajuda cita também a planilha do mês (lote) e o modelo. */
-  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  /** Conta Escritório: a ajuda cita também o pedido por empresa cliente, a planilha do mês (lote) e o modelo. */
+  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir por uma empresa cliente, diga a empresa no pedido: "nota pela Oficina Trilho pra Studio Lima, 350 reais". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). Se quiser o arquivo do modelo aqui, escreva *modelo*. ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
@@ -211,6 +222,11 @@ type Conversa = {
   corrigindo?: boolean
   /** Antes do resumo, com a descrição padrão: a próxima mensagem é a descrição da nota ou *padrão* (Lucca, 30/10/2026). */
   pedindoDescricao?: boolean
+  /** Conta Escritório com mais de uma empresa ativa: a empresa que emite (`tenant_id` do pedido), mostrada no resumo. */
+  emitente?: EmitenteDoPedido
+  /** Etapa `escolher_prestador`: o pedido lido, à espera da empresa, e as empresas listadas na pergunta (na ordem). */
+  pendente?: Parsed
+  opcoes?: string[]
 }
 
 type Pedido = {
@@ -219,7 +235,7 @@ type Pedido = {
   phone_id: string
   kind: 'emitir' | 'cancelar'
   status: 'awaiting_confirmation' | 'confirmed' | 'expired' | 'rejected_by_user'
-  etapa: 'dados_tomador' | 'confirmar' | 'escolher_nota' | 'salvar_modelo' | 'substituir_modelo' | null
+  etapa: 'dados_tomador' | 'confirmar' | 'escolher_nota' | 'salvar_modelo' | 'substituir_modelo' | 'escolher_prestador' | null
   conversa: Conversa
   invoice_id: string | null
   expires_at: Date
@@ -264,8 +280,21 @@ async function criarPedido(
     conversa: Conversa
     invoiceId?: string | null
     tokens: { entrada: number; saida: number }
+    /** A empresa que emite (conta Escritório); sem ela, a do telefone. */
+    tenantId?: string
+    /** O pedido que estava em `escolher_prestador` continua o mesmo, agora com a empresa escolhida. */
+    reusar?: Pedido
   },
 ): Promise<string> {
+  if (dados.reusar) {
+    await ctx.deps.db.query(
+      `update nofiscal.fiscal_requests set tenant_id = $2, etapa = $3, conversa = $4::jsonb, updated_at = $5
+        where id = $1 and status = 'awaiting_confirmation'`,
+      [dados.reusar.id, dados.tenantId ?? ctx.tenantId, dados.etapa, JSON.stringify(dados.conversa), ctx.agora],
+    )
+    ctx.pedidoId = dados.reusar.id
+    return dados.reusar.id
+  }
   // `created_at` é a ordem real de chegada (relógio do banco): a conversa responde ao pedido
   // mais recente, e dois pedidos no mesmo instante do relógio da conversa não podem empatar.
   const { rows } = await ctx.deps.db.query<{ id: string }>(
@@ -275,7 +304,7 @@ async function criarPedido(
      values ($1, $2, $3, 'awaiting_confirmation', $4::jsonb, $5, $6, $7, $8::jsonb, $9, $10, clock_timestamp(), $11)
      returning id`,
     [
-      ctx.tenantId,
+      dados.tenantId ?? ctx.tenantId,
       ctx.phoneId,
       dados.kind,
       JSON.stringify(dados.parsed),
@@ -333,9 +362,16 @@ export const formatarCodigoServico = (codigo: string) => (/^\d{6}$/.test(codigo)
 export const PERGUNTA_DE_EMISSAO = 'Posso emitir? Responda *confirmar* para emitir ou *corrigir* para mudar algo.'
 
 /** `nomeDoServico` = a descrição do código na lista nacional (catálogo), quando há. */
-export function textoDoResumo(tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string, nomeDoServico?: string | null): string {
+export function textoDoResumo(
+  tomador: TomadorDoPedido,
+  servico: ServicoDoPedido,
+  valor: string,
+  nomeDoServico?: string | null,
+  emitente?: EmitenteDoPedido | null,
+): string {
   return [
     'Resumo da nota:',
+    ...(emitente ? [linhaDoEmitente(emitente)] : []),
     `Tomador: ${tomador.nome}`,
     `${tipoDoDocumento(tomador.documento).toUpperCase()}: ${formatarDocumento(tomador.documento)}`,
     `Serviço: ${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
@@ -346,19 +382,31 @@ export function textoDoResumo(tomador: TomadorDoPedido, servico: ServicoDoPedido
 }
 
 /** O resumo com a descrição do código buscada no catálogo (sem catálogo, só o código). */
-async function resumo(ctx: Contexto, tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string): Promise<string> {
+async function resumo(ctx: Contexto, tomador: TomadorDoPedido, servico: ServicoDoPedido, valor: string, emitente?: EmitenteDoPedido | null): Promise<string> {
   const nome = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(servico.codigo).catch(() => null) : null
-  return textoDoResumo(tomador, servico, valor, nome)
+  return textoDoResumo(tomador, servico, valor, nome, emitente)
 }
 
-type Candidata = { id: string; numero: string; nome: string; valor: string | null; emitidaEm: Date }
+/**
+ * O bloqueio da empresa que emite. Pela empresa do telefone, o texto de sempre; por outra empresa do escritório, o
+ * motivo nomeando a empresa (como na planilha) e onde resolver. Assinatura e pagamento são da conta: texto de sempre.
+ */
+function textoDoBloqueioDoEmitente(ctx: Contexto, codigo: string, emitente?: EmitenteDoPedido | null): string {
+  const daConta = ['PAYMENT_NOT_APPROVED', 'NO_SUBSCRIPTION', 'SUBSCRIPTION_CANCELLED'].includes(codigo)
+  if (!emitente || emitente.id === ctx.tenantId || daConta) return textoDoBloqueio(codigo, ctx.links)
+  return `Não dá para emitir por ${emitente.razao_social}: ${motivoDoProblema(codigo, { empresa: emitente.razao_social })}. Resolva em Minha conta → Minhas empresas: ${ctx.links.conta}#empresas`
+}
+
+/** `empresa` = a razão social de quem emitiu, só na conta Escritório com mais de uma empresa (a numeração é por empresa). */
+type Candidata = { id: string; tenantId: string; numero: string; nome: string; valor: string | null; emitidaEm: Date; empresa: string | null }
 
 const linhaDaCandidata = (c: Candidata) =>
-  `nº ${c.numero} · ${c.nome} · ${c.valor ? formatarReais(c.valor) : '-'} · ${dataBr(c.emitidaEm)}`
+  `nº ${c.numero} · ${c.nome} · ${c.valor ? formatarReais(c.valor) : '-'} · ${dataBr(c.emitidaEm)}${c.empresa ? ` · ${c.empresa}` : ''}`
 
 const perguntaDeCancelamento = (c: Candidata) =>
   [
     `Nota nº ${c.numero}`,
+    ...(c.empresa ? [`Emitente: ${c.empresa}`] : []),
     `Tomador: ${c.nome}`,
     `Valor: ${c.valor ? formatarReais(c.valor) : '-'}`,
     `Emitida em: ${dataBr(c.emitidaEm)}`,
@@ -462,6 +510,8 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   if (await responderAoLote(ctx, texto)) return
   // "nota 123" / "nota Maria": o PDF de uma nota, por código, sem a IA.
   if (await tratarVerNota(ctx, texto)) return
+  // "qual é o modelo da planilha?" (conta Escritório): o arquivo .xlsx, por código, sem a IA.
+  if (await tratarPedidoDeModelo(ctx, texto)) return
   if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
@@ -590,6 +640,14 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
       }
       return completarTomador(ctx, pedido, texto)
 
+    case 'escolher_prestador':
+      if (pedido.status !== 'awaiting_confirmation') return false
+      if (ehNao(texto) || ehDesistir(texto)) {
+        await descartar(ctx, pedido)
+        return true
+      }
+      return escolherPrestador(ctx, pedido, texto)
+
     case 'escolher_nota':
       if (pedido.status !== 'awaiting_confirmation') return false
       if (ehManterNota(texto) || ehDesistir(texto)) {
@@ -679,8 +737,39 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     )
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'cliente' })
     ctx.pedidoId = null
-    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null }, tokens)
+    // Cliente novo, mesma empresa: o emitente do pedido continua valendo (a não ser que a correção diga outro).
+    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null }, tokens, {
+      emitenteId: parsed.prestador ? undefined : pedido.tenant_id,
+    })
     return true
+  }
+  // "emitente Studio Lima" / "pela Studio Lima": o mesmo cliente e valor, por outra empresa. Os clientes salvos são
+  // por empresa, então o pedido recomeça nela (pode pedir o e-mail de novo).
+  if (parsed.prestador && atual.tomador?.nome) {
+    const empresas = await empresasParaEscolher(ctx.deps.db, ctx.tenantId)
+    const achadas = empresas.length ? empresasQueBatem(empresas, parsed.prestador) : []
+    if (achadas.length === 1 && achadas[0].id !== pedido.tenant_id) {
+      await ctx.deps.db.query(
+        `update nofiscal.fiscal_requests set status = 'rejected_by_user', etapa = null, updated_at = $2
+          where id = $1 and status = 'awaiting_confirmation'`,
+        [pedido.id, ctx.agora],
+      )
+      logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'emitente' })
+      ctx.pedidoId = null
+      const descricao = parsed.descricao ?? (atual.servico && atual.servico.descricao !== DESCRICAO_PADRAO ? atual.servico.descricao : null)
+      await pedidoDeEmissao(
+        ctx,
+        { tomador: atual.tomador.nome, documento: atual.tomador.documento ?? null, valor: parsed.valor ?? atual.valor ?? null, modelo: null, descricao, prestador: null, intencao: 'emitir' },
+        tokens,
+        { emitenteId: achadas[0].id },
+      )
+      return true
+    }
+    if (empresas.length && achadas.length !== 1) {
+      const nenhuma = achadas.length === 0
+      await responder(ctx, perguntaDoEmitente(empresas, nenhuma ? { naoAchei: parsed.prestador } : { candidatas: achadas }).texto.replace(/\nPor qual empresa sai a nota\?[^\n]*/, '\nPara trocar a empresa, responda *corrigir* e me mande o nome ou o CNPJ dela.'))
+      return true
+    }
   }
   const valor = parsed.valor ?? atual.valor
   if ((parsed.valor || parsed.descricao) && valor && atual.tomador && atual.servico) {
@@ -689,7 +778,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
     const mudou = parsed.valor && parsed.descricao ? 'valor e descricao' : parsed.valor ? 'valor' : 'descricao'
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
-    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, valor))
+    await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, valor, atual.emitente))
     return true
   }
   await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não entendi a correção do pedido' })
@@ -711,9 +800,10 @@ async function confirmarSemEtapa(ctx: Contexto, ultimo: Pedido | null): Promise<
 async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
   const { db } = ctx.deps
   if (pedido.kind === 'emitir') {
-    const bloqueio = await bloqueioDaEmissao(db, ctx.tenantId)
+    // A nota sai pela empresa do pedido: a do telefone ou, na conta Escritório, a que a pessoa escolheu.
+    const bloqueio = await bloqueioDaEmissao(db, pedido.tenant_id)
     if (bloqueio) {
-      await responder(ctx, textoDoBloqueio(bloqueio, ctx.links))
+      await responder(ctx, textoDoBloqueioDoEmitente(ctx, bloqueio, pedido.conversa.emitente))
       return
     }
     const { tomador, servico, valor } = pedido.conversa
@@ -732,7 +822,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
         servico,
         valor,
       )
-      const nota = await createOrGetInvoice(tx, ctx.tenantId, { external_id: pedido.id, payload: payload as unknown as InvoicePayload })
+      const nota = await createOrGetInvoice(tx, pedido.tenant_id, { external_id: pedido.id, payload: payload as unknown as InvoicePayload })
       await tx.query('update nofiscal.fiscal_requests set invoice_id = $2 where id = $1', [pedido.id, nota.id])
       return nota
     })
@@ -740,7 +830,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
       await responder(ctx, TEXTOS.semPedido)
       return
     }
-    logEvent('agente.pedido_confirmado', { request_id: pedido.id, invoice_id: criada.id })
+    logEvent('agente.pedido_confirmado', { request_id: pedido.id, invoice_id: criada.id, tenant_id: pedido.tenant_id })
     await responder(ctx, TEXTOS.emitindo)
     return
   }
@@ -755,7 +845,8 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
       [pedido.id, ctx.agora],
     )
     if (rowCount !== 1) return null
-    return requestCancel(tx, ctx.tenantId, invoiceId, ctx.agora)
+    // A nota pode ser de outra empresa do escritório: o pedido guarda de qual (novoCancelamento e escolherNota).
+    return requestCancel(tx, pedido.tenant_id, invoiceId, ctx.agora)
   })
   if (!nota) {
     await responder(ctx, TEXTOS.semPedido)
@@ -809,7 +900,7 @@ async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): P
     ctx,
     conversa.pedindoDescricao
       ? TEXTOS.perguntaDeDescricao
-      : await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string),
+      : await resumo(ctx, tomador as TomadorDoPedido, conversa.servico as ServicoDoPedido, conversa.valor as string, conversa.emitente),
   )
   return true
 }
@@ -842,7 +933,7 @@ async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): 
   const servico: ServicoDoPedido = { ...atual.servico, descricao }
   const conversa: Conversa = { ...atual, servico, pedindoDescricao: false }
   await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
-  await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, atual.valor))
+  await responder(ctx, await resumo(ctx, atual.tomador as TomadorDoPedido, servico, atual.valor, atual.emitente))
   return true
 }
 
@@ -851,19 +942,27 @@ async function escolherNota(ctx: Contexto, pedido: Pedido, texto: string): Promi
   if (!m) return false
   ctx.pedidoId = pedido.id
   const candidatas = pedido.conversa.candidatas ?? []
-  const escolhida = candidatas.find((c) => c.numero === String(BigInt(m[1])))
+  // Na conta Escritório duas empresas podem ter a nota de mesmo número: aí o número não basta.
+  const comEsseNumero = candidatas.filter((c) => c.numero === String(BigInt(m[1])))
+  if (comEsseNumero.length > 1) {
+    const escopo = await escopoDeNotas(ctx)
+    const notas = await buscarNotas(ctx.deps.db, escopo, { ids: comEsseNumero.map((c) => c.id) })
+    await responder(ctx, [`Há mais de uma nota nº ${m[1]}. Cancele uma de cada vez, dizendo a empresa e o cliente no pedido:`, ...notas.map(linhaDaCandidata)].join('\n'))
+    return true
+  }
+  const escolhida = comEsseNumero[0]
   if (!escolhida) {
     await responder(ctx, `Não achei a nota nº ${m[1]} entre as candidatas. Me mande um destes números: ${candidatas.map((c) => c.numero).join(', ')}.`)
     return true
   }
-  const [nota] = await buscarNotas(ctx.deps.db, ctx.tenantId, { ids: [escolhida.id] })
+  const [nota] = await buscarNotas(ctx.deps.db, await escopoDeNotas(ctx), { ids: [escolhida.id] })
   if (!nota) {
     await responder(ctx, `A nota nº ${escolhida.numero} não está mais emitida. Me mande o pedido de novo.`)
     return true
   }
   await ctx.deps.db.query(
-    `update nofiscal.fiscal_requests set invoice_id = $2, etapa = 'confirmar', updated_at = $3 where id = $1`,
-    [pedido.id, nota.id, ctx.agora],
+    `update nofiscal.fiscal_requests set invoice_id = $2, tenant_id = $4, etapa = 'confirmar', updated_at = $3 where id = $1`,
+    [pedido.id, nota.id, ctx.agora, nota.tenantId],
   )
   await responder(ctx, perguntaDeCancelamento(nota))
   return true
@@ -882,16 +981,22 @@ async function salvarModelo(ctx: Contexto, pedido: Pedido): Promise<void> {
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
      on conflict (tenant_id, (lower(nome))) do nothing
      returning id`,
-    [ctx.tenantId, nome, tomador.documento, tomador.nome, tomador.email ?? null, servico.codigo, servico.descricao, pedido.invoice_id, ctx.agora],
+    [pedido.tenant_id, nome, tomador.documento, tomador.nome, tomador.email ?? null, servico.codigo, servico.descricao, pedido.invoice_id, ctx.agora],
   )
   if (rows[0]) {
     await atualizarPedido(ctx.deps.db, pedido.id, null, pedido.conversa, ctx.agora)
-    await responder(ctx, `Modelo ${nome} salvo. Da próxima vez, é só escrever: nota pra ${nome}, e o valor.`)
+    const emitente = pedido.conversa.emitente
+    await responder(
+      ctx,
+      emitente
+        ? `Modelo ${nome} salvo em ${emitente.razao_social}. Da próxima vez, é só escrever: nota pela ${emitente.razao_social} pra ${nome}, e o valor.`
+        : `Modelo ${nome} salvo. Da próxima vez, é só escrever: nota pra ${nome}, e o valor.`,
+    )
     return
   }
   const existente = await ctx.deps.db.query<{ nome: string }>(
     'select nome from nofiscal.fiscal_models where tenant_id = $1 and lower(nome) = lower($2)',
-    [ctx.tenantId, nome],
+    [pedido.tenant_id, nome],
   )
   await atualizarPedido(ctx.deps.db, pedido.id, 'substituir_modelo', pedido.conversa, ctx.agora)
   await responder(
@@ -908,7 +1013,7 @@ async function substituirModelo(ctx: Contexto, pedido: Pedido): Promise<void> {
         set nome = $3, tomador_documento = $4, tomador_nome = $5, tomador_email = $6, tomador_whatsapp = null,
             codigo_servico_nacional = $7, descricao = $8, valor_padrao = null, created_from_invoice_id = $9, updated_at = $10
       where tenant_id = $1 and lower(nome) = lower($2)`,
-    [ctx.tenantId, nome, nome, tomador.documento, tomador.nome, tomador.email ?? null, servico.codigo, servico.descricao, pedido.invoice_id, ctx.agora],
+    [pedido.tenant_id, nome, nome, tomador.documento, tomador.nome, tomador.email ?? null, servico.codigo, servico.descricao, pedido.invoice_id, ctx.agora],
   )
   await atualizarPedido(ctx.deps.db, pedido.id, null, pedido.conversa, ctx.agora)
   await responder(ctx, `Modelo ${nome} substituído.`)
@@ -983,19 +1088,71 @@ async function novoPedido(ctx: Contexto, texto: string): Promise<void> {
   await pedidoDeEmissao(ctx, parsed, tokens)
 }
 
-/** Do pedido já interpretado ao resumo (ou às perguntas que faltam). */
-async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada: number; saida: number }): Promise<void> {
+/**
+ * Do pedido já interpretado ao resumo (ou às perguntas que faltam). Na conta Escritório com mais de uma empresa ativa,
+ * antes de tudo vem a empresa que emite: a escrita no pedido (`parsed.prestador`), a já escolhida (`emitenteId`) ou a
+ * pergunta "Por qual empresa sai a nota?" (etapa `escolher_prestador`). Nas outras contas, a empresa do telefone.
+ */
+async function pedidoDeEmissao(
+  ctx: Contexto,
+  parsed: Parsed,
+  tokens: { entrada: number; saida: number },
+  opcoes: { emitenteId?: string; reusar?: Pedido } = {},
+): Promise<void> {
   const semPedido = () => logEvent('agente.ia_sem_pedido', { tokens_entrada: tokens.entrada, tokens_saida: tokens.saida, intencao: parsed.intencao })
-  const bloqueio = await bloqueioDaEmissao(ctx.deps.db, ctx.tenantId)
+
+  const empresas = await empresasParaEscolher(ctx.deps.db, ctx.tenantId)
+  let escolhida: EmpresaDaConta | null = null
+  if (empresas.length) {
+    // A IA às vezes lê o cliente como empresa ("nota da Studio Lima, 350"): nome que não é de nenhuma empresa da
+    // conta, num pedido sem tomador, é o tomador.
+    if (parsed.prestador && !parsed.tomador && !parsed.modelo && !parsed.documento && !empresasQueBatem(empresas, parsed.prestador).length) {
+      parsed = { ...parsed, tomador: parsed.prestador, prestador: null }
+    }
+    if (!parsed.tomador && !parsed.modelo && !parsed.documento) {
+      semPedido()
+      await responder(ctx, parsed.valor ? TEXTOS.faltaTomador : TEXTOS.faltaTudo)
+      return
+    }
+    if (opcoes.emitenteId) escolhida = empresas.find((e) => e.id === opcoes.emitenteId) ?? null
+    if (!escolhida) {
+      const achadas = parsed.prestador ? empresasQueBatem(empresas, parsed.prestador) : []
+      if (achadas.length === 1) escolhida = achadas[0]
+      else {
+        const pergunta = perguntaDoEmitente(
+          empresas,
+          achadas.length > 1 ? { candidatas: achadas } : parsed.prestador ? { naoAchei: parsed.prestador } : {},
+        )
+        await criarPedido(ctx, {
+          kind: 'emitir',
+          etapa: 'escolher_prestador',
+          parsed,
+          tokens,
+          conversa: { pendente: { ...parsed, prestador: null }, opcoes: pergunta.opcoes },
+          reusar: opcoes.reusar,
+        })
+        logEvent('agente.emitente_perguntado', { tenant_id: ctx.tenantId, empresas: empresas.length, motivo: achadas.length > 1 ? 'varias' : parsed.prestador ? 'nenhuma' : 'sem_empresa' })
+        await responder(ctx, pergunta.texto)
+        return
+      }
+    }
+  }
+  /** A empresa que emite: a escolhida ou a do telefone. */
+  const tenantId = escolhida?.id ?? ctx.tenantId
+  const emitente: EmitenteDoPedido | undefined = escolhida ? { id: escolhida.id, razao_social: escolhida.razao_social, cnpj: escolhida.cnpj } : undefined
+
+  const bloqueio = await bloqueioDaEmissao(ctx.deps.db, tenantId)
   if (bloqueio) {
     semPedido()
-    await responder(ctx, textoDoBloqueio(bloqueio, ctx.links))
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
+    await responder(ctx, textoDoBloqueioDoEmitente(ctx, bloqueio, emitente))
     return
   }
 
-  const modelo = await resolverModelo(ctx.deps.db, ctx.tenantId, parsed)
+  const modelo = await resolverModelo(ctx.deps.db, tenantId, parsed)
   if (modelo && 'ambiguos' in modelo) {
     semPedido()
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
     await responder(ctx, `Achei mais de um modelo: ${modelo.ambiguos.join(', ')}. Me mande o pedido de novo com o nome do modelo.`)
     return
   }
@@ -1003,6 +1160,7 @@ async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada:
   const nome = modelo?.tomador_nome ?? parsed.tomador
   if (!nome || !valor) {
     semPedido()
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
     await responder(ctx, !nome && !valor ? TEXTOS.faltaTudo : !valor ? TEXTOS.faltaValor : TEXTOS.faltaTomador)
     return
   }
@@ -1017,16 +1175,18 @@ async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada:
       etapa: 'confirmar',
       parsed,
       tokens,
-      conversa: { tomador, servico, valor, modelo_id: modelo.id, pedindoDescricao },
+      conversa: { tomador, servico, valor, modelo_id: modelo.id, pedindoDescricao, emitente },
+      tenantId,
+      reusar: opcoes.reusar,
     })
-    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumo(ctx, tomador, servico, valor))
+    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumo(ctx, tomador, servico, valor, emitente))
     return
   }
 
   // Tomador novo (critério 18): código do tenant e a descrição do pedido (ou a padrão); documento e e-mail pela conversa.
   const { rows } = await ctx.deps.db.query<{ codigo: string }>(
     'select codigo_servico_nacional as codigo from nofiscal.fiscal_tenants where id = $1',
-    [ctx.tenantId],
+    [tenantId],
   )
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
@@ -1034,14 +1194,56 @@ async function pedidoDeEmissao(ctx: Contexto, parsed: Parsed, tokens: { entrada:
     valor,
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),
+    emitente,
   }
-  await criarPedido(ctx, { kind: 'emitir', etapa: 'dados_tomador', parsed, tokens, conversa })
+  await criarPedido(ctx, { kind: 'emitir', etapa: 'dados_tomador', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
   await responder(
     ctx,
     parsed.documento
-      ? `É a primeira nota para ${nome}. Me mande o e-mail de ${nome}.`
-      : `É a primeira nota para ${nome}. Me mande o CPF ou CNPJ e o e-mail de ${nome}.`,
+      ? `É a primeira nota${emitente ? ` de ${emitente.razao_social}` : ''} para ${nome}. Me mande o e-mail de ${nome}.`
+      : `É a primeira nota${emitente ? ` de ${emitente.razao_social}` : ''} para ${nome}. Me mande o CPF ou CNPJ e o e-mail de ${nome}.`,
   )
+}
+
+/** O pedido que esperava a empresa não segue (bloqueio, falta de dado): sai sem mensagem própria; a resposta é a do motivo. */
+async function descartarSemResposta(ctx: Contexto, pedido: Pedido): Promise<void> {
+  ctx.pedidoId = pedido.id
+  await ctx.deps.db.query(
+    `update nofiscal.fiscal_requests set status = 'rejected_by_user', etapa = null, updated_at = $2
+      where id = $1 and status = 'awaiting_confirmation'`,
+    [pedido.id, ctx.agora],
+  )
+}
+
+/**
+ * A resposta a "Por qual empresa sai a nota?": o número da lista, o nome, o CNPJ ou "escritório". Uma empresa → o
+ * pedido segue nela (o mesmo pedido). Nenhuma ou várias → a pergunta volta. Mensagem longa que não é resposta
+ * (um pedido novo, por exemplo) segue para a conversa de pedidos.
+ */
+async function escolherPrestador(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
+  const pendente = pedido.conversa.pendente
+  if (!pendente) return false
+  const empresas = await empresasParaEscolher(ctx.deps.db, ctx.tenantId)
+  ctx.pedidoId = pedido.id
+  // A conta ficou com uma empresa ativa só no meio da conversa: não há mais o que escolher.
+  if (!empresas.length) {
+    await pedidoDeEmissao(ctx, pendente, { entrada: 0, saida: 0 }, { reusar: pedido })
+    return true
+  }
+  const achadas = empresasDaResposta(empresas, pedido.conversa.opcoes ?? [], texto)
+  if (achadas.length === 1) {
+    logEvent('agente.emitente_escolhido', { request_id: pedido.id, tenant_id: achadas[0].id })
+    await pedidoDeEmissao(ctx, pendente, { entrada: 0, saida: 0 }, { emitenteId: achadas[0].id, reusar: pedido })
+    return true
+  }
+  if (!achadas.length && texto.trim().split(/\s+/).length > 6) {
+    ctx.pedidoId = null
+    return false
+  }
+  const pergunta = perguntaDoEmitente(empresas, achadas.length > 1 ? { candidatas: achadas } : { naoAchei: texto.trim().slice(0, 60) })
+  await atualizarPedido(ctx.deps.db, pedido.id, 'escolher_prestador', { ...pedido.conversa, opcoes: pergunta.opcoes }, ctx.agora)
+  await responder(ctx, pergunta.texto)
+  return true
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1063,16 +1265,26 @@ function dataNoTexto(texto: string, agora: Date): string | null {
 
 const escaparLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
 
+/** Onde procurar a nota: na conta Escritório, todas as empresas dela (ativas ou não); nas outras, a do telefone. */
+type EscopoDeNotas = { tenantIds: string[]; variasEmpresas: boolean; empresas: EmpresaDaConta[] }
+
+async function escopoDeNotas(ctx: Contexto): Promise<EscopoDeNotas> {
+  const empresas = await empresasDaConta(ctx.deps.db, ctx.tenantId)
+  if (empresas.length < 2) return { tenantIds: [ctx.tenantId], variasEmpresas: false, empresas: [] }
+  return { tenantIds: empresas.map((e) => e.id), variasEmpresas: true, empresas }
+}
+
 async function buscarNotas(
   db: Queryable,
-  tenantId: string,
-  filtro: { ids?: string[]; documentos?: string[]; nomes?: string[]; dia?: string | null },
+  escopo: EscopoDeNotas,
+  filtro: { ids?: string[]; documentos?: string[]; nomes?: string[]; dia?: string | null; tenantIds?: string[] },
 ): Promise<Candidata[]> {
   const porTomador = Boolean(filtro.documentos?.length || filtro.nomes?.length)
-  const { rows } = await db.query<{ id: string; dps_numero: string | null; xml_nfse: string | null; issued_at: Date; payload: unknown }>(
-    `select i.id, i.dps_numero, i.xml_nfse, i.issued_at, i.payload
+  const { rows } = await db.query<{ id: string; tenant_id: string; razao_social: string; dps_numero: string | null; xml_nfse: string | null; issued_at: Date; payload: unknown }>(
+    `select i.id, i.tenant_id, t.razao_social, i.dps_numero, i.xml_nfse, i.issued_at, i.payload
        from nofiscal.fiscal_invoices i
-      where i.tenant_id = $1
+       join nofiscal.fiscal_tenants t on t.id = i.tenant_id
+      where i.tenant_id = any($1::uuid[])
         and i.status = 'issued'
         and i.issued_at is not null
         and ($2::uuid[] is null or i.id = any($2::uuid[]))
@@ -1083,7 +1295,7 @@ async function buscarNotas(
       order by i.issued_at desc, i.id
       limit $7`,
     [
-      tenantId,
+      filtro.tenantIds ?? escopo.tenantIds,
       filtro.ids ?? null,
       porTomador,
       filtro.documentos ?? [],
@@ -1094,7 +1306,7 @@ async function buscarNotas(
   )
   return rows.map((r) => {
     const p = lerPayload(r.payload)
-    return { id: r.id, numero: numeroDaNota(r), nome: p.nome, valor: p.valor, emitidaEm: r.issued_at }
+    return { id: r.id, tenantId: r.tenant_id, numero: numeroDaNota(r), nome: p.nome, valor: p.valor, emitidaEm: r.issued_at, empresa: escopo.variasEmpresas ? r.razao_social : null }
   })
 }
 
@@ -1117,7 +1329,30 @@ async function novoCancelamento(
     }
   }
   const dia = dataNoTexto(texto, ctx.agora)
-  const candidatas = await buscarNotas(ctx.deps.db, ctx.tenantId, { documentos: [...documentos], nomes: [...nomes], dia })
+  const escopo = await escopoDeNotas(ctx)
+  // Conta Escritório: "cancela a nota da Oficina Trilho pra Clínica Saúde" procura só na empresa dita; sem ela (ou
+  // com um nome que não é de empresa da conta), em todas. O cliente salvo em qualquer empresa também serve de pista.
+  let tenantIds: string[] | undefined
+  if (escopo.variasEmpresas) {
+    if (parsed.prestador) {
+      const ditas = empresasQueBatem(escopo.empresas, parsed.prestador)
+      if (ditas.length) tenantIds = ditas.map((e) => e.id)
+      else nomes.add(parsed.prestador)
+    }
+    const pista = parsed.modelo ?? parsed.tomador
+    if (pista) {
+      const { rows: salvos } = await ctx.deps.db.query<{ tomador_documento: string; tomador_nome: string }>(
+        `select tomador_documento, tomador_nome from nofiscal.fiscal_models
+          where tenant_id = any($1::uuid[]) and (lower(nome) = lower($2) or lower(tomador_nome) = lower($2)) limit 20`,
+        [tenantIds ?? escopo.tenantIds, pista],
+      )
+      for (const m of salvos) {
+        documentos.add(m.tomador_documento)
+        nomes.add(m.tomador_nome)
+      }
+    }
+  }
+  const candidatas = await buscarNotas(ctx.deps.db, escopo, { documentos: [...documentos], nomes: [...nomes], dia, tenantIds })
 
   if (!candidatas.length) {
     semPedido()
@@ -1127,7 +1362,7 @@ async function novoCancelamento(
   }
   const conversa: Conversa = { candidatas: candidatas.map((c) => ({ id: c.id, numero: c.numero })) }
   if (candidatas.length === 1) {
-    await criarPedido(ctx, { kind: 'cancelar', etapa: 'confirmar', parsed, tokens, conversa, invoiceId: candidatas[0].id })
+    await criarPedido(ctx, { kind: 'cancelar', etapa: 'confirmar', parsed, tokens, conversa, invoiceId: candidatas[0].id, tenantId: candidatas[0].tenantId })
     await responder(ctx, perguntaDeCancelamento(candidatas[0]))
     return
   }

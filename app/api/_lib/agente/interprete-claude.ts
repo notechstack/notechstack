@@ -14,9 +14,10 @@ export const SCHEMA_PARSED = {
     valor: TEXTO_OU_NULO,
     modelo: TEXTO_OU_NULO,
     descricao: TEXTO_OU_NULO,
+    prestador: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'intencao'],
   additionalProperties: false,
 }
 
@@ -29,6 +30,7 @@ export const INSTRUCOES = [
   '- documento: CPF ou CNPJ do cliente, só os dígitos, quando aparecer na mensagem.',
   '- valor: o valor em reais com ponto decimal e duas casas, por exemplo "1500.00" para "mil e quinhentos" ou "1.500,00".',
   '- descricao: o serviço prestado, quando a pessoa disser o que foi, para ir na descrição da nota (por exemplo "Consultoria de outubro" em "nota pra Studio Lima, 350, consultoria de outubro"). Sem o nome do cliente, o valor ou o CPF/CNPJ; primeira letra maiúscula; senão null.',
+  '- prestador: a empresa que EMITE a nota, só quando a mensagem diz por qual empresa a nota sai ("nota pela Oficina Trilho pra Clínica Saúde", "em nome da Studio Lima", "emitente Studio Lima", "pelo escritório", ou o CNPJ dela). Escreva o nome ou o CNPJ como a pessoa escreveu, sem "pela" ou "da". É diferente do tomador, que é para quem a nota vai: em "nota pra Studio Lima" ou "nota da Studio Lima, 350" não há prestador. Senão null.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

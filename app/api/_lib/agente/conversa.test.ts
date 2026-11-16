@@ -553,7 +553,7 @@ describe('conversa no WhatsApp', () => {
     let pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0].status).toBe('awaiting_confirmation')
-    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['descricao', 'documento', 'intencao', 'modelo', 'tomador', 'valor'])
+    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['descricao', 'documento', 'intencao', 'modelo', 'prestador', 'tomador', 'valor'])
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     await c.enviar(s.ownerPhone, 'cancela a nota da Prontia já')

@@ -107,6 +107,7 @@ describe('arquivo da planilha', () => {
 
   it('o modelo publicado (.xlsx e .csv) lê sem problema de coluna', async () => {
     for (const [arquivo, tipo] of [
+      ['../../../../agentes/fiscal/dados/modelo-emissao.xlsx', 'xlsx'],
       ['../../../../agentes/fiscal/dados/modelo-lote.xlsx', 'xlsx'],
       ['../../../../agentes/fiscal/dados/modelo-lote.csv', 'csv'],
     ] as const) {

@@ -492,7 +492,7 @@ describe('boas-vindas do Escritório', () => {
     expect(resposta).toMatch(/^Pronto! /)
     expect(resposta.split('\n').at(-1)).toBe(LINHA_DA_PLANILHA)
     expect(LINHA_DA_PLANILHA).toBe(
-      'Pra emitir as notas do mês de uma vez, mande a planilha aqui (modelo: https://www.notechstack.com.br/agentes/fiscal/dados/modelo-lote.csv). Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
+      'Pra emitir as notas do mês de uma vez, mande a planilha aqui (modelo: https://www.notechstack.com.br/agentes/fiscal/dados/modelo-emissao.xlsx). Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
     )
   })
 })

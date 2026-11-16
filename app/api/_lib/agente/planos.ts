@@ -6,8 +6,12 @@ export const PLANOS_DE_ESCRITORIO = ['escritorio_5', 'escritorio_20', 'escritori
 export const planoDeEscritorio = (plano: string | null | undefined): boolean =>
   (PLANOS_DE_ESCRITORIO as readonly string[]).includes(plano ?? '')
 
-/** Modelo da planilha do lote (Planilha v1), publicado com o site. */
-export const MODELO_DA_PLANILHA = 'https://www.notechstack.com.br/agentes/fiscal/dados/modelo-lote.csv'
+/**
+ * Modelo de emissão por planilha, publicado com o site: .xlsx com a aba Notas (Planilha v1) e a aba Como preencher
+ * (16/11/2026). O agente também manda o arquivo no WhatsApp (modelo-emissao.ts). Os `modelo-lote.csv` e `.xlsx`
+ * continuam no ar para os links antigos.
+ */
+export const MODELO_DA_PLANILHA = 'https://www.notechstack.com.br/agentes/fiscal/dados/modelo-emissao.xlsx'
 
 /** Comando *nota* (ver-nota.ts), citado na ajuda, nas boas-vindas do Escritório e no aviso do retorno do lote. */
 export const TEXTO_VER_NOTA = 'Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).'
