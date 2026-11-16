@@ -33,6 +33,16 @@ export async function empresasParaEscolher(db: Queryable, tenantId: string): Pro
   return ativas.map((e) => ({ id: e.id, cnpj: e.cnpj, razao_social: e.razao_social, principal: e.id === tenantId }))
 }
 
+/**
+ * Todas as empresas da conta Escritório, ativas ou não (a do escritório primeiro): onde procurar uma nota já emitida,
+ * para cancelar. Vazio quando a conta não é Escritório: aí só existe a empresa do telefone.
+ */
+export async function empresasDaConta(db: Queryable, tenantId: string): Promise<EmpresaDaConta[]> {
+  const { rows } = await db.query<{ plan: string }>('select plan from nofiscal.fiscal_tenants where id = $1', [tenantId])
+  if (!planoDeEscritorio(rows[0]?.plan)) return []
+  return (await empresasDoDono(db, tenantId)).map((e) => ({ id: e.id, cnpj: e.cnpj, razao_social: e.razao_social, principal: e.id === tenantId }))
+}
+
 /** "pela Oficina Trilho", "da empresa Studio Lima", "emitente: X" → só o nome. */
 const semPrefixo = (texto: string) =>
   texto

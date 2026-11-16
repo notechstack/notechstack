@@ -3,6 +3,7 @@
 // pergunta "Por qual empresa sai a nota?"; a IA só lê o nome, o código acha a empresa. Clientes salvos, bloqueio,
 // nota e entrega seguem a empresa do pedido. Contas com uma empresa só e contas Pro não mudam. Banco local; IA,
 // WhatsApp, e-mail e Sefin são dublês.
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   allowTestUserToAssume,
@@ -414,5 +415,95 @@ describe('contas sem escolha de empresa não mudam', () => {
     expect(resumo).toContain('Posso emitir?')
     expect(resumo).not.toContain('Emitente')
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(1)
+  })
+})
+
+// ── cancelar pela conta inteira ─────────────────────────────────────────────────────────
+
+/** Nota emitida gravada direto no tenant (como em conversa.test.ts). */
+async function notaEmitida(tenantId: string, opcoes: { numero: number; nome?: string; valor?: string }): Promise<string> {
+  const { rows } = await admin.db.query<{ id: string }>(
+    `insert into nofiscal.fiscal_invoices
+       (tenant_id, external_id, payload, status, dps_serie, dps_numero, chave_acesso, issued_at)
+     values ($1, $2, $3::jsonb, 'issued', '1', $4, $5, now()) returning id`,
+    [
+      tenantId,
+      `emitida-${randomUUID()}`,
+      JSON.stringify({
+        tomador: { cpf: '52998224725', nome: opcoes.nome ?? 'Clínica Saúde', email: 'financeiro@clinica.test' },
+        servico: { codigo_servico_nacional: '010701', descricao: 'Consulta de novembro' },
+        valor: opcoes.valor ?? '450.00',
+      }),
+      opcoes.numero,
+      `CHAVE${randomUUID().replace(/-/g, '')}`,
+    ],
+  )
+  return rows[0].id
+}
+
+const situacaoDa = async (id: string) =>
+  (await admin.db.query<{ status: string }>('select status from nofiscal.fiscal_invoices where id = $1', [id])).rows[0].status
+
+describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () => {
+  const CANCELA = 'cancela a nota da Clínica Saúde de hoje'
+
+  it('nota de empresa cliente é achada, a pergunta diz a empresa e o cancelamento vai pelo tenant dela', async () => {
+    const e = await escritorio()
+    const [oficina] = e.empresas
+    const nota = await notaEmitida(oficina.id, { numero: 5 })
+    const c = conversa({ [CANCELA]: { tomador: 'Clínica Saúde', intencao: 'cancelar' } })
+
+    await c.enviar(e.mae.ownerPhone, CANCELA)
+    const pergunta = c.ultimaPara(e.mae.ownerPhone).split('\n')
+    expect(pergunta.slice(0, 3)).toEqual(['Nota nº 5', 'Emitente: Oficina Trilho Ltda', 'Tomador: Clínica Saúde'])
+    expect(pergunta.at(-1)).toContain('Cancelo esta nota?')
+    expect(await pedidosDo(admin.db, e.mae.tenant.id)).toHaveLength(0)
+    expect((await pedidosDo(admin.db, oficina.id))[0]).toMatchObject({ kind: 'cancelar', etapa: 'confirmar', invoice_id: nota })
+
+    await c.enviar(e.mae.ownerPhone, 'confirmar')
+    expect(c.ultimaPara(e.mae.ownerPhone)).toBe('Pedido de cancelamento da nota nº 5 enviado. Eu te aviso quando a Sefin confirmar.')
+    expect(await situacaoDa(nota)).toBe('cancel_requested')
+  })
+
+  it('mesmo número em duas empresas: a lista diz a empresa, e a empresa no pedido desempata', async () => {
+    const e = await escritorio()
+    const [oficina] = e.empresas
+    const doEscritorio = await notaEmitida(e.mae.tenant.id, { numero: 5, valor: '100.00' })
+    const daOficina = await notaEmitida(oficina.id, { numero: 5, valor: '450.00' })
+    const comEmpresa = 'cancela a nota da Oficina Trilho pra Clínica Saúde'
+    const c = conversa({
+      [CANCELA]: { tomador: 'Clínica Saúde', intencao: 'cancelar' },
+      [comEmpresa]: { tomador: 'Clínica Saúde', prestador: 'Oficina Trilho', intencao: 'cancelar' },
+    })
+
+    await c.enviar(e.mae.ownerPhone, CANCELA)
+    const lista = c.ultimaPara(e.mae.ownerPhone)
+    expect(lista).toContain('Achei mais de uma nota.')
+    expect(lista).toContain('R$ 100,00')
+    expect(lista).toContain('· Contábil Aurora Ltda')
+    expect(lista).toContain('· Oficina Trilho Ltda')
+
+    // O número sozinho não escolhe entre as duas empresas.
+    await c.enviar(e.mae.ownerPhone, '5')
+    expect(c.ultimaPara(e.mae.ownerPhone).split('\n')[0]).toBe('Há mais de uma nota nº 5. Cancele uma de cada vez, dizendo a empresa e o cliente no pedido:')
+    expect(await situacaoDa(doEscritorio)).toBe('issued')
+    expect(await situacaoDa(daOficina)).toBe('issued')
+
+    await c.enviar(e.mae.ownerPhone, comEmpresa)
+    const pergunta = c.ultimaPara(e.mae.ownerPhone)
+    expect(pergunta).toContain('Emitente: Oficina Trilho Ltda')
+    expect(pergunta).toContain('R$ 450,00')
+    await c.enviar(e.mae.ownerPhone, 'confirmar')
+    expect(await situacaoDa(daOficina)).toBe('cancel_requested')
+    expect(await situacaoDa(doEscritorio)).toBe('issued')
+  })
+
+  it('nota de outra conta não aparece', async () => {
+    const e = await escritorio()
+    const outro = await escritorio()
+    await notaEmitida(outro.empresas[0].id, { numero: 9 })
+    const c = conversa({ [CANCELA]: { tomador: 'Clínica Saúde', intencao: 'cancelar' } })
+    await c.enviar(e.mae.ownerPhone, CANCELA)
+    expect(c.ultimaPara(e.mae.ownerPhone)).toMatch(/^Não achei nota emitida para Clínica Saúde em /)
   })
 })
