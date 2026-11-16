@@ -22,6 +22,7 @@ import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type Tom
 import { registrarJanela } from './janela.js'
 import { receberPlanilha, responderAoLote, tipoDaPlanilha } from './lote.js'
 import { MODELO_DA_PLANILHA, planoDeEscritorio, TEXTO_VER_NOTA } from './planos.js'
+import { tratarPedidoDeModelo } from './modelo-emissao.js'
 import { tratarVerNota } from './ver-nota.js'
 import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
@@ -462,6 +463,8 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   if (await responderAoLote(ctx, texto)) return
   // "nota 123" / "nota Maria": o PDF de uma nota, por código, sem a IA.
   if (await tratarVerNota(ctx, texto)) return
+  // "qual é o modelo da planilha?" (conta Escritório): o arquivo .xlsx, por código, sem a IA.
+  if (await tratarPedidoDeModelo(ctx, texto)) return
   if ((await etapaDoOnboarding(deps.db, ctx.tenantId)) !== 'concluido' && (await conversarNasBoasVindas(ctx, texto))) return
   try {
     const pedido = await ultimoPedido(deps.db, ctx.phoneId)
