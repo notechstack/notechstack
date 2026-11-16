@@ -15,6 +15,7 @@ import { CODIGO_UF, type AmbienteNfe, type Uf } from './autorizadores.js'
 import {
   calcularTotais,
   montarNfe,
+  limpo,
   NfeInvalidaError,
   SERIE_MAXIMA,
   soDigitos,
@@ -110,7 +111,7 @@ export async function salvarDadosNfe(db: Db, tenantId: string, dados: DadosNfeDa
   if (!end.logradouro || end.logradouro.length > 60) problemas.push('Informe o logradouro (até 60 caracteres).')
   if (!end.bairro || end.bairro.length > 60) problemas.push('Informe o bairro.')
   if (end.cep.length !== 8) problemas.push('CEP com 8 dígitos.')
-  if (!Number.isInteger(dados.serie) || dados.serie < 0 || dados.serie > SERIE_MAXIMA) problemas.push(`Série de 0 a ${SERIE_MAXIMA} (890 em diante é de outro tipo de emissor).`)
+  if (!Number.isInteger(dados.serie) || dados.serie < 0 || dados.serie > SERIE_MAXIMA) problemas.push(`Série de 0 a ${SERIE_MAXIMA} (889 em diante é reservada ou de outro tipo de emissor).`)
   if (!Number.isInteger(dados.proximoNumero) || dados.proximoNumero < 1 || dados.proximoNumero > 999_999_999) {
     problemas.push('Próximo número de 1 a 999.999.999.')
   }
@@ -314,7 +315,7 @@ export async function processarNfes(deps: WorkerNfeDeps): Promise<ResumoNfe> {
       logEvent('nofiscal.nfe_falha_interna', { nfe_id: nota.id, error_name: error instanceof Error ? error.name : 'unknown' })
     }
   }
-  if (relogio() < fimDoPrazo) resumo.eventos = await processarEventos(deps)
+  if (relogio() < fimDoPrazo) resumo.eventos = await processarEventos(deps, () => relogio() >= fimDoPrazo)
   return resumo
 }
 
@@ -322,15 +323,20 @@ type Fim = 'authorized' | 'denied' | 'rejected' | 'aguardando' | 'bloqueada'
 
 async function processarUma(deps: WorkerNfeDeps, nota: Linha, agora: Date): Promise<Fim> {
   const db = deps.db
-  // O bloqueio vale só para nota ainda não transmitida. Nota com XML gravado pode já estar autorizada: segue para a
-  // consulta com o A1 da empresa, mesmo com assinatura em atraso ou conferência a refazer.
-  const bloqueio = nota.xml_assinado ? null : await bloqueioNfe(db, nota.tenant_id)
-  if (bloqueio) {
+  const bloquear = async (codigo: string): Promise<Fim> => {
     await db.query(
       `update nofiscal.fiscal_nfe set last_error_code = $2, last_error = 'emissão bloqueada', next_attempt_at = $3, updated_at = $4 where id = $1`,
-      [nota.id, bloqueio, minutos(agora, 5), agora],
+      [nota.id, codigo, minutos(agora, 5), agora],
     )
     return 'bloqueada'
+  }
+  // O bloqueio vale para o que ainda não foi à Sefaz. Nota com XML gravado pode já estar autorizada: primeiro consulta
+  // pela chave com o A1 da empresa (mesmo com assinatura em atraso ou conferência a refazer); só se a Sefaz não tiver a
+  // nota (217) é que o bloqueio volta a valer antes de transmitir.
+  const jaTinhaXml = Boolean(nota.xml_assinado)
+  if (!jaTinhaXml) {
+    const bloqueio = await bloqueioNfe(db, nota.tenant_id)
+    if (bloqueio) return bloquear(bloqueio)
   }
   const empresa = (await empresaNfe(db, nota.tenant_id))!
   const uf = empresa.endereco!.uf
@@ -376,9 +382,13 @@ async function processarUma(deps: WorkerNfeDeps, nota: Linha, agora: Date): Prom
   let r: ResultadoAutorizacao | { kind: 'nao_encontrada' }
   if (nota.status === 'processing' && nota.recibo) {
     r = await deps.sefaz.consultarRecibo(uf, nota.ambiente, nota.recibo, xml, cred)
-  } else if (nota.attempts > 0) {
+  } else if (jaTinhaXml) {
     r = await deps.sefaz.consultarChave(uf, nota.ambiente, chave!, xml, cred)
-    if (r.kind === 'nao_encontrada') r = await deps.sefaz.autorizar(uf, nota.ambiente, xml, cred)
+    if (r.kind === 'nao_encontrada') {
+      const bloqueio = await bloqueioNfe(db, nota.tenant_id)
+      if (bloqueio) return bloquear(bloqueio)
+      r = await deps.sefaz.autorizar(uf, nota.ambiente, xml, cred)
+    }
   } else {
     r = await deps.sefaz.autorizar(uf, nota.ambiente, xml, cred)
   }
@@ -463,7 +473,7 @@ export async function pedirCancelamento(db: Db, nfeId: string, justificativa: st
     const n = (await tx.query<NotaDoEvento>(`${UMA_NOTA} for update`, [nfeId])).rows[0]
     if (!n) return { ok: false, mensagem: 'Nota não encontrada.' }
     if (n.status !== 'authorized') return { ok: false, mensagem: 'Só nota autorizada pode ser cancelada.' }
-    const texto = justificativa.replace(/\s+/g, ' ').trim()
+    const texto = limpo(justificativa)
     if (texto.length < 15 || texto.length > 255) return { ok: false, mensagem: 'A justificativa precisa ter de 15 a 255 caracteres.' }
     const { rows } = await tx.query<{ id: string }>(
       `insert into nofiscal.fiscal_nfe_eventos (nfe_id, tenant_id, tipo, sequencia, texto) values ($1, $2, 'cancelamento', 1, $3)
@@ -481,7 +491,7 @@ export async function pedirCartaCorrecao(db: Db, nfeId: string, correcao: string
     const n = (await tx.query<NotaDoEvento>(`${UMA_NOTA} for update`, [nfeId])).rows[0]
     if (!n) return { ok: false, mensagem: 'Nota não encontrada.' }
     if (n.status !== 'authorized') return { ok: false, mensagem: 'Carta de correção só para nota autorizada.' }
-    const texto = correcao.replace(/\s+/g, ' ').trim()
+    const texto = limpo(correcao)
     if (texto.length < 15 || texto.length > 1000) return { ok: false, mensagem: 'A correção precisa ter de 15 a 1.000 caracteres.' }
     const { rows: seq } = await tx.query<{ s: number | null }>(
       `select max(sequencia) as s from nofiscal.fiscal_nfe_eventos where nfe_id = $1 and tipo = 'cce'`,
@@ -503,7 +513,7 @@ export async function pedirInutilizacao(db: Db, nfeId: string, justificativa: st
     const n = (await tx.query<NotaDoEvento>(`${UMA_NOTA} for update`, [nfeId])).rows[0]
     if (!n) return { ok: false, mensagem: 'Nota não encontrada.' }
     if (n.status !== 'rejected') return { ok: false, mensagem: 'Só o número de nota rejeitada pode ser inutilizado.' }
-    const texto = justificativa.replace(/\s+/g, ' ').trim()
+    const texto = limpo(justificativa)
     if (texto.length < 15 || texto.length > 255) return { ok: false, mensagem: 'A justificativa precisa ter de 15 a 255 caracteres.' }
     const { rows } = await tx.query<{ id: string }>(
       `insert into nofiscal.fiscal_nfe_eventos (nfe_id, tenant_id, tipo, sequencia, texto, serie, numero_inicial, numero_final)
@@ -528,7 +538,7 @@ type LinhaEvento = {
   numero_final: string | null
 }
 
-async function processarEventos(deps: WorkerNfeDeps): Promise<number> {
+async function processarEventos(deps: WorkerNfeDeps, esgotado: () => boolean): Promise<number> {
   const agora = deps.now()
   const { rows } = await deps.db.query<LinhaEvento>(
     `with alvo as (
@@ -541,6 +551,11 @@ async function processarEventos(deps: WorkerNfeDeps): Promise<number> {
   )
   let feitos = 0
   for (const ev of rows) {
+    // O mesmo prazo da rodada: o evento que não coube volta para a fila na hora.
+    if (esgotado()) {
+      await deps.db.query('update nofiscal.fiscal_nfe_eventos set updated_at = $2 where id = $1', [ev.id, agora])
+      continue
+    }
     try {
       await processarEvento(deps, ev, agora)
       feitos++

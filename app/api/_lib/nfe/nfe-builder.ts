@@ -130,6 +130,9 @@ export const soDigitos = (s: string | null | undefined) => (s ?? '').replace(/\D
  */
 export function latin1(s: string): string {
   return s
+    .normalize('NFC')
+    // TAB, CR e separadores de linha viram espaço (o txt() junta os espaços depois); nada de palavra grudada.
+    .replace(/[\t\r\u2028\u2029]/g, ' ')
     .replace(/[\u2010-\u2015\u2212]/g, '-')
     .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
     .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
@@ -141,11 +144,21 @@ export function latin1(s: string): string {
 }
 
 
+/** O texto como vai ao XML (Latin-1, espaços juntados); a validação olha este, não o texto cru. */
+export const limpo = (s: string | null | undefined) => latin1(s ?? '').replace(/\s+/g, ' ').trim()
+const vazio = (s: string | null | undefined) => limpo(s) === ''
+
 /** UFs cuja Sefaz não aceita destinatário "contribuinte isento" (indIEDest 2): rejeição 805. */
 export const UFS_SEM_ISENTO = new Set(['AM', 'BA', 'CE', 'GO', 'MG', 'MS', 'MT', 'PE', 'RN', 'SE', 'SP'])
 
-/** Série permitida no web service para emitente com CNPJ (0 a 889; 890+ é avulsa, SCAN ou pessoa física): rejeição 266. */
-export const SERIE_MAXIMA = 889
+/**
+ * Série da empresa: 0 a 888. O web service aceita até 889 para emitente com CNPJ (890+ é avulsa, SCAN ou pessoa
+ * física: rejeição 266); a 889 fica para a nota de teste da conferência (conferencia.ts), para não disputar número com
+ * a empresa em homologação.
+ */
+export const SERIE_MAXIMA = 888
+/** Limite do web service para emitente com CNPJ (validado em toda nota, inclusive a de teste). */
+export const SERIE_MAXIMA_WEB_SERVICE = 889
 
 /** Dígito verificador GS1 (GTIN-8/12/13/14): módulo 10, pesos 3 e 1 da direita para a esquerda. */
 export function gtinValido(gtin: string): boolean {
@@ -245,7 +258,7 @@ export function validarNfe(input: NfeInput): string[] {
   validarEndereco('emitente', e.endereco, p, true)
   const doc = soDigitos(d.documento)
   if (doc.length !== 11 && doc.length !== 14) p.push('destinatário: CPF ou CNPJ inválido')
-  if (!d.nome.trim()) p.push('destinatário: nome obrigatório')
+  if (vazio(d.nome)) p.push('destinatário: nome obrigatório')
   if (d.indicadorIE === '1' && !/^\d{2,14}$/.test(soDigitos(d.inscricaoEstadual))) {
     p.push('destinatário: contribuinte (indicador 1) precisa de inscrição estadual')
   }
@@ -259,8 +272,8 @@ export function validarNfe(input: NfeInput): string[] {
   const interestadual = e.endereco.uf !== d.endereco.uf
   input.itens.forEach((item, i) => {
     const n = `item ${i + 1}`
-    if (!item.codigo.trim()) p.push(`${n}: código do produto obrigatório`)
-    if (!item.descricao.trim()) p.push(`${n}: descrição obrigatória`)
+    if (vazio(item.codigo)) p.push(`${n}: código do produto obrigatório`)
+    if (vazio(item.descricao)) p.push(`${n}: descrição obrigatória`)
     if (!/^(\d{8}|00)$/.test(soDigitos(item.ncm))) p.push(`${n}: NCM deve ter 8 dígitos`)
     if (item.cest && !/^\d{7}$/.test(soDigitos(item.cest))) p.push(`${n}: CEST deve ter 7 dígitos`)
     const cfop = soDigitos(item.cfop)
@@ -269,7 +282,7 @@ export function validarNfe(input: NfeInput): string[] {
     else if (!interestadual && cfop[0] !== '5') p.push(`${n}: operação dentro do estado pede CFOP 5xxx`)
     if (!(item.quantidade > 0)) p.push(`${n}: quantidade deve ser maior que zero`)
     if (!(item.valorUnitario > 0)) p.push(`${n}: valor unitário deve ser maior que zero`)
-    if (!item.unidade.trim() || item.unidade.trim().length > 6) p.push(`${n}: unidade de 1 a 6 caracteres`)
+    if (vazio(item.unidade) || limpo(item.unidade).length > 6) p.push(`${n}: unidade de 1 a 6 caracteres`)
     if (!['101', '102', '103', '300', '400', '500'].includes(item.csosn)) p.push(`${n}: CSOSN não suportado (${item.csosn})`)
     if (item.csosn === '101' && !(Number(item.aliquotaCreditoSN) > 0)) p.push(`${n}: CSOSN 101 pede a alíquota do crédito`)
     if (item.origem && !/^[0-8]$/.test(item.origem)) p.push(`${n}: origem da mercadoria de 0 a 8`)
@@ -281,9 +294,9 @@ export function validarNfe(input: NfeInput): string[] {
   if (input.pagamentos.length === 0) p.push('informe a forma de pagamento')
   for (const pag of input.pagamentos) {
     if (!/^\d{2}$/.test(pag.forma)) p.push(`pagamento: forma "${pag.forma}" inválida`)
-    if (pag.forma === '99' && !pag.descricao?.trim()) p.push('pagamento: forma 99 (outros) pede a descrição')
+    if (pag.forma === '99' && vazio(pag.descricao)) p.push('pagamento: forma 99 (outros) pede a descrição')
   }
-  if (!(Number.isInteger(input.serie) && input.serie >= 0 && input.serie <= SERIE_MAXIMA)) p.push(`série de 0 a ${SERIE_MAXIMA}`)
+  if (!(Number.isInteger(input.serie) && input.serie >= 0 && input.serie <= SERIE_MAXIMA_WEB_SERVICE)) p.push(`série de 0 a ${SERIE_MAXIMA_WEB_SERVICE}`)
   if (!(input.numero >= 1 && input.numero <= 999_999_999)) p.push('número de 1 a 999.999.999')
   if (p.length === 0) {
     const total = calcularTotais(input.itens).nota
@@ -295,9 +308,9 @@ export function validarNfe(input: NfeInput): string[] {
 }
 
 function validarEndereco(quem: string, end: Endereco, p: string[], cepObrigatorio: boolean) {
-  if (!end.logradouro.trim()) p.push(`${quem}: logradouro obrigatório`)
-  if (!end.numero.trim()) p.push(`${quem}: número do endereço obrigatório (use "S/N")`)
-  if (!end.bairro.trim()) p.push(`${quem}: bairro obrigatório`)
+  if (vazio(end.logradouro)) p.push(`${quem}: logradouro obrigatório`)
+  if (vazio(end.numero)) p.push(`${quem}: número do endereço obrigatório (use "S/N")`)
+  if (vazio(end.bairro)) p.push(`${quem}: bairro obrigatório`)
   const cMun = soDigitos(end.codigoMunicipio)
   if (!MUNICIPIOS_IBGE[cMun]) p.push(`${quem}: código IBGE do município "${end.codigoMunicipio}" não existe`)
   else if (!CODIGO_UF[end.uf] || cMun.slice(0, 2) !== CODIGO_UF[end.uf]) p.push(`${quem}: município ${cMun} não é de ${end.uf}`)
@@ -323,7 +336,8 @@ export function calcularTotais(itens: Item[]) {
 
 /** Texto do leiaute: sem quebras e espaços duplicados, cortado no tamanho máximo do campo. */
 const txt = (s: string, max: number) => latin1(s).replace(/\s+/g, ' ').trim().slice(0, max)
-const opt = (s: string | null | undefined, max: number) => (s && s.trim() ? txt(s, max) : null)
+/** Opcional: some quando não sobra texto depois de sanear (um campo vazio daria a mesma rejeição 225). */
+const opt = (s: string | null | undefined, max: number) => (s && txt(s, max) ? txt(s, max) : null)
 
 function endereco(tag: string, end: Endereco): string {
   const cMun = soDigitos(end.codigoMunicipio)

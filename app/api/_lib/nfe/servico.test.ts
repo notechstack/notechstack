@@ -272,8 +272,10 @@ describe('fila depois da revisão de 17/11/2026', () => {
     await admin.query('select nofiscal.upsert_certificate($1, $2, $3, $4, $5)', [tenant.id, cert.certificado.pfxBase64, cert.certificado.password, `CN=EMPRESA TESTE:${tenant.cnpj}`, new Date(Date.now() + 86400_000 * 200)])
     expect(await bloqueioNfe(db, tenant.id)).toBe('NFE_CONFERIR_DE_NOVO')
     const d = sefazDuble()
-    expect(await processarNfes({ db, sefaz: d.sefaz, now: () => new Date(agora().getTime() + 5 * 60_000), tenantId: tenant.id })).toMatchObject({ autorizadas: 1 })
-    expect(d.chamadas[0].body).toContain('<consSitNFe')
+    // Primeiro a consulta pela chave (a nota pode estar autorizada). A Sefaz não a tem (217): com a conferência a
+    // refazer, ela não é transmitida agora.
+    expect(await processarNfes({ db, sefaz: d.sefaz, now: () => new Date(agora().getTime() + 5 * 60_000), tenantId: tenant.id })).toMatchObject({ bloqueadas: 1 })
+    expect(d.chamadas.map((c) => (c.body?.includes('<consSitNFe') ? 'consulta' : 'envio'))).toEqual(['consulta'])
   })
 
   it('cancelamento com resposta perdida: o 573 do reenvio vira cancelada pela consulta da chave', async () => {
@@ -308,6 +310,39 @@ describe('fila depois da revisão de 17/11/2026', () => {
   it('trocar a série: a nova passa a ser a única ativa e as notas saem nela', async () => {
     await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 2, proximoNumero: 1 })
     expect(await criarNfe(db, { tenantId: tenant.id, externalId: 's2', origem: 'painel', pedido: pedido(), agora: agora() })).toMatchObject({ ok: true, serie: 2, numero: 1 })
-    await expect(salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 890, proximoNumero: 1 })).rejects.toThrow(DadosNfeInvalidos)
+    // A empresa vai até 888: a 889 é da nota de teste da conferência.
+    await expect(salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 889, proximoNumero: 1 })).rejects.toThrow(DadosNfeInvalidos)
+  })
+})
+
+describe('fila depois da conferência das correções', () => {
+  beforeEach(async () => {
+    await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 1, proximoNumero: 80 })
+    await aprovarConferencia(db, tenant.id, '222333444555')
+  })
+
+  it('nota com XML que a Sefaz não tem (217) não é transmitida com a empresa bloqueada', async () => {
+    await criarNfe(db, { tenantId: tenant.id, externalId: 'b217', origem: 'painel', pedido: pedido(), agora: agora() })
+    await processarNfes({ db, sefaz: sefazDuble({ autorizar: () => ({ status: 503, body: '' }) }).sefaz, now: agora, tenantId: tenant.id })
+    await admin.query('update nofiscal.fiscal_tenants set active = false where id = $1', [tenant.id])
+    const d = sefazDuble()
+    expect(await processarNfes({ db, sefaz: d.sefaz, now: () => new Date(agora().getTime() + 5 * 60_000), tenantId: tenant.id })).toMatchObject({ bloqueadas: 1 })
+    expect(d.chamadas.map((c) => (c.body?.includes('<consSitNFe') ? 'consulta' : 'envio'))).toEqual(['consulta'])
+    await admin.query('update nofiscal.fiscal_tenants set active = true where id = $1', [tenant.id])
+  })
+
+  it('o prazo da rodada também vale para os eventos', async () => {
+    const r = await criarNfe(db, { tenantId: tenant.id, externalId: 'ev', origem: 'painel', pedido: pedido(), agora: agora() })
+    const id = r.ok ? r.nfeId : ''
+    await processarNfes({ db, sefaz: sefazDuble().sefaz, now: agora, tenantId: tenant.id })
+    await pedirCartaCorrecao(db, id, 'Numero do endereco do destinatario e 1000.')
+    await pedirCartaCorrecao(db, id, 'Complemento do endereco do destinatario: sala 2.')
+    let t = 0
+    const d = sefazDuble()
+    // Prazo de 1 s, relógio andando 400 ms por consulta: cabe a rodada começar e um evento; o outro volta para a fila.
+    const resumo = await processarNfes({ db, sefaz: d.sefaz, now: agora, tenantId: tenant.id, prazoMs: 1000, relogio: () => (t += 400) })
+    expect(resumo.eventos).toBe(1)
+    const { rows } = await admin.query<{ status: string }>(`select status from nofiscal.fiscal_nfe_eventos where nfe_id = $1 order by sequencia`, [id])
+    expect(rows.map((x) => x.status)).toEqual(['registrado', 'queued'])
   })
 })

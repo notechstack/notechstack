@@ -27,16 +27,17 @@
     st.carregado = true;
     carregar().then(listar);
   }
-  function carregar() {
+  function carregar(opcoes) {
     return nf.app(ROTA, { acao: 'contexto' }).then(function (r) {
       if (!r.ok) { st.carregado = false; if (r.status !== 401) nf.aviso($('fa-aviso-nfe'), nf.esc(r.mensagem || GENERICO), 'erro'); return; }
-      desenharContexto(r.dados);
+      desenharContexto(r.dados, opcoes);
     });
   }
-  function desenharContexto(d) {
+  function desenharContexto(d, opcoes) {
     st.empresas = d.empresas || [];
     var f = d.franquia || {};
     $('fa-nfe-franquia').textContent = 'Notas do mês (serviço e produto): ' + (f.no_mes || 0) + ' de ' + (f.limite || 0) + '.';
+    if (opcoes && opcoes.manterFormulario) return;
     var sel = $('fa-nfe-empresa'), antes = sel.value;
     sel.innerHTML = st.empresas.map(function (e) {
       return '<option value="' + nf.esc(e.tenant_id) + '">' + nf.esc(e.razao_social + ' · ' + nf.formatarCnpj(e.cnpj)) + '</option>';
@@ -183,8 +184,8 @@
       nf.ocupado(botao, false);
       if (!r.ok) { if (r.status !== 401) nf.aviso($('fa-aviso-nfe'), nf.esc(r.mensagem || GENERICO), 'erro'); return; }
       desenharResumo(r.dados, true);
-      // A franquia e a lista mudaram.
-      carregar().then(listar);
+      // A franquia e a lista mudaram (sem refazer o formulário dos dados, que pode ter edição não salva).
+      carregar({ manterFormulario: true }).then(listar);
     });
   }
 
@@ -249,6 +250,12 @@
   }
 
   $('fa-nfe-empresa').addEventListener('change', preencherDados);
+  // Série nova começa do 1 (ou do número que a pessoa digitar): o próximo número da série anterior não vale para ela.
+  $('fa-nfe-serie').addEventListener('change', function () {
+    var e = empresa($('fa-nfe-empresa').value) || {};
+    var serie = $('fa-nfe-serie').value.trim();
+    $('fa-nfe-proximo').value = e.serie !== null && e.serie !== undefined && String(e.serie) === serie && e.proximo_numero ? String(e.proximo_numero) : '1';
+  });
   $('fa-form-nfe-dados').addEventListener('submit', salvarDados);
   $('fa-form-nfe-planilha').addEventListener('submit', lerPlanilha);
   $('fa-nfe-emitir').addEventListener('click', emitir);
@@ -273,6 +280,7 @@
     $('fa-nfe-empresa').innerHTML = '';
     $('fa-nfe-linhas').innerHTML = '';
     $('fa-nfe-resumo').hidden = true;
+    ['fa-nfe-arquivo', 'fa-nfe-pfx', 'fa-nfe-pfx-senha'].forEach(function (id) { $(id).value = ''; });
     ['fa-aviso-nfe', 'fa-nfe-bloqueio', 'fa-nfe-conferencia'].forEach(function (id) { nf.aviso($(id), ''); });
   }
   window.addEventListener('nofiscal:sessao-vencida', invalidar);

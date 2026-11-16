@@ -207,6 +207,9 @@ describe('rota do painel', () => {
     await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })
     const final = (await (await chamar(esc.mae.ownerUserId, { acao: 'listar' })).json()) as { notas: { nfe_id: string; status: string }[] }
     expect(final.notas.find((n) => n.nfe_id === id)?.status).toBe('cancelled')
+    // Cancelada, a nota 1 pode sair de novo corrigida na planilha (só nota ativa do mês bloqueia).
+    const depoisDoCancelamento = (await (await chamar(esc.mae.ownerUserId, corrigida)).json()) as { notas: { nota: string }[]; problemas: { nota: string }[] }
+    expect(depoisDoCancelamento.notas.map((x) => x.nota)).toContain('1')
   })
 })
 
@@ -245,5 +248,30 @@ describe('planilha depois da revisão de 17/11/2026', () => {
     expect(sem.ok && sem.problemas.map((p) => p.mensagem)).toEqual(['forma de pagamento "outros" (99) pede a coluna descricao_pagamento'])
     const com = interpretarPlanilhaNfe([CAB, linha({ ...base, forma_pagamento: 'outros', descricao_pagamento: 'Permuta' })])
     expect(com.ok && com.notas[0].pedido.pagamentos[0]).toMatchObject({ forma: '99', descricao: 'Permuta' })
+  })
+})
+
+describe('planilha depois da conferência das correções', () => {
+  const CAB = ['cnpj_emitente', 'nota', 'cpf_cnpj_destinatario', 'nome_destinatario', 'cep', 'logradouro', 'numero', 'bairro', 'municipio_ibge', 'uf', 'codigo_produto', 'descricao_produto', 'ncm', 'cfop', 'unidade', 'quantidade', 'valor_unitario', 'csosn']
+  const linha = (o: Record<string, unknown>) => CAB.map((c) => (c in o ? o[c] : '')) as (string | number)[]
+  const base = { cnpj_emitente: '12.345.678/0001-95', nota: '1', cpf_cnpj_destinatario: '11.222.333/0001-81', nome_destinatario: 'Padaria Ltda', cep: '01310-100', logradouro: 'Av. Paulista', numero: '1', bairro: 'Bela Vista', municipio_ibge: '3550308', uf: 'SP', codigo_produto: 'P1', descricao_produto: 'Farinha', ncm: '1101.00.10', cfop: '5102', unidade: 'UN', quantidade: '1', valor_unitario: '10,00', csosn: '102' }
+
+  it('preço numérico do .xlsx (19,99; 1,13; 4,56) é aceito', () => {
+    for (const v of [19.99, 1.13, 4.56, 1234.57]) {
+      const r = interpretarPlanilhaNfe([CAB, linha({ ...base, valor_unitario: v })])
+      expect(r.ok && r.problemas).toEqual([])
+    }
+    expect(lerNumero(1.23456, 4)).toBeNull()
+  })
+
+  it('CSV com vírgulas finais no cabeçalho e nas linhas (como o Excel exporta) passa', () => {
+    const r = interpretarPlanilhaNfe([[...CAB, '', ''], [...linha(base), '', '']], { contarCampos: true })
+    expect(r.ok && r.problemas).toEqual([])
+    expect(r.ok && r.notas).toHaveLength(1)
+  })
+
+  it('mesmo dado escrito de outro jeito em outra linha não recusa a nota (CEP com e sem hífen, caixa do nome)', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha(base), linha({ ...base, codigo_produto: 'P2', cep: '01310100', nome_destinatario: 'PADARIA LTDA.' })])
+    expect(r.ok && r.problemas).toEqual([])
   })
 })

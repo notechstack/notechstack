@@ -66,8 +66,8 @@ export type PlanilhaNfe =
 export function lerNumero(celula: Celula | undefined, casas: number): number | null {
   if (typeof celula === 'number') {
     if (!Number.isFinite(celula)) return null
-    const escala = 10 ** casas
-    return Math.abs(celula * escala - Math.round(celula * escala)) > 1e-6 ? null : celula
+    // Compara no espaço do valor (19,99 vem como 19.990000000000002 em escala 1e10 e não pode ser recusado).
+    return Number(celula.toFixed(casas)) === celula ? celula : null
   }
   let t = textoDaCelula(celula).replace(/^R\$\s*/i, '').replace(/\s/g, '')
   if (!t) return null
@@ -86,6 +86,18 @@ function codigo(celula: Celula | undefined, tamanho: number): string {
 }
 
 const valorOpcional = (c: Celula | undefined) => (textoDaCelula(c) ? lerNumero(c, 2) : 0)
+
+/**
+ * Como dois preenchimentos do mesmo campo da nota são comparados: documento, CEP, município e telefone pelos dígitos;
+ * frete pelo valor; texto sem caixa, acento, pontuação e espaços ("Padaria Ltda" = "PADARIA LTDA.").
+ */
+function comparavel(c: string, celula: Celula | undefined): string {
+  const texto = textoDaCelula(celula)
+  if (!texto) return ''
+  if (c === 'cpf_cnpj_destinatario' || c === 'cep' || c === 'municipio_ibge' || c === 'fone') return soDigitos(texto).replace(/^0+/, '') || texto
+  if (c === 'frete') return String(lerNumero(celula, 2) ?? texto)
+  return normalizarCabecalho(texto) || texto
+}
 
 export async function lerPlanilhaNfe(conteudo: Uint8Array, tipo: TipoDePlanilha): Promise<PlanilhaNfe> {
   const grade = await lerPlanilha(conteudo, tipo)
@@ -119,7 +131,8 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
     }
     const cnpj = codigo(v('cnpj_emitente'), 14)
     const nota = textoDaCelula(v('nota'))
-    const aMais = opcoes.contarCampos ? l.length > largura : l.slice(largura).some((c) => textoDaCelula(c) !== '')
+    // No CSV com vírgula conta o número de campos contra o cabeçalho inteiro (com as vírgulas finais que o Excel põe).
+    const aMais = opcoes.contarCampos ? l.length > grade[inicio].length : l.slice(largura).some((c) => textoDaCelula(c) !== '')
     if (!cnpjValido(cnpj)) {
       problemas.push({ linha: numero, nota: nota || null, mensagem: 'CNPJ do emitente inválido.' })
       continue
@@ -153,7 +166,7 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
       let escolhido: { celula: Celula | undefined; texto: string; linha: number } | null = null
       for (const linha of g.linhas) {
         const celula = linha.v(c)
-        const texto = textoDaCelula(celula)
+        const texto = comparavel(c, celula)
         if (!texto) continue
         if (!escolhido) escolhido = { celula, texto, linha: linha.numero }
         else if (texto !== escolhido.texto) erros.push(`linha ${linha.numero}: "${c}" diferente da linha ${escolhido.linha}`)

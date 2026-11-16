@@ -23,12 +23,13 @@ alter table nofiscal.fiscal_tenants
     )
   );
 
--- Série 0 a 889: a faixa do web service para emitente com CNPJ (890+ é avulsa, SCAN ou pessoa física; rejeição 266).
+-- Série 0 a 888: a faixa do web service para emitente com CNPJ vai até 889 (890+ é avulsa, SCAN ou pessoa física;
+-- rejeição 266), e a 889 é da nota de teste da conferência (20261117100000).
 -- Uma série ativa por empresa (a do painel); as outras guardam o próximo número caso voltem a ser usadas.
 -- next_number vai até 1.000.000.000 = série esgotada (o 999.999.999 ainda sai).
 create table nofiscal.fiscal_nfe_series (
   tenant_id uuid not null references nofiscal.fiscal_tenants(id) on delete restrict,
-  serie integer not null check (serie between 0 and 889),
+  serie integer not null check (serie between 0 and 888),
   next_number bigint not null check (next_number between 1 and 1000000000),
   ativa boolean not null default true,
   primary key (tenant_id, serie)

@@ -183,9 +183,18 @@ describe('regras da revisão de 17/11/2026', () => {
     expect(xml).toContain('<xProd>Farinha - &quot;especial&quot; 5kg...</xProd>')
   })
 
-  it('série só de 0 a 889 (rejeição 266)', () => {
+  it('série de 0 a 889 no web service (890+ dá rejeição 266)', () => {
     expect(validarNfe(notaExemplo({ serie: 890 }))).toContain('série de 0 a 889')
     expect(validarNfe(notaExemplo({ serie: 889 }))).toEqual([])
+  })
+
+  it('TAB e CR viram espaço; campo que só tem emoji conta como vazio', () => {
+    const base = notaExemplo()
+    const { xml } = montarNfe(notaExemplo({ itens: [{ ...base.itens[0], descricao: 'Farinha\ttipo\r1' }], pagamentos: [{ forma: '17', valor: 59.7 }] }))
+    expect(xml).toContain('<xProd>Farinha tipo 1</xProd>')
+    expect(validarNfe(notaExemplo({ itens: [{ ...base.itens[0], descricao: '\u{1F4E6}\u{1F4E6}' }], pagamentos: [{ forma: '17', valor: 59.7 }] }))).toContain('item 1: descrição obrigatória')
+    const { xml: semCpl } = montarNfe(notaExemplo({ destinatario: { ...base.destinatario, endereco: { ...base.destinatario.endereco, complemento: '\u{1F642}' } } }))
+    expect(semCpl).not.toContain('<xCpl>')
   })
 
   it('GTIN com dígito verificador GS1', () => {

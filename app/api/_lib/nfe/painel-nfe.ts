@@ -324,11 +324,13 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       for (const m of erros) problemas.push({ linha: nota.linhas[0], nota: nota.nota, mensagem: m })
       continue
     }
-    const prefixo = `planilha:${nota.cnpjEmitente}:${nota.nota}:`
-    const chave = prefixo + createHash('sha256').update(JSON.stringify(nota.pedido)).digest('hex').slice(0, 32)
+    // A chave leva o mês: a venda recorrente do mês seguinte, com o mesmo conteúdo, é outra nota.
+    const mes = `${local.ano}${String(local.mes).padStart(2, '0')}`
+    const prefixo = `planilha:${nota.cnpjEmitente}:${mes}:${nota.nota}:`
+    let chave = prefixo + createHash('sha256').update(JSON.stringify(nota.pedido)).digest('hex').slice(0, 32)
     const { rows: ja } = await ctx.db.query<{ external_id: string; numero: string; status: string }>(
       `select external_id, numero, status from nofiscal.fiscal_nfe
-        where tenant_id = $1 and left(external_id, length($2)) = $2 and created_at >= $3 and status not in ('rejected', 'voided')
+        where tenant_id = $1 and left(external_id, length($2)) = $2 and created_at >= $3 and status in ('queued', 'sending', 'processing', 'authorized', 'cancel_requested')
         order by created_at desc limit 1`,
       [empresa.id, prefixo, inicio],
     )
@@ -342,6 +344,13 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       })
       continue
     }
+    // A mesma nota que já foi tentada e não valeu (rejeitada, inutilizada, cancelada, denegada): sai de novo, com a chave
+    // numerada (a chave é única por empresa para sempre).
+    const { rows: antes } = await ctx.db.query<{ n: string }>(
+      `select count(*) as n from nofiscal.fiscal_nfe where tenant_id = $1 and (external_id = $2 or left(external_id, length($2) + 1) = $2 || ':')`,
+      [empresa.id, chave],
+    )
+    if (Number(antes[0]?.n ?? 0) > 0) chave = `${chave}:${antes[0].n}`
     prontas.push({ nota, tenantId: empresa.id, valor: nota.pedido.pagamentos[0]?.valor ?? 0, chave })
   }
   const franquia = { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) }
@@ -361,7 +370,8 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       pedido: p.nota.pedido,
       agora: ctx.agora,
     })
-    if (r.ok) emitidas++
+    if (r.ok && !r.jaExistia) emitidas++
+    else if (r.ok) problemas.push({ linha: p.nota.linhas[0], nota: p.nota.nota, mensagem: `esta nota já foi para a emissão (NF-e nº ${r.numero}); não sai de novo.` })
     else problemas.push({ linha: p.nota.linhas[0], nota: p.nota.nota, mensagem: r.codigo === 'BLOQUEADA' ? motivoDoBloqueio(r.bloqueio) : r.problemas.join('; ') })
   }
   logEvent('nofiscal.nfe_planilha_emitida', { tenant_id: ctx.dono.id, notas: emitidas, problemas: problemas.length })
