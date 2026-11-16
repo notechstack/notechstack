@@ -14,12 +14,13 @@ import {
   mensagemDeTexto,
   notasDoAgente,
   openRoleDb,
+  pedidosDo,
   type SelfServiceOptions,
   type SelfServiceTenant,
 } from '../../_tests/agente-fixtures.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import type { EnderecoNacional } from '../retencao.js'
-import { processarMensagem, type ConversaDeps } from './conversa.js'
+import { processarMensagem, TEXTO_RETENCAO_NAO_ENTENDIDA, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
 
 const admin = openTestDb()
@@ -90,6 +91,33 @@ async function payloadDaUnicaNota(tenantId: string) {
 }
 
 describe('retenção no pedido pelo WhatsApp', () => {
+  // Caso real (16/11/2026, 18h14): o pedido citava a retenção, e a nota saiu com tpRetISSQN 1 (depois cancelada).
+  const BRAGANTINA =
+    'Emitir uma nota fiscal da 4 ESTACOES BRAGANCA LTDA para tomadora CONTABILIDADE BRAGANTINA LTDA no valor de 1,00. Tem retenção de ISS pela tomadora na alíquota de 2,01%.'
+
+  it('pedido real da Bragantina: a retenção de 2,01% aparece no resumo e vai na nota', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, { ...modelo(CNPJ_TOMADOR), nome: 'Contabilidade Bragantina', nomeTomador: 'CONTABILIDADE BRAGANTINA LTDA' })
+    const c = conversa({
+      [BRAGANTINA]: { tomador: 'CONTABILIDADE BRAGANTINA LTDA', valor: '1.00', iss_retido: true, aliquota_iss: '2,01', intencao: 'emitir' },
+    })
+    await c.enviar(s.ownerPhone, BRAGANTINA)
+    expect(c.ultimaPara(s.ownerPhone)).toContain('Valor: R$ 1,00\nISS retido pelo tomador: 2,01% (R$ 0,02)\nValor líquido: R$ 0,98\nPosso emitir?')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toEqual({ iss: { aliquota: '2.01' } })
+  })
+
+  it('pedido que fala de retenção sem a IA ler qual: não emite e pede a retenção por extenso', async () => {
+    const s = await cenario()
+    await criarModelo(admin.db, s.tenant.id, { ...modelo(CNPJ_TOMADOR), nome: 'Contabilidade Bragantina', nomeTomador: 'CONTABILIDADE BRAGANTINA LTDA' })
+    const c = conversa({ [BRAGANTINA]: { tomador: 'CONTABILIDADE BRAGANTINA LTDA', valor: '1.00', intencao: 'emitir' } })
+    await c.enviar(s.ownerPhone, BRAGANTINA)
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTO_RETENCAO_NAO_ENTENDIDA)
+    expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(0)
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
+  })
+
   it('o pedido herda a retenção da empresa; o resumo mostra antes do confirmar; a nota leva retenção e endereço', async () => {
     const s = await cenario()
     await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.00', retem_inss: true, inss_percentual: '11.00' })

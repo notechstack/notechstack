@@ -449,6 +449,16 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   return textoDoResumo(tomador, servico, valor, nome, conversa.emitente, retencao)
 }
 
+/**
+ * O texto fala de retenção ("tem retenção de ISS pela tomadora na alíquota de 2,01%", "ISS retido", "retém INSS").
+ * Caso real de 16/11/2026: o pedido citava a retenção e a nota saiu sem ela. Se a IA não ler qual é a retenção, o
+ * pedido não segue (TEXTO_RETENCAO_NAO_ENTENDIDA): nota com retenção nunca sai sem ela.
+ */
+export const mencionaRetencao = (texto: string) => /\b(retenc\w*|retid[oa]s?|retem|reter)\b/.test(semAcento(texto))
+
+export const TEXTO_RETENCAO_NAO_ENTENDIDA =
+  'Vi que o pedido fala de retenção, mas não entendi qual. Mande o pedido de novo dizendo a retenção assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção. Nada foi emitido.'
+
 /** O que o pedido escrito diz da retenção (campos do intérprete); `undefined` quando não diz nada. */
 export function retencaoDoParsed(parsed: Parsed): RetencaoDoPedido | undefined {
   const r: RetencaoDoPedido = {}
@@ -788,11 +798,6 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, TEXTOS.naoEntendi)
     return true
   }
-  // Trava temporária: correção que fala de retenção também não segue (ver `mencionaRetencao`).
-  if (mencionaRetencao(texto)) {
-    await responder(ctx, TEXTO_SEM_RETENCAO)
-    return true
-  }
   const atual = pedido.conversa
   const nomeAtual = (atual.tomador?.nome ?? '').toLowerCase()
   const outroCliente = Boolean(
@@ -843,6 +848,11 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   }
   const valor = parsed.valor ?? atual.valor
   const retencaoNova = retencaoDoParsed(parsed)
+  if (mencionaRetencao(texto) && !retencaoNova) {
+    // O pedido continua em correção: a próxima mensagem é lida de novo como a correção.
+    await responder(ctx, 'Vi que a correção fala de retenção, mas não entendi qual. Me diga assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção.')
+    return true
+  }
   if ((parsed.valor || parsed.descricao || retencaoNova) && valor && atual.tomador && atual.servico) {
     const servico: ServicoDoPedido = parsed.descricao ? { ...atual.servico, descricao: parsed.descricao } : atual.servico
     const retencao_pedido = retencaoNova ? { ...atual.retencao_pedido, ...retencaoNova } : atual.retencao_pedido
@@ -1202,25 +1212,14 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
     await responder(ctx, (await ehEscritorio(ctx)) ? TEXTOS.ajudaEscritorio : TEXTOS.ajuda)
     return
   }
-  if (mencionaRetencao(texto)) {
+  if (mencionaRetencao(texto) && !retencaoDoParsed(parsed)) {
     semPedido()
-    await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'pedido com retenção: recusado até a retenção sair' })
-    await responder(ctx, TEXTO_SEM_RETENCAO)
+    await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'pedido fala de retenção, e a IA não leu qual' })
+    await responder(ctx, TEXTO_RETENCAO_NAO_ENTENDIDA)
     return
   }
   await pedidoDeEmissao(ctx, parsed, tokens)
 }
-
-/**
- * Trava temporária (caso real de 16/11/2026, Contabilidade Bragantina): o pedido dizia "Tem retenção de ISS pela
- * tomadora na alíquota de 2,01%" e a nota saiu com tpRetISSQN 1, sem retenção. Até a retenção de ISS e INSS entrar
- * (branch claude/nofiscal-retencoes, .design/agente-fiscal-retencoes.md), pedido que fala de retenção não vira nota:
- * o agente avisa e manda emitir pelo Emissor Nacional. Sai quando a retenção for publicada.
- */
-export const mencionaRetencao = (texto: string) => /\b(retenc\w*|retid[oa]s?|retem|reter)\b/.test(semAcento(texto))
-
-export const TEXTO_SEM_RETENCAO =
-  'Ainda não emito nota com retenção de ISS ou de INSS, e nada foi emitido. Emita esta nota pelo Emissor Nacional (https://www.nfse.gov.br/EmissorNacional) ou, se não houver retenção, me mande o pedido de novo sem falar em retenção.'
 
 
 /**
