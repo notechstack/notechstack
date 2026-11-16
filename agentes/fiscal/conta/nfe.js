@@ -70,7 +70,7 @@
       : 'Última conferência: ' + (c.motivo || c.codigo) + '.';
     nf.aviso($('fa-nfe-conferencia'), nf.esc(textoConf), !c || c.status === 'pendente' ? '' : c.status === 'aprovada' ? 'ok' : 'erro');
   }
-  function conferir() {
+  function conferirSefaz() {
     var id = $('fa-nfe-empresa').value;
     if (!id) return Promise.resolve();
     var botao = $('fa-nfe-conferir');
@@ -108,7 +108,7 @@
       }
       $('fa-nfe-pfx').value = '';
       // Com o A1 gravado, a conferência roda em seguida.
-      conferir();
+      conferirSefaz();
     });
   }
   function salvarDados(ev) {
@@ -129,7 +129,7 @@
         nf.aviso($('fa-aviso-nfe'), 'Dados da NF-e salvos.', 'ok');
         // Dados novos pedem conferência nova; com o A1 gravado, ela roda em seguida.
         var e = empresa($('fa-nfe-empresa').value);
-        if (e && e.certificado && e.bloqueio && /CONFERI|NAO_CONFERIDA/.test(e.bloqueio.codigo)) conferir();
+        if (e && e.certificado && e.bloqueio && /CONFERI|NAO_CONFERIDA/.test(e.bloqueio.codigo)) conferirSefaz();
         return;
       }
       if (r.status !== 401) nf.aviso($('fa-nfe-bloqueio'), nf.esc(r.mensagem || GENERICO), 'erro');
@@ -143,7 +143,7 @@
     form.append('arquivo', st.arquivo, st.arquivo.name);
     return form;
   }
-  function conferir(ev) {
+  function lerPlanilha(ev) {
     ev.preventDefault();
     nf.erroCampo('fa-nfe-arquivo', '');
     var a = $('fa-nfe-arquivo').files && $('fa-nfe-arquivo').files[0];
@@ -183,7 +183,8 @@
       nf.ocupado(botao, false);
       if (!r.ok) { if (r.status !== 401) nf.aviso($('fa-aviso-nfe'), nf.esc(r.mensagem || GENERICO), 'erro'); return; }
       desenharResumo(r.dados, true);
-      listar();
+      // A franquia e a lista mudaram.
+      carregar().then(listar);
     });
   }
 
@@ -249,11 +250,11 @@
 
   $('fa-nfe-empresa').addEventListener('change', preencherDados);
   $('fa-form-nfe-dados').addEventListener('submit', salvarDados);
-  $('fa-form-nfe-planilha').addEventListener('submit', conferir);
+  $('fa-form-nfe-planilha').addEventListener('submit', lerPlanilha);
   $('fa-nfe-emitir').addEventListener('click', emitir);
   $('fa-nfe-atualizar').addEventListener('click', listar);
   $('fa-form-nfe-a1').addEventListener('submit', enviarA1);
-  $('fa-nfe-conferir').addEventListener('click', conferir);
+  $('fa-nfe-conferir').addEventListener('click', conferirSefaz);
   // Botão NF-e na linha da empresa (Minhas empresas): abre a aba já nela.
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('[data-nfe-empresa]');
@@ -263,8 +264,20 @@
   });
   $('fa-nfe-linhas').addEventListener('click', clique);
   // Outra conta entrou (sair e entrar de novo): recarrega na próxima vez que a aba abrir.
-  window.addEventListener('nofiscal:sessao-vencida', function () { st.carregado = false; });
-  window.contaNfe = { abrir: abrir };
+  /* Outra conta (sair e entrar, sessão vencida) ou o escritório redesenhado em conta.js (empresa nova, A1 trocado em
+     Minhas empresas): a aba recarrega na próxima vez que abrir, sem mostrar os dados de antes. */
+  function invalidar() {
+    st.carregado = false;
+    st.empresas = [];
+    st.arquivo = null;
+    $('fa-nfe-empresa').innerHTML = '';
+    $('fa-nfe-linhas').innerHTML = '';
+    $('fa-nfe-resumo').hidden = true;
+    ['fa-aviso-nfe', 'fa-nfe-bloqueio', 'fa-nfe-conferencia'].forEach(function (id) { nf.aviso($(id), ''); });
+  }
+  window.addEventListener('nofiscal:sessao-vencida', invalidar);
+  if ($('fa-sair')) $('fa-sair').addEventListener('click', invalidar);
+  window.contaNfe = { abrir: abrir, invalidar: invalidar, desatualizar: function () { st.carregado = false; } };
   // Entrou direto em #nfe: conta.js já mostrou a aba antes deste arquivo carregar.
   if (!$('fa-painel-nfe').hidden) abrir();
 })();

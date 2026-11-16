@@ -16,6 +16,7 @@ import {
   calcularTotais,
   montarNfe,
   NfeInvalidaError,
+  SERIE_MAXIMA,
   soDigitos,
   validarNfe,
   type Emitente,
@@ -109,7 +110,7 @@ export async function salvarDadosNfe(db: Db, tenantId: string, dados: DadosNfeDa
   if (!end.logradouro || end.logradouro.length > 60) problemas.push('Informe o logradouro (até 60 caracteres).')
   if (!end.bairro || end.bairro.length > 60) problemas.push('Informe o bairro.')
   if (end.cep.length !== 8) problemas.push('CEP com 8 dígitos.')
-  if (!Number.isInteger(dados.serie) || dados.serie < 0 || dados.serie > 999) problemas.push('Série de 0 a 999.')
+  if (!Number.isInteger(dados.serie) || dados.serie < 0 || dados.serie > SERIE_MAXIMA) problemas.push(`Série de 0 a ${SERIE_MAXIMA} (890 em diante é de outro tipo de emissor).`)
   if (!Number.isInteger(dados.proximoNumero) || dados.proximoNumero < 1 || dados.proximoNumero > 999_999_999) {
     problemas.push('Próximo número de 1 a 999.999.999.')
   }
@@ -140,9 +141,11 @@ export async function salvarDadosNfe(db: Db, tenantId: string, dados: DadosNfeDa
     if (serie[0] && dados.proximoNumero < minimo) {
       throw new DadosNfeInvalidos([`O próximo número da série ${dados.serie} já está em ${minimo}; ele não pode voltar.`])
     }
+    // A série salva passa a ser a única ativa; as outras guardam o próximo número.
+    await tx.query('update nofiscal.fiscal_nfe_series set ativa = false where tenant_id = $1 and serie <> $2 and ativa', [tenantId, dados.serie])
     await tx.query(
-      `insert into nofiscal.fiscal_nfe_series (tenant_id, serie, next_number) values ($1, $2, $3)
-       on conflict (tenant_id, serie) do update set next_number = excluded.next_number`,
+      `insert into nofiscal.fiscal_nfe_series (tenant_id, serie, next_number, ativa) values ($1, $2, $3, true)
+       on conflict (tenant_id, serie) do update set next_number = excluded.next_number, ativa = true`,
       [tenantId, dados.serie, Math.max(dados.proximoNumero, minimo)],
     )
   })
@@ -191,7 +194,7 @@ export async function criarNfe(
     if (problemas.length) return { ok: false, codigo: 'INVALIDA', problemas }
 
     const { rows: series } = await tx.query<{ serie: number }>(
-      'select serie from nofiscal.fiscal_nfe_series where tenant_id = $1 order by serie limit 1',
+      'select serie from nofiscal.fiscal_nfe_series where tenant_id = $1 and ativa',
       [p.tenantId],
     )
     const serie = series[0].serie
@@ -232,9 +235,17 @@ export type WorkerNfeDeps = {
   onFinal?: (nfeId: string, status: 'authorized' | 'denied' | 'rejected' | 'cancelled') => Promise<void>
   limite?: number
   tenantId?: string
+  /**
+   * Tempo da rodada (padrão 90 s, pelo relógio real): a Sefaz lenta não pode estourar a função do worker e cortar o
+   * resto dele. O que não coube volta para a fila na hora (sem esperar o lease).
+   */
+  prazoMs?: number
+  relogio?: () => number
 }
 
-export type ResumoNfe = { pegas: number; autorizadas: number; rejeitadas: number; denegadas: number; aguardando: number; bloqueadas: number; eventos: number }
+export type ResumoNfe = { pegas: number; autorizadas: number; rejeitadas: number; denegadas: number; aguardando: number; bloqueadas: number; eventos: number; adiadas: number }
+
+export const PRAZO_DA_RODADA_MS = 90_000
 
 type Linha = {
   id: string
@@ -265,7 +276,9 @@ const erro = (s: string) => s.slice(0, 500)
 
 export async function processarNfes(deps: WorkerNfeDeps): Promise<ResumoNfe> {
   const agora = deps.now()
-  const resumo: ResumoNfe = { pegas: 0, autorizadas: 0, rejeitadas: 0, denegadas: 0, aguardando: 0, bloqueadas: 0, eventos: 0 }
+  const resumo: ResumoNfe = { pegas: 0, autorizadas: 0, rejeitadas: 0, denegadas: 0, aguardando: 0, bloqueadas: 0, eventos: 0, adiadas: 0 }
+  const relogio = deps.relogio ?? (() => Date.now())
+  const fimDoPrazo = relogio() + (deps.prazoMs ?? PRAZO_DA_RODADA_MS)
   // A trava: quem pega a nota empurra `next_attempt_at` para frente; outro worker não a vê até lá.
   const { rows } = await deps.db.query<Linha>(
     `with alvo as (
@@ -283,6 +296,11 @@ export async function processarNfes(deps: WorkerNfeDeps): Promise<ResumoNfe> {
     [agora, deps.limite ?? LOTE_PADRAO, deps.tenantId ?? null, minutos(agora, LEASE_MINUTOS)],
   )
   for (const nota of rows) {
+    if (relogio() >= fimDoPrazo) {
+      await deps.db.query('update nofiscal.fiscal_nfe set next_attempt_at = $2 where id = $1', [nota.id, agora])
+      resumo.adiadas++
+      continue
+    }
     resumo.pegas++
     try {
       const fim = await processarUma(deps, nota, agora)
@@ -296,7 +314,7 @@ export async function processarNfes(deps: WorkerNfeDeps): Promise<ResumoNfe> {
       logEvent('nofiscal.nfe_falha_interna', { nfe_id: nota.id, error_name: error instanceof Error ? error.name : 'unknown' })
     }
   }
-  resumo.eventos = await processarEventos(deps)
+  if (relogio() < fimDoPrazo) resumo.eventos = await processarEventos(deps)
   return resumo
 }
 
@@ -304,7 +322,9 @@ type Fim = 'authorized' | 'denied' | 'rejected' | 'aguardando' | 'bloqueada'
 
 async function processarUma(deps: WorkerNfeDeps, nota: Linha, agora: Date): Promise<Fim> {
   const db = deps.db
-  const bloqueio = await bloqueioNfe(db, nota.tenant_id)
+  // O bloqueio vale só para nota ainda não transmitida. Nota com XML gravado pode já estar autorizada: segue para a
+  // consulta com o A1 da empresa, mesmo com assinatura em atraso ou conferência a refazer.
+  const bloqueio = nota.xml_assinado ? null : await bloqueioNfe(db, nota.tenant_id)
   if (bloqueio) {
     await db.query(
       `update nofiscal.fiscal_nfe set last_error_code = $2, last_error = 'emissão bloqueada', next_attempt_at = $3, updated_at = $4 where id = $1`,
@@ -362,8 +382,9 @@ async function processarUma(deps: WorkerNfeDeps, nota: Linha, agora: Date): Prom
   } else {
     r = await deps.sefaz.autorizar(uf, nota.ambiente, xml, cred)
   }
-  // Duplicidade: a Sefaz já tem esta chave (envio anterior que voltou sem resposta). Vale o que a consulta disser.
-  if (r.kind === 'rejeitada' && (r.cStat === '204' || r.cStat === '539')) {
+  // 204 (duplicidade desta mesma chave) e 205 (já denegada): um envio anterior que voltou sem resposta. Vale o que a
+  // consulta disser. O 539 (mesmo número com outra chave) não é nosso envio: rejeição definitiva, sem consulta.
+  if (r.kind === 'rejeitada' && (r.cStat === '204' || r.cStat === '205')) {
     r = await deps.sefaz.consultarChave(uf, nota.ambiente, chave!, xml, cred)
   }
   return gravarResultado(deps, nota, r, agora)
@@ -569,9 +590,11 @@ async function processarEvento(deps: WorkerNfeDeps, ev: LinhaEvento, agora: Date
       const r = await deps.sefaz.inutilizar(uf, ambiente, pedido, cred)
       if (r.kind === 'indisponivel') return falhar('SEFAZ_INDISPONIVEL', r.motivo, false)
       if (r.kind === 'rejeitada') return falhar(r.cStat, r.motivo, true)
+      // 256/563: um envio anterior já inutilizou a faixa (a resposta se perdeu). Fica registrado, sem o procInutNFe.
+      const homologada = r.kind === 'homologada' ? r : { protocolo: null, xmlProc: null }
       await db.query(
-        `update nofiscal.fiscal_nfe_eventos set status = 'registrado', protocolo = $2, xml_proc = $3, last_error_code = null, last_error = null, updated_at = $4 where id = $1`,
-        [ev.id, r.protocolo, r.xmlProc, agora],
+        `update nofiscal.fiscal_nfe_eventos set status = 'registrado', protocolo = $2, xml_proc = $3, last_error_code = $5, last_error = null, updated_at = $4 where id = $1`,
+        [ev.id, homologada.protocolo, homologada.xmlProc, agora, r.kind === 'ja_inutilizada' ? r.cStat : null],
       )
       if (ev.nfe_id) await db.query(`update nofiscal.fiscal_nfe set status = 'voided', updated_at = $2 where id = $1`, [ev.nfe_id, agora])
       return
@@ -582,8 +605,17 @@ async function processarEvento(deps: WorkerNfeDeps, ev: LinhaEvento, agora: Date
       ev.tipo === 'cancelamento'
         ? pedidoCancelamento({ ...base, protocolo: nota.protocolo, justificativa: ev.texto })
         : pedidoCartaCorrecao({ ...base, sequencia: ev.sequencia, correcao: ev.texto })
-    const r = await deps.sefaz.evento(uf, ambiente, pedido, cred)
+    let r = await deps.sefaz.evento(uf, ambiente, pedido, cred)
     if (r.kind === 'indisponivel') return falhar('SEFAZ_INDISPONIVEL', r.motivo, false)
+    if (r.kind === 'duplicado') {
+      // 573: o mesmo evento já está na Sefaz (um envio anterior que voltou sem resposta). O protocolo e o procEventoNFe
+      // vêm da consulta pela chave; enquanto ela não responde, o evento fica na fila (nunca vira recusa).
+      const tipo = ev.tipo === 'cancelamento' ? '110111' : '110110'
+      const s = await deps.sefaz.consultarEventos(uf, ambiente, nota.chave, cred)
+      const achado = s.kind === 'ok' ? s.eventos.find((e) => e.tpEvento === tipo && e.sequencia === (ev.tipo === 'cancelamento' ? 1 : ev.sequencia)) : null
+      if (!achado) return falhar('SEFAZ_INDISPONIVEL', `evento duplicado (573) ainda não encontrado na consulta`, false)
+      r = { kind: 'registrado', protocolo: achado.protocolo, cStat: '573', motivo: 'já registrado', xmlProc: achado.xmlProc }
+    }
     if (r.kind === 'rejeitado') return falhar(r.cStat, r.motivo, true)
     await db.query(
       `update nofiscal.fiscal_nfe_eventos set status = 'registrado', protocolo = $2, xml_proc = $3, last_error_code = null, last_error = null, updated_at = $4 where id = $1`,

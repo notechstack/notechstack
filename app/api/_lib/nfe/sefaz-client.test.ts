@@ -189,3 +189,32 @@ describe('eventos, inutilização e status', () => {
     expect(d.chamadas[0].body).toContain('<consStatServ xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>2</tpAmb><cUF>29</cUF><xServ>STATUS</xServ></consStatServ>')
   })
 })
+
+describe('cStat de serviço e duplicidades (revisão de 17/11/2026)', () => {
+  const { xml, chave } = montarNfe(notaExemplo())
+  const cliente = (body: string) => criarSefazClient({ transport: dublê(() => ({ status: 200, body: soap(body) })).transport })
+
+  it('108/109/656/999 na autorização, no recibo e na consulta: indisponível, nunca rejeição', async () => {
+    expect((await cliente(`<retEnviNFe xmlns="${NS}"><cStat>656</cStat><xMotivo>Consumo indevido</xMotivo></retEnviNFe>`).autorizar('SP', 'homologacao', xml, cred)).kind).toBe('indisponivel')
+    expect((await cliente(`<retConsReciNFe xmlns="${NS}"><cStat>106</cStat><xMotivo>Lote nao localizado</xMotivo></retConsReciNFe>`).consultarRecibo('SP', 'homologacao', '1', xml, cred)).kind).toBe('indisponivel')
+    expect((await cliente(`<retConsSitNFe xmlns="${NS}"><cStat>109</cStat><xMotivo>Servico paralisado</xMotivo></retConsSitNFe>`).consultarChave('SP', 'homologacao', chave, xml, cred)).kind).toBe('indisponivel')
+  })
+
+  it('evento 573 = duplicado; lote de evento 108 = indisponível; inutilização 563 = já inutilizada', async () => {
+    const pedido = pedidoCancelamento({ ambiente: 'homologacao', uf: 'SP', cnpj: EMITENTE_SP.cnpj, chave, quando: new Date(), protocolo: '135260000012345', justificativa: 'Erro na digitacao do valor' })
+    const dup = cliente(`<retEnvEvento xmlns="${NS}"><cStat>128</cStat><retEvento><infEvento><cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo></infEvento></retEvento></retEnvEvento>`)
+    expect((await dup.evento('SP', 'homologacao', pedido, cred)).kind).toBe('duplicado')
+    const fora = cliente(`<retEnvEvento xmlns="${NS}"><cStat>108</cStat><xMotivo>Servico paralisado</xMotivo></retEnvEvento>`)
+    expect((await fora.evento('SP', 'homologacao', pedido, cred)).kind).toBe('indisponivel')
+    const inut = pedidoInutilizacao({ ambiente: 'homologacao', uf: 'SP', cnpj: EMITENTE_SP.cnpj, ano: 2026, serie: 1, inicio: 10, fim: 10, justificativa: 'Numeracao pulada por falha no sistema' })
+    const ja = cliente(`<retInutNFe xmlns="${NS}"><infInut><cStat>563</cStat><xMotivo>Ja existe pedido de inutilizacao com a mesma faixa</xMotivo></infInut></retInutNFe>`)
+    expect((await ja.inutilizar('SP', 'homologacao', inut, cred)).kind).toBe('ja_inutilizada')
+  })
+
+  it('consultarEventos lê os procEventoNFe da consulta pela chave', async () => {
+    const proc = `<procEventoNFe versao="1.00"><evento><infEvento Id="ID110111${chave}01"><tpEvento>110111</tpEvento><nSeqEvento>1</nSeqEvento></infEvento></evento><retEvento><infEvento><cStat>135</cStat><nProt>135260000099999</nProt></infEvento></retEvento></procEventoNFe>`
+    const r = await cliente(`<retConsSitNFe xmlns="${NS}"><cStat>101</cStat><xMotivo>Cancelamento homologado</xMotivo>${proc}</retConsSitNFe>`).consultarEventos('SP', 'homologacao', chave, cred)
+    expect(r).toMatchObject({ kind: 'ok', cStat: '101', eventos: [{ tpEvento: '110111', sequencia: 1, protocolo: '135260000099999' }] })
+    if (r.kind === 'ok') expect(r.eventos[0].xmlProc).toBe(proc)
+  })
+})

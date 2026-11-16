@@ -3,7 +3,7 @@
 // com Id (`infEvento`, `infInut`) saem sem assinatura; quem chama assina antes de embrulhar no lote.
 import { el, leaf } from '../xml.js'
 import { CODIGO_UF, TP_AMB, type AmbienteNfe, type Uf } from './autorizadores.js'
-import { dataHoraBrasilia, NS_NFE, soDigitos, VERSAO_NFE } from './nfe-builder.js'
+import { dataHoraBrasilia, latin1, NS_NFE, soDigitos, VERSAO_NFE } from './nfe-builder.js'
 
 /** Texto fixo exigido pelo XSD do evento 110110 (versão sem acentos, aceita por todas as UFs). */
 export const CONDICAO_DE_USO_CCE =
@@ -17,7 +17,8 @@ export class PedidoInvalidoError extends Error {
   }
 }
 
-const txt = (s: string) => s.replace(/\s+/g, ' ').trim()
+/** xJust e xCorrecao também são TString (Latin-1): o que estiver fora vira equivalente ou sai (rejeição 215). */
+const txt = (s: string) => latin1(s).replace(/\s+/g, ' ').trim()
 
 /** idLote de até 15 dígitos, derivado do relógio (único o bastante por emitente). */
 export const novoIdLote = (agora = Date.now()) => String(agora).slice(-15)

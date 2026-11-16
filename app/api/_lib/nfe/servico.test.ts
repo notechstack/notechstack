@@ -249,3 +249,65 @@ describe('emissão', () => {
     expect(rows[0]).toEqual({ status: 'queued', last_error_code: 'NFE_CONFERIR_DE_NOVO' })
   })
 })
+
+describe('fila depois da revisão de 17/11/2026', () => {
+  beforeEach(async () => {
+    await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 1, proximoNumero: 70 })
+    await aprovarConferencia(db, tenant.id, '222333444555')
+  })
+
+  it('539 (mesmo número, outra chave) rejeita na hora, sem consulta nem laço', async () => {
+    const r = await criarNfe(db, { tenantId: tenant.id, externalId: 'n539', origem: 'painel', pedido: pedido(), agora: agora() })
+    const d = sefazDuble({ autorizar: (body) => ({ status: 200, body: soap(`<retEnviNFe xmlns="${NS}"><cStat>104</cStat><xMotivo>ok</xMotivo><protNFe><infProt><chNFe>${/NFe(\d{44})/.exec(body)![1]}</chNFe><cStat>539</cStat><xMotivo>Duplicidade de NF-e com diferenca na Chave de Acesso</xMotivo></infProt></protNFe></retEnviNFe>`) }) })
+    expect(await processarNfes({ db, sefaz: d.sefaz, now: agora, tenantId: tenant.id })).toMatchObject({ rejeitadas: 1 })
+    expect(d.chamadas.filter((c) => c.body?.includes('<consSitNFe'))).toHaveLength(0)
+    const { rows } = await admin.query<{ status: string; last_error_code: string }>('select status, last_error_code from nofiscal.fiscal_nfe where id = $1', [r.ok ? r.nfeId : ''])
+    expect(rows[0]).toEqual({ status: 'rejected', last_error_code: '539' })
+  })
+
+  it('nota já transmitida não para no bloqueio (A1 trocado): segue para a consulta', async () => {
+    await criarNfe(db, { tenantId: tenant.id, externalId: 'tx', origem: 'painel', pedido: pedido(), agora: agora() })
+    await processarNfes({ db, sefaz: sefazDuble({ autorizar: () => ({ status: 503, body: '' }) }).sefaz, now: agora, tenantId: tenant.id })
+    // Renova o A1 (mesmo CNPJ): a conferência fica a refazer, mas a nota em 'sending' já foi para a Sefaz.
+    await admin.query('select nofiscal.upsert_certificate($1, $2, $3, $4, $5)', [tenant.id, cert.certificado.pfxBase64, cert.certificado.password, `CN=EMPRESA TESTE:${tenant.cnpj}`, new Date(Date.now() + 86400_000 * 200)])
+    expect(await bloqueioNfe(db, tenant.id)).toBe('NFE_CONFERIR_DE_NOVO')
+    const d = sefazDuble()
+    expect(await processarNfes({ db, sefaz: d.sefaz, now: () => new Date(agora().getTime() + 5 * 60_000), tenantId: tenant.id })).toMatchObject({ autorizadas: 1 })
+    expect(d.chamadas[0].body).toContain('<consSitNFe')
+  })
+
+  it('cancelamento com resposta perdida: o 573 do reenvio vira cancelada pela consulta da chave', async () => {
+    const r = await criarNfe(db, { tenantId: tenant.id, externalId: 'c573', origem: 'painel', pedido: pedido(), agora: agora() })
+    const id = r.ok ? r.nfeId : ''
+    await processarNfes({ db, sefaz: sefazDuble().sefaz, now: agora, tenantId: tenant.id })
+    const { rows: n } = await admin.query<{ chave: string }>('select chave from nofiscal.fiscal_nfe where id = $1', [id])
+    await pedirCancelamento(db, id, 'Erro na digitacao do valor')
+    const proc = `<procEventoNFe versao="1.00"><evento><infEvento Id="ID110111${n[0].chave}01"><tpEvento>110111</tpEvento><nSeqEvento>1</nSeqEvento></infEvento></evento><retEvento><infEvento><cStat>135</cStat><nProt>135260000088888</nProt></infEvento></retEvento></procEventoNFe>`
+    const transport = async (req: HttpRequest): Promise<HttpResponse> => {
+      if (req.body?.includes('<envEvento')) return { status: 200, body: soap(`<retEnvEvento xmlns="${NS}"><cStat>128</cStat><retEvento><infEvento><cStat>573</cStat><xMotivo>Duplicidade de evento</xMotivo></infEvento></retEvento></retEnvEvento>`) }
+      return { status: 200, body: soap(`<retConsSitNFe xmlns="${NS}"><cStat>101</cStat><xMotivo>Cancelamento homologado</xMotivo>${proc}</retConsSitNFe>`) }
+    }
+    await processarNfes({ db, sefaz: criarSefazClient({ transport }), now: agora, tenantId: tenant.id })
+    const { rows } = await admin.query<{ status: string; protocolo: string; xml_proc: string }>(
+      `select n.status, e.protocolo, e.xml_proc from nofiscal.fiscal_nfe n join nofiscal.fiscal_nfe_eventos e on e.nfe_id = n.id where n.id = $1`,
+      [id],
+    )
+    expect(rows[0]).toEqual({ status: 'cancelled', protocolo: '135260000088888', xml_proc: proc })
+  })
+
+  it('prazo da rodada: o que não coube volta para a fila na hora', async () => {
+    await criarNfe(db, { tenantId: tenant.id, externalId: 'p1', origem: 'painel', pedido: pedido(), agora: agora() })
+    await criarNfe(db, { tenantId: tenant.id, externalId: 'p2', origem: 'painel', pedido: pedido(), agora: agora() })
+    let t = 0
+    const resumo = await processarNfes({ db, sefaz: sefazDuble().sefaz, now: agora, tenantId: tenant.id, prazoMs: 1000, relogio: () => (t += 600) })
+    expect(resumo).toMatchObject({ pegas: 1, adiadas: 1 })
+    const { rows } = await admin.query<{ n: string }>(`select count(*) as n from nofiscal.fiscal_nfe where tenant_id = $1 and status = 'queued' and next_attempt_at <= $2`, [tenant.id, agora()])
+    expect(rows[0].n).toBe('1')
+  })
+
+  it('trocar a série: a nova passa a ser a única ativa e as notas saem nela', async () => {
+    await salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 2, proximoNumero: 1 })
+    expect(await criarNfe(db, { tenantId: tenant.id, externalId: 's2', origem: 'painel', pedido: pedido(), agora: agora() })).toMatchObject({ ok: true, serie: 2, numero: 1 })
+    await expect(salvarDadosNfe(db, tenant.id, { inscricaoEstadual: '222333444555', endereco: ENDERECO, serie: 890, proximoNumero: 1 })).rejects.toThrow(DadosNfeInvalidos)
+  })
+})

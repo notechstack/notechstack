@@ -5,14 +5,16 @@
 // POST JSON (`acao`): `contexto` (empresas com dados de NF-e, bloqueio e franquia), `dados_salvar` (IE, endereço,
 // série e próximo número), `listar`, `cancelar`, `corrigir` (CC-e) e `inutilizar`.
 // POST multipart (`acao` = `planilha_ler` ou `planilha_emitir`, campo `arquivo`): ler confere e devolve o resumo; emitir
-// põe na fila as notas sem problema. A chave de cada nota é `planilha:<sha256 do arquivo>:<cnpj>:<nota>`, então
-// mandar a mesma planilha duas vezes não duplica nada.
+// põe na fila as notas sem problema. A chave de cada nota é `planilha:<cnpj>:<nota>:<sha256 do conteúdo da nota>`: a
+// mesma nota (mesmo número na coluna `nota`, mesmo conteúdo) nunca sai duas vezes, mesmo que o arquivo mude. Uma nota do
+// mês com o mesmo número na coluna `nota` e conteúdo diferente é recusada (planilha corrigida e mandada de novo).
 // GET `?baixar=danfe|xml&nfe_id=<uuid>`: DANFE (gerado a cada pedido) ou o XML autorizado (`nfeProc`).
 import { createHash } from 'node:crypto'
 import type { Db } from '../db.js'
 import { errorResponse, json } from '../http.js'
 import { logEvent } from '../log.js'
 import { empresasDoDono, notasDoMes, tipoDaPlanilha } from '../agente/lote.js'
+import { limitesDoMes, partesLocais } from '../agente/tempo.js'
 import { planoDeEscritorio } from '../agente/planos.js'
 import { donoDoUsuario, MAX_BYTES_DO_PAINEL } from '../painel-emissao.js'
 import type { SessionVerifier } from '../session.js'
@@ -122,7 +124,7 @@ async function contexto(ctx: Ctx): Promise<Response> {
   for (const e of ctx.empresas) {
     const dados = await empresaNfe(ctx.db, e.id)
     const { rows } = await ctx.db.query<{ serie: number; next_number: string }>(
-      'select serie, next_number from nofiscal.fiscal_nfe_series where tenant_id = $1 order by serie limit 1',
+      'select serie, next_number from nofiscal.fiscal_nfe_series where tenant_id = $1 and ativa',
       [e.id],
     )
     const bloqueio = await bloqueioNfe(ctx.db, e.id)
@@ -297,13 +299,14 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
   if (tipo !== 'xlsx' && tipo !== 'csv') return errorResponse('PLANILHA_RECUSADA', 'Envie a planilha em .xlsx ou .csv.')
   if (arquivo.size > MAX_BYTES_DO_PAINEL) return errorResponse('PLANILHA_RECUSADA', 'A planilha passou de 4 MB. Divida em duas.')
   const conteudo = new Uint8Array(await arquivo.arrayBuffer())
-  const hash = createHash('sha256').update(conteudo).digest('hex')
   const lida = await lerPlanilhaNfe(conteudo, tipo)
   if (!lida.ok) return errorResponse('PLANILHA_RECUSADA', lida.mensagem)
 
   const porCnpj = new Map(ctx.empresas.map((e) => [e.cnpj, e]))
   const problemas = [...lida.problemas]
-  const prontas: { nota: (typeof lida.notas)[number]; tenantId: string; valor: number }[] = []
+  const prontas: { nota: (typeof lida.notas)[number]; tenantId: string; valor: number; chave: string }[] = []
+  const local = partesLocais(ctx.agora)
+  const { inicio } = limitesDoMes(local.ano, local.mes)
   for (const nota of lida.notas) {
     const empresa = porCnpj.get(nota.cnpjEmitente)
     if (!empresa) {
@@ -321,7 +324,25 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       for (const m of erros) problemas.push({ linha: nota.linhas[0], nota: nota.nota, mensagem: m })
       continue
     }
-    prontas.push({ nota, tenantId: empresa.id, valor: nota.pedido.pagamentos[0]?.valor ?? 0 })
+    const prefixo = `planilha:${nota.cnpjEmitente}:${nota.nota}:`
+    const chave = prefixo + createHash('sha256').update(JSON.stringify(nota.pedido)).digest('hex').slice(0, 32)
+    const { rows: ja } = await ctx.db.query<{ external_id: string; numero: string; status: string }>(
+      `select external_id, numero, status from nofiscal.fiscal_nfe
+        where tenant_id = $1 and left(external_id, length($2)) = $2 and created_at >= $3 and status not in ('rejected', 'voided')
+        order by created_at desc limit 1`,
+      [empresa.id, prefixo, inicio],
+    )
+    if (ja[0]) {
+      problemas.push({
+        linha: nota.linhas[0],
+        nota: nota.nota,
+        mensagem: ja[0].external_id === chave
+          ? `esta nota já foi para a emissão neste mês (NF-e nº ${ja[0].numero}); não sai de novo.`
+          : `a nota ${nota.nota} desta empresa já saiu neste mês (NF-e nº ${ja[0].numero}) com outro conteúdo. Para corrigir a que saiu, use a carta de correção ou cancele; para uma nota nova, use outro número na coluna "nota".`,
+      })
+      continue
+    }
+    prontas.push({ nota, tenantId: empresa.id, valor: nota.pedido.pagamentos[0]?.valor ?? 0, chave })
   }
   const franquia = { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) }
   const resumo = {
@@ -335,7 +356,7 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
   for (const p of prontas) {
     const r = await criarNfe(ctx.db, {
       tenantId: p.tenantId,
-      externalId: `planilha:${hash.slice(0, 40)}:${p.nota.cnpjEmitente}:${p.nota.nota}`.slice(0, 100),
+      externalId: p.chave,
       origem: 'planilha',
       pedido: p.nota.pedido,
       agora: ctx.agora,

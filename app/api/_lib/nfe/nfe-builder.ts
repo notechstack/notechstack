@@ -124,6 +124,38 @@ export class NfeInvalidaError extends Error {
 
 export const soDigitos = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
 
+/**
+ * O TString do leiaute só aceita Latin-1 (U+0020 a U+00FF): travessão, aspas tipográficas, reticências e emoji dão
+ * rejeição 225 (falha de schema) e queimam o número. Troca os comuns pelo equivalente e tira o resto.
+ */
+export function latin1(s: string): string {
+  return s
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u20AC/g, 'EUR')
+    .replace(/\u2122/g, 'TM')
+    .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    .replace(/[^\u0020-\u00FF\n]/g, '')
+}
+
+
+/** UFs cuja Sefaz não aceita destinatário "contribuinte isento" (indIEDest 2): rejeição 805. */
+export const UFS_SEM_ISENTO = new Set(['AM', 'BA', 'CE', 'GO', 'MG', 'MS', 'MT', 'PE', 'RN', 'SE', 'SP'])
+
+/** Série permitida no web service para emitente com CNPJ (0 a 889; 890+ é avulsa, SCAN ou pessoa física): rejeição 266. */
+export const SERIE_MAXIMA = 889
+
+/** Dígito verificador GS1 (GTIN-8/12/13/14): módulo 10, pesos 3 e 1 da direita para a esquerda. */
+export function gtinValido(gtin: string): boolean {
+  if (!/^(\d{8}|\d{12,14})$/.test(gtin)) return false
+  const corpo = gtin.slice(0, -1)
+  let soma = 0
+  for (let i = 0; i < corpo.length; i++) soma += Number(corpo[corpo.length - 1 - i]) * (i % 2 === 0 ? 3 : 1)
+  return (10 - (soma % 10)) % 10 === Number(gtin.slice(-1))
+}
+
 // --- números ---------------------------------------------------------------------------------------------------
 
 /** Valor em reais para centavos inteiros, arredondado meio para cima. */
@@ -218,6 +250,9 @@ export function validarNfe(input: NfeInput): string[] {
     p.push('destinatário: contribuinte (indicador 1) precisa de inscrição estadual')
   }
   if (doc.length === 11 && d.indicadorIE === '1') p.push('destinatário: pessoa física não pode ser contribuinte com IE nesta versão')
+  if (d.indicadorIE === '2' && UFS_SEM_ISENTO.has(d.endereco.uf)) {
+    p.push(`destinatário: a Sefaz de ${d.endereco.uf} não aceita contribuinte isento; informe a IE do destinatário ou deixe a IE vazia (não contribuinte)`)
+  }
   validarEndereco('destinatário', d.endereco, p, false)
   if (input.itens.length === 0) p.push('a nota precisa de pelo menos um item')
   if (input.itens.length > 990) p.push('a NF-e aceita no máximo 990 itens')
@@ -238,7 +273,7 @@ export function validarNfe(input: NfeInput): string[] {
     if (!['101', '102', '103', '300', '400', '500'].includes(item.csosn)) p.push(`${n}: CSOSN não suportado (${item.csosn})`)
     if (item.csosn === '101' && !(Number(item.aliquotaCreditoSN) > 0)) p.push(`${n}: CSOSN 101 pede a alíquota do crédito`)
     if (item.origem && !/^[0-8]$/.test(item.origem)) p.push(`${n}: origem da mercadoria de 0 a 8`)
-    if (item.gtin && !/^(\d{8}|\d{12,14})$/.test(item.gtin)) p.push(`${n}: GTIN deve ter 8, 12, 13 ou 14 dígitos`)
+    if (item.gtin && !gtinValido(item.gtin)) p.push(`${n}: GTIN inválido (8, 12, 13 ou 14 dígitos com o dígito verificador certo)`)
     if (item.desconto && centavos(item.desconto) >= centavos(item.quantidade * item.valorUnitario)) {
       p.push(`${n}: desconto maior ou igual ao valor do produto`)
     }
@@ -248,7 +283,7 @@ export function validarNfe(input: NfeInput): string[] {
     if (!/^\d{2}$/.test(pag.forma)) p.push(`pagamento: forma "${pag.forma}" inválida`)
     if (pag.forma === '99' && !pag.descricao?.trim()) p.push('pagamento: forma 99 (outros) pede a descrição')
   }
-  if (!(input.serie >= 0 && input.serie <= 999)) p.push('série de 0 a 999')
+  if (!(Number.isInteger(input.serie) && input.serie >= 0 && input.serie <= SERIE_MAXIMA)) p.push(`série de 0 a ${SERIE_MAXIMA}`)
   if (!(input.numero >= 1 && input.numero <= 999_999_999)) p.push('número de 1 a 999.999.999')
   if (p.length === 0) {
     const total = calcularTotais(input.itens).nota
@@ -287,7 +322,7 @@ export function calcularTotais(itens: Item[]) {
 // --- montagem --------------------------------------------------------------------------------------------------
 
 /** Texto do leiaute: sem quebras e espaços duplicados, cortado no tamanho máximo do campo. */
-const txt = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max)
+const txt = (s: string, max: number) => latin1(s).replace(/\s+/g, ' ').trim().slice(0, max)
 const opt = (s: string | null | undefined, max: number) => (s && s.trim() ? txt(s, max) : null)
 
 function endereco(tag: string, end: Endereco): string {
@@ -411,6 +446,9 @@ export function montarNfe(input: NfeInput): NfeMontada {
     leaf('finNFe', '1'),
     leaf('indFinal', consumidorFinal),
     leaf('indPres', input.presenca ?? '9'),
+    // NT 2020.006 (rejeição 434): com indPres 2, 3, 4 ou 9, o indicativo de intermediador é obrigatório. 0 = operação sem
+    // intermediador (venda no site ou na loja da própria empresa).
+    ['2', '3', '4', '9'].includes(input.presenca ?? '9') ? leaf('indIntermed', '0') : null,
     leaf('procEmi', '0'),
     leaf('verProc', txt(input.versaoAplicativo ?? 'no.fiscal 1.0', 20)),
   ])

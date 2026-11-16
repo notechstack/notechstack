@@ -515,6 +515,8 @@
     var x = escritorio();
     // Empresas, bloqueios e franquia da aba Emitir vêm de novo na próxima vez que ela abrir.
     em.carregado = false;
+    // O mesmo para a aba NF-e (nfe.js).
+    if (window.contaNfe) window.contaNfe.desatualizar();
     ABAS.forEach(function (a) {
       var p = $('fa-painel-' + a);
       if (x) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'fa-aba-' + a); }

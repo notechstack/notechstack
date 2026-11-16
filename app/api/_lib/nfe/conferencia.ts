@@ -4,7 +4,7 @@
 //   2. consulta de cadastro da Sefaz da UF (15 UFs têm): IE do CNPJ, habilitada e credenciada para NF-e. Só a
 //      resposta com cadastro (111/112) decide; sem o serviço, sem resposta ou com outro código, segue para a nota de
 //      teste, que é a prova definitiva;
-//   3. nota de teste em homologação (vale para as 27 UFs), série 990 com numeração própria da conferência:
+//   3. nota de teste em homologação (vale para as 27 UFs), série 889 com numeração própria da conferência:
 //      autorizada = pronta; 203 = falta credenciamento; 230/231 = problema na IE; 213 = certificado de outro CNPJ.
 // O resultado fica em `fiscal_nfe_conferencias` com a IE, a UF e o certificado usados; `nfe_emission_block` pede
 // conferência nova quando um deles muda.
@@ -12,10 +12,14 @@ import type { Db } from '../db.js'
 import { logEvent } from '../log.js'
 import type { Uf } from './autorizadores.js'
 import { montarNfe, NfeInvalidaError, soDigitos, type NfeInput, type ResponsavelTecnico } from './nfe-builder.js'
-import { abrirCertificado, type ResultadoAutorizacao, type SefazClient } from './sefaz-client.js'
+import { abrirCertificado, CSTAT_TRANSITORIO, type ResultadoAutorizacao, type SefazClient } from './sefaz-client.js'
 import { emitenteDaEmpresa, empresaNfe, type EmpresaNfe } from './servico.js'
 
-export const SERIE_DE_TESTE = 990
+/**
+ * Série da nota de teste: a última da faixa do web service (0 a 889; 890+ dá rejeição 266). Só vai à homologação,
+ * que é outro ambiente da Sefaz: não disputa número com a série de produção da empresa.
+ */
+export const SERIE_DE_TESTE = 889
 
 export type ResultadoConferencia = {
   status: 'pendente' | 'aprovada' | 'reprovada' | 'erro'
@@ -107,8 +111,8 @@ async function gravar(db: Db, tenantId: string, r: ResultadoConferencia, extra: 
     `insert into nofiscal.fiscal_nfe_conferencias
        (tenant_id, status, etapa, codigo, motivo, cadastro_cred_nfe, cadastro_habilitada, teste_chave, teste_protocolo, ie, uf,
         cert_uploaded_at, conferida_em, updated_at)
-     -- O instante do certificado vem do próprio banco: o Date do JS perde os microssegundos e nunca bateria.
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select c.uploaded_at from nofiscal.fiscal_certificates c where c.tenant_id = $1), $12, $12)
+     -- O instante do certificado conferido vai como texto lido do banco: o Date do JS perderia os microssegundos.
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13::timestamptz, $12, $12)
      on conflict (tenant_id) do update set
        status = excluded.status, etapa = excluded.etapa, codigo = excluded.codigo, motivo = excluded.motivo,
        cadastro_cred_nfe = excluded.cadastro_cred_nfe, cadastro_habilitada = excluded.cadastro_habilitada,
@@ -119,7 +123,7 @@ async function gravar(db: Db, tenantId: string, r: ResultadoConferencia, extra: 
     [
       tenantId, r.status, r.etapa, r.codigo, r.motivo.slice(0, 500),
       extra.credNfe ?? null, extra.habilitada ?? null, extra.chave ?? null, extra.protocolo ?? null,
-      extra.ie ?? null, extra.uf ?? null, extra.agora,
+      extra.ie ?? null, extra.uf ?? null, extra.agora, extra.certUploadedAt ?? null,
     ],
   )
   logEvent('nofiscal.nfe_conferencia', { tenant_id: tenantId, status: r.status, etapa: r.etapa, codigo: r.codigo })
@@ -146,12 +150,14 @@ export async function conferirEmpresaNfe(deps: ConferirDeps, tenantId: string): 
     return { status: 'pendente', etapa: null, codigo: 'NFE_SEM_DADOS', motivo: 'preencha a inscrição estadual e o endereço antes da conferência' }
   }
   const uf = empresa.endereco.uf as Uf
-  const { rows: certs } = await db.query<{ pfx_base64: string | null; password: string | null }>(
-    `select r.pfx_base64, r.password from nofiscal.fiscal_certificates c, nofiscal.read_certificate(c.tenant_id) r
+  // O instante do A1 é lido junto com ele: se outro A1 chegar durante a conferência, o resultado fica preso ao antigo e
+  // `nfe_emission_block` pede outra conferência.
+  const { rows: certs } = await db.query<{ pfx_base64: string | null; password: string | null; uploaded_at: string }>(
+    `select r.pfx_base64, r.password, c.uploaded_at::text as uploaded_at from nofiscal.fiscal_certificates c, nofiscal.read_certificate(c.tenant_id) r
       where c.tenant_id = $1`,
     [tenantId],
   )
-  const base = { ie: empresa.inscricao_estadual, uf, agora }
+  const base = { ie: empresa.inscricao_estadual, uf, agora, certUploadedAt: certs[0]?.uploaded_at ?? null }
   const reprovar = (etapa: ResultadoConferencia['etapa'], codigo: string, detalhe = '', extra: Record<string, unknown> = {}) =>
     gravar(db, tenantId, { status: 'reprovada', etapa, codigo, motivo: motivoDaConferencia(codigo, uf, detalhe) }, { ...base, ...extra })
   const falhar = (etapa: ResultadoConferencia['etapa'], motivo: string, extra: Record<string, unknown> = {}) =>
@@ -209,6 +215,7 @@ export async function conferirEmpresaNfe(deps: ConferirDeps, tenantId: string): 
     return gravar(db, tenantId, { status: 'aprovada', etapa: 'nota_teste', codigo: null, motivo: 'nota de teste autorizada em homologação' }, { ...base, ...comChave, protocolo: r.protocolo })
   }
   if (r.kind === 'denegada') return reprovar('nota_teste', `SEFAZ_${r.cStat}`, r.motivo, comChave)
+  if (CSTAT_TRANSITORIO.has(r.cStat)) return falhar('nota_teste', `${r.cStat} ${r.motivo}`, comChave)
   if (r.cStat === '203') return reprovar('nota_teste', 'NFE_NAO_CREDENCIADA', '', comChave)
   if (r.cStat === '230' || r.cStat === '231') return reprovar('nota_teste', 'NFE_IE_INVALIDA', r.motivo, comChave)
   if (r.cStat === '213') return reprovar('nota_teste', 'CERT_DE_OUTRO_CNPJ', '', comChave)

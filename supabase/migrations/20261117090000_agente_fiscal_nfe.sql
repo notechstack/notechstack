@@ -23,12 +23,17 @@ alter table nofiscal.fiscal_tenants
     )
   );
 
+-- Série 0 a 889: a faixa do web service para emitente com CNPJ (890+ é avulsa, SCAN ou pessoa física; rejeição 266).
+-- Uma série ativa por empresa (a do painel); as outras guardam o próximo número caso voltem a ser usadas.
+-- next_number vai até 1.000.000.000 = série esgotada (o 999.999.999 ainda sai).
 create table nofiscal.fiscal_nfe_series (
   tenant_id uuid not null references nofiscal.fiscal_tenants(id) on delete restrict,
-  serie integer not null check (serie between 0 and 999),
-  next_number bigint not null check (next_number between 1 and 999999999),
+  serie integer not null check (serie between 0 and 889),
+  next_number bigint not null check (next_number between 1 and 1000000000),
+  ativa boolean not null default true,
   primary key (tenant_id, serie)
 );
+create unique index fiscal_nfe_series_ativa_idx on nofiscal.fiscal_nfe_series (tenant_id) where ativa;
 
 create table nofiscal.fiscal_nfe (
   id uuid primary key default gen_random_uuid(),
@@ -113,16 +118,17 @@ as $$
 declare
   v_numero bigint;
 begin
-  update nofiscal.fiscal_nfe_series
-     set next_number = next_number + 1
-   where tenant_id = p_tenant_id and serie = p_serie
-  returning next_number - 1 into v_numero;
+  select s.next_number into v_numero
+    from nofiscal.fiscal_nfe_series s
+   where s.tenant_id = p_tenant_id and s.serie = p_serie
+   for update;
   if v_numero is null then
     raise exception 'NOFISCAL_NFE_SERIE_NOT_FOUND';
   end if;
   if v_numero > 999999999 then
     raise exception 'NOFISCAL_NFE_SERIE_ESGOTADA';
   end if;
+  update nofiscal.fiscal_nfe_series set next_number = v_numero + 1 where tenant_id = p_tenant_id and serie = p_serie;
   return v_numero;
 end;
 $$;
@@ -168,7 +174,7 @@ begin
   if v_tenant.endereco is null then
     return 'NFE_SEM_ENDERECO';
   end if;
-  if not exists (select 1 from nofiscal.fiscal_nfe_series s where s.tenant_id = p_tenant_id) then
+  if not exists (select 1 from nofiscal.fiscal_nfe_series s where s.tenant_id = p_tenant_id and s.ativa) then
     return 'NFE_SEM_SERIE';
   end if;
   select c.not_after into v_not_after from nofiscal.fiscal_certificates c where c.tenant_id = p_tenant_id;
@@ -270,8 +276,8 @@ begin
         'nfe', jsonb_build_object(
           'inscricao_estadual', t.inscricao_estadual,
           'endereco', t.endereco,
-          'serie', (select s.serie from nofiscal.fiscal_nfe_series s where s.tenant_id = t.id order by s.serie limit 1),
-          'proximo_numero', (select s.next_number from nofiscal.fiscal_nfe_series s where s.tenant_id = t.id order by s.serie limit 1),
+          'serie', (select s.serie from nofiscal.fiscal_nfe_series s where s.tenant_id = t.id and s.ativa),
+          'proximo_numero', (select s.next_number from nofiscal.fiscal_nfe_series s where s.tenant_id = t.id and s.ativa),
           'bloqueio', nofiscal.nfe_emission_block(t.id)),
         'situacao', case
           when not t.active then 'desativada'

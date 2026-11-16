@@ -8,6 +8,7 @@ import {
   calcularTotais,
   dataHoraBrasilia,
   digitoChave,
+  gtinValido,
   montarNfe,
   NfeInvalidaError,
   NOME_HOMOLOGACAO,
@@ -166,5 +167,43 @@ describe('validarNfe', () => {
 
   it('montarNfe lança NfeInvalidaError com a lista', () => {
     expect(() => montarNfe(notaExemplo({ itens: [] }))).toThrow(NfeInvalidaError)
+  })
+})
+
+describe('regras da revisão de 17/11/2026', () => {
+  it('indIntermed 0 com indPres 2/3/4/9 (NT 2020.006, rejeição 434); ausente com 0, 1 e 5', () => {
+    expect(montarNfe(notaExemplo()).xml).toContain('<indPres>9</indPres><indIntermed>0</indIntermed><procEmi>')
+    expect(montarNfe(notaExemplo({ presenca: '2' })).xml).toContain('<indPres>2</indPres><indIntermed>0</indIntermed>')
+    expect(montarNfe(notaExemplo({ presenca: '1' })).xml).toContain('<indPres>1</indPres><procEmi>')
+  })
+
+  it('texto fora do Latin-1 vira equivalente ou sai (rejeição 225)', () => {
+    const base = notaExemplo()
+    const { xml } = montarNfe(notaExemplo({ itens: [{ ...base.itens[0], descricao: 'Farinha – “especial” 5kg… ☺' }], pagamentos: [{ forma: '17', valor: 59.7 }] }))
+    expect(xml).toContain('<xProd>Farinha - &quot;especial&quot; 5kg...</xProd>')
+  })
+
+  it('série só de 0 a 889 (rejeição 266)', () => {
+    expect(validarNfe(notaExemplo({ serie: 890 }))).toContain('série de 0 a 889')
+    expect(validarNfe(notaExemplo({ serie: 889 }))).toEqual([])
+  })
+
+  it('GTIN com dígito verificador GS1', () => {
+    expect(gtinValido('7891234567895')).toBe(true)
+    expect(gtinValido('7891234567890')).toBe(false)
+    const base = notaExemplo()
+    expect(validarNfe(notaExemplo({ itens: [{ ...base.itens[0], gtin: '7891234567890' }], pagamentos: [{ forma: '17', valor: 59.7 }] }))).toEqual([
+      'item 1: GTIN inválido (8, 12, 13 ou 14 dígitos com o dígito verificador certo)',
+    ])
+  })
+
+  it('destinatário isento (indIEDest 2) recusado em SP, aceito no RJ (rejeição 805)', () => {
+    const base = notaExemplo()
+    const isento = (uf: 'SP' | 'RJ', cMun: string) => notaExemplo({
+      destinatario: { ...base.destinatario, indicadorIE: '2', endereco: { ...base.destinatario.endereco, uf, codigoMunicipio: cMun } },
+      itens: base.itens.map((i) => ({ ...i, cfop: uf === 'SP' ? '5102' : '6102' })),
+    })
+    expect(validarNfe(isento('SP', '3550308'))[0]).toMatch(/não aceita contribuinte isento/)
+    expect(validarNfe(isento('RJ', '3304557'))).toEqual([])
   })
 })

@@ -195,3 +195,15 @@ describe('A1 para NF-e (uso=nfe) na empresa por procuração', () => {
     expect(await enviar(`EMPRESA:${cnpj}`, 'nfe')).toBe(201)
   })
 })
+
+describe('conferência depois da revisão de 17/11/2026', () => {
+  it('série de teste dentro da faixa do web service (0 a 889)', () => {
+    expect(SERIE_DE_TESTE).toBeLessThanOrEqual(889)
+  })
+
+  it('Sefaz paralisada (108/109/656/999) na nota de teste é erro para tentar de novo, não reprovação', async () => {
+    await gravarA1(`COMERCIO CLIENTE LTDA:${cnpj}`)
+    const r = await conferir(sefazDeConferencia({ autorizar: rejeita('109', 'Servico paralisado sem previsao') }).sefaz)
+    expect(r).toMatchObject({ status: 'erro', codigo: 'SEFAZ_INDISPONIVEL' })
+  })
+})

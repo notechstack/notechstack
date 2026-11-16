@@ -27,7 +27,7 @@ const WSDL = 'http://www.portalfiscal.inf.br/nfe/wsdl'
 const SOAP12 = 'http://www.w3.org/2003/05/soap-envelope'
 
 /** Transporte padrão: o mesmo `node:https` da Sefin, com as raízes da ICP-Brasil. */
-export const sefazTransport = (timeoutMs = 30_000): SefinTransport => httpsTransport({ timeoutMs, extraCa: [...RAIZES_ICP_BRASIL] })
+export const sefazTransport = (timeoutMs = 20_000): SefinTransport => httpsTransport({ timeoutMs, extraCa: [...RAIZES_ICP_BRASIL] })
 
 export function envelope(operacao: string, corpo: string): string {
   return (
@@ -84,13 +84,30 @@ export type ResultadoAutorizacao =
 
 export type ResultadoEvento =
   | { kind: 'registrado'; protocolo: string; cStat: string; motivo: string; xmlProc: string }
+  /** 573: a Sefaz já tem este evento (um envio anterior que voltou sem resposta). Conferir pela consulta da chave. */
+  | { kind: 'duplicado'; cStat: string; motivo: string }
   | { kind: 'rejeitado'; cStat: string; motivo: string }
   | { kind: 'indisponivel'; motivo: string }
 
 export type ResultadoInutilizacao =
   | { kind: 'homologada'; protocolo: string; xmlProc: string }
+  /** 256/563: a faixa já está inutilizada (um envio anterior que voltou sem resposta). */
+  | { kind: 'ja_inutilizada'; cStat: string; motivo: string }
   | { kind: 'rejeitada'; cStat: string; motivo: string }
   | { kind: 'indisponivel'; motivo: string }
+
+/** Evento registrado na Sefaz, como a consulta pela chave devolve (procEventoNFe). */
+export type EventoNaSefaz = { tpEvento: string; sequencia: number; protocolo: string; xmlProc: string }
+
+export type ResultadoSituacao =
+  | { kind: 'ok'; cStat: string; motivo: string; eventos: EventoNaSefaz[] }
+  | { kind: 'indisponivel'; motivo: string }
+
+/**
+ * cStat de serviço, não da nota: 108/109 serviço paralisado, 656 consumo indevido, 999 erro não catalogado. Nunca
+ * viram rejeição: a nota (ou o evento) volta para a fila e é conferida pela chave depois.
+ */
+export const CSTAT_TRANSITORIO = new Set(['108', '109', '656', '999'])
 
 /** Uma inscrição estadual do CNPJ, como a Sefaz da UF devolve na consulta de cadastro. */
 export type InscricaoNaSefaz = {
@@ -236,6 +253,7 @@ export function criarSefazClient(options: SefazOptions = {}) {
       const prot = lerProtocolo(r.xml, r.doc, nfeAssinada)
       if (prot) return prot
       if (cStatLote === '103') return { kind: 'em_processamento', recibo: text(r.doc, 'nRec') }
+      if (CSTAT_TRANSITORIO.has(cStatLote)) return { kind: 'indisponivel', motivo: `${cStatLote} ${text(r.doc, 'xMotivo')}` }
       return { kind: 'rejeitada', cStat: cStatLote, motivo: text(r.doc, 'xMotivo') }
     },
 
@@ -246,7 +264,9 @@ export function criarSefazClient(options: SefazOptions = {}) {
       if (prot) return prot
       const cStat = text(r.doc, 'cStat')
       if (cStat === '105') return { kind: 'em_processamento', recibo }
-      return { kind: 'rejeitada', cStat, motivo: text(r.doc, 'xMotivo') }
+      // Sem protocolo, o recibo não decide nada sobre a nota (106 lote não localizado, 108/109/656…): a próxima rodada
+      // consulta pela chave.
+      return { kind: 'indisponivel', motivo: `recibo ${cStat} ${text(r.doc, 'xMotivo')}` }
     },
 
     /**
@@ -260,7 +280,27 @@ export function criarSefazClient(options: SefazOptions = {}) {
       if (prot) return prot
       const cStat = text(first(r.doc, 'retConsSitNFe') ?? r.doc, 'cStat')
       if (cStat === '217') return { kind: 'nao_encontrada' }
-      return { kind: 'rejeitada', cStat, motivo: text(r.doc, 'xMotivo') }
+      // Só o protNFe decide a nota; qualquer outro cStat da consulta é do serviço e se tenta de novo.
+      return { kind: 'indisponivel', motivo: `consulta ${cStat} ${text(r.doc, 'xMotivo')}` }
+    },
+
+    /** Situação pela chave com os eventos registrados (procEventoNFe): resolve o 573 de um evento reenviado. */
+    async consultarEventos(uf: Uf, ambiente: AmbienteNfe, chave: string, cred: Credencial): Promise<ResultadoSituacao> {
+      const r = await chamar(uf, ambiente, 'consultaProtocolo', consultaChave(ambiente, chave), cred)
+      if ('erro' in r) return { kind: 'indisponivel', motivo: r.erro }
+      const ret = first(r.doc, 'retConsSitNFe') ?? r.doc
+      const procs = ret.getElementsByTagNameNS(NS_NFE, 'procEventoNFe')
+      const eventos: EventoNaSefaz[] = []
+      let resto = r.xml
+      for (let i = 0; i < procs.length; i++) {
+        const p = procs[i] as El
+        const inf = first(p, 'infEvento')
+        const retInf = first(first(p, 'retEvento') ?? p, 'infEvento')
+        const xml = trecho(resto, 'procEventoNFe') ?? ''
+        resto = resto.slice(resto.indexOf(xml) + xml.length)
+        eventos.push({ tpEvento: text(inf, 'tpEvento'), sequencia: Number(text(inf, 'nSeqEvento') || '1'), protocolo: text(retInf, 'nProt'), xmlProc: xml })
+      }
+      return { kind: 'ok', cStat: text(ret, 'cStat'), motivo: text(ret, 'xMotivo'), eventos }
     },
 
     async evento(uf: Uf, ambiente: AmbienteNfe, pedido: PedidoEvento, cred: Credencial): Promise<ResultadoEvento> {
@@ -269,9 +309,16 @@ export function criarSefazClient(options: SefazOptions = {}) {
       if ('erro' in r) return { kind: 'indisponivel', motivo: r.erro }
       const ret = first(r.doc, 'retEvento')
       const inf = ret ? first(ret, 'infEvento') : null
-      if (!inf) return { kind: 'rejeitado', cStat: text(r.doc, 'cStat'), motivo: text(r.doc, 'xMotivo') }
+      if (!inf) {
+        // Recusa do lote (sem infEvento): de serviço volta para a fila; o resto é recusa do pedido.
+        const lote = text(r.doc, 'cStat')
+        if (!lote || CSTAT_TRANSITORIO.has(lote)) return { kind: 'indisponivel', motivo: `lote de evento ${lote} ${text(r.doc, 'xMotivo')}` }
+        return { kind: 'rejeitado', cStat: lote, motivo: text(r.doc, 'xMotivo') }
+      }
       const cStat = text(inf, 'cStat')
       const motivo = text(inf, 'xMotivo')
+      if (cStat === '573') return { kind: 'duplicado', cStat, motivo }
+      if (CSTAT_TRANSITORIO.has(cStat)) return { kind: 'indisponivel', motivo: `${cStat} ${motivo}` }
       // 135 registrado e vinculado; 136 registrado sem vínculo; 155 cancelamento fora de prazo homologado.
       if (cStat === '135' || cStat === '136' || cStat === '155') {
         const retXml = trecho(r.xml, 'retEvento') ?? ''
@@ -343,6 +390,8 @@ export function criarSefazClient(options: SefazOptions = {}) {
         const ret = trecho(r.xml, 'retInutNFe') ?? ''
         return { kind: 'homologada', protocolo: text(r.doc, 'nProt'), xmlProc: `<procInutNFe xmlns="${NS_NFE}" versao="${VERSAO_NFE}">${assinado}${ret}</procInutNFe>` }
       }
+      if (cStat === '256' || cStat === '563') return { kind: 'ja_inutilizada', cStat, motivo: text(r.doc, 'xMotivo') }
+      if (CSTAT_TRANSITORIO.has(cStat)) return { kind: 'indisponivel', motivo: `${cStat} ${text(r.doc, 'xMotivo')}` }
       return { kind: 'rejeitada', cStat, motivo: text(r.doc, 'xMotivo') }
     },
   }

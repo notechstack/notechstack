@@ -49,7 +49,7 @@ describe('planilha de NF-e (pura)', () => {
     ])
     const [um, dois] = r.notas
     expect(um.pedido.itens[1]).toMatchObject({ quantidade: 2.5, valorUnitario: 12.345, desconto: 1 })
-    expect(um.pedido.pagamentos).toEqual([{ forma: '17', valor: 89.56 }])
+    expect(um.pedido.pagamentos).toEqual([{ forma: '17', valor: 89.56, descricao: null }])
     expect(um.pedido.destinatario).toMatchObject({ documento: '11222333000181', indicadorIE: '9', endereco: { codigoMunicipio: '3550308', uf: 'SP', cep: '01310100' } })
     expect(dois.pedido).toMatchObject({ modalidadeFrete: '0', pagamentos: [{ forma: '15', valor: 224 }] })
     expect(dois.pedido.itens[0].frete).toBe(25)
@@ -64,7 +64,7 @@ describe('planilha de NF-e (pura)', () => {
     const linhas = lerCsvTexto(MODELO.trimStart())
     linhas[2][2] = '52998224725'
     const r = interpretarPlanilhaNfe(linhas)
-    expect(r.ok && r.problemas.map((p) => [p.nota, p.mensagem])).toEqual([['1', 'linha 3: "cpf_cnpj_destinatario" diferente da primeira linha da nota']])
+    expect(r.ok && r.problemas.map((p) => [p.nota, p.mensagem])).toEqual([['1', 'linha 3: "cpf_cnpj_destinatario" diferente da linha 2']])
   })
 
   it('números em pt-BR', () => {
@@ -164,6 +164,18 @@ describe('rota do painel', () => {
     expect(await emitida.json()).toMatchObject({ emitindo: 2 })
     // A mesma planilha de novo não cria notas novas.
     await chamar(esc.mae.ownerUserId, planilha('planilha_emitir'))
+    // Nem com o arquivo regravado (bytes diferentes, mesmo conteúdo), nem com a nota 1 corrigida depois de sair.
+    const regravada = new FormData()
+    regravada.append('acao', 'planilha_emitir')
+    regravada.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente) + String.fromCharCode(10).repeat(2)], 'nfe-copia.csv', { type: 'text/csv' }))
+    const r2 = (await (await chamar(esc.mae.ownerUserId, regravada)).json()) as { emitindo: number; problemas: { nota: string; mensagem: string }[] }
+    expect(r2.emitindo).toBe(0)
+    expect(r2.problemas.map((p) => p.nota)).toEqual(['1', '2'])
+    const corrigida = new FormData()
+    corrigida.append('acao', 'planilha_ler')
+    corrigida.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente).replace('19,90;102;;;pix', '18,90;102;;;pix')], 'nfe-corrigida.csv', { type: 'text/csv' }))
+    const r3 = (await (await chamar(esc.mae.ownerUserId, corrigida)).json()) as { notas: unknown[]; problemas: { nota: string; mensagem: string }[] }
+    expect(r3.problemas.find((p) => p.nota === '1')?.mensagem).toMatch(/já saiu neste mês \(NF-e nº 501\) com outro conteúdo/)
     const { rows } = await admin.db.query<{ numero: string }>('select numero from nofiscal.fiscal_nfe where tenant_id = $1 order by numero', [esc.empresas[0].id])
     expect(rows.map((r) => r.numero)).toEqual(['501', '502'])
 
@@ -195,5 +207,43 @@ describe('rota do painel', () => {
     await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })
     const final = (await (await chamar(esc.mae.ownerUserId, { acao: 'listar' })).json()) as { notas: { nfe_id: string; status: string }[] }
     expect(final.notas.find((n) => n.nfe_id === id)?.status).toBe('cancelled')
+  })
+})
+
+describe('planilha depois da revisão de 17/11/2026', () => {
+  const CAB = ['cnpj_emitente', 'nota', 'cpf_cnpj_destinatario', 'nome_destinatario', 'cep', 'logradouro', 'numero', 'bairro', 'municipio_ibge', 'uf', 'codigo_produto', 'descricao_produto', 'ncm', 'cfop', 'unidade', 'quantidade', 'valor_unitario', 'csosn', 'frete', 'forma_pagamento', 'descricao_pagamento']
+  const linha = (o: Record<string, unknown>) => CAB.map((c) => (c in o ? o[c] : '')) as (string | number)[]
+  const base = { cnpj_emitente: '12.345.678/0001-95', nota: '1', cpf_cnpj_destinatario: '11.222.333/0001-81', nome_destinatario: 'Padaria', cep: '01310-100', logradouro: 'Av. Paulista', numero: '1', bairro: 'Bela Vista', municipio_ibge: '3550308', uf: 'SP', codigo_produto: 'P1', descricao_produto: 'Farinha', ncm: '1101.00.10', cfop: '5102', unidade: 'UN', quantidade: '1', valor_unitario: '10,00', csosn: '102' }
+
+  it('células numéricas do .xlsx: CEP e NCM voltam com os zeros; quantidade com 5 casas é recusada', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, cep: 1310100, ncm: 1012100, cpf_cnpj_destinatario: '11.222.333/0001-81' })])
+    expect(r.ok && r.notas[0].pedido.destinatario.endereco.cep).toBe('01310100')
+    expect(r.ok && r.notas[0].pedido.itens[0].ncm).toBe('01012100')
+    const q = interpretarPlanilhaNfe([CAB, linha({ ...base, quantidade: 1.23456 })])
+    expect(q.ok && q.problemas.map((p) => p.mensagem)).toEqual(['linha 2: quantidade inválida (até 4 casas)'])
+  })
+
+  it('CSV com vírgula e decimal sem aspas (colunas a mais) recusa a nota em vez de deslocar', () => {
+    const r = interpretarPlanilhaNfe([CAB, [...linha(base), 'sobra']], { contarCampos: true })
+    expect(r.ok && r.notas).toEqual([])
+    expect(r.ok && r.problemas[0].mensagem).toMatch(/mais colunas que o cabeçalho/)
+  })
+
+  it('frete e forma de pagamento numa linha de continuação valem para a nota; o pagamento é o vNF do leiaute', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha(base), linha({ ...base, codigo_produto: 'P2', valor_unitario: '0,005', quantidade: '1', frete: '5,00', forma_pagamento: 'boleto' })])
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const p = r.notas[0].pedido
+    expect(p.pagamentos[0].forma).toBe('15')
+    expect(p.itens.reduce((s, i) => s + (i.frete ?? 0), 0)).toBeCloseTo(5)
+    // 10,00 + 0,005 (meio centavo, arredonda para 0,01) + 5,00 de frete = 15,01
+    expect(p.pagamentos[0].valor).toBe(15.01)
+  })
+
+  it('forma "outros" pede descricao_pagamento', () => {
+    const sem = interpretarPlanilhaNfe([CAB, linha({ ...base, forma_pagamento: 'outros' })])
+    expect(sem.ok && sem.problemas.map((p) => p.mensagem)).toEqual(['forma de pagamento "outros" (99) pede a coluna descricao_pagamento'])
+    const com = interpretarPlanilhaNfe([CAB, linha({ ...base, forma_pagamento: 'outros', descricao_pagamento: 'Permuta' })])
+    expect(com.ok && com.notas[0].pedido.pagamentos[0]).toMatchObject({ forma: '99', descricao: 'Permuta' })
   })
 })

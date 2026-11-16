@@ -3,7 +3,7 @@
 -- escritório):
 --   1. o certificado é da empresa (mesma raiz de CNPJ; rejeição 213 da Sefaz);
 --   2. consulta de cadastro da Sefaz da UF, onde existe (15 UFs): IE habilitada, do CNPJ, e credenciamento NF-e;
---   3. nota de teste em homologação (série 990, numeração própria): autorizada = pronta; 203 = falta credenciamento;
+--   3. nota de teste em homologação (série 889, numeração própria; a série de produção vai de 0 a 889): autorizada = pronta; 203 = falta credenciamento;
 --      230/231 = problema na IE.
 -- A conferência vale para o certificado, a IE e a UF com que foi feita; trocar qualquer um pede outra.
 --
@@ -77,7 +77,7 @@ begin
   if v_tenant.endereco is null then
     return 'NFE_SEM_ENDERECO';
   end if;
-  if not exists (select 1 from nofiscal.fiscal_nfe_series s where s.tenant_id = p_tenant_id) then
+  if not exists (select 1 from nofiscal.fiscal_nfe_series s where s.tenant_id = p_tenant_id and s.ativa) then
     return 'NFE_SEM_SERIE';
   end if;
   select c.not_after, c.uploaded_at into v_cert from nofiscal.fiscal_certificates c where c.tenant_id = p_tenant_id;
