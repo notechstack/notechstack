@@ -1,0 +1,4 @@
+﻿cnpj_emitente;nota;cpf_cnpj_destinatario;nome_destinatario;ie_destinatario;email_destinatario;cep;logradouro;numero;complemento;bairro;municipio_ibge;uf;codigo_produto;descricao_produto;ncm;cfop;unidade;quantidade;valor_unitario;csosn;desconto;frete;forma_pagamento;informacoes
+12.345.678/0001-95;1;11.222.333/0001-81;Padaria Exemplo Ltda;;financeiro@padaria-exemplo.com.br;01310-100;Av. Paulista;1000;Sala 1;Bela Vista;3550308;SP;P001;Farinha de trigo 5kg;1101.00.10;5102;UN;3;19,90;102;;;pix;Documento emitido por ME ou EPP optante pelo Simples Nacional.
+12.345.678/0001-95;1;;;;;;;;;;;;P002;Fermento biologico 500g;2102.10.00;5102;PCT;2,5;12,345;102;1,00;;;
+12.345.678/0001-95;2;529.982.247-25;Maria Exemplo da Silva;;maria@exemplo.com.br;30130-000;Rua da Bahia;500;;Centro;3106200;MG;P001;Farinha de trigo 5kg;1101.00.10;6102;UN;10;19,90;102;;25,00;boleto;

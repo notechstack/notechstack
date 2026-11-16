@@ -327,7 +327,10 @@ async function avisarLimite(deps: EntregasDeps, canais: Canais, nota: NotaDoAgen
     `select d.id as dono_id, d.monthly_note_limit as limite,
             (select count(*) from nofiscal.fiscal_invoices i
               where i.tenant_id in (select nofiscal.empresas_do_dono(d.id))
-                and i.issued_at >= $2 and i.issued_at < $3) as emitidas,
+                and i.issued_at >= $2 and i.issued_at < $3)
+            + (select count(*) from nofiscal.fiscal_nfe n
+                where n.tenant_id in (select nofiscal.empresas_do_dono(d.id))
+                  and n.authorized_at >= $2 and n.authorized_at < $3) as emitidas,
             coalesce((select s.status = 'pendente' and d.trial_ends_at > $4
                         from nofiscal.fiscal_subscriptions s
                        where s.tenant_id = d.id

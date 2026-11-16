@@ -12,6 +12,9 @@ import type { Db } from './db.js'
 import { runEmission, type FinalStatus } from './emission.js'
 import { errorResponse, json } from './http.js'
 import { logEvent } from './log.js'
+import { processarNfes, type ResumoNfe } from './nfe/servico.js'
+import type { SefazClient } from './nfe/sefaz-client.js'
+import type { ResponsavelTecnico } from './nfe/nfe-builder.js'
 import { conferirPendentes, type ResumoConferencias } from './procuracao.js'
 import type { SefinClient } from './sefin.js'
 
@@ -27,6 +30,8 @@ export type WorkerDeps = {
   agente?: AgenteDeps
   /** ADN para conferir as procurações (migração 20261111180000); sem ele, a conferência não roda. */
   adn?: DistribuicaoAdn
+  /** Sefaz da NF-e (migração 20261117090000); sem ela, a fila da NF-e não roda. */
+  nfe?: { sefaz: SefazClient; responsavelTecnico: ResponsavelTecnico | null }
 }
 
 export async function handleWorkerRequest(request: Request, deps: WorkerDeps): Promise<Response> {
@@ -61,6 +66,15 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
     const summary = await runEmission({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
     // Cancelamentos depois da emissão (Landing, lote 2b - cancelamento).
     const cancellations = await runCancellations({ db: deps.db, sefin: deps.sefin, now, onFinal, tenantId: deps.tenantId })
+    // NF-e (nota de produto) depois da NFS-e. Falha aqui não para o resto do worker.
+    let nfe: ResumoNfe | null = null
+    if (deps.nfe) {
+      try {
+        nfe = await processarNfes({ db: deps.db, sefaz: deps.nfe.sefaz, now, responsavelTecnico: deps.nfe.responsavelTecnico, tenantId: deps.tenantId })
+      } catch (error) {
+        logEvent('nofiscal.nfe_rodada_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+      }
+    }
     const expiring = await findExpiringCertificates(deps.db, now())
     for (const cert of expiring) {
       logEvent('nofiscal.certificate_expiring', {
@@ -76,6 +90,7 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
       cancellations,
       certificates_expiring: expiring.length,
       ...(procuracoes ? { procuracoes } : {}),
+      ...(nfe ? { nfe } : {}),
       ...(tarefas ? { agente: tarefas } : {}),
     })
   } catch (error) {
