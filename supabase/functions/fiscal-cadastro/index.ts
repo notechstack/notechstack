@@ -19,6 +19,10 @@ Deno.serve((req: Request) =>
       return error || !data?.user?.id ? null : data.user.id;
     },
     municipios: async () => LISTA_MUNICIPIOS,
+    regimeConfirmado: async (cnpj) => {
+      const { data, error } = await admin.rpc("fiscal_regime_confirmado", { p_cnpj: cnpj });
+      return !error && (data === "mei" || data === "simples") ? data : null;
+    },
     criar: async (a) => {
       const { data, error } = await admin.rpc("fiscal_cadastro_criar", {
         p_user_id: a.user_id,

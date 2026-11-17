@@ -62,6 +62,10 @@ Deno.serve(async (request) => {
     const resultado = await processarConta(request.method, body, {
       env,
       fetch: (url, init) => fetch(url, init),
+      regimeConfirmado: async (cnpj) => {
+        const r = await rpc("fiscal_regime_confirmado", { p_cnpj: cnpj }).catch(() => null);
+        return r === "mei" || r === "simples" ? r : null;
+      },
       sessao: async () => {
         const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         if (!token) return null;

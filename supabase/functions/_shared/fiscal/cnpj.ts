@@ -57,7 +57,27 @@ function codigo(v: unknown, tamanho: number): string | null {
 
 export async function consultarCnpj(
   cnpj: string,
-  o: { apiUrl?: string; reservaUrl?: string; fetch?: (url: string, init?: RequestInit) => Promise<Response> } = {},
+  o: {
+    apiUrl?: string;
+    reservaUrl?: string;
+    fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+    /** Regime confirmado à mão (nofiscal.fiscal_regime_confirmado), usado quando a base pública nega o Simples. */
+    regimeConfirmado?: (cnpj: string) => Promise<Regime | null>;
+  } = {},
+): Promise<Consulta> {
+  const r = await consultarPublico(cnpj, o);
+  if (r.ok || r.motivo !== "fora_do_simples" || !o.regimeConfirmado) return r;
+  const regime = await o.regimeConfirmado(cnpj).catch(() => null);
+  if (regime !== "mei" && regime !== "simples") return r;
+  // Os dados (razão social, município) vêm da consulta pública; só o regime vem da confirmação.
+  const dados = await consultarPublico(cnpj, o, regime);
+  return dados.ok ? dados : r;
+}
+
+async function consultarPublico(
+  cnpj: string,
+  o: { apiUrl?: string; reservaUrl?: string; fetch?: (url: string, init?: RequestInit) => Promise<Response> },
+  regimeForcado?: Regime,
 ): Promise<Consulta> {
   const f = o.fetch ?? fetch;
   const base = (o.apiUrl || CNPJ_API_PADRAO).replace(/\/+$/, "");
@@ -76,7 +96,7 @@ export async function consultarCnpj(
   }
   // A BrasilAPI (e a base que ela espelha) não tem todo CNPJ: em 16/11/2026 respondeu 404 para um escritório
   // ativo no Simples desde 2009 que a CNPJ.ws, a CNPJá e a ReceitaWS acharam. No 404, pergunta à reserva.
-  if (resp.status === 404) return await consultarReserva(cnpj, f, o.reservaUrl);
+  if (resp.status === 404) return await consultarReserva(cnpj, f, o.reservaUrl, regimeForcado);
   if (!resp.ok) return { ok: false, motivo: "indisponivel" };
   const b = await resp.json().catch(() => null) as Record<string, unknown> | null;
   if (!b || typeof b !== "object") return { ok: false, motivo: "indisponivel" };
@@ -90,7 +110,7 @@ export async function consultarCnpj(
   // Só MEI e Simples ME/EPP emitem (Lucca, 22/10/2026): Lucro Presumido, Real e Arbitrado ficam fora.
   // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou); sem as chaves, não confirma nada.
   if (!("opcao_pelo_mei" in b) || !("opcao_pelo_simples" in b)) return { ok: false, motivo: "indisponivel" };
-  const regime: Regime | null = b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null;
+  const regime: Regime | null = regimeForcado ?? (b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null);
   if (!regime) {
     // A base da BrasilAPI pode estar atrás da Receita no regime: em 17/11/2026 ela disse "fora do Simples" para
     // um escritório optante. Antes de recusar, pergunta à reserva; só aceita se ela confirmar MEI ou Simples.
@@ -123,6 +143,7 @@ async function consultarReserva(
   cnpj: string,
   f: (url: string, init?: RequestInit) => Promise<Response>,
   reservaUrl?: string,
+  regimeForcado?: Regime,
 ): Promise<Consulta> {
   const base = (reservaUrl || CNPJ_API_RESERVA).replace(/\/+$/, "");
   let resp: Response;
@@ -154,11 +175,11 @@ async function consultarReserva(
   if (!situacao) return { ok: false, motivo: "indisponivel" };
   if (situacao !== "ATIVA") return { ok: false, motivo: "inativo", situacao };
   // Sem o bloco `simples`, a reserva não confirma o regime: trata como fora do Simples só se ele disser "Não".
-  if (!simples) return { ok: false, motivo: "indisponivel" };
-  const mei = simNao(simples.mei);
-  const optante = simNao(simples.simples);
-  if (mei === null && optante === null) return { ok: false, motivo: "indisponivel" };
-  const regime: Regime | null = mei === true ? "mei" : optante === true ? "simples" : null;
+  if (!simples && !regimeForcado) return { ok: false, motivo: "indisponivel" };
+  const mei = simples ? simNao(simples.mei) : null;
+  const optante = simples ? simNao(simples.simples) : null;
+  if (!regimeForcado && mei === null && optante === null) return { ok: false, motivo: "indisponivel" };
+  const regime: Regime | null = regimeForcado ?? (mei === true ? "mei" : optante === true ? "simples" : null);
   if (!regime) return { ok: false, motivo: "fora_do_simples" };
   return {
     ok: true,
