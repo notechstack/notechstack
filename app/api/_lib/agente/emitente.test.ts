@@ -23,6 +23,7 @@ import {
   rodarWorker,
   type Escritorio,
   type SelfServiceTenant,
+  ehPerguntaDeInfo,
 } from '../../_tests/agente-fixtures.js'
 import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb } from '../../_tests/fixtures.js'
@@ -121,8 +122,8 @@ function conversa(roteiro: Roteiro) {
     ia,
     agora: () => agora,
     enviar: (de: string, texto: string) => processarMensagem(deps, mensagemDeTexto(de, texto)),
-    respostasPara: (para: string) => canais.whatsapps.filter((m) => m.para === para).map((m) => m.texto),
-    ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para).at(-1)?.texto ?? '',
+    respostasPara: (para: string) => canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto)).map((m) => m.texto),
+    ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto)).at(-1)?.texto ?? '',
     mensagensPara: (para: string) => canais.whatsapps.filter((m) => m.para === para),
   }
 }

@@ -171,7 +171,8 @@ describe('POST/GET /api/whatsapp/webhook', () => {
     await Promise.all([entregar(corpo), entregar(corpo)])
 
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(1)
-    expect(canais.whatsapps.filter((m) => m.para === s.ownerPhone)).toHaveLength(1)
+    // O resumo e as duas mensagens da informação complementar, uma vez só.
+    expect(canais.whatsapps.filter((m) => m.para === s.ownerPhone)).toHaveLength(3)
     expect(ia.chamadas).toHaveLength(1)
 
     // A mesma id dentro de outra notificação, junto com uma mensagem nova: só a nova é processada.
@@ -181,6 +182,6 @@ describe('POST/GET /api/whatsapp/webhook', () => {
     await entregar(notificacao([{ de: desconhecido, texto: 'oi', id: id2 }]))
     expect(await pedidosDo(admin.db, s.tenant.id)).toHaveLength(1)
     expect(canais.whatsapps.filter((m) => m.para === desconhecido)).toHaveLength(1)
-    expect(canais.whatsapps).toHaveLength(2)
+    expect(canais.whatsapps).toHaveLength(4)
   })
 })

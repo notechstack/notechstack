@@ -157,6 +157,7 @@ describe('nota avulsa', () => {
       empresa: { tenant_id: cliente.id, razao_social: 'Padaria Cliente Ltda', cnpj: cliente.cnpj },
       tomador: { documento: CPF, tipo: 'cpf', nome: 'Maria Tomadora', email: 'maria@tomador.test' },
       servico: { codigo: '010701', nome: 'Suporte técnico em informática', descricao: 'Prestação de serviços' },
+      informacoes_complementares: null,
       valor: '1234.50',
       valor_texto: 'R$ 1.234,50',
       retencao: null,

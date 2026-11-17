@@ -12,6 +12,9 @@
 // - O grupo IBSCBS é opcional para Simples e MEI em 2026 (Anexo I: obrigatório só a partir de 2027) e,
 //   se enviado, exige todos os códigos (E0322 etc.). Fica atrás de `ibscbs` (desligado por padrão) e só
 //   sai quando NBS, cIndOp e cClassTrib estão resolvidos; senão a DPS sai sem o grupo, como hoje.
+// - `informacoes_complementares` do payload vira `serv/infoCompl/xInfComp` (info-complementar.ts), o último filho
+//   de `serv` nos dois leiautes. Sem o campo, a DPS sai igual à de antes, byte a byte.
+import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
 import { nbsExiste, resolverRtc, type Rtc } from './rtc/resolver.js'
 import type { SefinTenant } from './sefin.js'
@@ -37,6 +40,8 @@ export type DpsPayload = {
   valor: string
   /** Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. */
   retencao: { iss: { aliquota: string } | null; inss: { valor: string } | null }
+  /** `xInfComp` (TSDescInfCompl), já normalizado; `null` = sem o grupo `infoCompl`. */
+  informacoes_complementares: string | null
 }
 
 export class DpsInvalidError extends Error {
@@ -99,7 +104,16 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
     },
     valor,
     retencao: parseRetencao(payload.retencao, valor),
+    informacoes_complementares: parseInfoComplementar(payload.informacoes_complementares),
   }
+}
+
+function parseInfoComplementar(bruto: unknown): string | null {
+  if (bruto === undefined || bruto === null) return null
+  if (typeof bruto !== 'string') throw new DpsInvalidError('informacoes_complementares deve ser texto')
+  const lida = lerInfoComplementar(bruto)
+  if (!lida.ok) throw new DpsInvalidError(`informacoes_complementares passa de ${MAX_INFO_COMPLEMENTAR} caracteres`)
+  return lida.texto
 }
 
 /** NBS com ou sem pontos (1.1502.10.00): 9 dígitos e na lista nacional, senão a Sefin recusa (E0316). */
@@ -304,6 +318,9 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
   const xDescServ = leaf('xDescServ', data.servico.descricao)
   const cServ = el('cServ', leiaute === 'nt009' ? [cTribNac, cNBS, xDescServ] : [cTribNac, xDescServ, cNBS])
+  // TCServ: locPrest, cServ, comExt, obra, atvEvento, infoCompl (igual nos dois XSD). Em TCInfoCompl, xInfComp é o
+  // último (depois de idDocTec, docRef, xPed e gItemPed, que a nó não usa).
+  const infoCompl = data.informacoes_complementares ? el('infoCompl', leaf('xInfComp', data.informacoes_complementares)) : null
 
   const infDps = el(
     'infDPS',
@@ -326,6 +343,7 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', ibge)),
         cServ,
+        infoCompl,
       ]),
       el('valores', [
         el('vServPrest', leaf('vServ', data.valor)),

@@ -202,7 +202,8 @@ export function parseNfseXml(xml: string): NfseData {
       pTotTribSN: text(totTrib, 'pTotTribSN'),
       pTotTrib: triple(child(totTrib, 'pTotTrib'), 'p'),
       vTotTrib: triple(child(totTrib, 'vTotTrib'), 'v'),
-      xInfComp: text(infDps, 'infAdic', 'xInfComp'),
+      // Leiaute 1.01: serv/infoCompl/xInfComp (o caminho infAdic não existe no XSD; fica só por compatibilidade).
+      xInfComp: text(infDps, 'serv', 'infoCompl', 'xInfComp') ?? text(infDps, 'infAdic', 'xInfComp'),
     },
   }
 }

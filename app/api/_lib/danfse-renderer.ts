@@ -430,7 +430,8 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
       : d.vTotTrib
         ? `Totais aproximados dos tributos (Lei 12.741/2012): federais ${fmtMoney(d.vTotTrib.fed)}, estaduais ${fmtMoney(d.vTotTrib.est)}, municipais ${fmtMoney(d.vTotTrib.mun)}.`
         : 'Totais aproximados dos tributos (Lei 12.741/2012): não informados na NFS-e.'
-  const complementares = p.wrap([d.xInfComp, totais].filter(Boolean).join('\n'), fonts.regular, 7, WIDTH - 4).slice(0, 8)
+  // xInfComp inteiro (até 2.000 caracteres, ~14 linhas a 7 pt), depois os totais.
+  const complementares = p.wrap([d.xInfComp, totais].filter(Boolean).join('\n'), fonts.regular, 7, WIDTH - 4).slice(0, 20)
   complementares.forEach((line, i) => p.text(line, LEFT + 2, y + 8 + i * LINE_H, 7))
   y += complementares.length * LINE_H + 4
   p.hline(y)

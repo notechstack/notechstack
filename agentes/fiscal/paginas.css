@@ -33,6 +33,7 @@
 .nf-campo [aria-invalid=true]{border-color:var(--fi-erro)}
 .nf-codigo{max-width:220px;font:600 24px/1 var(--font-mono,'JetBrains Mono',monospace)!important;letter-spacing:.3em;text-align:center}
 .nf-dica{font-size:12.5px;line-height:1.45;color:var(--fi-texto-sec)}
+.nf-contador{align-self:flex-end;font-size:12.5px;line-height:1.3;color:var(--fi-texto-sec);font-variant-numeric:tabular-nums}
 .nf-erro{font-size:13px;line-height:1.4;font-weight:600;color:var(--fi-erro-texto)}
 
 .nf-grupo{display:grid;grid-template-columns:1fr;gap:14px 18px;margin:0;padding:0;border:0;min-width:0}
@@ -85,7 +86,8 @@
 #fc-carregando,.nf-carregando{text-align:center;background:transparent}
 
 /* Minha conta */
-.nf-secoes{display:grid;gap:18px}
+/* minmax(0,1fr): a tabela de Relatórios (min-width 1080px) rola dentro do cartão em vez de alargar a página. */
+.nf-secoes{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 .nf-dados{display:grid;grid-template-columns:minmax(120px,max-content) 1fr;gap:8px 18px;margin:0 0 14px;font-size:15px;line-height:1.45}
 .nf-dados dt{color:var(--fi-texto-sec)}
 .nf-dados dd{margin:0;font-weight:600;overflow-wrap:anywhere}

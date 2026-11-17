@@ -5,6 +5,7 @@
 // acontecem no "confirmar", pelo motor (`createOrGetInvoice` e `requestCancel`).
 import { requestCancel } from '../cancel.js'
 import type { Db, Queryable } from '../db.js'
+import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR, separarInfoComplementar } from '../info-complementar.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
@@ -122,7 +123,18 @@ export const TEXTOS = {
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
   perguntaDeDescricao: `Como você quer descrever o serviço na nota? Me mande o texto, por exemplo: *Consultoria de marketing - outubro/2026*. Ou responda *padrão* para usar "${DESCRICAO_PADRAO}".`,
   descricaoLonga: 'Essa descrição passou de 2.000 caracteres. Me mande um texto mais curto ou responda *padrão*.',
+  // Informações complementares (Lucca, 17/11/2026, pedido da Contabilidade Bragantina): duas mensagens depois do
+  // primeiro resumo. A resposta em texto vira o campo; *confirmar* emite sem ele.
+  perguntaInfoComplementar:
+    'Quer adicionar informações complementares (dados bancários, observações)? Se sim, descreva aqui abaixo numa mensagem de até 2.000 caracteres.',
+  semInfoComplementar: 'Se não, envie *CONFIRMAR*.',
+  infoComplementarPedida: 'Pode mandar: escreva aqui as informações complementares, numa mensagem de até 2.000 caracteres. Se não quiser, envie *confirmar*.',
+  infoComplementarDispensada: 'Ok, sem informações complementares. Responda *confirmar* para emitir ou *corrigir* para mudar algo.',
 } as const
+
+/** A informação complementar passou do limite do leiaute (TSDescInfCompl). */
+export const textoDeInfoLonga = (tamanho: number) =>
+  `As informações complementares ficaram com ${tamanho.toLocaleString('pt-BR')} caracteres, e o limite da nota é ${MAX_INFO_COMPLEMENTAR.toLocaleString('pt-BR')}. Me mande um texto mais curto.`
 
 // Quem não tem conta recebe esta resposta uma vez por dia e, no resto do dia, o bot fica quieto. No número
 // dividido com o atendimento (Lucca, 22/10/2026), a equipe conversa pelo WhatsApp Business no mesmo número; no
@@ -200,6 +212,17 @@ export const ehSim = (texto: string) => /^(sim|s|pode|pode salvar|salvar|salva|q
 export const ehNao = (texto: string) => /^(nao|n|corrigir|corrige|desistir|deixa|deixa pra la)$/.test(limpa(texto))
 /** No resumo da nota: quer mudar algo, sem perder o pedido. */
 export const ehCorrigir = (texto: string) => /^(corrigir|corrige|nao|n|errado|ta errado|esta errado|mudar|alterar)$/.test(limpa(texto))
+/** Depois da pergunta das informações complementares: "sim" sozinho é querer adicionar, não emitir. */
+export const ehQuerAdicionarInfo = (texto: string) =>
+  /^(sim|s|ss|quero|sim quero|quero sim|quero adicionar|sim quero adicionar|adicionar|quero incluir|incluir|sim por favor|pode ser)$/.test(limpa(texto))
+/** Depois da pergunta das informações complementares: não quer o campo (o pedido continua no resumo). */
+export const ehSemInfo = (texto: string) =>
+  /^(nao|n|nao quero|nao precisa|nao obrigad[oa]|nao, obrigad[oa]|sem|nenhuma|nada|sem informac(ao|oes)( complementares?)?)$/.test(limpa(texto))
+/**
+ * Com a pergunta aberta, uma mensagem que começa como pedido de nota ("nota pra Maria, 300", "emite…", "cancela a
+ * nota…") é um pedido novo, não a informação complementar do pedido anterior.
+ */
+export const pareceNovoPedido = (texto: string) => /^((uma|nova|outra)\s+)?(nota|nf|nfs|nfse|nfs-e)\b|^(emit|emite|emita|cancel)/.test(limpa(texto))
 /** Desiste do pedido aberto (nota ou cancelamento). */
 export const ehDesistir = (texto: string) => /^(descartar|descarta|desistir|desisto|cancelar|cancela|deixa|deixa pra la|esquece)$/.test(limpa(texto))
 /** Na confirmação de cancelamento de nota: cancelar a nota. */
@@ -248,6 +271,12 @@ type Conversa = {
   endereco?: EnderecoNacional | null
   /** O último resumo achou um problema na retenção: o *confirmar* não emite até corrigir. */
   retencao_problema?: string | null
+  /** `serv/infoCompl/xInfComp` da nota, já normalizada (info-complementar.ts). */
+  informacoes_complementares?: string | null
+  /** A pergunta das informações complementares já foi feita neste pedido (só uma vez). */
+  info_perguntada?: boolean
+  /** A pergunta está aberta: a próxima mensagem em texto livre é a informação complementar. */
+  info_aberta?: boolean
 }
 
 type Pedido = {
@@ -390,6 +419,7 @@ export function textoDoResumo(
   nomeDoServico?: string | null,
   emitente?: EmitenteDoPedido | null,
   retencao?: Retencao | null,
+  informacoesComplementares?: string | null,
 ): string {
   return [
     'Resumo da nota:',
@@ -400,6 +430,7 @@ export function textoDoResumo(
     `Descrição na nota: ${servico.descricao}`,
     `Valor: ${formatarReais(valor)}`,
     ...linhasDaRetencao(valor, retencao),
+    ...(informacoesComplementares ? [`Informações complementares: ${informacoesComplementares}`] : []),
     PERGUNTA_DE_EMISSAO,
   ].join('\n')
 }
@@ -431,7 +462,7 @@ function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: strin
  * endereço do tomador vem da Receita (E0237). Grava o resultado no pedido, na etapa `confirmar`, e devolve o resumo
  * (com a descrição do código buscada no catálogo) ou o problema; com problema, o *confirmar* não emite.
  */
-async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string, conversa: Conversa): Promise<string> {
+async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string, conversa: Conversa): Promise<string[]> {
   const tomador = conversa.tomador as TomadorDoPedido
   const servico = conversa.servico as ServicoDoPedido
   const valor = conversa.valor as string
@@ -457,14 +488,92 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     endereco = consulta?.endereco ? await consulta.endereco(tomador.documento).catch(() => null) : null
     if (!endereco) problema = 'ENDERECO_TOMADOR'
   }
-  const atualizada: Conversa = { ...conversa, retencao, endereco, retencao_problema: problema, corrigindo: false }
+  // Informações complementares: no primeiro resumo sem elas, duas mensagens perguntam (uma vez por pedido).
+  const perguntar = !problema && !conversa.informacoes_complementares && !conversa.info_perguntada
+  const atualizada: Conversa = {
+    ...conversa,
+    retencao,
+    endereco,
+    retencao_problema: problema,
+    corrigindo: false,
+    info_perguntada: Boolean(conversa.info_perguntada || perguntar),
+    info_aberta: perguntar,
+  }
   await atualizarPedido(ctx.deps.db, pedidoId, 'confirmar', atualizada, ctx.agora)
   if (problema) {
     logEvent('agente.retencao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
-    return textoDoProblemaDeRetencao(ctx, problema, nomeDaEmpresa)
+    return [textoDoProblemaDeRetencao(ctx, problema, nomeDaEmpresa)]
   }
   const nome = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(servico.codigo).catch(() => null) : null
-  return textoDoResumo(tomador, servico, valor, nome, conversa.emitente, retencao)
+  const resumo = textoDoResumo(tomador, servico, valor, nome, conversa.emitente, retencao, conversa.informacoes_complementares)
+  return perguntar ? [resumo, TEXTOS.perguntaInfoComplementar, TEXTOS.semInfoComplementar] : [resumo]
+}
+
+/** O resumo (e, no primeiro, a pergunta das informações complementares), uma mensagem por vez. */
+async function enviarResumo(ctx: Contexto, pedidoId: string, tenantId: string, conversa: Conversa): Promise<void> {
+  for (const texto of await resumoDoPedido(ctx, pedidoId, tenantId, conversa)) await responder(ctx, texto)
+}
+
+/**
+ * Resposta à pergunta das informações complementares. *confirmar* (e "ok", o polegar…) emite; "sim" sozinho pede o
+ * texto; "não" fecha a pergunta; *corrigir* e *descartar* como no resumo. Qualquer outro texto é a informação: o
+ * resumo volta com ela e pede *confirmar*, sem perguntar de novo.
+ */
+async function responderInfoComplementar(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
+  ctx.pedidoId = pedido.id
+  if (ehQuerAdicionarInfo(texto)) {
+    await responder(ctx, TEXTOS.infoComplementarPedida)
+    return true
+  }
+  if (ehConfirmarEmissao(texto)) {
+    await confirmar(ctx, pedido)
+    return true
+  }
+  if (ehDesistir(texto)) {
+    await descartar(ctx, pedido)
+    return true
+  }
+  if (ehSemInfo(texto)) {
+    await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', { ...pedido.conversa, info_aberta: false }, ctx.agora)
+    await responder(ctx, TEXTOS.infoComplementarDispensada)
+    return true
+  }
+  if (ehCorrigir(texto)) {
+    await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', { ...pedido.conversa, info_aberta: false, corrigindo: true }, ctx.agora)
+    await responder(ctx, TEXTOS.oQueMuda)
+    return true
+  }
+  // Pedido novo: segue para a IA, como antes desta pergunta existir (o pedido aberto fica como está).
+  if (pareceNovoPedido(texto)) return false
+  const lida = lerInfoComplementar(texto)
+  if (!lida.ok) {
+    await responder(ctx, textoDeInfoLonga(lida.tamanho))
+    return true
+  }
+  if (!lida.texto) {
+    await responder(ctx, TEXTOS.infoComplementarPedida)
+    return true
+  }
+  logEvent('agente.info_complementar', { request_id: pedido.id, tamanho: lida.texto.length })
+  await enviarResumo(ctx, pedido.id, pedido.tenant_id, { ...pedido.conversa, informacoes_complementares: lida.texto, info_aberta: false })
+  return true
+}
+
+/**
+ * Pedido escrito com informações complementares ("Dados bancários: …", "Obs: …"): o trecho sai do texto que vai para
+ * a IA e entra no campo, por código. Sem marcador, vale o que a IA leu (`informacoes_complementares`).
+ */
+function textoParaAIa(texto: string): { paraIa: string; info: string | null } {
+  const separado = separarInfoComplementar(texto)
+  if (!separado.info) return { paraIa: texto, info: null }
+  // Marcador logo no começo ("Obs: … nota pra Maria 300"): a IA lê a mensagem inteira, e a descrição é limpa depois.
+  return { paraIa: separado.pedido.length >= 3 ? separado.pedido : texto, info: separado.info }
+}
+
+function comInfoComplementar(parsed: Parsed, info: string | null): Parsed {
+  if (!info) return parsed
+  const descricao = parsed.descricao ? separarInfoComplementar(parsed.descricao).pedido || null : null
+  return { ...parsed, descricao, informacoes_complementares: info }
 }
 
 /**
@@ -773,6 +882,7 @@ async function responderEtapa(ctx: Contexto, pedido: Pedido, texto: string): Pro
         }
         return escolherDescricao(ctx, pedido, texto)
       }
+      if (pedido.conversa.info_aberta && !pedido.conversa.corrigindo) return responderInfoComplementar(ctx, pedido, texto)
       if (ehConfirmarEmissao(texto)) {
         ctx.pedidoId = pedido.id
         await confirmar(ctx, pedido)
@@ -867,11 +977,12 @@ async function descartar(ctx: Contexto, pedido: Pedido, texto: string = TEXTOS.d
  */
 async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
   ctx.pedidoId = pedido.id
+  const { paraIa, info: infoEscrita } = textoParaAIa(texto)
   let parsed: Parsed
   let tokens: { entrada: number; saida: number }
   try {
-    const resultado = await ctx.deps.interprete.interpretar(texto)
-    parsed = servicoSoSePedido(validarParsed(resultado.parsed), texto)
+    const resultado = await ctx.deps.interprete.interpretar(paraIa)
+    parsed = comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -897,7 +1008,8 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou: 'cliente' })
     ctx.pedidoId = null
     // Cliente novo, mesma empresa: o emitente do pedido continua valendo (a não ser que a correção diga outro).
-    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null }, tokens, {
+    const informacoes_complementares = parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null
+    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null, informacoes_complementares }, tokens, {
       emitenteId: parsed.prestador ? undefined : pedido.tenant_id,
     })
     return true
@@ -927,6 +1039,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
           prestador: null,
           codigo_servico: parsed.codigo_servico ?? null,
           servico: parsed.servico ?? null,
+          informacoes_complementares: parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null,
           intencao: 'emitir',
         },
         tokens,
@@ -942,7 +1055,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   }
   const valor = parsed.valor ?? atual.valor
   const retencaoNova = retencaoDoParsed(parsed)
-  if (mencionaRetencao(texto) && !retencaoNova) {
+  if (mencionaRetencao(paraIa) && !retencaoNova) {
     // O pedido continua em correção: a próxima mensagem é lida de novo como a correção.
     await responder(ctx, 'Vi que a correção fala de retenção, mas não entendi qual. Me diga assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção.')
     return true
@@ -953,17 +1066,31 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, codigoNovo.texto)
     return true
   }
-  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo) && valor && atual.tomador && atual.servico) {
+  const infoNova = parsed.informacoes_complementares ?? null
+  if (infoNova && infoNova.length > MAX_INFO_COMPLEMENTAR) {
+    await responder(ctx, textoDeInfoLonga(infoNova.length))
+    return true
+  }
+  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova) && valor && atual.tomador && atual.servico) {
     const servico: ServicoDoPedido = {
       ...atual.servico,
       ...(parsed.descricao ? { descricao: parsed.descricao } : {}),
       ...(codigoNovo ? { codigo: codigoNovo.codigo } : {}),
     }
     const retencao_pedido = retencaoNova ? { ...atual.retencao_pedido, ...retencaoNova } : atual.retencao_pedido
-    const conversa: Conversa = { ...atual, servico, valor, retencao_pedido, corrigindo: false }
-    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo'].filter(Boolean).join(' e ')
+    const conversa: Conversa = {
+      ...atual,
+      servico,
+      valor,
+      retencao_pedido,
+      corrigindo: false,
+      ...(infoNova ? { informacoes_complementares: infoNova, info_aberta: false } : {}),
+    }
+    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo', infoNova && 'info_complementar']
+      .filter(Boolean)
+      .join(' e ')
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
-    await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
+    await enviarResumo(ctx, pedido.id, pedido.tenant_id, conversa)
     return true
   }
   await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'não entendi a correção do pedido' })
@@ -1010,7 +1137,11 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
         { documento: tomador.documento as string, nome: tomador.nome as string, email: tomador.email ?? null },
         servico,
         valor,
-        { retencao: pedido.conversa.retencao, endereco: pedido.conversa.endereco },
+        {
+          retencao: pedido.conversa.retencao,
+          endereco: pedido.conversa.endereco,
+          informacoes_complementares: pedido.conversa.informacoes_complementares,
+        },
       )
       const nota = await createOrGetInvoice(tx, pedido.tenant_id, { external_id: pedido.id, payload: payload as unknown as InvoicePayload })
       await tx.query('update nofiscal.fiscal_requests set invoice_id = $2 where id = $1', [pedido.id, nota.id])
@@ -1106,7 +1237,7 @@ async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): P
     await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
     await responder(ctx, TEXTOS.perguntaDeDescricao)
   } else {
-    await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
+    await enviarResumo(ctx, pedido.id, pedido.tenant_id, conversa)
   }
   return true
 }
@@ -1138,7 +1269,7 @@ async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): 
   }
   const servico: ServicoDoPedido = { ...atual.servico, descricao }
   const conversa: Conversa = { ...atual, servico, pedindoDescricao: false }
-  await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
+  await enviarResumo(ctx, pedido.id, pedido.tenant_id, conversa)
   return true
 }
 
@@ -1300,11 +1431,12 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
   const naoEntendeuAEscolha = escolhendo
     ? () => repetirOpcoes(ctx, escolhendo, 'Não entendi qual nota você quer cancelar.')
     : null
+  const { paraIa, info: infoEscrita } = textoParaAIa(texto)
   let parsed: Parsed
   let tokens: { entrada: number; saida: number }
   try {
-    const resultado = await ctx.deps.interprete.interpretar(texto)
-    parsed = servicoSoSePedido(validarParsed(resultado.parsed), texto)
+    const resultado = await ctx.deps.interprete.interpretar(paraIa)
+    parsed = comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1333,7 +1465,7 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
     await responder(ctx, (await ehEscritorio(ctx)) ? TEXTOS.ajudaEscritorio : TEXTOS.ajuda)
     return
   }
-  if (mencionaRetencao(texto) && !retencaoDoParsed(parsed)) {
+  if (mencionaRetencao(paraIa) && !retencaoDoParsed(parsed)) {
     semPedido()
     await registrarEvento(ctx.deps.db, ctx.para, 'ia_nao_entendeu', { detalhe: 'pedido fala de retenção, e a IA não leu qual' })
     await responder(ctx, TEXTO_RETENCAO_NAO_ENTENDIDA)
@@ -1392,6 +1524,14 @@ async function pedidoDeEmissao(
       }
     }
   }
+  // Informação complementar escrita no pedido acima do limite do leiaute: o pedido não segue.
+  const info = parsed.informacoes_complementares ?? null
+  if (info && info.length > MAX_INFO_COMPLEMENTAR) {
+    semPedido()
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
+    await responder(ctx, `${textoDeInfoLonga(info.length)} Mande o pedido de novo.`)
+    return
+  }
   /** A empresa que emite: a escolhida ou a do telefone. */
   const tenantId = escolhida?.id ?? ctx.tenantId
   const emitente: EmitenteDoPedido | undefined = escolhida ? { id: escolhida.id, razao_social: escolhida.razao_social, cnpj: escolhida.cnpj } : undefined
@@ -1442,9 +1582,11 @@ async function pedidoDeEmissao(
       pedindoDescricao,
       emitente,
       retencao_pedido: retencaoDoParsed(parsed),
+      ...(info ? { informacoes_complementares: info } : {}),
     }
     const id = await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
-    await responder(ctx, pedindoDescricao ? TEXTOS.perguntaDeDescricao : await resumoDoPedido(ctx, id, tenantId, conversa))
+    if (pedindoDescricao) await responder(ctx, TEXTOS.perguntaDeDescricao)
+    else await enviarResumo(ctx, id, tenantId, conversa)
     return
   }
 
@@ -1461,6 +1603,7 @@ async function pedidoDeEmissao(
     modelo_nome: nome.slice(0, 60).trim(),
     emitente,
     retencao_pedido: retencaoDoParsed(parsed),
+    ...(info ? { informacoes_complementares: info } : {}),
   }
   await criarPedido(ctx, { kind: 'emitir', etapa: 'dados_tomador', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
   await responder(

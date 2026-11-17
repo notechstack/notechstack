@@ -22,6 +22,7 @@ import {
   pedidosDo,
   type Escritorio,
   type SelfServiceTenant,
+  ehPerguntaDeInfo,
 } from '../../_tests/agente-fixtures.js'
 import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb } from '../../_tests/fixtures.js'
@@ -244,7 +245,7 @@ describe('WhatsApp: código ou serviço no pedido', () => {
     const deps: ConversaDeps = { db: servico.db, whatsapp: canais.whatsapp, interprete: interpreteDouble(roteiro).interprete, links: LINKS_DE_TESTE, catalogo: catalogo(lista) }
     return {
       enviar: (de: string, texto: string) => processarMensagem(deps, mensagemDeTexto(de, texto)),
-      ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para).at(-1)?.texto ?? '',
+      ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto)).at(-1)?.texto ?? '',
     }
   }
   const modeloDaClinica = { nome: 'Clínica', documento: CNPJ_TOMADOR, nomeTomador: 'Clínica Saúde', email: 'fin@clinica.test', codigo: '041601', descricao: 'Atendimento' }
