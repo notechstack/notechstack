@@ -36,6 +36,7 @@ import {
   type Contexto,
   type MensagemRecebida,
 } from './conversa.js'
+import { lerCodigoServico, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido, formatarReais } from './documentos.js'
 import { normalizarEmail } from './normalizacao.js'
 import { payloadDaNota } from './notas.js'
@@ -54,8 +55,19 @@ export const MAX_PROBLEMAS_NO_RESUMO = 15
 const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 
 // `iss_retido` e `inss_retido` (Lucca, 16/11/2026) são opcionais: a planilha de 6 colunas continua valendo, e a coluna
-// vazia deixa o padrão de retenção da empresa.
-export const CAMPOS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido'] as const
+// vazia deixa o padrão de retenção da empresa. `codigo_servico` (Lucca, 17/11/2026), também opcional: a nota sai com o
+// código da linha; vazia, com o do modelo do tomador ou, sem modelo, com o da empresa.
+export const CAMPOS = [
+  'cnpj_prestador',
+  'cpf_cnpj_tomador',
+  'nome_tomador',
+  'email_tomador',
+  'valor',
+  'descricao',
+  'iss_retido',
+  'inss_retido',
+  'codigo_servico',
+] as const
 export type Campo = (typeof CAMPOS)[number]
 
 export const CODIGOS_DE_PROBLEMA = [
@@ -70,6 +82,9 @@ export const CODIGOS_DE_PROBLEMA = [
   'LINHA_REPETIDA',
   'JA_EMITIDA_NO_MES',
   'ISS_RETIDO_INVALIDO',
+  'CODIGO_SERVICO_INVALIDO',
+  'CODIGO_SERVICO_FORA_DA_LISTA',
+  'CODIGO_SERVICO_FALTANDO',
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
 
@@ -363,7 +378,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional) e inss_retido (opcional).',
+    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional) e codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa).',
     `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   ]
     .filter(Boolean)
@@ -474,8 +489,10 @@ export type ContextoDoLote = {
   bloqueios: Map<string, string | null>
   /** Modelo do tomador por `${tenantId}:${documento}`. */
   modelos: Map<string, ModeloDoTomador>
-  /** Notas do mês por `${tenantId}:${documento}:${centavos}`. */
+  /** Notas do mês por `${tenantId}:${documento}:${centavos}:${codigo}` (`chaveDaNota`). */
   jaEmitidas: Set<string>
+  /** Códigos da lista nacional de serviços. Ausente (lista fora do ar): o código da linha só tem o formato conferido. */
+  codigosDaLista?: Set<string> | null
 }
 
 export type ItemDoLote = {
@@ -530,13 +547,17 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     })
     if (!resolvida.ok) return falha(resolvida.problema, empresa.id)
 
-    // Como no pedido avulso (conversa.ts): com modelo do tomador, código e descrição do modelo; sem modelo, o
-    // código da empresa e a descrição padrão. A descrição escrita na planilha vale para esta nota.
+    // Código de serviço: o da linha, senão o do modelo do tomador, senão o da empresa (Lucca, 17/11/2026: uma clínica
+    // emite psicologia, fisioterapia e nutrição pela mesma empresa). A descrição escrita na planilha vale para esta
+    // nota; sem ela, a do modelo ou a padrão.
+    const codigoEscrito = textoDaCelula(celulas.codigo_servico)
+    const codigoDaLinha = codigoEscrito ? lerCodigoServico(typeof celulas.codigo_servico === 'number' ? celulas.codigo_servico : codigoEscrito) : null
+    if (codigoEscrito && !codigoDaLinha) return falha('CODIGO_SERVICO_INVALIDO', empresa.id)
+    if (codigoDaLinha && ctx.codigosDaLista && !ctx.codigosDaLista.has(codigoDaLinha)) return falha('CODIGO_SERVICO_FORA_DA_LISTA', empresa.id)
     const modelo = ctx.modelos.get(`${empresa.id}:${documento}`)
-    const servico = {
-      codigo: modelo?.codigo ?? empresa.codigo_servico_nacional ?? '',
-      descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO,
-    }
+    const codigo = codigoDaLinha ?? modelo?.codigo ?? empresa.codigo_servico_nacional ?? ''
+    if (!/^\d{6}$/.test(codigo)) return falha('CODIGO_SERVICO_FALTANDO', empresa.id)
+    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO }
     // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
     const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
@@ -548,7 +569,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       ...(igualA ? { igualA } : {}),
     })
 
-    const chave = `${empresa.id}:${documento}:${centavosDe(valor)}`
+    const chave = chaveDaNota(empresa.id, documento, centavosDe(valor), codigo)
     const anterior = primeiraLinha.get(chave)
     if (anterior === undefined) primeiraLinha.set(chave, linha)
 
@@ -634,11 +655,19 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
     case 'DESCRICAO_LONGA':
       return 'descrição com mais de 2.000 caracteres'
     case 'LINHA_REPETIDA':
-      return d.igualA ? `igual à linha ${d.igualA} (mesmo prestador, tomador e valor)` : 'linha repetida (mesmo prestador, tomador e valor)'
+      return d.igualA
+        ? `igual à linha ${d.igualA} (mesmo prestador, tomador, valor e código de serviço)`
+        : 'linha repetida (mesmo prestador, tomador, valor e código de serviço)'
     case 'JA_EMITIDA_NO_MES':
-      return 'já há nota igual neste mês (mesmo prestador, tomador e valor)'
+      return 'já há nota igual neste mês (mesmo prestador, tomador, valor e código de serviço)'
     case 'ISS_RETIDO_INVALIDO':
       return 'iss_retido inválido: escreva sim, não ou a alíquota (de 2% a 5%)'
+    case 'CODIGO_SERVICO_INVALIDO':
+      return 'codigo_servico inválido: escreva os 6 dígitos da lista nacional, como 04.03.01 ou 040301'
+    case 'CODIGO_SERVICO_FORA_DA_LISTA':
+      return 'o codigo_servico não está na lista nacional de serviços: confira o código'
+    case 'CODIGO_SERVICO_FALTANDO':
+      return `${empresa} não tem código de serviço padrão: preencha a coluna codigo_servico`
     case 'RETENCAO_MEI':
     case 'ISS_RETIDO_CPF':
     case 'ALIQUOTA_ISS_FALTANDO':
@@ -690,6 +719,18 @@ export function textoDasRetencoes(prontas: ItemDoLote[]): string | null {
   return `Com retenção: ${[iss ? `${plural(iss, 'nota', 'notas')} com ISS retido` : null, inss ? `${plural(inss, 'nota', 'notas')} com INSS retido` : null].filter(Boolean).join(', ')}.`
 }
 
+/** "Códigos de serviço: 04.08.02 (3 notas), 04.16.01 (2 notas)." quando as notas prontas usam mais de um código. */
+export function textoDosCodigos(prontas: ItemDoLote[]): string | null {
+  const porCodigo = new Map<string, number>()
+  for (const i of prontas) {
+    const codigo = (i.payload as { servico?: { codigo_servico_nacional?: string } }).servico?.codigo_servico_nacional
+    if (codigo) porCodigo.set(codigo, (porCodigo.get(codigo) ?? 0) + 1)
+  }
+  if (porCodigo.size < 2) return null
+  const formatar = (c: string) => c.replace(/^(\d{2})(\d{2})(\d{2})$/, '$1.$2.$3')
+  return `Códigos de serviço: ${[...porCodigo].map(([c, n]) => `${formatar(c)} (${plural(n, 'nota', 'notas')})`).join(', ')}.`
+}
+
 export function textoDoResumoDoLote(dados: {
   arquivo: string | null
   itens: ItemDoLote[]
@@ -714,6 +755,8 @@ export function textoDoResumoDoLote(dados: {
   }
   const retencoes = textoDasRetencoes(prontas)
   if (retencoes) linhas.push(retencoes)
+  const codigos = textoDosCodigos(prontas)
+  if (codigos) linhas.push(codigos)
   if (comProblema.length) {
     linhas.push(`Com problema (ficam de fora): ${plural(comProblema.length, 'linha', 'linhas')}.`)
     for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
@@ -813,14 +856,22 @@ async function contextoDoBanco(db: Queryable, empresas: Empresa[], agora: Date):
 }
 
 /**
- * Nota duplicada: as chaves `${tenant}:${documento}:${centavos}` das notas emitidas no mês de Brasília e das que
+ * A chave de nota duplicada: mesma empresa, tomador, valor e código de serviço. O código entra desde 17/11/2026: a
+ * clínica que atende o mesmo paciente em psicologia e em nutrição, pelo mesmo valor, emite as duas notas.
+ */
+export const chaveDaNota = (tenantId: string, documento: string, centavos: bigint, codigo: string | null | undefined) =>
+  `${tenantId}:${documento}:${centavos}:${codigo ?? ''}`
+
+/**
+ * Nota duplicada: as chaves (`chaveDaNota`) das notas emitidas no mês de Brasília e das que
  * ainda estão na fila (um lote anterior que não fechou conta também). Usada no resumo e de novo no "confirmar".
  */
 export async function notasIguaisDoMes(db: Queryable, tenantIds: string[], agora: Date): Promise<Set<string>> {
   const local = partesLocais(agora)
   const { inicio, fim } = limitesDoMes(local.ano, local.mes)
-  const { rows: notas } = await db.query<{ tenant_id: string; documento: string | null; valor: unknown }>(
-    `select i.tenant_id, coalesce(i.payload->'tomador'->>'cpf', i.payload->'tomador'->>'cnpj') as documento, i.payload->>'valor' as valor
+  const { rows: notas } = await db.query<{ tenant_id: string; documento: string | null; valor: unknown; codigo: string | null }>(
+    `select i.tenant_id, coalesce(i.payload->'tomador'->>'cpf', i.payload->'tomador'->>'cnpj') as documento, i.payload->>'valor' as valor,
+            i.payload->'servico'->>'codigo_servico_nacional' as codigo
        from nofiscal.fiscal_invoices i
       where i.tenant_id = any($1::uuid[])
         and ((i.status = 'issued' and i.issued_at >= $2 and i.issued_at < $3)
@@ -830,17 +881,17 @@ export async function notasIguaisDoMes(db: Queryable, tenantIds: string[], agora
   const chaves = new Set<string>()
   for (const n of notas) {
     const centavos = valorDoPayload(n.valor)
-    if (n.documento && centavos !== null) chaves.add(`${n.tenant_id}:${n.documento}:${centavos}`)
+    if (n.documento && centavos !== null) chaves.add(chaveDaNota(n.tenant_id, n.documento, centavos, n.codigo))
   }
   return chaves
 }
 
 /** A chave de nota duplicada de um payload do motor. */
 export function chaveDoPayload(tenantId: string, payload: unknown): string | null {
-  const p = (payload ?? {}) as { tomador?: { cpf?: string; cnpj?: string }; valor?: unknown }
+  const p = (payload ?? {}) as { tomador?: { cpf?: string; cnpj?: string }; valor?: unknown; servico?: { codigo_servico_nacional?: string } }
   const documento = p.tomador?.cpf ?? p.tomador?.cnpj
   const centavos = valorDoPayload(p.valor)
-  return documento && centavos !== null ? `${tenantId}:${documento}:${centavos}` : null
+  return documento && centavos !== null ? chaveDaNota(tenantId, documento, centavos, p.servico?.codigo_servico_nacional) : null
 }
 
 /**
@@ -976,6 +1027,8 @@ export async function lerLoteDaPlanilha(
     agora: Date
     /** Endereço do tomador na Receita, para as linhas com ISS retido. */
     consulta?: EnderecoDoTomador | null
+    /** A lista nacional de serviços, para conferir a coluna `codigo_servico`. */
+    catalogo?: CatalogoDeServicos | null
   },
 ): Promise<LoteLido | PlanilhaRecusada> {
   const { donoId, conteudo, tipo, agora } = dados
@@ -1007,6 +1060,7 @@ export async function lerLoteDaPlanilha(
   }
 
   const contexto = await contextoDoBanco(db, empresas, agora)
+  if (planilha.colunas.includes('codigo_servico')) contexto.codigosDaLista = await codigosDoCatalogo(dados.catalogo)
   const itens = validarLinhas(planilha.linhas, contexto)
   await completarEnderecos(itens, dados.consulta)
   const nome = nomeDoArquivo(dados.arquivo)
@@ -1038,6 +1092,12 @@ export async function lerLoteDaPlanilha(
     expiraEm: new Date(agora.getTime() + VALIDADE_DO_LOTE_MS),
     resumo,
   }
+}
+
+/** Os códigos da lista nacional, ou `null` sem catálogo ou com a lista fora do ar (aí só o formato é conferido). */
+async function codigosDoCatalogo(catalogo: CatalogoDeServicos | null | undefined): Promise<Set<string> | null> {
+  const itens = catalogo?.itens ? await catalogo.itens().catch(() => null) : null
+  return itens && itens.size ? new Set(itens.keys()) : null
 }
 
 /**
@@ -1088,6 +1148,7 @@ export async function receberPlanilha(ctx: Contexto, arquivo: MensagemRecebida['
     tipo,
     agora: ctx.agora,
     consulta: enderecoDaConsulta(ctx.deps.consultaCnpj),
+    catalogo: ctx.deps.catalogo,
   })
   await responder(ctx, lido.ok ? lido.resumo : lido.texto)
 }

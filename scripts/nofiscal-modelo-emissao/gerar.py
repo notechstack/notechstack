@@ -23,10 +23,11 @@ CINZA = '6B6B66'
 LINHAS_FORMATADAS = 200  # linhas já prontas para digitar (o limite do agente é 1.000 notas por planilha)
 
 # iss_retido e inss_retido (16/11/2026) são opcionais: em branco, vale a retenção cadastrada na empresa.
-COLUNAS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido']
-LARGURAS = [24, 24, 34, 36, 14, 46, 14, 14]
+# codigo_servico (17/11/2026) também: em branco, vale o código do cliente salvo ou o padrão da empresa.
+COLUNAS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico']
+LARGURAS = [24, 24, 34, 36, 14, 46, 14, 14, 16]
 EXEMPLOS = [
-    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br', 1500, 'Honorários contábeis - novembro/2026'],
+    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br', 1500, 'Honorários contábeis - novembro/2026', None, None, '17.19.01'],
     ['12.345.678/0001-95', '529.982.247-25', 'Maria Exemplo da Silva', 'maria@exemplo.com.br', 350, None],
 ]
 
@@ -100,13 +101,16 @@ tabela = [
     ['descricao', 'não', 'O texto que vai na descrição do serviço da nota. Em branco, vale a descrição já guardada para esse cliente ou "Prestação de serviços".', 'Honorários contábeis - novembro/2026'],
     ['iss_retido', 'não', 'ISS retido pelo tomador: a alíquota (de 2% a 5%), sim (usa a alíquota cadastrada na empresa) ou não. Só para tomador com CNPJ; MEI não tem retenção. Em branco, vale o cadastro da empresa.', '2%'],
     ['inss_retido', 'não', 'INSS retido: o percentual (11%), o valor em reais (165,00), sim (usa o percentual cadastrado na empresa) ou não. MEI não tem retenção. Em branco, vale o cadastro da empresa.', '11%'],
+    ['codigo_servico', 'não', 'Código do serviço desta nota na lista nacional (6 dígitos, com ou sem pontos). Use quando a mesma empresa presta serviços diferentes (clínica com psicologia, fisioterapia e nutrição). Em branco, vale o código já usado para esse cliente ou o padrão da empresa.', '04.16.01'],
 ]
 for k, linha in enumerate(tabela):
     linha_tabela(6 + k, linha)
     guia.row_dimensions[6 + k].height = 34
-guia.cell(row=14, column=1, value='* cnpj_prestador pode ficar em branco só quando a conta tem uma única empresa ativa.').font = Font(name='Calibri', italic=True, color=CINZA)
+NOTA = 6 + len(tabela)
+guia.cell(row=NOTA, column=1, value='* cnpj_prestador pode ficar em branco só quando a conta tem uma única empresa ativa.').font = Font(name='Calibri', italic=True, color=CINZA)
 
-titulo(16, 'Regras')
+REGRAS = NOTA + 2
+titulo(REGRAS, 'Regras')
 regras = [
     'Uma linha por nota. Para emitir uma nota só, a planilha tem uma linha só.',
     'Não mude o nome das colunas e não crie colunas novas: a planilha inteira é recusada.',
@@ -115,17 +119,18 @@ regras = [
     'CPF e CNPJ ficam como texto, para o zero à esquerda não sumir (as colunas deste modelo já estão assim).',
     'Linha com problema fica de fora e o motivo vem no resumo; as outras seguem.',
     'Retenção: o contador informa a alíquota e o percentual; o nó.fiscal não calcula regra tributária, só confere o que a Sefin recusa.',
+    'Código de serviço fora da lista nacional (https://www.notechstack.com.br/agentes/fiscal/dados/codigos-servico.json) deixa a linha de fora.',
     'Depois de mandar, você recebe o resumo. Nada é emitido antes de você responder confirmar. O resumo vale por 24 horas.',
     'No fim, o retorno de cada linha e os PDFs vão para o e-mail da conta e ficam em Minha conta → Relatórios.',
 ]
 for k, r in enumerate(regras):
-    c = guia.cell(row=17 + k, column=1, value=f'{k + 1}. {r}')
+    c = guia.cell(row=REGRAS + 1 + k, column=1, value=f'{k + 1}. {r}')
     c.font = Font(name='Calibri', size=11)
 guia.sheet_view.showGridLines = False
 
 wb.properties.creator = 'nó.fiscal'
 wb.properties.title = 'Modelo de emissão por planilha'
-wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 16, 12, 0, 0)
+wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 17, 12, 0, 0)
 SAIDA.parent.mkdir(parents=True, exist_ok=True)
 wb.save(SAIDA)
 print(SAIDA, SAIDA.stat().st_size, 'bytes')

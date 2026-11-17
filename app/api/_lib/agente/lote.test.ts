@@ -336,7 +336,7 @@ describe('códigos de problema por linha', () => {
         ['e1', null],
         ['e2', 'CERT_MISSING'],
       ]),
-      jaEmitidas: new Set([`e1:${CNPJ_TOMADOR}:99000`]),
+      jaEmitidas: new Set([`e1:${CNPJ_TOMADOR}:99000:171901`]),
     })
     const itens = validarLinhas(
       [
@@ -460,7 +460,7 @@ describe('retorno do lote', () => {
       '3;Escritório Toledo (12.345.678/0001-95);"\'=HYPERLINK(""x"") (11.444.777/0001-61)";20,00;recusada pela Sefin;;;"E0310: CPF; não encontrado"',
     )
     expect(linhas[3]).toBe('4;Escritório Toledo (12.345.678/0001-95);João 123;10,00;não emitida;;;CPF ou CNPJ do tomador inválido')
-    expect(linhas[4]).toContain('igual à linha 2 (mesmo prestador, tomador e valor)')
+    expect(linhas[4]).toContain('igual à linha 2 (mesmo prestador, tomador, valor e código de serviço)')
     expect(linhas[5]).toBe('6;;Ana;5,00;não emitida;;;falta o CNPJ do prestador (a conta tem mais de uma empresa ativa)')
     expect(contagemDoRetorno(itens)).toEqual({ emitidas: 1, recusadas: 1, naFila: 0, naoEmitidas: 3, valorEmitido: '1500.00' })
   })

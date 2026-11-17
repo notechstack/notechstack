@@ -382,6 +382,7 @@ async function loteLer(ctx: Contexto, request: Request): Promise<Response> {
     tipo,
     agora: ctx.agora,
     consulta: ctx.deps.enderecos ?? null,
+    catalogo: ctx.deps.catalogo ?? null,
   })
   if (!lido.ok) {
     // A resposta do WhatsApp para a planilha repetida manda responder *cancelar*; no painel, o botão descarta.
