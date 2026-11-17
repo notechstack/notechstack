@@ -475,6 +475,32 @@ test("CNPJ que a BrasilAPI não acha (404) é consultado na reserva CNPJ.ws", as
   assert.equal(r.dados.uf, "SP");
 });
 
+test("BrasilAPI diz fora do Simples: a reserva confirma o Simples e o cadastro segue", async () => {
+  const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  const brasil = { ...respostaBrasilApi(cnpj), opcao_pelo_simples: false, opcao_pelo_mei: false };
+  const reserva = {
+    razao_social: "FACIL CONTABILIDADE LTDA",
+    simples: { mei: "Não", simples: "Sim" },
+    estabelecimento: { situacao_cadastral: "Ativa", cidade: { nome: "Itaboraí", ibge_id: 3301900 }, estado: { sigla: "RJ" } },
+  };
+  const r = await consultarCnpj(cnpj, {
+    fetch: async (url) => new Response(JSON.stringify(url.includes("/api/cnpj/v1/") ? brasil : reserva), { status: 200 }),
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.dados.regime, "simples");
+  // As duas fontes dizem fora: continua fora do Simples.
+  const fora = await consultarCnpj(cnpj, {
+    fetch: async (url) => new Response(JSON.stringify(url.includes("/api/cnpj/v1/") ? brasil : { ...reserva, simples: { mei: "Não", simples: "Não" } }), { status: 200 }),
+  });
+  assert.deepEqual(fora, { ok: false, motivo: "fora_do_simples" });
+  // Reserva fora do ar: mantém a resposta da BrasilAPI.
+  const semReserva = await consultarCnpj(cnpj, {
+    fetch: async (url) => url.includes("/api/cnpj/v1/") ? new Response(JSON.stringify(brasil), { status: 200 }) : new Response("{}", { status: 503 }),
+  });
+  assert.deepEqual(semReserva, { ok: false, motivo: "fora_do_simples" });
+});
+
 test("reserva: fora do Simples, inativo e reserva fora do ar", async () => {
   const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
   const cnpj = cnpjValido();
