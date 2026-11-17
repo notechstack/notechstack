@@ -91,7 +91,12 @@ export async function consultarCnpj(
   // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou); sem as chaves, não confirma nada.
   if (!("opcao_pelo_mei" in b) || !("opcao_pelo_simples" in b)) return { ok: false, motivo: "indisponivel" };
   const regime: Regime | null = b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null;
-  if (!regime) return { ok: false, motivo: "fora_do_simples" };
+  if (!regime) {
+    // A base da BrasilAPI pode estar atrás da Receita no regime: em 17/11/2026 ela disse "fora do Simples" para
+    // um escritório optante. Antes de recusar, pergunta à reserva; só aceita se ela confirmar MEI ou Simples.
+    const segunda = await consultarReserva(cnpj, f, o.reservaUrl);
+    return segunda.ok ? segunda : { ok: false, motivo: "fora_do_simples" };
+  }
   return {
     ok: true,
     dados: {
