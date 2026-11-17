@@ -2,6 +2,7 @@
 // devolve a saída estruturada abaixo, que vai para `fiscal_requests.parsed`; emitir e cancelar
 // acontecem só no código da conversa, depois do "confirmar". Com `ANTHROPIC_API_KEY`, a v2 usa
 // `interpreteClaude` (interprete-claude.ts); sem ela, vale `interpreteNaoConfigurado()`.
+import { lerCodigoServico } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido } from './documentos.js'
 
 export type Intencao = 'emitir' | 'cancelar' | 'outro'
@@ -28,6 +29,13 @@ export type Parsed = {
   inss_retido?: boolean | null
   /** INSS retido como escrito: percentual com % ("11%") ou valor em reais ("38,50"). */
   inss?: string | null
+  /**
+   * Código de serviço escrito no pedido (Lucca, 17/11/2026), em 6 dígitos ("código 04.03.01" → "040301"). Vale para
+   * esta nota no lugar do código do cliente ou da empresa. Ausente nos pedidos gravados antes disso.
+   */
+  codigo_servico?: string | null
+  /** O tipo de serviço pedido para escolher o código ("serviço de fisioterapia"); o código acha na lista nacional. */
+  servico?: string | null
   intencao: Intencao
 }
 
@@ -76,6 +84,8 @@ export function validarParsed(bruto: unknown): Parsed {
     aliquota_iss: texto(obj.aliquota_iss, 10),
     inss_retido: typeof obj.inss_retido === 'boolean' ? obj.inss_retido : null,
     inss: texto(obj.inss, 20),
+    codigo_servico: lerCodigoServico(typeof obj.codigo_servico === 'string' ? obj.codigo_servico : null),
+    servico: texto(obj.servico, 80),
     intencao,
   }
 }

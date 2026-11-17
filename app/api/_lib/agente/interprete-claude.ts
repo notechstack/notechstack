@@ -20,9 +20,11 @@ export const SCHEMA_PARSED = {
     aliquota_iss: TEXTO_OU_NULO,
     inss_retido: SIM_NAO_OU_NULO,
     inss: TEXTO_OU_NULO,
+    codigo_servico: TEXTO_OU_NULO,
+    servico: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'intencao'],
   additionalProperties: false,
 }
 
@@ -40,6 +42,8 @@ export const INSTRUCOES = [
   '- aliquota_iss: a alíquota do ISS retido, só o número como escrito ("2", "2,5", "2,01"), quando aparecer; senão null.',
   '- inss_retido: true quando diz que o INSS (ou a contribuição previdenciária) é retido ("retém INSS 11%", "INSS retido de 38,50"); false quando diz sem retenção de INSS ou "sem retenção"; senão null.',
   '- inss: o INSS retido como escrito: percentual com o símbolo ("11%") ou valor em reais com vírgula ("38,50"); senão null. Não confunda com o valor da nota.',
+  '- codigo_servico: o código de serviço da lista nacional, quando a mensagem cita um ("código 04.03.01", "cód. 040301", "item 4.08.02"), como escrito; senão null. Não confunda com CPF, CNPJ, valor ou número de nota.',
+  '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

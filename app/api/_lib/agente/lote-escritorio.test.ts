@@ -126,7 +126,7 @@ describe('lote por planilha (conta Escritório)', () => {
     expect(resumo).toContain('Prontas para emitir: 2, total R$ 1.150,00.')
     expect(resumo).toContain('- Linha 4: Oficina Sem Certificado ainda não tem certificado A1')
     expect(resumo).toContain('- Linha 5: CPF ou CNPJ do tomador inválido')
-    expect(resumo).toContain('- Linha 6: igual à linha 2 (mesmo prestador, tomador e valor)')
+    expect(resumo).toContain('- Linha 6: igual à linha 2 (mesmo prestador, tomador, valor e código de serviço)')
     expect(resumo).toContain('Responda *confirmar* para emitir as 2 notas prontas')
 
     const [lote] = await lotesDo(e.mae.tenant.id)
@@ -285,7 +285,7 @@ describe('lote por planilha (conta Escritório)', () => {
     // Uma empresa só: cnpj_prestador pode faltar.
     const csv = `cpf_cnpj_tomador,nome_tomador,valor\n${CPF},Maria,"77,00"\n${CNPJ_TOMADOR},Padaria,"20,00"\n`
     const resumo = await a.planilha(e.mae.ownerPhone, csv)
-    expect(resumo).toContain('- Linha 2: já há nota igual neste mês (mesmo prestador, tomador e valor)')
+    expect(resumo).toContain('- Linha 2: já há nota igual neste mês (mesmo prestador, tomador, valor e código de serviço)')
     expect(resumo).toContain('Responda *confirmar* para emitir a nota pronta')
 
     expect(await a.texto(e.mae.ownerPhone, 'cancelar')).toBe(TEXTOS_DO_LOTE.descartado)
@@ -367,7 +367,7 @@ describe('lote por planilha: correções da revisão', () => {
     )
     const resposta = await a.texto(e.mae.ownerPhone, 'confirmar')
     expect(resposta).toContain('Confirmado. Emitindo 1 nota na Sefin.')
-    expect(resposta).toContain('1 linha ficou de fora: já há nota igual neste mês (mesmo prestador, tomador e valor).')
+    expect(resposta).toContain('1 linha ficou de fora: já há nota igual neste mês (mesmo prestador, tomador, valor e código de serviço).')
     const [lote] = await lotesDo(e.mae.tenant.id)
     expect(await notaDoItem(lote.id, 2)).toEqual({ invoice_id: null, problema: 'JA_EMITIDA_NO_MES' })
     expect((await notaDoItem(lote.id, 3)).invoice_id).not.toBeNull()

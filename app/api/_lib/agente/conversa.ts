@@ -23,7 +23,7 @@ import { tratarAtivacao } from './ativacao.js'
 import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
 import { textoComRetentativa, whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
-import type { CatalogoDeServicos } from './catalogo-servicos.js'
+import { buscarServicos, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { conversaAssumida, registrarEvento } from './central.js'
 import { tratarComando } from './comandos.js'
 import { documentoNoTexto, emailNoTexto, formatarDocumento, formatarReais, tipoDoDocumento } from './documentos.js'
@@ -103,16 +103,16 @@ export const TEXTOS = {
   semPedido: `Não há pedido aguardando confirmação. Me mande o pedido da nota, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   descartado: 'Ok, descartei esse pedido. Quando quiser, é só mandar outro.',
   oQueMuda:
-    'O que muda? Me mande o cliente, o valor ou a descrição certa, por exemplo: valor 400 reais, ou descrição consultoria de outubro. Para desistir da nota, responda *descartar*.',
+    'O que muda? Me mande o cliente, o valor, a descrição ou o código do serviço certo, por exemplo: valor 400 reais, descrição consultoria de outubro, ou código 04.08.02. Para desistir da nota, responda *descartar*.',
   naoEntendiACorrecao:
-    'Não entendi o que muda. Me mande o cliente, o valor ou a descrição certa, responda *confirmar* para emitir como está ou *descartar* para desistir.',
+    'Não entendi o que muda. Me mande o cliente, o valor, a descrição ou o código do serviço certo, responda *confirmar* para emitir como está ou *descartar* para desistir.',
   cancelamentoDesistido: 'Ok, nenhuma nota foi cancelada.',
   faltaValor: `Qual é o valor da nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
-  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". Para um serviço diferente do padrão, diga o código ou o serviço: "${EXEMPLO_DE_PEDIDO}, código 04.08.02" ou "serviço de fisioterapia". ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
   /** Conta Escritório: a ajuda cita também o pedido por empresa cliente, a planilha do mês (lote) e o modelo. */
-  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir por uma empresa cliente, diga a empresa no pedido: "nota pela Oficina Trilho pra Studio Lima, 350 reais". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). Se quiser o arquivo do modelo aqui, escreva *modelo*. ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir por uma empresa cliente, diga a empresa no pedido: "nota pela Oficina Trilho pra Studio Lima, 350 reais". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). Se quiser o arquivo do modelo aqui, escreva *modelo*. Para um serviço diferente do padrão, diga o código ou o serviço no pedido ("código 04.08.02", "serviço de fisioterapia") ou use a coluna codigo_servico da planilha. ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
@@ -488,6 +488,72 @@ export function retencaoDoParsed(parsed: Parsed): RetencaoDoPedido | undefined {
 }
 
 /**
+ * O serviço lido pela IA só vale quando a mensagem fala em serviço ou código ("serviço de fisioterapia", "código de
+ * nutrição"): uma descrição comum ("consultoria de outubro") nunca troca o código da nota.
+ */
+export const pedeServicoNoTexto = (texto: string) => /\b(servic\w*|codigo|cod|item)\b/.test(semAcento(texto))
+
+/** `parsed` sem o serviço quando o texto não pede serviço nem código. */
+const servicoSoSePedido = (parsed: Parsed, texto: string): Parsed =>
+  parsed.servico && !pedeServicoNoTexto(texto) ? { ...parsed, servico: null } : parsed
+
+/** O código escolhido no pedido, ou o texto que explica por que não deu (e nada segue). */
+export type CodigoDoPedido = { codigo: string } | { texto: string }
+
+/**
+ * Código de serviço pedido no WhatsApp (Lucca, 17/11/2026: a clínica emite psicologia, fisioterapia e nutrição pela
+ * mesma empresa). "código 04.03.01" vale se estiver na lista nacional (lista fora do ar: vale o formato, e a Sefin
+ * confere). "serviço de fisioterapia" acha o código pela descrição; com mais de um, fica o que a empresa já usa
+ * (`conhecidos`: o padrão e os dos clientes salvos), senão a pessoa escolhe. `null` = o pedido não cita código nem
+ * serviço, e vale o do cliente ou o da empresa. `fim` fecha o texto de recusa ("mande o pedido de novo…").
+ */
+export async function codigoDoPedido(
+  catalogo: CatalogoDeServicos | undefined,
+  parsed: Pick<Parsed, 'codigo_servico' | 'servico'>,
+  conhecidos: () => Promise<string[]>,
+  fim = 'Mande o pedido de novo com o código, por exemplo: nota pra Studio Lima, 350, código 04.08.02. Nada foi emitido.',
+): Promise<CodigoDoPedido | null> {
+  if (!parsed.codigo_servico && !parsed.servico) return null
+  const itens = catalogo?.itens ? await catalogo.itens().catch(() => null) : null
+  const lista = itens && itens.size ? itens : null
+  if (parsed.codigo_servico) {
+    if (lista && !lista.has(parsed.codigo_servico)) {
+      return { texto: `O código ${formatarCodigoServico(parsed.codigo_servico)} não está na lista nacional de serviços. Confira o código. ${fim}` }
+    }
+    return { codigo: parsed.codigo_servico }
+  }
+  const servico = parsed.servico as string
+  if (!lista) return { texto: `Não consegui consultar a lista nacional de serviços agora para achar "${servico}". ${fim}` }
+  let achados = buscarServicos(lista, servico)
+  if (achados.length > 1) {
+    const usados = new Set(await conhecidos())
+    const daEmpresa = achados.filter((c) => usados.has(c))
+    if (daEmpresa.length === 1) achados = daEmpresa
+  }
+  if (achados.length === 1) return { codigo: achados[0] }
+  if (!achados.length) return { texto: `Não achei "${servico}" na lista nacional de serviços. ${fim}` }
+  const MOSTRADOS = 6
+  return {
+    texto: [
+      `Achei mais de um serviço para "${servico}":`,
+      ...achados.slice(0, MOSTRADOS).map((c) => `- ${formatarCodigoServico(c)} ${lista.get(c) ?? ''}`.trimEnd()),
+      ...(achados.length > MOSTRADOS ? [`- e mais ${achados.length - MOSTRADOS}.`] : []),
+      fim.replace('código 04.08.02', `código ${formatarCodigoServico(achados[0])}`),
+    ].join('\n'),
+  }
+}
+
+/** Os códigos que a empresa já usa: o padrão e os dos clientes salvos. */
+async function codigosDaEmpresa(db: Queryable, tenantId: string): Promise<string[]> {
+  const { rows } = await db.query<{ codigo: string | null }>(
+    `select codigo_servico_nacional as codigo from nofiscal.fiscal_tenants where id = $1
+     union select codigo_servico_nacional from nofiscal.fiscal_models where tenant_id = $1`,
+    [tenantId],
+  )
+  return rows.map((r) => r.codigo).filter((c): c is string => Boolean(c))
+}
+
+/**
  * O bloqueio da empresa que emite. Pela empresa do telefone, o texto de sempre; por outra empresa do escritório, o
  * motivo nomeando a empresa (como na planilha) e onde resolver. Assinatura e pagamento são da conta: texto de sempre.
  */
@@ -805,7 +871,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(texto)
-    parsed = validarParsed(resultado.parsed)
+    parsed = servicoSoSePedido(validarParsed(resultado.parsed), texto)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -852,7 +918,17 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
       const descricao = parsed.descricao ?? (atual.servico && atual.servico.descricao !== DESCRICAO_PADRAO ? atual.servico.descricao : null)
       await pedidoDeEmissao(
         ctx,
-        { tomador: atual.tomador.nome, documento: atual.tomador.documento ?? null, valor: parsed.valor ?? atual.valor ?? null, modelo: null, descricao, prestador: null, intencao: 'emitir' },
+        {
+          tomador: atual.tomador.nome,
+          documento: atual.tomador.documento ?? null,
+          valor: parsed.valor ?? atual.valor ?? null,
+          modelo: null,
+          descricao,
+          prestador: null,
+          codigo_servico: parsed.codigo_servico ?? null,
+          servico: parsed.servico ?? null,
+          intencao: 'emitir',
+        },
         tokens,
         { emitenteId: achadas[0].id },
       )
@@ -871,11 +947,21 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, 'Vi que a correção fala de retenção, mas não entendi qual. Me diga assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção.')
     return true
   }
-  if ((parsed.valor || parsed.descricao || retencaoNova) && valor && atual.tomador && atual.servico) {
-    const servico: ServicoDoPedido = parsed.descricao ? { ...atual.servico, descricao: parsed.descricao } : atual.servico
+  // "código 04.08.02" ou "serviço de fisioterapia" na correção: o mesmo pedido, com o código novo.
+  const codigoNovo = await codigoDoPedido(ctx.deps.catalogo, parsed, () => codigosDaEmpresa(ctx.deps.db, pedido.tenant_id), 'Me mande o código certo, por exemplo: código 04.08.02.')
+  if (codigoNovo && 'texto' in codigoNovo) {
+    await responder(ctx, codigoNovo.texto)
+    return true
+  }
+  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo) && valor && atual.tomador && atual.servico) {
+    const servico: ServicoDoPedido = {
+      ...atual.servico,
+      ...(parsed.descricao ? { descricao: parsed.descricao } : {}),
+      ...(codigoNovo ? { codigo: codigoNovo.codigo } : {}),
+    }
     const retencao_pedido = retencaoNova ? { ...atual.retencao_pedido, ...retencaoNova } : atual.retencao_pedido
     const conversa: Conversa = { ...atual, servico, valor, retencao_pedido, corrigindo: false }
-    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao'].filter(Boolean).join(' e ')
+    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo'].filter(Boolean).join(' e ')
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
     await responder(ctx, await resumoDoPedido(ctx, pedido.id, pedido.tenant_id, conversa))
     return true
@@ -928,14 +1014,31 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
       )
       const nota = await createOrGetInvoice(tx, pedido.tenant_id, { external_id: pedido.id, payload: payload as unknown as InvoicePayload })
       await tx.query('update nofiscal.fiscal_requests set invoice_id = $2 where id = $1', [pedido.id, nota.id])
-      return nota
+      // Cliente salvo e outro código nesta nota (Lucca, 17/11/2026): o cliente passa a sair com ele, e a próxima nota
+      // para ele repete o código.
+      const modeloAtualizado = pedido.conversa.modelo_id
+        ? (
+            await tx.query<{ nome: string }>(
+              `update nofiscal.fiscal_models set codigo_servico_nacional = $3, updated_at = $4
+                where id = $1 and tenant_id = $2 and codigo_servico_nacional is distinct from $3
+              returning nome`,
+              [pedido.conversa.modelo_id, pedido.tenant_id, servico.codigo, ctx.agora],
+            )
+          ).rows[0]?.nome ?? null
+        : null
+      return { nota, modeloAtualizado }
     })
     if (!criada) {
       await responder(ctx, TEXTOS.semPedido)
       return
     }
-    logEvent('agente.pedido_confirmado', { request_id: pedido.id, invoice_id: criada.id, tenant_id: pedido.tenant_id })
-    await responder(ctx, TEXTOS.emitindo)
+    logEvent('agente.pedido_confirmado', { request_id: pedido.id, invoice_id: criada.nota.id, tenant_id: pedido.tenant_id })
+    await responder(
+      ctx,
+      criada.modeloAtualizado
+        ? `${TEXTOS.emitindo}\nGuardei o código ${formatarCodigoServico(servico.codigo)} no cliente ${criada.modeloAtualizado}: as próximas notas para ele saem com esse código.`
+        : TEXTOS.emitindo,
+    )
     return
   }
 
@@ -1201,7 +1304,7 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(texto)
-    parsed = validarParsed(resultado.parsed)
+    parsed = servicoSoSePedido(validarParsed(resultado.parsed), texto)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1317,10 +1420,19 @@ async function pedidoDeEmissao(
     return
   }
 
+  // Código ou serviço escrito no pedido: vale para esta nota no lugar do código do cliente ou da empresa.
+  const codigoPedido = await codigoDoPedido(ctx.deps.catalogo, parsed, () => codigosDaEmpresa(ctx.deps.db, tenantId))
+  if (codigoPedido && 'texto' in codigoPedido) {
+    semPedido()
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
+    await responder(ctx, codigoPedido.texto)
+    return
+  }
+
   if (modelo) {
     const tomador: TomadorDoPedido = { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email }
     // A descrição escrita no pedido vale para esta nota; o modelo continua com a dele.
-    const servico: ServicoDoPedido = { codigo: modelo.codigo_servico_nacional, descricao: parsed.descricao ?? modelo.descricao }
+    const servico: ServicoDoPedido = { codigo: codigoPedido?.codigo ?? modelo.codigo_servico_nacional, descricao: parsed.descricao ?? modelo.descricao }
     const pedindoDescricao = precisaDeDescricao(servico)
     const conversa: Conversa = {
       tomador,
@@ -1343,7 +1455,7 @@ async function pedidoDeEmissao(
   )
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
-    servico: { codigo: rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO },
+    servico: { codigo: codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO },
     valor,
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),
