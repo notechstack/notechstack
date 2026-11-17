@@ -52,9 +52,10 @@ export async function estadoDaIntegracao(ctx: IntegracaoCtx): Promise<Response> 
     webhook_url: string | null
     tem_segredo: boolean
     emails_da_no: boolean
+    white_label: boolean
   }>(
     `select api_key_prefixo as prefixo, api_key_gerada_em as gerada_em, webhook_url,
-            webhook_secret_vault_id is not null as tem_segredo, emails_da_no
+            webhook_secret_vault_id is not null as tem_segredo, emails_da_no, white_label
        from nofiscal.fiscal_tenants where id = $1`,
     [ctx.donoId],
   )
@@ -81,7 +82,9 @@ export async function estadoDaIntegracao(ctx: IntegracaoCtx): Promise<Response> 
     docs_url: DOCS_DA_API,
     chave: t?.prefixo ? { prefixo: t.prefixo, gerada_em: t.gerada_em?.toISOString() ?? null } : null,
     webhook: { url: t?.webhook_url ?? null, tem_segredo: Boolean(t?.tem_segredo) },
-    emails_da_no: t?.emails_da_no ?? true,
+    // Conta parceira: e-mail e WhatsApp de nota da nó desligados sempre (a caixa da tela fica travada).
+    white_label: Boolean(t?.white_label),
+    emails_da_no: t?.white_label ? false : (t?.emails_da_no ?? true),
     entregas: entregas.rows.map((e) => ({
       ...e,
       created_at: e.created_at.toISOString(),

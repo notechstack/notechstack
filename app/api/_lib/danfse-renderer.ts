@@ -282,8 +282,9 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   const doc = await PDFDocument.create()
   doc.setTitle(`DANFSe ${nfse.chaveAcesso}`)
   doc.setSubject('Documento Auxiliar da NFS-e')
-  doc.setProducer('Nó Fiscal')
-  doc.setCreator('Nó Fiscal')
+  // Sem marca de quem emitiu (white label, 17/11/2026): o PDF vai ao cliente final do parceiro.
+  doc.setProducer('DANFSe')
+  doc.setCreator('DANFSe')
   const page = doc.addPage([A4.width, A4.height])
   const fonts = { regular: await doc.embedFont(StandardFonts.Helvetica), bold: await doc.embedFont(StandardFonts.HelveticaBold) }
   const p = new Painter(page, fonts)

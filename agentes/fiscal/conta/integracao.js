@@ -40,6 +40,9 @@
     $('fa-api-remover').hidden = !w.url;
     $('fa-api-novo-segredo').hidden = !w.url;
     $('fa-api-emails').checked = d.emails_da_no !== false;
+    // Conta parceira (white label): a nó não manda e-mail nem WhatsApp de nota; a caixa fica travada.
+    $('fa-api-emails').disabled = !!d.white_label;
+    $('fa-api-white-label').hidden = !d.white_label;
     var linhas = (d.entregas || []).map(function (e) {
       var s = SITUACAO[e.status] || [e.status, ''];
       var detalhe = e.status === 'pendente' && e.proxima_em ? 'próxima em ' + dataHora(e.proxima_em)

@@ -72,3 +72,17 @@ describe('danfse-renderer', () => {
     writeFileSync(process.env.NOFISCAL_DANFSE_SAMPLE!, await renderDanfse(nfse(), { cancelada: true }))
   })
 })
+
+// White label (Lucca, 17/11/2026): nada no PDF nem no XML que chega ao cliente final menciona a nó.
+describe('danfse-renderer sem marca da nó', () => {
+  it('nem no texto desenhado, nem nos metadados do PDF, nem na versão do aplicativo da DPS', async () => {
+    const xml = nfse()
+    const pdf = await renderDanfse(xml)
+    const marca = /n[óo]\s*\.?\s*fiscal|notechstack|n[óo] tech/i
+    expect(pdfTexts(pdf).join(' ')).not.toMatch(marca)
+    const doc = await PDFDocument.load(pdf)
+    expect([doc.getProducer(), doc.getCreator(), doc.getAuthor(), doc.getTitle(), doc.getSubject()].join(' ')).not.toMatch(marca)
+    expect(Buffer.from(pdf).toString('latin1')).not.toMatch(marca)
+    expect(xml).not.toMatch(marca)
+  })
+})

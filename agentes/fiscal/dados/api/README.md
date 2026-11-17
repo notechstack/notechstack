@@ -119,8 +119,8 @@ curl -s https://app.notechstack.com.br/api/v1/nfse/<id>/pdf -H "x-api-key: $CHAV
 curl -s https://app.notechstack.com.br/api/v1/nfse/<id>/xml -H "x-api-key: $CHAVE" -o nfse.xml
 ```
 
-**Passo 9 (opcional) — Sua marca.** Se o seu sistema entrega as notas aos clientes, desmarque **"A nó manda as notas
-por e-mail"** na aba API. Ver [13](#13-white-label-o-que-leva-a-marca-da-nó).
+**Passo 9 — Sua marca.** Na conta parceira (white label), a nó não manda e-mail nem WhatsApp de nota a ninguém: o
+seu sistema entrega o PDF e o XML. Ver [13](#13-white-label-o-que-leva-a-marca-da-nó).
 
 ---
 
@@ -670,19 +670,22 @@ prazo do município). O texto da Sefin vem sempre em `last_error`.
 
 ## 13. White label: o que leva a marca da nó
 
-Quando quem fala com o cliente final é o parceiro, isto ainda mostra a nó:
+A conta do parceiro é uma **conta parceira (white label)**, ligada pela nó no contrato. Nela, **nada com a marca da
+nó chega aos clientes do parceiro**: o parceiro monta a tela, o layout e a entrega; a nó fornece as funções pela API.
 
-| Onde | O que aparece | Como evitar hoje |
-|---|---|---|
-| E-mail da nota emitida/cancelada | Remetente `nó tech stack <notas@notechstack.com.br>`, texto da nó, ao tomador, ao contador e à conta | Desligar "A nó manda as notas por e-mail" na aba API e entregar pelo seu sistema |
-| WhatsApp | Número e textos do nó.fiscal | Notas pedidas pela **API** não geram WhatsApp por nota. Avisos de certificado e limite continuam indo ao WhatsApp da conta |
-| Avisos de certificado (e-mail e WhatsApp) | Links para o painel em notechstack.com.br | Vão só para a conta (o escritório), não ao cliente final |
-| DANFSe (PDF) | Sem marca da nó no layout; os metadados do PDF dizem "Nó Fiscal" (produtor) | Não visível ao abrir o PDF |
-| DANFE da NF-e (PDF) | Sem marca da nó no layout; metadado "no.fiscal" | Não visível ao abrir o PDF |
-| XML da NF-e | Responsável técnico (`infRespTec`) = CNPJ da nó | Exigência legal da NF-e: o responsável técnico é quem fez o software emissor |
-| Painel, cadastro, procuração | Domínio e marca da nó | O cliente final não precisa entrar no painel quando o parceiro usa a API e procuração |
+| O que | Na conta parceira |
+|---|---|
+| E-mail de nota (emitida, cancelada) ao tomador, ao contador e à conta | **Não sai.** O seu sistema entrega, avisado pelo webhook. A caixa "A nó manda as notas por e-mail" fica travada. |
+| WhatsApp de nota (emitida, recusada, cancelada, fila da Sefin) | **Não sai**, nem para nota pedida pelo painel. |
+| DANFSe e DANFE (PDF) | Sem rodapé, logo ou menção à nó, nem nos metadados do arquivo (produtor "DANFSe"/"DANFE"). |
+| XML da NFS-e | Versão do aplicativo neutra (`EmissorNFSe-1.0`). |
+| XML da NF-e | Versão do aplicativo neutra (`Emissor NF-e 1.0`). **Exceção legal:** o grupo de responsável técnico (`infRespTec`) leva o CNPJ e o contato da nó, que fez o software emissor (NT 2018.005). Esse grupo não aparece no DANFE. |
+| Webhook | Headers `x-nofiscal-*`: só o seu servidor vê. |
+| Avisos à conta (certificado vencendo, limite do plano, cobrança) | Continuam indo ao escritório (e-mail e WhatsApp da conta), nunca às empresas clientes. |
+| Painel, cadastro, procuração | Domínio e marca da nó; usados só pelo escritório. O cliente final não precisa entrar no painel. |
 
----
+Fora da conta parceira, a caixa **"A nó manda as notas por e-mail"** (aba API) desliga só os e-mails de nota, e nota
+pedida pela API nunca gera WhatsApp por nota.
 
 ## 14. Checklist da integração
 

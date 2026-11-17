@@ -7,7 +7,9 @@
 -- 2. Origem da nota: `fiscal_invoices.origem = 'api'` para a nota que nasceu na API (sem WhatsApp por nota).
 -- 3. Webhook de retorno: fila durável (`fiscal_webhook_entregas`), com reenvio e espera, no lugar do callback com
 --    reenvio em memória. O segredo continua no Supabase Vault (`set_webhook_secret`), agora gravável pelo painel.
--- 4. White label: `emails_da_no = false` na conta-mãe desliga os e-mails de nota que a nó manda (o parceiro entrega).
+-- 4. White label (Lucca, 17/11/2026: requisito, não opção): conta parceira (`white_label = true`, ligada pela nó por
+--    `public.fiscal_definir_white_label`) não manda nada com a marca da nó a quem é cliente do parceiro: nenhum
+--    e-mail nem WhatsApp de nota. Fora dela, `emails_da_no = false` desliga só os e-mails de nota.
 -- 5. Empresas por API: funções que reaproveitam as do painel (`fiscal_empresa_adicionar`, `fiscal_empresa_configurar`,
 --    `onboarding_set_procuracao`) com o usuário da conta-mãe, sem sessão. Limite de empresas e procuração seguem
 --    as mesmas regras. Upload de A1 continua só pelo painel.
@@ -17,14 +19,41 @@
 alter table nofiscal.fiscal_tenants
   add column api_key_prefixo text check (api_key_prefixo ~ '^nfk_[A-Za-z0-9_-]{6}$'),
   add column api_key_gerada_em timestamptz,
-  add column emails_da_no boolean not null default true;
+  add column emails_da_no boolean not null default true,
+  add column white_label boolean not null default false;
 comment on column nofiscal.fiscal_tenants.api_key_prefixo is
   'Início da chave da API gerada no painel (nfk_ + 6 caracteres), só para reconhecer qual está em uso.';
 comment on column nofiscal.fiscal_tenants.emails_da_no is
   'false: a nó não manda e-mail de nota (emitida/cancelada) das empresas desta conta; o parceiro entrega.';
 
+comment on column nofiscal.fiscal_tenants.white_label is
+  'Conta parceira (white label): nenhum e-mail nem WhatsApp de nota da nó para as empresas desta conta. Só a nó liga.';
+
 grant update (api_key_hash, api_key_prefixo, api_key_gerada_em, webhook_url, emails_da_no)
   on nofiscal.fiscal_tenants to nofiscal_service;
+
+-- Ligar ou desligar o white label de uma conta-mãe: decisão comercial da nó (contrato com o parceiro), nunca do painel.
+create function public.fiscal_definir_white_label(p_tenant_id uuid, p_ativo boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_ativo is null then
+    raise exception 'fiscal_definir_white_label: p_ativo nulo' using errcode = '22023';
+  end if;
+  update nofiscal.fiscal_tenants
+     set white_label = p_ativo, updated_at = now()
+   where id = p_tenant_id and escritorio_tenant_id is null;
+  if not found then
+    return jsonb_build_object('ok', false, 'erro', 'CONTA_NAO_ENCONTRADA');
+  end if;
+  return jsonb_build_object('ok', true, 'white_label', p_ativo);
+end;
+$$;
+revoke all on function public.fiscal_definir_white_label(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.fiscal_definir_white_label(uuid, boolean) to service_role;
 
 -- ------------------------------------------------------------ Origem da nota
 

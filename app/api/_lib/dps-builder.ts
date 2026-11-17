@@ -27,7 +27,9 @@ import { el, leaf } from './xml.js'
 
 export const NFSE_NAMESPACE = 'http://www.sped.fazenda.gov.br/nfse'
 export const LEIAUTE_VERSAO = '1.01'
-export const VER_APLIC = 'NoFiscal-1.0'
+// Versão do aplicativo na DPS e nos eventos (até 20 caracteres). Sem marca (white label, 17/11/2026): o XML chega ao
+// cliente final do parceiro.
+export const VER_APLIC = 'EmissorNFSe-1.0'
 /** `dhEmi` não pode passar da hora de processamento da Sefin (E0008): emitimos 60 s antes. */
 export const DH_EMI_SKEW_MS = 60_000
 

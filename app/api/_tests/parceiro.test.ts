@@ -370,6 +370,29 @@ describe('webhook de retorno', () => {
   })
 })
 
+describe('conta parceira (white label)', () => {
+  it('nenhum e-mail nem WhatsApp de nota da nó, nem para nota pedida pelo painel; o webhook avisa', async () => {
+    const { e, dono, padaria } = await novoEscritorio()
+    // Só a nó liga (função do service_role); o painel mostra e trava a caixa dos e-mails.
+    const { rows } = await admin.db.query<{ r: { ok: boolean } }>('select public.fiscal_definir_white_label($1, true) as r', [e.mae.tenant.id])
+    expect(rows[0].r.ok).toBe(true)
+    expect((await painel(dono, { acao: 'integracao' })).corpo).toMatchObject({ white_label: true, emails_da_no: false })
+    await painel(dono, { acao: 'emails_da_no', ativo: true })
+    await painel(dono, { acao: 'webhook_salvar', url: 'https://erp.parceiro.test/hook' })
+
+    // Nota do painel (não da API), com e-mail do tomador: mesmo assim nada sai da nó.
+    const chave = randomUUID()
+    const avulsa = await painel(dono, { acao: 'avulsa_emitir', chave, tenant_id: padaria.id, documento: CPF, nome: 'Maria Tomadora', email: 'maria@tomador.test', valor: '80,00' })
+    expect(avulsa.status).toBe(200)
+    const url = urlDoParceiro()
+    const { canais } = await rodarWorker(servico.db, padaria.id, url.fetch)
+    expect((await readInvoice(admin.db, avulsa.corpo.invoice_id as string)).status).toBe('issued')
+    expect(canais.emails).toEqual([])
+    expect(canais.whatsapps).toEqual([])
+    expect(url.recebidos.map((r) => JSON.parse(r.body).evento)).toEqual(['nfse.emitida'])
+  })
+})
+
 describe('empresas pela API', () => {
   it('cadastra a empresa cliente, mostra a situação, declara a procuração e respeita o limite da conta', async () => {
     const { e, dono, padaria, oficina } = await novoEscritorio()
