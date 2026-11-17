@@ -5,7 +5,7 @@
 import https from 'node:https'
 import { rootCertificates } from 'node:tls'
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { buildDps, buildIdDps, DpsInvalidError } from './dps-builder.js'
+import { buildDps, buildIdDps, DpsInvalidError, opcoesDpsDoAmbiente } from './dps-builder.js'
 import { buildPedidoCancelamento } from './evento-builder.js'
 import { CertificateError, pfxToPem, type PemCredentials } from './pfx.js'
 import type {
@@ -208,7 +208,14 @@ export function createSefinClient(options: SefinClientOptions = {}): SefinClient
     async emitir({ tenant, invoice, certificado }): Promise<EmitirResultado> {
       let dps: { id: string; xml: string }
       try {
-        dps = buildDps({ tenant, serie: invoice.dps_serie, numero: invoice.dps_numero, payload: invoice.payload, now: now() })
+        dps = buildDps({
+          tenant,
+          serie: invoice.dps_serie,
+          numero: invoice.dps_numero,
+          payload: invoice.payload,
+          now: now(),
+          opcoes: opcoesDpsDoAmbiente(tenant),
+        })
       } catch (error) {
         if (error instanceof DpsInvalidError) return { kind: 'rejected', code: error.code, message: error.message }
         throw error

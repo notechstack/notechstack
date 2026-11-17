@@ -1,9 +1,19 @@
 // Monta a DPS do leiaute nacional 1.01 (critério 4). Forma literal no Landing do checklist
 // (lote 2b - DPS montada): prestador do Simples (ME/EPP ou MEI) emitindo a própria nota, tomador só com CPF
-// ou CNPJ e nome (o CNPJ entrou no lote B2 do agente fiscal; XSD 1.01 `TCInfoPessoa`), sem
-// endereço do tomador e sem o grupo IBSCBS. O XML sai sem indentação: quem assina
-// é o `xml-signer`, e o texto assinado não é reformatado.
+// ou CNPJ e nome (o CNPJ entrou no lote B2 do agente fiscal; XSD 1.01 `TCInfoPessoa`). O XML sai sem
+// indentação: quem assina é o `xml-signer`, e o texto assinado não é reformatado.
+//
+// Reforma Tributária (pesquisa de 17/11/2026; XSD oficiais em `_tests/xsd/`):
+// - Dois leiautes com o mesmo `versao="1.01"`. `v1.01` é o de produção (XSD de 09/02/2026, NT 004).
+//   `nt009` é o release 1 da NT 009, em produção restrita desde 20/10/2026 e previsto para produção em
+//   01/12/2026: `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
+//   e CST/cClassTrib sobem de `gIBSCBS` para `IBSCBS/valores/trib`.
+// - `cNBS` (0-1) vai quando a nota informa a NBS; com o IBSCBS ligado, também quando a tabela resolve.
+// - O grupo IBSCBS é opcional para Simples e MEI em 2026 (Anexo I: obrigatório só a partir de 2027) e,
+//   se enviado, exige todos os códigos (E0322 etc.). Fica atrás de `ibscbs` (desligado por padrão) e só
+//   sai quando NBS, cIndOp e cClassTrib estão resolvidos; senão a DPS sai sem o grupo, como hoje.
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
+import { nbsExiste, resolverRtc, type Rtc } from './rtc/resolver.js'
 import type { SefinTenant } from './sefin.js'
 import { el, leaf } from './xml.js'
 
@@ -16,7 +26,14 @@ export const DH_EMI_SKEW_MS = 60_000
 export type DpsPayload = {
   /** `tag` é o elemento do leiaute: `<CPF>` ou `<CNPJ>`. */
   tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string; endereco: EnderecoNacional | null }
-  servico: { codigo_servico_nacional: string; descricao: string }
+  /** `nbs`, `c_ind_op` e `c_class_trib` são opcionais: informados, mandam sobre a tabela (rtc/resolver.ts). */
+  servico: {
+    codigo_servico_nacional: string
+    descricao: string
+    nbs: string | null
+    c_ind_op: string | null
+    c_class_trib: string | null
+  }
   valor: string
   /** Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. */
   retencao: { iss: { aliquota: string } | null; inss: { valor: string } | null }
@@ -73,10 +90,32 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
       nome: textField(payload.tomador.nome, 'nome do tomador', 150),
       endereco,
     },
-    servico: { codigo_servico_nacional: codigo, descricao: textField(payload.servico.descricao, 'descrição do serviço', 2000) },
+    servico: {
+      codigo_servico_nacional: codigo,
+      descricao: textField(payload.servico.descricao, 'descrição do serviço', 2000),
+      nbs: parseNbs(payload.servico.nbs),
+      c_ind_op: codigo6(payload.servico.c_ind_op, 'c_ind_op (cIndOp)'),
+      c_class_trib: codigo6(payload.servico.c_class_trib, 'c_class_trib (cClassTrib)'),
+    },
     valor,
     retencao: parseRetencao(payload.retencao, valor),
   }
+}
+
+/** NBS com ou sem pontos (1.1502.10.00): 9 dígitos e na lista nacional, senão a Sefin recusa (E0316). */
+export function parseNbs(bruto: unknown): string | null {
+  if (bruto === undefined || bruto === null || bruto === '') return null
+  if (typeof bruto !== 'string') throw new DpsInvalidError('NBS deve ser texto')
+  const nbs = bruto.replace(/[.\s]/g, '')
+  if (!/^\d{9}$/.test(nbs)) throw new DpsInvalidError('NBS deve ter 9 dígitos (ex.: 1.1502.10.00)')
+  if (!nbsExiste(nbs)) throw new DpsInvalidError(`NBS ${bruto} não está na lista nacional (NBS 2.0)`)
+  return nbs
+}
+
+function codigo6(bruto: unknown, campo: string): string | null {
+  if (bruto === undefined || bruto === null || bruto === '') return null
+  if (typeof bruto !== 'string' || !/^\d{6}$/.test(bruto)) throw new DpsInvalidError(`${campo} deve ter 6 dígitos`)
+  return bruto
 }
 
 const centavos = (v: string) => {
@@ -157,6 +196,26 @@ function formatPercent(value: string | number | null): string {
   return n.toFixed(2)
 }
 
+export type LeiauteDps = 'v1.01' | 'nt009'
+export type OpcoesDps = {
+  /** `v1.01`: produção (XSD 09/02/2026). `nt009`: NT 009 release 1 (produção restrita desde 20/10/2026). */
+  leiaute: LeiauteDps
+  /** Monta o grupo IBSCBS (e o cNBS da tabela). Desligado: só o cNBS informado na nota. */
+  ibscbs: boolean
+}
+
+/**
+ * Produção restrita já roda a NT 009 (XSD de 20/10/2026). Produção troca quando
+ * `NOFISCAL_DPS_LEIAUTE=nt009` (data prevista: 01/12/2026). IBSCBS só com `NOFISCAL_DPS_IBSCBS=1`.
+ */
+export function opcoesDpsDoAmbiente(
+  tenant: Pick<SefinTenant, 'ambiente'>,
+  env: Record<string, string | undefined> = process.env,
+): OpcoesDps {
+  const nt009 = tenant.ambiente === 'producao_restrita' || env.NOFISCAL_DPS_LEIAUTE === 'nt009'
+  return { leiaute: nt009 ? 'nt009' : 'v1.01', ibscbs: env.NOFISCAL_DPS_IBSCBS === '1' }
+}
+
 export type BuildDpsInput = {
   tenant: SefinTenant
   serie: string
@@ -164,9 +223,33 @@ export type BuildDpsInput = {
   payload: unknown
   /** Relógio do motor; `dhEmi` = agora − 60 s. */
   now: Date
+  /** Padrão: leiaute de produção, sem IBSCBS (a DPS de antes desta mudança). */
+  opcoes?: OpcoesDps
 }
 
-export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput): { id: string; xml: string } {
+const OPCOES_PADRAO: OpcoesDps = { leiaute: 'v1.01', ibscbs: false }
+
+/** `infDPS/IBSCBS` de prestador do Simples ou MEI, serviço no país, tomador = destinatário. */
+function grupoIbsCbs(leiaute: LeiauteDps, g: { cIndOp: string; cst: string; cClassTrib: string }): string {
+  const classif = [leaf('CST', g.cst), leaf('cClassTrib', g.cClassTrib)]
+  // indDest 0: o destinatário é o próprio tomador. indFinal (0-1) fica de fora: o motor não sabe se é
+  // uso ou consumo pessoal (art. 57 da LC 214/2025). Alíquotas e valores quem calcula é a Sefin.
+  return leiaute === 'nt009'
+    ? el('IBSCBS', [leaf('cIndOp', g.cIndOp), leaf('indDest', '0'), el('valores', el('trib', classif))])
+    : el('IBSCBS', [
+        leaf('finNFSe', '0'),
+        leaf('cIndOp', g.cIndOp),
+        leaf('indDest', '0'),
+        el('valores', el('trib', el('gIBSCBS', classif))),
+      ])
+}
+
+export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_PADRAO }: BuildDpsInput): {
+  id: string
+  xml: string
+  /** NBS e classificação resolvidas, para quem precisar explicar por que o grupo foi ou não. */
+  rtc: Rtc
+} {
   const data = parseDpsPayload(payload)
   const id = buildIdDps(tenant, serie, numero)
   // E0202: o tomador não pode ser o próprio prestador.
@@ -209,6 +292,19 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
     : el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '1')])
   const tribFed = inss ? el('tribFed', leaf('vRetCP', inss.valor)) : null
 
+  const { leiaute } = opcoes
+  const rtc = resolverRtc(data.servico.codigo_servico_nacional, {
+    nbs: data.servico.nbs,
+    cIndOp: data.servico.c_ind_op,
+    cClassTrib: data.servico.c_class_trib,
+  })
+  // A NBS informada na nota vai sempre; a da tabela, só junto do IBSCBS.
+  const cNBS = rtc.nbs && (rtc.nbs.origem === 'nota' || opcoes.ibscbs) ? leaf('cNBS', rtc.nbs.codigo) : null
+  const ibscbs = opcoes.ibscbs && 'cst' in rtc.ibscbs ? grupoIbsCbs(leiaute, rtc.ibscbs) : null
+  const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
+  const xDescServ = leaf('xDescServ', data.servico.descricao)
+  const cServ = el('cServ', leiaute === 'nt009' ? [cTribNac, cNBS, xDescServ] : [cTribNac, xDescServ, cNBS])
+
   const infDps = el(
     'infDPS',
     [
@@ -219,6 +315,7 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
       leaf('nDPS', String(numero)),
       leaf('dCompet', dhEmi.slice(0, 10)),
       leaf('tpEmit', '1'),
+      leiaute === 'nt009' ? leaf('finNFSe', '0') : null,
       leaf('cLocEmi', ibge),
       el('prest', [
         leaf('CNPJ', tenant.cnpj),
@@ -228,14 +325,15 @@ export function buildDps({ tenant, serie, numero, payload, now }: BuildDpsInput)
       el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]),
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', ibge)),
-        el('cServ', [leaf('cTribNac', data.servico.codigo_servico_nacional), leaf('xDescServ', data.servico.descricao)]),
+        cServ,
       ]),
       el('valores', [
         el('vServPrest', leaf('vServ', data.valor)),
         el('trib', [tribMun, tribFed, el('totTrib', totTrib)]),
       ]),
+      ibscbs,
     ],
     { Id: id },
   )
-  return { id, xml: el('DPS', infDps, { xmlns: NFSE_NAMESPACE, versao: LEIAUTE_VERSAO }) }
+  return { id, xml: el('DPS', infDps, { xmlns: NFSE_NAMESPACE, versao: LEIAUTE_VERSAO }), rtc }
 }

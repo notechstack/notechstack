@@ -4,13 +4,15 @@
 // Tomador: `cpf` (11 dígitos) ou `cnpj` (14 dígitos), exatamente um dos dois (Landing de
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
 
+import { DpsInvalidError, parseNbs } from './dps-builder.js'
 import type { EnderecoNacional, Retencao } from './retencao.js'
 
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
 
 export type InvoicePayload = {
   tomador: TomadorPayload & { email?: string; endereco?: EnderecoNacional }
-  servico: { codigo_servico_nacional: string; descricao: string }
+  /** `nbs`, `c_ind_op` e `c_class_trib`: Reforma Tributária (IBS/CBS), opcionais; ver dps-builder.ts. */
+  servico: { codigo_servico_nacional: string; descricao: string; nbs?: string; c_ind_op?: string; c_class_trib?: string }
   valor: string
   /** Só do agente e do painel (retencao.ts); a API `/v1/nfse` não aceita retenção. */
   retencao?: Retencao
@@ -61,7 +63,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const extra =
     unknownField(body, ['external_id', 'tomador', 'servico', 'valor'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome'], 'tomador.') : null) ??
-    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao'], 'servico.') : null)
+    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib'], 'servico.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
   const externalId = text(body.external_id, 1, 100)
@@ -84,6 +86,20 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   if (!descricao) return fail('servico.descricao deve ter de 1 a 2000 caracteres')
   const valor = money(body.valor)
   if (!valor) return fail('valor deve ser decimal positivo com até 2 casas')
+  let nbs: string | null
+  try {
+    nbs = parseNbs(body.servico.nbs)
+  } catch (error) {
+    if (error instanceof DpsInvalidError) return fail(`servico.nbs: ${error.message}`)
+    throw error
+  }
+  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string } = nbs ? { nbs } : {}
+  for (const campo of ['c_ind_op', 'c_class_trib'] as const) {
+    const v = body.servico[campo]
+    if (v === undefined || v === null || v === '') continue
+    if (typeof v !== 'string' || !/^\d{6}$/.test(v)) return fail(`servico.${campo} deve ter 6 dígitos`)
+    rtc[campo] = v
+  }
 
   return {
     ok: true,
@@ -91,7 +107,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
       external_id: externalId,
       payload: {
         tomador: cpf ? { cpf, nome } : { cnpj: cnpj as string, nome },
-        servico: { codigo_servico_nacional: codigo, descricao },
+        servico: { codigo_servico_nacional: codigo, descricao, ...rtc },
         valor,
       },
     },
