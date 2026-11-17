@@ -10,7 +10,8 @@
 // toda empresa pedida tem de ser do dono (`nofiscal.empresas_do_dono`), e todo lote, da conta-mãe. Ações (JSON,
 // `acao`): `contexto`, `modelos`, `avulsa_conferir`, `avulsa_emitir`, `lote_confirmar`, `lote_descartar` e
 // `empresa_retencao` (o padrão de retenção de ISS/INSS da empresa, marcado ao adicionar a empresa cliente). A planilha
-// (`lote_ler`) chega em multipart/form-data com o campo `arquivo`.
+// (`lote_ler`) chega em multipart/form-data com o campo `arquivo`. Aba API (parceiro/painel-integracao.ts):
+// `integracao`, `chave_gerar`, `webhook_salvar`, `webhook_remover`, `webhook_testar`, `webhook_reenviar`, `emails_da_no`.
 import type { Db, Queryable } from './db.js'
 import { errorResponse, json } from './http.js'
 import { createOrGetInvoice } from './invoices.js'
@@ -42,6 +43,16 @@ import { planoDeEscritorio } from './agente/planos.js'
 import type { InvoicePayload } from './validation.js'
 import type { SessionVerifier } from './session.js'
 import {
+  emailsDaNo,
+  estadoDaIntegracao,
+  gerarChaveDaConta,
+  reenviarDaConta,
+  removerWebhook,
+  salvarWebhook,
+  testarWebhookDaConta,
+} from './parceiro/painel-integracao.js'
+import type { FetchLike } from './parceiro/webhook.js'
+import {
   lerAliquotaIss,
   lerPercentualInss,
   motivoDaRetencao,
@@ -63,6 +74,8 @@ export type PainelEmissaoDeps = {
   /** Endereço do tomador na Receita (ISS retido, E0237); sem ela, nota com ISS retido não sai. */
   enderecos?: EnderecoDoTomador | null
   now?: () => Date
+  /** Teste do webhook da aba API (parceiro/painel-integracao.ts). Padrão: o fetch global. */
+  fetch?: FetchLike
 }
 
 /**
@@ -285,6 +298,14 @@ export async function handlePainelEmissao(request: Request, deps: PainelEmissaoD
         return await loteDescartar(ctx, b)
       case 'empresa_retencao':
         return await empresaRetencao(ctx, b)
+      case 'integracao':
+      case 'chave_gerar':
+      case 'webhook_salvar':
+      case 'webhook_remover':
+      case 'webhook_testar':
+      case 'webhook_reenviar':
+      case 'emails_da_no':
+        return await integracao(ctx, b.acao, b)
       default:
         return errorResponse('VALIDATION_FAILED', 'ação desconhecida')
     }
@@ -565,4 +586,28 @@ async function empresaRetencao(ctx: Contexto, b: Record<string, unknown>): Promi
   )
   logEvent('nofiscal.painel_retencao_salva', { tenant_id: empresa.id, retem_iss: v.retem_iss, retem_inss: v.retem_inss })
   return json(200, { tenant_id: empresa.id, retencao: v })
+}
+
+// ---------------------------------------------------------------------------------------
+// Aba API (chave do parceiro, webhook e e-mails da nó).
+
+async function integracao(ctx: Contexto, acao: string, b: Record<string, unknown>): Promise<Response> {
+  const fetchPadrao: FetchLike = (url, init) => fetch(url, init)
+  const ic = { db: ctx.db, donoId: ctx.dono.id, agora: ctx.agora, fetch: ctx.deps.fetch ?? fetchPadrao }
+  switch (acao) {
+    case 'chave_gerar':
+      return gerarChaveDaConta(ic)
+    case 'webhook_salvar':
+      return salvarWebhook(ic, b)
+    case 'webhook_remover':
+      return removerWebhook(ic)
+    case 'webhook_testar':
+      return testarWebhookDaConta(ic)
+    case 'webhook_reenviar':
+      return reenviarDaConta(ic, b)
+    case 'emails_da_no':
+      return emailsDaNo(ic, b)
+    default:
+      return estadoDaIntegracao(ic)
+  }
 }

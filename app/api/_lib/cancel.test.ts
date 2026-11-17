@@ -63,7 +63,7 @@ describe('cancelamento de nota emitida (C27)', () => {
 
     const res = await cancel(t, row.id)
     expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ id: row.id, status: 'cancel_requested' })
+    expect(await res.json()).toMatchObject({ id: row.id, status: 'cancel_requested' })
     expect((await readInvoice(db, row.id)).status).toBe('cancel_requested')
 
     const statusDuringTransmission: string[] = []
@@ -100,7 +100,7 @@ describe('cancelamento de nota emitida (C27)', () => {
 
     // Pedido repetido não retransmite e devolve o estado atual.
     const again = await cancel(t, row.id)
-    expect(await again.json()).toEqual({ id: row.id, status: 'cancelled' })
+    expect(await again.json()).toMatchObject({ id: row.id, status: 'cancelled' })
     await runCancellations({ db, sefin: client, now: () => minutes(t0, 500), tenantId: t.id })
     expect(cancellationRequests(sefin)).toHaveLength(1)
   })
@@ -167,7 +167,7 @@ describe('cancelamento antes de transmitir (C28)', () => {
 
     const res = await cancel(t, invoice.id)
     expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ id: invoice.id, status: 'skipped' })
+    expect(await res.json()).toMatchObject({ id: invoice.id, status: 'skipped' })
 
     const client = createSefinClient({ transport: sefin.transport })
     await runEmission({ db, sefin: client, now: () => minutes(t0, 1), tenantId: t.id })
@@ -189,7 +189,7 @@ describe('cancelamento antes de transmitir (C28)', () => {
     expect((await readInvoice(db, invoice.id)).status).toBe('sent')
     const res = await cancel(t, invoice.id)
     expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ id: invoice.id, status: 'sent' })
+    expect(await res.json()).toMatchObject({ id: invoice.id, status: 'sent' })
     expect((await readInvoice(db, invoice.id)).status).toBe('sent')
   })
 })
@@ -219,7 +219,7 @@ describe('recusa do cancelamento (C29)', () => {
 
     // Pendência para o contador: não é retransmitida, nem com novo pedido.
     const again = await cancel(t, row.id)
-    expect(await again.json()).toEqual({ id: row.id, status: 'cancel_requested' })
+    expect(await again.json()).toMatchObject({ id: row.id, status: 'cancel_requested' })
     await runCancellations({ db, sefin: client, now: () => minutes(t0, 600), tenantId: t.id })
     expect(cancellationRequests(sefin)).toHaveLength(1)
     expect((await readInvoice(db, row.id)).last_error_code).toBe('E0822')

@@ -142,6 +142,10 @@ type NotaDoAgente = {
   cnpj: string
   /** Nota nascida de uma linha do lote por planilha. */
   do_lote: boolean
+  /** Nota pedida pela API (`origem = 'api'`): o retorno vai pelo webhook do parceiro, sem WhatsApp por nota. */
+  da_api: boolean
+  /** `fiscal_tenants.emails_da_no` da conta-mãe: false = o parceiro entrega, a nó não manda e-mail de nota. */
+  emails_da_no: boolean
 }
 
 async function lerNota(db: Queryable, invoiceId: string): Promise<NotaDoAgente | null> {
@@ -151,7 +155,9 @@ async function lerNota(db: Queryable, invoiceId: string): Promise<NotaDoAgente |
             (select p.phone_e164 from nofiscal.fiscal_phones p
               where p.tenant_id = coalesce(t.escritorio_tenant_id, t.id) and p.role = 'owner') as dono_phone,
             t.escritorio_tenant_id is not null as do_escritorio, t.razao_social, t.cnpj,
-            exists (select 1 from nofiscal.fiscal_lote_itens li where li.invoice_id = i.id) as do_lote
+            exists (select 1 from nofiscal.fiscal_lote_itens li where li.invoice_id = i.id) as do_lote,
+            coalesce(i.origem = 'api', false) as da_api,
+            (select d.emails_da_no from nofiscal.fiscal_tenants d where d.id = coalesce(t.escritorio_tenant_id, t.id)) as emails_da_no
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
       where i.id = $1`,
@@ -239,12 +245,15 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     const titulo = `NFS-e nº ${numero} autorizada`
     // Lote por planilha: nenhum WhatsApp por nota; o retorno agregado sai quando o lote fecha (lote-retorno.ts).
     // Nota de outra empresa do escritório (pedido por mensagem ou painel): a legenda diz de qual empresa é.
-    if (!nota.do_lote) await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${titulo}${daEmpresa(nota)}`, anexo: pdf })
+    // Nota da API: o parceiro recebe pelo webhook; nada no WhatsApp.
+    if (!nota.do_lote && !nota.da_api) await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${titulo}${daEmpresa(nota)}`, anexo: pdf })
 
     const anexos: AnexoEmail[] = []
     if (pdf) anexos.push(pdf)
     if (nota.xml_nfse) anexos.push({ nome: `nfse-${numero}.xml`, tipo: 'application/xml', conteudo: Buffer.from(nota.xml_nfse, 'utf8') })
-    for (const destino of await destinatariosDoEmail(deps.db, nota.tenant_id, { tomadorEmail: tomador.email })) {
+    // White label (emails_da_no = false): o parceiro entrega a nota; a nó não manda e-mail.
+    const destinos = nota.emails_da_no ? await destinatariosDoEmail(deps.db, nota.tenant_id, { tomadorEmail: tomador.email }) : []
+    for (const destino of destinos) {
       await emailDaNota(canais, deps.db, invoiceId, destino, {
         assunto: titulo,
         texto: `${titulo} para ${tomador.nome}${tomador.valor ? `, no valor de ${formatarReais(tomador.valor)}` : ''}. O PDF e o XML seguem anexos. A nota pode ser conferida em nfse.gov.br.`,
@@ -270,8 +279,8 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
   }
 
   if (status === 'rejected') {
-    // Lote: a recusa entra no retorno do lote, com o motivo; não sai uma mensagem por nota.
-    if (nota.do_lote) return
+    // Lote: a recusa entra no retorno do lote, com o motivo; não sai uma mensagem por nota. API: vai pelo webhook.
+    if (nota.do_lote || nota.da_api) return
     const pedido = await pedidoDaNota(deps.db, invoiceId, 'emitir')
     const texto = [
       `A Sefin recusou a nota${daEmpresa(nota)} para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
@@ -286,8 +295,9 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
   if (status === 'cancelled') {
     const pedido = await pedidoDaNota(deps.db, invoiceId, 'cancelar')
     const texto = `Nota ${numero} cancelada`
-    await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${texto}${daEmpresa(nota)}` })
-    for (const destino of await destinatariosDoEmail(deps.db, nota.tenant_id, { tomadorEmail: tomador.email })) {
+    if (!nota.da_api) await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto: `${texto}${daEmpresa(nota)}` })
+    const destinos = nota.emails_da_no ? await destinatariosDoEmail(deps.db, nota.tenant_id, { tomadorEmail: tomador.email }) : []
+    for (const destino of destinos) {
       await emailDaNota(canais, deps.db, invoiceId, destino, {
         assunto: texto,
         texto: `A NFS-e nº ${numero} para ${tomador.nome}${tomador.valor ? `, de ${formatarReais(tomador.valor)}` : ''}, foi cancelada na Sefin Nacional.`,
@@ -297,7 +307,8 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     return
   }
 
-  // cancel_refused (critério 34)
+  // cancel_refused (critério 34). Nota da API: vai pelo webhook.
+  if (nota.da_api) return
   const pedido = await pedidoDaNota(deps.db, invoiceId, 'cancelar')
   const texto = [
     `A Sefin recusou o cancelamento da nota nº ${numero}${daEmpresa(nota)}: ${nota.last_error ?? 'sem motivo informado'} (código ${nota.last_error_code ?? '-'}).`,

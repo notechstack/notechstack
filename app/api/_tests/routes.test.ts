@@ -84,12 +84,13 @@ describe('rotas do Nó Fiscal', () => {
       expect(rewrite.source).not.toMatch(CERTIFICATE_WORDS)
     }
 
-    // Nenhum código publicado chama as funções que gravam o A1 ou o segredo do callback.
-    const sources = walk(API_DIR)
-      .filter((path) => path.endsWith('.ts') && !path.endsWith('.test.ts') && !posix(path).startsWith('api/_tests/'))
-      .map((path) => readFileSync(path, 'utf8'))
-    for (const source of sources) {
-      expect(source).not.toMatch(/upsert_certificate|set_webhook_secret/)
+    // Nenhum código publicado chama a função que grava o A1. O segredo do webhook só é gravado pela aba API do painel
+    // (sessão da conta Escritório, migração 20261118090000), nunca por rota de chave de API.
+    const publicados = walk(API_DIR).filter((path) => path.endsWith('.ts') && !path.endsWith('.test.ts') && !posix(path).startsWith('api/_tests/'))
+    for (const path of publicados) {
+      const source = readFileSync(path, 'utf8')
+      expect(source).not.toMatch(/upsert_certificate/)
+      if (posix(path) !== 'api/_lib/parceiro/painel-integracao.ts') expect(source, path).not.toMatch(/set_webhook_secret/)
     }
 
     // A única rota que recebe corpo recusa campos de certificado, em qualquer nível.

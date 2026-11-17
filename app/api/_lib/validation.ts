@@ -1,13 +1,16 @@
-// Corpo de `POST /v1/nfse`, forma literal no Landing do checklist (lote 2a - corpo).
+// Corpo de `POST /v1/nfse`, forma literal no Landing do checklist (lote 2a - corpo), ampliada para o parceiro
+// (18/11/2026): `cnpj_prestador` (qual empresa da conta emite), `tomador.email`, `servico` opcional (vale o código da
+// empresa e a descrição padrão) e `retencao` (vale o padrão da empresa quando ausente).
 // Campo desconhecido em qualquer nível é recusado: é assim que nenhuma rota aceita PFX
 // ou senha por engano (critério 31) e que um erro de digitação da Prontia aparece logo.
 // Tomador: `cpf` (11 dígitos) ou `cnpj` (14 dígitos), exatamente um dos dois (Landing de
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
 
+import { normalizarEmail } from './agente/normalizacao.js'
 import { DpsInvalidError, parseNbs } from './dps-builder.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import { lerMunicipioPrestacao } from './local-prestacao.js'
-import type { EnderecoNacional, Retencao } from './retencao.js'
+import type { EnderecoNacional, Retencao, RetencaoDoPedido } from './retencao.js'
 
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
 
@@ -24,16 +27,35 @@ export type InvoicePayload = {
     municipio_prestacao_ibge?: string
   }
   valor: string
-  /** Só do agente e do painel (retencao.ts); a API `/v1/nfse` não aceita retenção. */
+  /** Resolvida por retencao.ts (agente, painel e API) a partir do padrão da empresa e do pedido. */
   retencao?: Retencao
   /** `serv/infoCompl/xInfComp` (info-complementar.ts): dados bancários, observações. Ausente = sem o grupo. */
   informacoes_complementares?: string
 }
 
-export type NewInvoice = { external_id: string; payload: InvoicePayload }
+export type NewInvoice = { external_id: string; payload: InvoicePayload; origem?: 'api' }
+
+/** O pedido lido do corpo; o payload final (com o código da empresa e a retenção resolvida) sai na rota. */
+export type PedidoDaApi = {
+  external_id: string
+  cnpj_prestador: string | null
+  tomador: { documento: string; nome: string; email: string | null }
+  servico: {
+    codigo: string | null
+    descricao: string | null
+    nbs?: string
+    c_ind_op?: string
+    c_class_trib?: string
+    municipio_prestacao_ibge?: string
+  }
+  valor: string
+  /** Ausente = o padrão de retenção da empresa. */
+  retencao?: RetencaoDoPedido
+  informacoes_complementares?: string
+}
 
 export type ValidationResult =
-  | { ok: true; value: NewInvoice }
+  | { ok: true; value: PedidoDaApi }
   | { ok: false; code: 'VALIDATION_FAILED' | 'UNKNOWN_FIELD'; message: string }
 
 type Obj = Record<string, unknown>
@@ -52,7 +74,7 @@ function text(value: unknown, min: number, max: number): string | null {
   return trimmed.length >= min && trimmed.length <= max ? trimmed : null
 }
 
-function money(value: unknown): string | null {
+export function money(value: unknown): string | null {
   let raw: string
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return null
@@ -68,20 +90,29 @@ function money(value: unknown): string | null {
   return /^0\.00$/.test(normalized) ? null : normalized
 }
 
+const decimalTexto = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : typeof v === 'string' ? v.trim() : null)
+
 export function parseNewInvoice(body: unknown): ValidationResult {
   const fail = (message: string): ValidationResult => ({ ok: false, code: 'VALIDATION_FAILED', message })
   if (!isObject(body)) return fail('o corpo deve ser um objeto JSON')
 
   const extra =
-    unknownField(body, ['external_id', 'tomador', 'servico', 'valor', 'informacoes_complementares'], '') ??
-    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome'], 'tomador.') : null) ??
-    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge'], 'servico.') : null)
+    unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
+    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email'], 'tomador.') : null) ??
+    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge'], 'servico.') : null) ??
+    (isObject(body.retencao) ? unknownField(body.retencao, ['retem_iss', 'aliquota_iss', 'retem_inss', 'inss'], 'retencao.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
   const externalId = text(body.external_id, 1, 100)
   if (!externalId) return fail('external_id deve ter de 1 a 100 caracteres')
+  let cnpjPrestador: string | null = null
+  if (body.cnpj_prestador !== undefined && body.cnpj_prestador !== null) {
+    cnpjPrestador = typeof body.cnpj_prestador === 'string' && /^\d{14}$/.test(body.cnpj_prestador) ? body.cnpj_prestador : null
+    if (!cnpjPrestador) return fail('cnpj_prestador deve ter 14 dígitos, só números')
+  }
   if (!isObject(body.tomador)) return fail('tomador é obrigatório')
-  if (!isObject(body.servico)) return fail('servico é obrigatório')
+  if (body.servico !== undefined && !isObject(body.servico)) return fail('servico deve ser um objeto')
+  const servico: Obj = isObject(body.servico) ? body.servico : {}
 
   const temCpf = body.tomador.cpf !== undefined
   const temCnpj = body.tomador.cnpj !== undefined
@@ -92,27 +123,38 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   if (temCnpj && !cnpj) return fail('tomador.cnpj deve ter 14 dígitos, só números')
   const nome = text(body.tomador.nome, 1, 150)
   if (!nome) return fail('tomador.nome deve ter de 1 a 150 caracteres')
-  const codigo = text(body.servico.codigo_servico_nacional, 1, 20)
-  if (!codigo) return fail('servico.codigo_servico_nacional deve ter de 1 a 20 caracteres')
-  const descricao = text(body.servico.descricao, 1, 2000)
-  if (!descricao) return fail('servico.descricao deve ter de 1 a 2000 caracteres')
+  let email: string | null = null
+  if (body.tomador.email !== undefined && body.tomador.email !== null && body.tomador.email !== '') {
+    email = typeof body.tomador.email === 'string' ? normalizarEmail(body.tomador.email) : null
+    if (!email) return fail('tomador.email inválido')
+  }
+  let codigo: string | null = null
+  if (servico.codigo_servico_nacional !== undefined) {
+    codigo = text(servico.codigo_servico_nacional, 1, 20)
+    if (!codigo) return fail('servico.codigo_servico_nacional deve ter de 1 a 20 caracteres')
+  }
+  let descricao: string | null = null
+  if (servico.descricao !== undefined) {
+    descricao = text(servico.descricao, 1, 2000)
+    if (!descricao) return fail('servico.descricao deve ter de 1 a 2000 caracteres')
+  }
   const valor = money(body.valor)
   if (!valor) return fail('valor deve ser decimal positivo com até 2 casas')
   let nbs: string | null
   try {
-    nbs = parseNbs(body.servico.nbs)
+    nbs = parseNbs(servico.nbs)
   } catch (error) {
     if (error instanceof DpsInvalidError) return fail(`servico.nbs: ${error.message}`)
     throw error
   }
   const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string } = nbs ? { nbs } : {}
   for (const campo of ['c_ind_op', 'c_class_trib'] as const) {
-    const v = body.servico[campo]
+    const v = servico[campo]
     if (v === undefined || v === null || v === '') continue
     if (typeof v !== 'string' || !/^\d{6}$/.test(v)) return fail(`servico.${campo} deve ter 6 dígitos`)
     rtc[campo] = v
   }
-  const local = lerMunicipioPrestacao(body.servico.municipio_prestacao_ibge)
+  const local = lerMunicipioPrestacao(servico.municipio_prestacao_ibge)
   if (!local.ok) return fail(`servico.municipio_prestacao_ibge ${local.erro}`)
   if (local.ibge) rtc.municipio_prestacao_ibge = local.ibge
 
@@ -121,16 +163,31 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const info = lerInfoComplementar(bruta)
   if (!info.ok) return fail(`informacoes_complementares deve ter até ${MAX_INFO_COMPLEMENTAR} caracteres`)
 
+  let retencao: RetencaoDoPedido | undefined
+  if (body.retencao !== undefined && body.retencao !== null) {
+    if (!isObject(body.retencao)) return fail('retencao deve ser um objeto')
+    const r = body.retencao
+    for (const campo of ['retem_iss', 'retem_inss'] as const) {
+      if (r[campo] !== undefined && typeof r[campo] !== 'boolean') return fail(`retencao.${campo} deve ser true ou false`)
+    }
+    retencao = {
+      iss: typeof r.retem_iss === 'boolean' ? r.retem_iss : null,
+      aliquotaIss: r.aliquota_iss === undefined ? null : decimalTexto(r.aliquota_iss),
+      inss: typeof r.retem_inss === 'boolean' ? r.retem_inss : null,
+      inssTexto: r.inss === undefined ? null : decimalTexto(r.inss),
+    }
+  }
+
   return {
     ok: true,
     value: {
       external_id: externalId,
-      payload: {
-        tomador: cpf ? { cpf, nome } : { cnpj: cnpj as string, nome },
-        servico: { codigo_servico_nacional: codigo, descricao, ...rtc },
-        valor,
-        ...(info.texto ? { informacoes_complementares: info.texto } : {}),
-      },
+      cnpj_prestador: cnpjPrestador,
+      tomador: { documento: (cpf ?? cnpj) as string, nome, email },
+      servico: { codigo, descricao, ...rtc },
+      valor,
+      ...(retencao ? { retencao } : {}),
+      ...(info.texto ? { informacoes_complementares: info.texto } : {}),
     },
   }
 }

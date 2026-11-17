@@ -2,8 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/hub/:path*", "destination": "https://sdeowbqmwkwseyktyemn.supabase.co/functions/v1/marketing-hub/:path*" },
-    { "source": "/api/v1/nfse/:id/:acao(cancel|pdf)", "destination": "/api/v1/nfse?id=:id&acao=:acao" },
+    { "source": "/api/v1/nfse/:id/:acao(cancel|pdf|xml)", "destination": "/api/v1/nfse?id=:id&acao=:acao" },
     { "source": "/api/v1/nfse/:id", "destination": "/api/v1/nfse?id=:id" },
+    { "source": "/api/v1/nfe/:id/:acao(cancel|danfe|xml)", "destination": "/api/v1/nfse?recurso=nfe&id=:id&acao=:acao" },
+    { "source": "/api/v1/nfe/:id", "destination": "/api/v1/nfse?recurso=nfe&id=:id" },
+    { "source": "/api/v1/nfe", "destination": "/api/v1/nfse?recurso=nfe" },
+    { "source": "/api/v1/empresas/:cnpj", "destination": "/api/v1/nfse?recurso=empresas&id=:cnpj" },
+    { "source": "/api/v1/empresas", "destination": "/api/v1/nfse?recurso=empresas" },
     { "source": "/((?!hub/|api/|assets/|fonts/|icons/|agencies/|prototipos/|(?:stages|how-it-works)-team\\.(?:png|webp)|no-tech-stack-(?:tinta|branca)-ponto-ambar\\.svg|mascote-cliente\\.png|barra-topo-4-cores\\.svg|no-editor-preview\\.js|favicon\\.svg).*)", "destination": "/index.html" }
   ],
   "headers": [{ "source": "/((?!hub/).*)", "headers": [
