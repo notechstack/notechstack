@@ -501,6 +501,31 @@ test("BrasilAPI diz fora do Simples: a reserva confirma o Simples e o cadastro s
   assert.deepEqual(semReserva, { ok: false, motivo: "fora_do_simples" });
 });
 
+test("regime confirmado à mão vence a base pública que nega o Simples (Consulta Optantes oficial)", async () => {
+  const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  const brasil = { ...respostaBrasilApi(cnpj), opcao_pelo_simples: false, opcao_pelo_mei: false };
+  const fetch = async (url) => url.includes("/api/cnpj/v1/")
+    ? new Response(JSON.stringify(brasil), { status: 200 })
+    : new Response("{}", { status: 503 });
+  const sem = await consultarCnpj(cnpj, { fetch });
+  assert.deepEqual(sem, { ok: false, motivo: "fora_do_simples" });
+  const com = await consultarCnpj(cnpj, { fetch, regimeConfirmado: async (c) => (c === cnpj ? "simples" : null) });
+  assert.equal(com.ok, true);
+  assert.equal(com.dados.regime, "simples");
+  assert.equal(com.dados.razao_social, brasil.razao_social);
+  // Sem confirmação para o CNPJ, a recusa continua.
+  const outro = await consultarCnpj(cnpj, { fetch, regimeConfirmado: async () => null });
+  assert.deepEqual(outro, { ok: false, motivo: "fora_do_simples" });
+  // Empresa inativa não passa nem com confirmação.
+  const inativa = await consultarCnpj(cnpj, {
+    fetch: async () => new Response(JSON.stringify({ ...brasil, descricao_situacao_cadastral: "BAIXADA" }), { status: 200 }),
+    regimeConfirmado: async () => "simples",
+  });
+  assert.equal(inativa.ok, false);
+  assert.equal(inativa.motivo, "inativo");
+});
+
 test("reserva: fora do Simples, inativo e reserva fora do ar", async () => {
   const { consultarCnpj } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
   const cnpj = cnpjValido();

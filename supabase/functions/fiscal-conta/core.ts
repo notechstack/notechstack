@@ -129,6 +129,8 @@ export type Deps = {
   /** Usuário da sessão Supabase, ou null. */
   sessao: () => Promise<string | null>;
   estado: (userId: string) => Promise<EstadoBanco | null>;
+  /** Regime confirmado à mão (public.fiscal_regime_confirmado), quando a base pública nega o Simples. */
+  regimeConfirmado?: (cnpj: string) => Promise<"mei" | "simples" | null>;
   configurar: (userId: string, dados: Record<string, unknown>) => Promise<RespostaBanco>;
   trocarPlano: (userId: string, plano: PlanoDaConta) => Promise<RespostaBanco>;
   /** public.fiscal_escritorio_estado. Ausente: a conta é tratada como Inicial/Pro. */
@@ -673,7 +675,7 @@ async function adicionarEmpresa(
   }
 
   // Razão social, município, CNAE e regime vêm sempre da consulta, nunca do corpo.
-  const c = await consultarCnpj(cnpj, { apiUrl: deps.env.CNPJ_API_URL, fetch: deps.fetch });
+  const c = await consultarCnpj(cnpj, { apiUrl: deps.env.CNPJ_API_URL, fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
   const recusa = respostaConsulta(c);
   if (recusa || !c.ok) {
     if (!c.ok) log("info", "fiscal_conta_empresa_consulta", { motivo: c.motivo });

@@ -34,6 +34,8 @@ export type CadastroDeps = {
   /** Usuário da sessão Supabase (Authorization: Bearer), ou null. */
   sessao: (req: Request) => Promise<string | null>;
   municipios: () => Promise<ListaMunicipios>;
+  /** Regime confirmado à mão (public.fiscal_regime_confirmado), quando a base pública nega o Simples. */
+  regimeConfirmado?: (cnpj: string) => Promise<"mei" | "simples" | null>;
   criar: (args: ArgsCriar) => Promise<RespostaCriar>;
   /** 32 bytes aleatórios; o sha256 deles vira api_key_hash e eles são descartados. */
   bytesAleatorios?: () => Uint8Array<ArrayBuffer>;
@@ -95,7 +97,7 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   }
 
   const consultar = (cnpj: string) =>
-    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch });
+    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
 
   if (b.acao === "consultar_cnpj") {
     const cnpj = soDigitos(b.cnpj);
