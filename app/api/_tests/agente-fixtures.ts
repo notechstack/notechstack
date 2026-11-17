@@ -5,7 +5,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import pg from 'pg'
 import type { AnexoEmail, EnviaEmail, EnviaWhatsApp, MensagemEmail } from '../_lib/agente/canais.js'
-import type { MensagemRecebida } from '../_lib/agente/conversa.js'
+import { TEXTOS, type MensagemRecebida } from '../_lib/agente/conversa.js'
 import type { Interprete, Parsed } from '../_lib/agente/interprete.js'
 import type { Links } from '../_lib/agente/links.js'
 import type { BaixaMidia } from '../_lib/agente/whatsapp-cloud.js'
@@ -208,6 +208,12 @@ export function interpreteDouble(
     },
   }
 }
+
+/**
+ * As duas mensagens que seguem o primeiro resumo da nota (informações complementares, 17/11/2026). Os testes que não
+ * tratam desse passo as deixam de fora ao ler a última resposta; info-complementar.test.ts as confere.
+ */
+export const ehPerguntaDeInfo = (texto: string) => texto === TEXTOS.perguntaInfoComplementar || texto === TEXTOS.semInfoComplementar
 
 /** Assinatura gravada como o lote C grava (aqui direto, como `postgres`). */
 export async function assinarTenant(

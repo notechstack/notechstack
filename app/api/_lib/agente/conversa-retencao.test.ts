@@ -17,6 +17,7 @@ import {
   pedidosDo,
   type SelfServiceOptions,
   type SelfServiceTenant,
+  ehPerguntaDeInfo,
 } from '../../_tests/agente-fixtures.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import type { EnderecoNacional } from '../retencao.js'
@@ -68,7 +69,7 @@ function conversa(roteiro: Roteiro, opcoes: { semEndereco?: boolean } = {}) {
   return {
     consultas,
     enviar: (de: string, texto: string) => processarMensagem(deps, mensagemDeTexto(de, texto)),
-    ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para).at(-1)?.texto ?? '',
+    ultimaPara: (para: string) => canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto)).at(-1)?.texto ?? '',
   }
 }
 

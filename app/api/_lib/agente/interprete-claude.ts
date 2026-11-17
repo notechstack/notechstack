@@ -22,9 +22,10 @@ export const SCHEMA_PARSED = {
     inss: TEXTO_OU_NULO,
     codigo_servico: TEXTO_OU_NULO,
     servico: TEXTO_OU_NULO,
+    informacoes_complementares: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'intencao'],
   additionalProperties: false,
 }
 
@@ -44,6 +45,7 @@ export const INSTRUCOES = [
   '- inss: o INSS retido como escrito: percentual com o símbolo ("11%") ou valor em reais com vírgula ("38,50"); senão null. Não confunda com o valor da nota.',
   '- codigo_servico: o código de serviço da lista nacional, quando a mensagem cita um ("código 04.03.01", "cód. 040301", "item 4.08.02"), como escrito; senão null. Não confunda com CPF, CNPJ, valor ou número de nota.',
   '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
+  '- informacoes_complementares: o que a pessoa pede para ir nas informações complementares da nota, e não na descrição do serviço: dados bancários (banco, agência, conta, PIX), observações ("obs: …"), número de pedido ou contrato, ou o que vier depois de "informações complementares". Copie como está escrito, sem mudar nenhum número. Isso não entra em descricao. Senão null.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

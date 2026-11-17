@@ -2,6 +2,7 @@
 // devolve a saída estruturada abaixo, que vai para `fiscal_requests.parsed`; emitir e cancelar
 // acontecem só no código da conversa, depois do "confirmar". Com `ANTHROPIC_API_KEY`, a v2 usa
 // `interpreteClaude` (interprete-claude.ts); sem ela, vale `interpreteNaoConfigurado()`.
+import { normalizarInfoComplementar } from '../info-complementar.js'
 import { lerCodigoServico } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido } from './documentos.js'
 
@@ -36,6 +37,11 @@ export type Parsed = {
   codigo_servico?: string | null
   /** O tipo de serviço pedido para escolher o código ("serviço de fisioterapia"); o código acha na lista nacional. */
   servico?: string | null
+  /**
+   * Informações complementares da nota (Lucca, 17/11/2026): dados bancários, observações. Vira `serv/infoCompl/xInfComp`.
+   * Com marcador no texto ("Dados bancários:", "Obs:"), quem lê é o código (info-complementar.ts), não a IA.
+   */
+  informacoes_complementares?: string | null
   intencao: Intencao
 }
 
@@ -86,6 +92,8 @@ export function validarParsed(bruto: unknown): Parsed {
     inss: texto(obj.inss, 20),
     codigo_servico: lerCodigoServico(typeof obj.codigo_servico === 'string' ? obj.codigo_servico : null),
     servico: texto(obj.servico, 80),
+    // Sem corte: acima de 2.000 caracteres a conversa pede um texto mais curto.
+    informacoes_complementares: normalizarInfoComplementar(obj.informacoes_complementares),
     intencao,
   }
 }

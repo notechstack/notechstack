@@ -21,14 +21,14 @@ export type TomadorDoPedido = { documento: string; nome: string; email: string |
 export type ServicoDoPedido = { codigo: string; descricao: string }
 
 /**
- * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção: a nota sem retenção tem o mesmo
- * payload de antes.
+ * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção, e `informacoes_complementares`
+ * só quando há texto: sem eles, a nota tem o mesmo payload de antes.
  */
 export function payloadDaNota(
   tomador: TomadorDoPedido,
   servico: ServicoDoPedido,
   valor: string,
-  extra: { retencao?: Retencao | null; endereco?: EnderecoNacional | null } = {},
+  extra: { retencao?: Retencao | null; endereco?: EnderecoNacional | null; informacoes_complementares?: string | null } = {},
 ) {
   const retencao = extra.retencao && (extra.retencao.iss || extra.retencao.inss) ? extra.retencao : null
   return {
@@ -41,6 +41,7 @@ export function payloadDaNota(
     servico: { codigo_servico_nacional: servico.codigo, descricao: servico.descricao },
     valor,
     ...(retencao ? { retencao } : {}),
+    ...(extra.informacoes_complementares ? { informacoes_complementares: extra.informacoes_complementares } : {}),
   }
 }
 

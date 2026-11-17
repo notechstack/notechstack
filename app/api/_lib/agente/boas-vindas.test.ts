@@ -15,6 +15,7 @@ import {
   openRoleDb,
   randomPhone,
   type SelfServiceTenant,
+  ehPerguntaDeInfo,
 } from '../../_tests/agente-fixtures.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import { gerarCodigoDeAtivacao, mensagemDeAtivacao } from './ativacao.js'
@@ -71,7 +72,7 @@ function conversa(respostas: Record<string, Partial<Parsed>> = {}, now: () => Da
   }
   const enviar = async (de: string, texto: string) => {
     await processarMensagem(deps, mensagemDeTexto(de, texto))
-    return canais.whatsapps.filter((m) => m.para === de).at(-1)?.texto ?? ''
+    return canais.whatsapps.filter((m) => m.para === de && !ehPerguntaDeInfo(m.texto)).at(-1)?.texto ?? ''
   }
   return { deps, canais, ia, enviar }
 }

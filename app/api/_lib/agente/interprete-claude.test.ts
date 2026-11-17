@@ -15,6 +15,7 @@ import {
   pedidosDo,
   roleDatabaseUrl,
   type SelfServiceTenant,
+  ehPerguntaDeInfo,
 } from '../../_tests/agente-fixtures.js'
 import { iniciarDubleIa, textoDoUsuario, type DubleIa } from '../../_tests/anthropic-fake.js'
 import { openTestDb } from '../../_tests/fixtures.js'
@@ -79,7 +80,7 @@ describe('intérprete por Claude', () => {
     const antes = ia.chamadas.length
     const resultado = await interpreteFromEnv(ambienteComChave()).interpretar(PEDIDO)
     expect(resultado).toEqual({
-      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, descricao: null, prestador: null, iss_retido: null, aliquota_iss: null, inss_retido: null, inss: null, codigo_servico: null, servico: null, intencao: 'emitir' },
+      parsed: { tomador: 'Prontia Saúde', documento: null, valor: '10.00', modelo: null, descricao: null, prestador: null, iss_retido: null, aliquota_iss: null, inss_retido: null, inss: null, codigo_servico: null, servico: null, informacoes_complementares: null, intencao: 'emitir' },
       tokens: { entrada: 321, saida: 45 },
     })
     const chamada = ia.chamadas[antes]
@@ -89,7 +90,7 @@ describe('intérprete por Claude', () => {
     expect(chamada.corpo.messages).toEqual([{ role: 'user', content: PEDIDO }])
     expect(chamada.corpo.output_config?.format?.type).toBe('json_schema')
     expect(chamada.corpo.output_config?.format?.schema).toMatchObject({
-      required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'intencao'],
+      required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'intencao'],
       additionalProperties: false,
     })
 
@@ -123,7 +124,7 @@ describe('intérprete por Claude', () => {
       ai_input_tokens: 321,
       ai_output_tokens: 45,
     })
-    expect(canais.whatsapps.at(-1)?.texto).toContain('Resumo da nota:')
+    expect(canais.whatsapps.filter((m) => !ehPerguntaDeInfo(m.texto)).at(-1)?.texto).toContain('Resumo da nota:')
 
     // Sem a chave: o intérprete da v1, que não chama a IA.
     const chamadasAntes = ia.chamadas.length

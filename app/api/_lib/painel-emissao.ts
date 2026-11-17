@@ -36,6 +36,7 @@ import {
 } from './agente/lote.js'
 import { normalizarEmail } from './agente/normalizacao.js'
 import { payloadDaNota } from './agente/notas.js'
+import { lerInfoComplementar } from './info-complementar.js'
 import { planoDeEscritorio } from './agente/planos.js'
 import type { InvoicePayload } from './validation.js'
 import type { SessionVerifier } from './session.js'
@@ -119,11 +120,24 @@ export type PedidoDoPainel = {
   valor: string
   codigo: string
   descricao: string
+  /** "Informações complementares (opcional)", já normalizada (info-complementar.ts); `null` = sem. */
+  informacoes_complementares: string | null
   /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
   retencao?: RetencaoDoPedido
 }
 
-export type CampoDoPainel = 'tenant_id' | 'documento' | 'nome' | 'email' | 'valor' | 'codigo' | 'descricao' | 'aliquota_iss' | 'inss' | 'retencao'
+export type CampoDoPainel =
+  | 'tenant_id'
+  | 'documento'
+  | 'nome'
+  | 'email'
+  | 'valor'
+  | 'codigo'
+  | 'descricao'
+  | 'informacoes_complementares'
+  | 'aliquota_iss'
+  | 'inss'
+  | 'retencao'
 
 export type LeituraDoPedido = { ok: true; pedido: PedidoDoPainel } | { ok: false; campo: CampoDoPainel; mensagem: string }
 
@@ -155,6 +169,8 @@ export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa,
   if (!/^\d{6}$/.test(codigo)) return falha('codigo', 'Escolha o código de serviço (6 dígitos da lista nacional).')
   const descricao = typeof corpo.descricao === 'string' ? corpo.descricao.trim() : ''
   if (descricao.length > 2000) return falha('descricao', 'A descrição passa de 2.000 caracteres.')
+  const info = lerInfoComplementar(corpo.informacoes_complementares)
+  if (!info.ok) return falha('informacoes_complementares', 'As informações complementares passam de 2.000 caracteres.')
 
   let retencao: RetencaoDoPedido | undefined
   if (typeof corpo.retem_iss === 'boolean' || typeof corpo.retem_inss === 'boolean') {
@@ -171,13 +187,17 @@ export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa,
     }
   }
 
-  return { ok: true, pedido: { tenantId, documento, nome, email, valor, codigo, descricao: descricao || DESCRICAO_PADRAO, retencao } }
+  return {
+    ok: true,
+    pedido: { tenantId, documento, nome, email, valor, codigo, descricao: descricao || DESCRICAO_PADRAO, informacoes_complementares: info.texto, retencao },
+  }
 }
 
 const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
   payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao }, p.valor, {
     retencao,
     endereco,
+    informacoes_complementares: p.informacoes_complementares,
   })
 
 /** Campo do formulário que mostra cada problema de retenção. */
@@ -348,6 +368,7 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       empresa: visao(emp),
       tomador: { documento: pedido.documento, tipo: tipoDoDocumento(pedido.documento), nome: pedido.nome, email: pedido.email },
       servico: { codigo: pedido.codigo, nome: nomeDoServico, descricao: pedido.descricao },
+      informacoes_complementares: pedido.informacoes_complementares,
       valor: pedido.valor,
       valor_texto: formatarReais(pedido.valor),
       retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),

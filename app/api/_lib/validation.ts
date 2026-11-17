@@ -5,6 +5,7 @@
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
 
 import { DpsInvalidError, parseNbs } from './dps-builder.js'
+import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import type { EnderecoNacional, Retencao } from './retencao.js'
 
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
@@ -16,6 +17,8 @@ export type InvoicePayload = {
   valor: string
   /** Só do agente e do painel (retencao.ts); a API `/v1/nfse` não aceita retenção. */
   retencao?: Retencao
+  /** `serv/infoCompl/xInfComp` (info-complementar.ts): dados bancários, observações. Ausente = sem o grupo. */
+  informacoes_complementares?: string
 }
 
 export type NewInvoice = { external_id: string; payload: InvoicePayload }
@@ -61,7 +64,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   if (!isObject(body)) return fail('o corpo deve ser um objeto JSON')
 
   const extra =
-    unknownField(body, ['external_id', 'tomador', 'servico', 'valor'], '') ??
+    unknownField(body, ['external_id', 'tomador', 'servico', 'valor', 'informacoes_complementares'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome'], 'tomador.') : null) ??
     (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib'], 'servico.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
@@ -101,6 +104,11 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     rtc[campo] = v
   }
 
+  const bruta = body.informacoes_complementares
+  if (bruta !== undefined && bruta !== null && typeof bruta !== 'string') return fail('informacoes_complementares deve ser texto')
+  const info = lerInfoComplementar(bruta)
+  if (!info.ok) return fail(`informacoes_complementares deve ter até ${MAX_INFO_COMPLEMENTAR} caracteres`)
+
   return {
     ok: true,
     value: {
@@ -109,6 +117,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
         tomador: cpf ? { cpf, nome } : { cnpj: cnpj as string, nome },
         servico: { codigo_servico_nacional: codigo, descricao, ...rtc },
         valor,
+        ...(info.texto ? { informacoes_complementares: info.texto } : {}),
       },
     },
   }

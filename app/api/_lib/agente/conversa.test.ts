@@ -10,6 +10,7 @@ import {
   createSelfServiceTenant,
   criarModelo,
   dropSelfServiceTenant,
+  ehPerguntaDeInfo,
   interpreteDouble,
   LINKS_DE_TESTE,
   mensagemDeArquivo,
@@ -81,9 +82,9 @@ function conversa(roteiro: Roteiro, extra: Partial<ConversaDeps> = {}, tokens?: 
     },
     enviar: (de: string, texto: string) => processarMensagem(deps, mensagemDeTexto(de, texto)),
     /** Respostas de WhatsApp a um número, na ordem. */
-    respostasPara: (para: string) => canais.whatsapps.filter((m) => m.para === para).map((m) => m.texto),
+    respostasPara: (para: string) => canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto)).map((m) => m.texto),
     ultimaPara(para: string) {
-      const todas = canais.whatsapps.filter((m) => m.para === para)
+      const todas = canais.whatsapps.filter((m) => m.para === para && !ehPerguntaDeInfo(m.texto))
       return todas.at(-1)?.texto ?? ''
     },
   }
@@ -311,6 +312,13 @@ describe('conversa no WhatsApp', () => {
     const c = conversa(ROTEIRO_PRONTIA)
 
     await c.enviar(s.ownerPhone, PEDIDO_PRONTIA)
+    // Logo depois da pergunta das informações complementares (17/11/2026), "Sim" é querer adicionar: pede o texto.
+    await c.enviar(s.ownerPhone, 'Sim')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.infoComplementarPedida)
+    expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
+    await c.enviar(s.ownerPhone, 'não')
+    expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.infoComplementarDispensada)
+    // Com a pergunta fechada, "Sim" ao resumo emite, como antes.
     await c.enviar(s.ownerPhone, 'Sim')
     expect(c.ultimaPara(s.ownerPhone)).toBe('Emitindo na Sefin. Em instantes mando a nota aqui e no seu e-mail.')
     const [pedido] = await pedidosDo(admin.db, s.tenant.id)
@@ -553,7 +561,7 @@ describe('conversa no WhatsApp', () => {
     let pedidos = await pedidosDo(admin.db, s.tenant.id)
     expect(pedidos).toHaveLength(1)
     expect(pedidos[0].status).toBe('awaiting_confirmation')
-    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['aliquota_iss', 'codigo_servico', 'descricao', 'documento', 'inss', 'inss_retido', 'intencao', 'iss_retido', 'modelo', 'prestador', 'servico', 'tomador', 'valor'])
+    expect(Object.keys(pedidos[0].parsed).sort()).toEqual(['aliquota_iss', 'codigo_servico', 'descricao', 'documento', 'informacoes_complementares', 'inss', 'inss_retido', 'intencao', 'iss_retido', 'modelo', 'prestador', 'servico', 'tomador', 'valor'])
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
     await c.enviar(s.ownerPhone, 'cancela a nota da Prontia já')
@@ -946,15 +954,15 @@ describe('conversa no WhatsApp', () => {
     await criarModelo(admin.db, s.tenant.id, PRONTIA_CPF)
     const c = conversa(ROTEIRO_PRONTIA, {}, { entrada: 120, saida: 30 })
 
-    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA) // pedido + resumo
+    await c.enviar(s.ownerPhone, PEDIDO_PRONTIA) // pedido + resumo + as duas da informação complementar
     await c.enviar(s.ownerPhone, 'confirmar') // confirmar + "Emitindo…"
     let [pedido] = await pedidosDo(admin.db, s.tenant.id)
-    expect(pedido).toMatchObject({ message_count: 4, ai_input_tokens: 120, ai_output_tokens: 30 })
+    expect(pedido).toMatchObject({ message_count: 6, ai_input_tokens: 120, ai_output_tokens: 30 })
 
     // A entrega da nota no WhatsApp também conta.
     await rodarWorker(servico.db, { sefin: createSefinClient({ transport: fakeSefin().transport }), tenantId: s.tenant.id, canais: c.canais, now: c.agora })
     ;[pedido] = await pedidosDo(admin.db, s.tenant.id)
-    expect(pedido).toMatchObject({ message_count: 5, ai_input_tokens: 120, ai_output_tokens: 30 })
+    expect(pedido).toMatchObject({ message_count: 7, ai_input_tokens: 120, ai_output_tokens: 30 })
 
     // Tomador novo: cada resposta da pessoa e do agente soma; a IA é chamada uma vez.
     const d = conversa({ 'nota pra Clínica Nova, 150 reais': { tomador: 'Clínica Nova', valor: '150.00', intencao: 'emitir' } }, {}, { entrada: 200, saida: 40 })
