@@ -85,7 +85,8 @@
 #fc-carregando,.nf-carregando{text-align:center;background:transparent}
 
 /* Minha conta */
-.nf-secoes{display:grid;gap:18px}
+/* minmax(0,1fr): a tabela de Relatórios (min-width 1080px) rola dentro do cartão em vez de alargar a página. */
+.nf-secoes{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 .nf-dados{display:grid;grid-template-columns:minmax(120px,max-content) 1fr;gap:8px 18px;margin:0 0 14px;font-size:15px;line-height:1.45}
 .nf-dados dt{color:var(--fi-texto-sec)}
 .nf-dados dd{margin:0;font-weight:600;overflow-wrap:anywhere}
