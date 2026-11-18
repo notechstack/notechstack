@@ -6,6 +6,7 @@
 
 import { DpsInvalidError, parseNbs } from './dps-builder.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
+import { lerMunicipioPrestacao } from './local-prestacao.js'
 import type { EnderecoNacional, Retencao } from './retencao.js'
 
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
@@ -13,7 +14,15 @@ export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nom
 export type InvoicePayload = {
   tomador: TomadorPayload & { email?: string; endereco?: EnderecoNacional }
   /** `nbs`, `c_ind_op` e `c_class_trib`: Reforma Tributária (IBS/CBS), opcionais; ver dps-builder.ts. */
-  servico: { codigo_servico_nacional: string; descricao: string; nbs?: string; c_ind_op?: string; c_class_trib?: string }
+  servico: {
+    codigo_servico_nacional: string
+    descricao: string
+    nbs?: string
+    c_ind_op?: string
+    c_class_trib?: string
+    /** `cLocPrestacao` (local-prestacao.ts): IBGE de 7 dígitos. Ausente = município da empresa. */
+    municipio_prestacao_ibge?: string
+  }
   valor: string
   /** Só do agente e do painel (retencao.ts); a API `/v1/nfse` não aceita retenção. */
   retencao?: Retencao
@@ -66,7 +75,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const extra =
     unknownField(body, ['external_id', 'tomador', 'servico', 'valor', 'informacoes_complementares'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome'], 'tomador.') : null) ??
-    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib'], 'servico.') : null)
+    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge'], 'servico.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
   const externalId = text(body.external_id, 1, 100)
@@ -96,13 +105,16 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     if (error instanceof DpsInvalidError) return fail(`servico.nbs: ${error.message}`)
     throw error
   }
-  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string } = nbs ? { nbs } : {}
+  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string } = nbs ? { nbs } : {}
   for (const campo of ['c_ind_op', 'c_class_trib'] as const) {
     const v = body.servico[campo]
     if (v === undefined || v === null || v === '') continue
     if (typeof v !== 'string' || !/^\d{6}$/.test(v)) return fail(`servico.${campo} deve ter 6 dígitos`)
     rtc[campo] = v
   }
+  const local = lerMunicipioPrestacao(body.servico.municipio_prestacao_ibge)
+  if (!local.ok) return fail(`servico.municipio_prestacao_ibge ${local.erro}`)
+  if (local.ibge) rtc.municipio_prestacao_ibge = local.ibge
 
   const bruta = body.informacoes_complementares
   if (bruta !== undefined && bruta !== null && typeof bruta !== 'string') return fail('informacoes_complementares deve ser texto')

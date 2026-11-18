@@ -23,9 +23,10 @@ export const SCHEMA_PARSED = {
     codigo_servico: TEXTO_OU_NULO,
     servico: TEXTO_OU_NULO,
     informacoes_complementares: TEXTO_OU_NULO,
+    municipio_prestacao: TEXTO_OU_NULO,
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'municipio_prestacao', 'intencao'],
   additionalProperties: false,
 }
 
@@ -46,6 +47,7 @@ export const INSTRUCOES = [
   '- codigo_servico: o código de serviço da lista nacional, quando a mensagem cita um ("código 04.03.01", "cód. 040301", "item 4.08.02"), como escrito; senão null. Não confunda com CPF, CNPJ, valor ou número de nota.',
   '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
   '- informacoes_complementares: o que a pessoa pede para ir nas informações complementares da nota, e não na descrição do serviço: dados bancários (banco, agência, conta, PIX), observações ("obs: …"), número de pedido ou contrato, ou o que vier depois de "informações complementares". Copie como está escrito, sem mudar nenhum número. Isso não entra em descricao. Senão null.',
+  '- municipio_prestacao: a cidade onde o serviço foi prestado, só quando a mensagem diz ("serviço prestado em Campinas", "prestado em Campinas/SP", "realizado em Santos", "local da prestação: Jundiaí"), com a UF se vier escrita ("Campinas/SP"); senão null. A cidade do cliente, do endereço ou da empresa não é o local da prestação. Isso não entra em descricao.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

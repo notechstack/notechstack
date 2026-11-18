@@ -14,6 +14,7 @@
 import type { Db, Queryable } from './db.js'
 import { errorResponse, json } from './http.js'
 import { createOrGetInvoice } from './invoices.js'
+import { issNoLocalDaPrestacao, motivoDoLocal, problemaDoLocal, resolverMunicipio, rotuloMunicipio } from './local-prestacao.js'
 import { logEvent } from './log.js'
 import type { CatalogoDeServicos } from './agente/catalogo-servicos.js'
 import { DESCRICAO_PADRAO } from './agente/conversa.js'
@@ -122,6 +123,8 @@ export type PedidoDoPainel = {
   descricao: string
   /** "Informações complementares (opcional)", já normalizada (info-complementar.ts); `null` = sem. */
   informacoes_complementares: string | null
+  /** "Local da prestação (opcional)": IBGE; `null` = o município da empresa (também quando é o mesmo). */
+  municipio_prestacao_ibge: string | null
   /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
   retencao?: RetencaoDoPedido
 }
@@ -135,6 +138,7 @@ export type CampoDoPainel =
   | 'codigo'
   | 'descricao'
   | 'informacoes_complementares'
+  | 'municipio_prestacao'
   | 'aliquota_iss'
   | 'inss'
   | 'retencao'
@@ -148,7 +152,10 @@ const texto = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').tr
  * como na planilha ("1.234,56", "1234.56"), código de 6 dígitos (vazio = o da empresa) e descrição até 2.000 (vazia =
  * a padrão do agente).
  */
-export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa, 'codigo_servico_nacional'> | null): LeituraDoPedido {
+export function lerPedido(
+  corpo: Record<string, unknown>,
+  empresa: (Pick<Empresa, 'codigo_servico_nacional'> & Partial<Pick<Empresa, 'codigo_municipio_ibge'>>) | null,
+): LeituraDoPedido {
   const falha = (campo: CampoDoPainel, mensagem: string): LeituraDoPedido => ({ ok: false, campo, mensagem })
   const tenantId = texto(corpo.tenant_id)
   if (!UUID.test(tenantId) || !empresa) return falha('tenant_id', 'Escolha a empresa que emite a nota.')
@@ -171,6 +178,23 @@ export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa,
   if (descricao.length > 2000) return falha('descricao', 'A descrição passa de 2.000 caracteres.')
   const info = lerInfoComplementar(corpo.informacoes_complementares)
   if (!info.ok) return falha('informacoes_complementares', 'As informações complementares passam de 2.000 caracteres.')
+  // Local da prestação: "Campinas/SP" (da lista do campo) ou o código IBGE; o mesmo da empresa fica de fora.
+  const localEscrito = texto(corpo.municipio_prestacao)
+  let municipio_prestacao_ibge: string | null = null
+  if (localEscrito) {
+    const r = resolverMunicipio(localEscrito)
+    if (!r.ok) {
+      return falha(
+        'municipio_prestacao',
+        r.motivo === 'ambiguo'
+          ? `Há ${r.opcoes.length} cidades chamadas ${r.nome}. Escolha da lista, com a UF (por exemplo ${r.nome}/${r.opcoes[0].uf}).`
+          : 'Cidade não encontrada. Escolha da lista, com a UF (por exemplo Campinas/SP), ou deixe em branco.',
+      )
+    }
+    municipio_prestacao_ibge = r.municipio.ibge === empresa.codigo_municipio_ibge ? null : r.municipio.ibge
+  }
+  const barrado = problemaDoLocal({ codigo, municipioPrestacao: municipio_prestacao_ibge })
+  if (barrado) return falha('municipio_prestacao', `Não dá para emitir com outro local da prestação: ${motivoDoLocal(barrado)}.`)
 
   let retencao: RetencaoDoPedido | undefined
   if (typeof corpo.retem_iss === 'boolean' || typeof corpo.retem_inss === 'boolean') {
@@ -189,12 +213,23 @@ export function lerPedido(corpo: Record<string, unknown>, empresa: Pick<Empresa,
 
   return {
     ok: true,
-    pedido: { tenantId, documento, nome, email, valor, codigo, descricao: descricao || DESCRICAO_PADRAO, informacoes_complementares: info.texto, retencao },
+    pedido: {
+      tenantId,
+      documento,
+      nome,
+      email,
+      valor,
+      codigo,
+      descricao: descricao || DESCRICAO_PADRAO,
+      informacoes_complementares: info.texto,
+      municipio_prestacao_ibge,
+      retencao,
+    },
   }
 }
 
 const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
-  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao }, p.valor, {
+  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge }, p.valor, {
     retencao,
     endereco,
     informacoes_complementares: p.informacoes_complementares,
@@ -369,6 +404,9 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       tomador: { documento: pedido.documento, tipo: tipoDoDocumento(pedido.documento), nome: pedido.nome, email: pedido.email },
       servico: { codigo: pedido.codigo, nome: nomeDoServico, descricao: pedido.descricao },
       informacoes_complementares: pedido.informacoes_complementares,
+      local_prestacao: pedido.municipio_prestacao_ibge
+        ? { ibge: pedido.municipio_prestacao_ibge, nome: rotuloMunicipio(pedido.municipio_prestacao_ibge), iss_no_local: issNoLocalDaPrestacao(pedido.codigo) }
+        : null,
       valor: pedido.valor,
       valor_texto: formatarReais(pedido.valor),
       retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),

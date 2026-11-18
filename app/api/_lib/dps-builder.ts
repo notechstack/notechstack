@@ -13,9 +13,13 @@
 // - O grupo IBSCBS é opcional para Simples e MEI em 2026 (Anexo I: obrigatório só a partir de 2027) e,
 //   se enviado, exige todos os códigos (E0322 etc.). Fica atrás de `ibscbs` (desligado por padrão) e só
 //   sai quando NBS, cIndOp e cClassTrib estão resolvidos; senão a DPS sai sem o grupo, como hoje.
+// - `servico.municipio_prestacao_ibge` (local-prestacao.ts) vira `serv/locPrest/cLocPrestacao`; sem ele, o município da
+//   empresa, como sempre. A Sefin calcula a incidência do ISS pelo código (E1317); com o local informado, o IBSCBS só
+//   sai se o `cIndOp` vier na nota.
 // - `informacoes_complementares` do payload vira `serv/infoCompl/xInfComp` (info-complementar.ts), o último filho
 //   de `serv` nos dois leiautes. Sem o campo, a DPS sai igual à de antes, byte a byte.
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
+import { lerMunicipioPrestacao } from './local-prestacao.js'
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
 import { nbsExiste, resolverRtc, type Rtc } from './rtc/resolver.js'
 import type { SefinTenant } from './sefin.js'
@@ -37,6 +41,8 @@ export type DpsPayload = {
     nbs: string | null
     c_ind_op: string | null
     c_class_trib: string | null
+    /** `cLocPrestacao` (local-prestacao.ts): IBGE de 7 dígitos; `null` = município da empresa. */
+    municipio_prestacao_ibge: string | null
   }
   valor: string
   /** Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. */
@@ -102,11 +108,18 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
       nbs: parseNbs(payload.servico.nbs),
       c_ind_op: codigo6(payload.servico.c_ind_op, 'c_ind_op (cIndOp)'),
       c_class_trib: codigo6(payload.servico.c_class_trib, 'c_class_trib (cClassTrib)'),
+      municipio_prestacao_ibge: parseMunicipioPrestacao(payload.servico.municipio_prestacao_ibge),
     },
     valor,
     retencao: parseRetencao(payload.retencao, valor),
     informacoes_complementares: parseInfoComplementar(payload.informacoes_complementares),
   }
+}
+
+function parseMunicipioPrestacao(bruto: unknown): string | null {
+  const lido = lerMunicipioPrestacao(bruto)
+  if (!lido.ok) throw new DpsInvalidError(`municipio_prestacao_ibge (cLocPrestacao) ${lido.erro}`)
+  return lido.ibge
 }
 
 function parseInfoComplementar(bruto: unknown): string | null {
@@ -318,7 +331,11 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   })
   // A NBS informada (na nota ou como padrão da empresa) vai sempre; a da tabela, só junto do IBSCBS.
   const cNBS = rtc.nbs && (rtc.nbs.origem !== 'tabela' || opcoes.ibscbs) ? leaf('cNBS', rtc.nbs.codigo) : null
-  const ibscbs = opcoes.ibscbs && 'cst' in rtc.ibscbs ? grupoIbsCbs(leiaute, rtc.ibscbs) : null
+  // Outro local da prestação: o cIndOp da tabela supõe o local padrão, e o local muda a localidade do IBS/CBS (E1521,
+  // Anexo B). Sem o cIndOp informado na nota, a DPS sai sem o grupo, que é opcional para Simples e MEI em 2026.
+  const local = data.servico.municipio_prestacao_ibge
+  const ibscbsPermitido = !local || data.servico.c_ind_op !== null
+  const ibscbs = opcoes.ibscbs && ibscbsPermitido && 'cst' in rtc.ibscbs ? grupoIbsCbs(leiaute, rtc.ibscbs) : null
   const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
   const xDescServ = leaf('xDescServ', data.servico.descricao)
   const cServ = el('cServ', leiaute === 'nt009' ? [cTribNac, cNBS, xDescServ] : [cTribNac, xDescServ, cNBS])
@@ -345,7 +362,7 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
       ]),
       el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]),
       el('serv', [
-        el('locPrest', leaf('cLocPrestacao', ibge)),
+        el('locPrest', leaf('cLocPrestacao', local ?? ibge)),
         cServ,
         infoCompl,
       ]),

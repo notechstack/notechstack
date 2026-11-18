@@ -18,7 +18,8 @@ export function numeroDaNota(nota: { xml_nfse: string | null; dps_numero: string
 }
 
 export type TomadorDoPedido = { documento: string; nome: string; email: string | null }
-export type ServicoDoPedido = { codigo: string; descricao: string }
+/** `municipio_prestacao_ibge`: local da prestação (local-prestacao.ts); ausente ou `null` = município da empresa. */
+export type ServicoDoPedido = { codigo: string; descricao: string; municipio_prestacao_ibge?: string | null }
 
 /**
  * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção, e `informacoes_complementares`
@@ -38,7 +39,11 @@ export function payloadDaNota(
       ...(tomador.email ? { email: tomador.email } : {}),
       ...(retencao?.iss && extra.endereco ? { endereco: extra.endereco } : {}),
     },
-    servico: { codigo_servico_nacional: servico.codigo, descricao: servico.descricao },
+    servico: {
+      codigo_servico_nacional: servico.codigo,
+      descricao: servico.descricao,
+      ...(servico.municipio_prestacao_ibge ? { municipio_prestacao_ibge: servico.municipio_prestacao_ibge } : {}),
+    },
     valor,
     ...(retencao ? { retencao } : {}),
     ...(extra.informacoes_complementares ? { informacoes_complementares: extra.informacoes_complementares } : {}),

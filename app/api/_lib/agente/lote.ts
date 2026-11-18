@@ -9,6 +9,7 @@ import { unzipSync } from 'fflate'
 import { readSheet } from 'read-excel-file/universal'
 import type { Db, Queryable } from '../db.js'
 import { createOrGetInvoice } from '../invoices.js'
+import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
 import {
@@ -56,7 +57,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 
 // `iss_retido` e `inss_retido` (Lucca, 16/11/2026) são opcionais: a planilha de 6 colunas continua valendo, e a coluna
 // vazia deixa o padrão de retenção da empresa. `codigo_servico` (Lucca, 17/11/2026), também opcional: a nota sai com o
-// código da linha; vazia, com o do modelo do tomador ou, sem modelo, com o da empresa.
+// código da linha; vazia, com o do modelo do tomador ou, sem modelo, com o da empresa. `municipio_prestacao` (Lucca,
+// 18/11/2026), opcional: o local da prestação (cLocPrestacao), por nome com UF ("Campinas/SP") ou código IBGE; vazia, o
+// município da empresa. O cabeçalho `ibge_prestacao` também vale.
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -67,6 +70,7 @@ export const CAMPOS = [
   'iss_retido',
   'inss_retido',
   'codigo_servico',
+  'municipio_prestacao',
 ] as const
 export type Campo = (typeof CAMPOS)[number]
 
@@ -85,6 +89,9 @@ export const CODIGOS_DE_PROBLEMA = [
   'CODIGO_SERVICO_INVALIDO',
   'CODIGO_SERVICO_FORA_DA_LISTA',
   'CODIGO_SERVICO_FALTANDO',
+  'MUNICIPIO_PRESTACAO_INVALIDO',
+  'MUNICIPIO_PRESTACAO_AMBIGUO',
+  ...PROBLEMAS_DE_LOCAL,
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
 
@@ -307,7 +314,10 @@ export const normalizarCabecalho = (texto: string) =>
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
-const CAMPO_DO_CABECALHO = new Map<string, Campo>(CAMPOS.map((campo) => [normalizarCabecalho(campo), campo]))
+const CAMPO_DO_CABECALHO = new Map<string, Campo>([
+  ...CAMPOS.map((campo): [string, Campo] => [normalizarCabecalho(campo), campo]),
+  [normalizarCabecalho('ibge_prestacao'), 'municipio_prestacao'],
+])
 
 export const textoDaCelula = (celula: Celula | undefined): string => {
   if (celula === null || celula === undefined) return ''
@@ -378,7 +388,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional) e codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa).',
+    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa).',
     `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   ]
     .filter(Boolean)
@@ -475,6 +485,8 @@ export type Empresa = {
   razao_social: string
   active: boolean
   codigo_servico_nacional: string | null
+  /** Município da empresa (IBGE). Ausente = não conferido. */
+  codigo_municipio_ibge?: string | null
   /** 'mei' ou 'simples' (MEI não tem retenção). Ausente = não conferido. */
   regime?: string | null
   /** Padrão de retenção da empresa (`fiscal_tenants`); ausente = sem retenção. */
@@ -557,7 +569,19 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     const modelo = ctx.modelos.get(`${empresa.id}:${documento}`)
     const codigo = codigoDaLinha ?? modelo?.codigo ?? empresa.codigo_servico_nacional ?? ''
     if (!/^\d{6}$/.test(codigo)) return falha('CODIGO_SERVICO_FALTANDO', empresa.id)
-    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO }
+    // Local da prestação: nome com UF ou código IBGE; o mesmo da sede fica de fora (a nota sai como antes).
+    const localEscrito = textoDaCelula(celulas.municipio_prestacao)
+    let municipioPrestacao: string | null = null
+    if (localEscrito) {
+      const r = resolverMunicipio(localEscrito)
+      if (!r.ok) return falha(r.motivo === 'ambiguo' ? 'MUNICIPIO_PRESTACAO_AMBIGUO' : 'MUNICIPIO_PRESTACAO_INVALIDO', empresa.id)
+      municipioPrestacao = r.municipio.ibge === empresa.codigo_municipio_ibge ? null : r.municipio.ibge
+    }
+    if (municipioPrestacao) {
+      const barrado = problemaDoLocal({ codigo, municipioPrestacao })
+      if (barrado) return falha(barrado, empresa.id)
+    }
+    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao }
     // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
     const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
@@ -668,6 +692,13 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'o codigo_servico não está na lista nacional de serviços: confira o código'
     case 'CODIGO_SERVICO_FALTANDO':
       return `${empresa} não tem código de serviço padrão: preencha a coluna codigo_servico`
+    case 'MUNICIPIO_PRESTACAO_INVALIDO':
+      return 'municipio_prestacao não encontrado: escreva a cidade com a UF, como Campinas/SP, ou o código IBGE de 7 dígitos'
+    case 'LOCAL_EXIGE_OBRA':
+    case 'LOCAL_EXIGE_EVENTO':
+      return motivoDoLocal(codigo)
+    case 'MUNICIPIO_PRESTACAO_AMBIGUO':
+      return 'há mais de uma cidade com esse nome em municipio_prestacao: escreva com a UF, como Bom Jesus/PI'
     case 'RETENCAO_MEI':
     case 'ISS_RETIDO_CPF':
     case 'ALIQUOTA_ISS_FALTANDO':
@@ -809,7 +840,7 @@ async function donoDoTenant(db: Queryable, tenantId: string): Promise<Dono | nul
 
 export async function empresasDoDono(db: Queryable, donoId: string): Promise<Empresa[]> {
   const { rows } = await db.query<Omit<Empresa, 'retencao'> & Record<string, unknown>>(
-    `select t.id, t.cnpj, t.razao_social, t.active, t.codigo_servico_nacional, t.regime, ${COLUNAS_DA_RETENCAO.replace(/(^|, )/g, '$1t.')}
+    `select t.id, t.cnpj, t.razao_social, t.active, t.codigo_servico_nacional, t.codigo_municipio_ibge, t.regime, ${COLUNAS_DA_RETENCAO.replace(/(^|, )/g, '$1t.')}
        from nofiscal.fiscal_tenants t
       where t.id = $1 or t.escritorio_tenant_id = $1
       order by t.id = $1 desc, t.razao_social`,
@@ -821,6 +852,7 @@ export async function empresasDoDono(db: Queryable, donoId: string): Promise<Emp
     razao_social: r.razao_social,
     active: r.active,
     codigo_servico_nacional: r.codigo_servico_nacional,
+    codigo_municipio_ibge: r.codigo_municipio_ibge ?? null,
     regime: r.regime ?? null,
     retencao: padraoDaLinha(r as Parameters<typeof padraoDaLinha>[0]),
   }))

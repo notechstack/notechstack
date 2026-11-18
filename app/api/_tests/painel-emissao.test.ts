@@ -158,6 +158,7 @@ describe('nota avulsa', () => {
       tomador: { documento: CPF, tipo: 'cpf', nome: 'Maria Tomadora', email: 'maria@tomador.test' },
       servico: { codigo: '010701', nome: 'Suporte técnico em informática', descricao: 'Prestação de serviços' },
       informacoes_complementares: null,
+      local_prestacao: null,
       valor: '1234.50',
       valor_texto: 'R$ 1.234,50',
       retencao: null,

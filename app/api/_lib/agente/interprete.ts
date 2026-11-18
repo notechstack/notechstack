@@ -42,6 +42,11 @@ export type Parsed = {
    * Com marcador no texto ("Dados bancários:", "Obs:"), quem lê é o código (info-complementar.ts), não a IA.
    */
   informacoes_complementares?: string | null
+  /**
+   * Local da prestação como escrito ("Campinas", "Campinas/SP"), quando o pedido diz onde o serviço foi prestado
+   * (Lucca, 18/11/2026). Quem acha o código IBGE é o código (local-prestacao.ts).
+   */
+  municipio_prestacao?: string | null
   intencao: Intencao
 }
 
@@ -94,6 +99,7 @@ export function validarParsed(bruto: unknown): Parsed {
     servico: texto(obj.servico, 80),
     // Sem corte: acima de 2.000 caracteres a conversa pede um texto mais curto.
     informacoes_complementares: normalizarInfoComplementar(obj.informacoes_complementares),
+    municipio_prestacao: texto(obj.municipio_prestacao, 80),
     intencao,
   }
 }
