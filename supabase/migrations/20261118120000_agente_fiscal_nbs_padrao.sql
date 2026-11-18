@@ -46,133 +46,14 @@ begin
   end if;
 
   v_codigo := p_dados ->> 'codigo_servico_nacional';
-  if v_codigo is null or v_codigo !~ '^[0-9]{6}
-  -- MEI não informa o percentual do Simples na DPS (E0710): fica nulo e o pedido não precisa trazê-lo.
-  if v_t.regime = 'mei' then
-    v_pct := null;
-  else
-    v_pct_txt := p_dados ->> 'p_tot_trib_sn';
-    if v_pct_txt is null or v_pct_txt !~ '^[0-9]{1,3}(\.[0-9]{1,2})?$' or v_pct_txt::numeric > 100 then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'p_tot_trib_sn');
-    end if;
-    v_pct := v_pct_txt::numeric;
-  end if;
-
-  v_mexe_contador := p_dados ? 'contador_email';
-  v_contador := case when v_mexe_contador then nullif(btrim(coalesce(p_dados ->> 'contador_email', '')), '') end;
-  -- Chave ausente mantém; null apaga.
-  v_mexe_resumo := p_dados ? 'resumo';
-
-  -- Plano antes do formato: no Inicial, contador e resumo não existem.
-  if not nofiscal.plano_completo(v_t.plan) then
-    if v_mexe_resumo and jsonb_typeof(p_dados -> 'resumo') <> 'null' then
-      return jsonb_build_object('ok', false, 'erro', 'PLANO_SEM_RESUMO');
-    end if;
-    if v_contador is not null then
-      return jsonb_build_object('ok', false, 'erro', 'PLANO_SEM_CONTADOR');
-    end if;
-  end if;
-
-  if v_contador is not null
-     and (length(v_contador) > 254 or v_contador !~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$') then
-    return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'contador_email');
-  end if;
-
-  if v_mexe_resumo and jsonb_typeof(p_dados -> 'resumo') <> 'null' then
-    if jsonb_typeof(p_dados -> 'resumo') <> 'object' then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-    v_freq := p_dados -> 'resumo' ->> 'frequencia';
-    v_dia_txt := p_dados -> 'resumo' ->> 'dia';
-    if v_dia_txt is null or v_dia_txt !~ '^[0-9]{1,2}$' then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-    v_dia := v_dia_txt::integer;
-    if not ((v_freq = 'mensal' and v_dia between 1 and 28) or (v_freq = 'semanal' and v_dia between 1 and 7)) then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-  end if;
-
-  update nofiscal.fiscal_tenants
-     set codigo_servico_nacional = v_codigo,
-         p_tot_trib_sn = v_pct,
-         nbs_padrao = case when v_mexe_nbs then v_nbs else nbs_padrao end,
-         contador_email = case when v_mexe_contador then v_contador else contador_email end,
-         resumo_frequencia = case when v_mexe_resumo then v_freq else resumo_frequencia end,
-         resumo_dia = case when v_mexe_resumo then v_dia::smallint else resumo_dia end,
-         onboarding_etapa = case when onboarding_etapa = 'dados_fiscais' then 'clientes' else onboarding_etapa end,
-         updated_at = now()
-   where id = v_t.id;
-
-  return jsonb_build_object('ok', true);
-end;
-$$; then
+  if v_codigo is null or v_codigo !~ '^[0-9]{6}$' then
     return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'codigo_servico_nacional');
   end if;
 
   -- NBS padrão (opcional): chave ausente mantém; null ou '' apaga. A lista nacional (NBS 2.0) quem confere é a fiscal-conta.
   v_mexe_nbs := p_dados ? 'nbs_padrao';
   v_nbs := case when v_mexe_nbs then nullif(btrim(coalesce(p_dados ->> 'nbs_padrao', '')), '') end;
-  if v_nbs is not null and v_nbs !~ '^[0-9]{9}
-  -- MEI não informa o percentual do Simples na DPS (E0710): fica nulo e o pedido não precisa trazê-lo.
-  if v_t.regime = 'mei' then
-    v_pct := null;
-  else
-    v_pct_txt := p_dados ->> 'p_tot_trib_sn';
-    if v_pct_txt is null or v_pct_txt !~ '^[0-9]{1,3}(\.[0-9]{1,2})?$' or v_pct_txt::numeric > 100 then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'p_tot_trib_sn');
-    end if;
-    v_pct := v_pct_txt::numeric;
-  end if;
-
-  v_mexe_contador := p_dados ? 'contador_email';
-  v_contador := case when v_mexe_contador then nullif(btrim(coalesce(p_dados ->> 'contador_email', '')), '') end;
-  -- Chave ausente mantém; null apaga.
-  v_mexe_resumo := p_dados ? 'resumo';
-
-  -- Plano antes do formato: no Inicial, contador e resumo não existem.
-  if not nofiscal.plano_completo(v_t.plan) then
-    if v_mexe_resumo and jsonb_typeof(p_dados -> 'resumo') <> 'null' then
-      return jsonb_build_object('ok', false, 'erro', 'PLANO_SEM_RESUMO');
-    end if;
-    if v_contador is not null then
-      return jsonb_build_object('ok', false, 'erro', 'PLANO_SEM_CONTADOR');
-    end if;
-  end if;
-
-  if v_contador is not null
-     and (length(v_contador) > 254 or v_contador !~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$') then
-    return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'contador_email');
-  end if;
-
-  if v_mexe_resumo and jsonb_typeof(p_dados -> 'resumo') <> 'null' then
-    if jsonb_typeof(p_dados -> 'resumo') <> 'object' then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-    v_freq := p_dados -> 'resumo' ->> 'frequencia';
-    v_dia_txt := p_dados -> 'resumo' ->> 'dia';
-    if v_dia_txt is null or v_dia_txt !~ '^[0-9]{1,2}$' then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-    v_dia := v_dia_txt::integer;
-    if not ((v_freq = 'mensal' and v_dia between 1 and 28) or (v_freq = 'semanal' and v_dia between 1 and 7)) then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'resumo');
-    end if;
-  end if;
-
-  update nofiscal.fiscal_tenants
-     set codigo_servico_nacional = v_codigo,
-         p_tot_trib_sn = v_pct,
-         contador_email = case when v_mexe_contador then v_contador else contador_email end,
-         resumo_frequencia = case when v_mexe_resumo then v_freq else resumo_frequencia end,
-         resumo_dia = case when v_mexe_resumo then v_dia::smallint else resumo_dia end,
-         onboarding_etapa = case when onboarding_etapa = 'dados_fiscais' then 'clientes' else onboarding_etapa end,
-         updated_at = now()
-   where id = v_t.id;
-
-  return jsonb_build_object('ok', true);
-end;
-$$; then
+  if v_nbs is not null and v_nbs !~ '^[0-9]{9}$' then
     return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'nbs_padrao');
   end if;
 
@@ -225,6 +106,7 @@ $$; then
   update nofiscal.fiscal_tenants
      set codigo_servico_nacional = v_codigo,
          p_tot_trib_sn = v_pct,
+         nbs_padrao = case when v_mexe_nbs then v_nbs else nbs_padrao end,
          contador_email = case when v_mexe_contador then v_contador else contador_email end,
          resumo_frequencia = case when v_mexe_resumo then v_freq else resumo_frequencia end,
          resumo_dia = case when v_mexe_resumo then v_dia::smallint else resumo_dia end,
@@ -259,59 +141,14 @@ begin
     return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'codigo_servico_nacional');
   end if;
   v_codigo := p_dados ->> 'codigo_servico_nacional';
-  if v_codigo is null or v_codigo !~ '^[0-9]{6}  if v_t.regime = 'mei' then
-    v_pct := null;
-  else
-    v_pct_txt := p_dados ->> 'p_tot_trib_sn';
-    if v_pct_txt is null or v_pct_txt !~ '^[0-9]{1,3}(\.[0-9]{1,2})?$' or v_pct_txt::numeric > 100 then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'p_tot_trib_sn');
-    end if;
-    v_pct := v_pct_txt::numeric;
-  end if;
-
-  update nofiscal.fiscal_tenants
-     set codigo_servico_nacional = v_codigo,
-         p_tot_trib_sn = v_pct,
-         nbs_padrao = case when v_mexe_nbs then v_nbs else nbs_padrao end,
-         onboarding_etapa = case
-           -- Empresa do escritório: não passa por clientes nem ativação (o WhatsApp é o da conta-mãe).
-           when escritorio_tenant_id is not null then 'concluido'
-           when onboarding_etapa = 'dados_fiscais' then 'clientes'
-           else onboarding_etapa end,
-         updated_at = now()
-   where id = p_tenant_id;
-  return jsonb_build_object('ok', true);
-end;
-$$; then
+  if v_codigo is null or v_codigo !~ '^[0-9]{6}$' then
     return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'codigo_servico_nacional');
   end if;
 
   -- NBS padrão (opcional): chave ausente mantém; null ou '' apaga. A lista nacional (NBS 2.0) quem confere é a fiscal-conta.
   v_mexe_nbs := p_dados ? 'nbs_padrao';
   v_nbs := case when v_mexe_nbs then nullif(btrim(coalesce(p_dados ->> 'nbs_padrao', '')), '') end;
-  if v_nbs is not null and v_nbs !~ '^[0-9]{9}  if v_t.regime = 'mei' then
-    v_pct := null;
-  else
-    v_pct_txt := p_dados ->> 'p_tot_trib_sn';
-    if v_pct_txt is null or v_pct_txt !~ '^[0-9]{1,3}(\.[0-9]{1,2})?$' or v_pct_txt::numeric > 100 then
-      return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'p_tot_trib_sn');
-    end if;
-    v_pct := v_pct_txt::numeric;
-  end if;
-
-  update nofiscal.fiscal_tenants
-     set codigo_servico_nacional = v_codigo,
-         p_tot_trib_sn = v_pct,
-         onboarding_etapa = case
-           -- Empresa do escritório: não passa por clientes nem ativação (o WhatsApp é o da conta-mãe).
-           when escritorio_tenant_id is not null then 'concluido'
-           when onboarding_etapa = 'dados_fiscais' then 'clientes'
-           else onboarding_etapa end,
-         updated_at = now()
-   where id = p_tenant_id;
-  return jsonb_build_object('ok', true);
-end;
-$$; then
+  if v_nbs is not null and v_nbs !~ '^[0-9]{9}$' then
     return jsonb_build_object('ok', false, 'erro', 'DADOS_FISCAIS_INVALIDOS', 'campo', 'nbs_padrao');
   end if;
   if v_t.regime = 'mei' then
@@ -327,6 +164,7 @@ $$; then
   update nofiscal.fiscal_tenants
      set codigo_servico_nacional = v_codigo,
          p_tot_trib_sn = v_pct,
+         nbs_padrao = case when v_mexe_nbs then v_nbs else nbs_padrao end,
          onboarding_etapa = case
            -- Empresa do escritório: não passa por clientes nem ativação (o WhatsApp é o da conta-mãe).
            when escritorio_tenant_id is not null then 'concluido'
