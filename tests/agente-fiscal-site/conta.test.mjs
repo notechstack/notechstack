@@ -156,6 +156,17 @@ test('a conta envia um certificado novo e altera os dados fiscais', async () => 
   radio.checked = true;
   radio.dispatchEvent(new p.window.Event('change', { bubbles: true }));
   await p.preencher('fa-percentual', '4,5');
+  // NBS padrão: fora do formato nem sai do navegador; com pontos, vai só com os 9 dígitos; em branco, null (apaga).
+  await p.preencher('fa-nbs', '1.1502.10');
   await p.enviar('fa-form-fiscal');
-  assert.deepEqual(p.rede.de('fiscal-conta:configurar')[0].corpo, { acao: 'configurar', codigo_servico_nacional: '040102', p_tot_trib_sn: 4.5, contador_email: null, resumo: null });
+  assert.equal(p.rede.de('fiscal-conta:configurar').length, 0);
+  assert.match(p.texto('fa-nbs-erro'), /9 números/);
+  await p.preencher('fa-nbs', '');
+  await p.enviar('fa-form-fiscal');
+  assert.deepEqual(p.rede.de('fiscal-conta:configurar')[0].corpo, { acao: 'configurar', codigo_servico_nacional: '040102', nbs_padrao: null, p_tot_trib_sn: 4.5, contador_email: null, resumo: null });
+  await p.clicar('fa-abrir-fiscal');
+  await p.preencher('fa-percentual', '4,5');
+  await p.preencher('fa-nbs', '1.1502.10.00');
+  await p.enviar('fa-form-fiscal');
+  assert.equal(p.rede.de('fiscal-conta:configurar')[1].corpo.nbs_padrao, '115021000');
 });

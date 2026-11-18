@@ -18,6 +18,8 @@ export type SefinTenant = {
   ambiente: Ambiente
   /** `totTrib/pTotTribSN` da DPS (Landing, lote 2b); `numeric` chega do `pg` como texto. */
   p_tot_trib_sn: string | null
+  /** NBS padrão da empresa (`fiscal_tenants.nbs_padrao`): vale quando a nota não informa `servico.nbs`. */
+  nbs_padrao?: string | null
 }
 
 export type SefinInvoice = {

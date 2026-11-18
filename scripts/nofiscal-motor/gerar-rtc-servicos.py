@@ -20,6 +20,8 @@ import openpyxl
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SAIDA = os.path.join(RAIZ, 'app', 'api', '_lib', 'rtc', 'servicos-rtc.ts')
+# A mesma lista de NBS para a fiscal-conta validar o NBS padrão da empresa (edge function, sem rede).
+SAIDA_NBS_EDGE = os.path.join(RAIZ, 'supabase', 'functions', '_shared', 'fiscal', 'nbs.ts')
 CODIGOS = os.path.join(RAIZ, 'agentes', 'fiscal', 'dados', 'codigos-servico.json')
 
 
@@ -101,6 +103,13 @@ def main(anexo_viii, anexo_b):
         f.write('export const TABELA_RTC: TabelaRtc = ')
         json.dump(saida, f, ensure_ascii=False, separators=(', ', ': '))
         f.write('\n')
+    with open(SAIDA_NBS_EDGE, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('// Gerado por scripts/nofiscal-motor/gerar-rtc-servicos.py; não editar à mão.\n')
+        f.write('// Lista nacional da NBS 2.0 (Anexo B, aba LISTA.NBS_v2.0, só o nível folha de 9 dígitos), a mesma de\n')
+        f.write('// app/api/_lib/rtc/servicos-rtc.ts. A Sefin recusa NBS fora dela (E0316).\n')
+        f.write('export const NBS_VALIDAS: ReadonlySet<string> = new Set(')
+        json.dump(sorted(nbs_validas), f, separators=(',', ':'))
+        f.write(');\n')
     unica = sum(1 for s in servicos.values() if len(s['nbs']) == 1)
     print(f'{len(servicos)} de {len(codigos)} cTribNac com linha no Anexo VIII; {unica} com uma NBS só; {len(nbs_validas)} NBS válidas')
 

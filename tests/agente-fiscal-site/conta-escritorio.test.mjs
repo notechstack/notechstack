@@ -196,8 +196,9 @@ test('Minhas empresas: situações e ações por linha', async () => {
   assert.ok(opcao, 'a busca mostra o código');
   opcao.checked = true;
   opcao.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  await p.preencher('fa-emp-nbs', '1.1502.10.00');
   await p.enviar('fa-form-emp-fiscal');
-  assert.deepEqual(p.rede.de('fiscal-conta:empresa_configurar')[0].corpo, { acao: 'empresa_configurar', tenant_id: EMP_MEI, codigo_servico_nacional: '040101' });
+  assert.deepEqual(p.rede.de('fiscal-conta:empresa_configurar')[0].corpo, { acao: 'empresa_configurar', tenant_id: EMP_MEI, codigo_servico_nacional: '040101', nbs_padrao: '115021000' });
   assert.equal(p.texto('fa-aviso-empresas'), 'Dados fiscais de JOANA MEI salvos.');
 
   // Simples: com o % (já preenchido) e o código atual escolhido.
@@ -207,7 +208,7 @@ test('Minhas empresas: situações e ações por linha', async () => {
   await p.esvaziar(40);
   await p.preencher('fa-emp-percentual', '7');
   await p.enviar('fa-form-emp-fiscal');
-  assert.deepEqual(p.rede.de('fiscal-conta:empresa_configurar')[1].corpo, { acao: 'empresa_configurar', tenant_id: EMP_PRONTA, codigo_servico_nacional: '170201', p_tot_trib_sn: 7 });
+  assert.deepEqual(p.rede.de('fiscal-conta:empresa_configurar')[1].corpo, { acao: 'empresa_configurar', tenant_id: EMP_PRONTA, codigo_servico_nacional: '170201', nbs_padrao: null, p_tot_trib_sn: 7 });
 
   // Desativar pergunta antes; reativar vai direto.
   await p.clicar(botaoDe(p, EMP_PRONTA, 'desativar'));

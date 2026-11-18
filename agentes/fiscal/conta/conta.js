@@ -97,6 +97,11 @@
       return '<dt>' + nf.esc(p[0]) + '</dt><dd>' + nf.esc(p[1] == null || p[1] === '' ? '—' : p[1]) + '</dd>';
     }).join('');
   }
+  /* NBS padrão: 9 dígitos, mostrada como 1.1502.10.00. A lista nacional (NBS 2.0) quem confere é a fiscal-conta. */
+  function formatarNbs(n) { var d = String(n || '').replace(/\D/g, ''); return d.length === 9 ? d.slice(0, 1) + '.' + d.slice(1, 5) + '.' + d.slice(5, 7) + '.' + d.slice(7) : d; }
+  /** '' quando em branco, os 9 dígitos quando no formato, null quando fora dele. */
+  function lerNbs(texto) { var t = String(texto || '').replace(/[.\s]/g, ''); return t === '' ? '' : /^\d{9}$/.test(t) ? t : null; }
+  var MSG_NBS = 'A NBS tem 9 números (ex.: 1.1502.10.00). Deixe em branco se não usar.';
   var SEMANA = ['', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
   function textoResumo(r) {
     if (!r || !r.frequencia) return 'Não recebe';
@@ -139,6 +144,7 @@
     $('fa-fiscal').innerHTML = linhas([
       ['Código de serviço', f.codigo_servico_nacional ? nf.formatarCodigo(f.codigo_servico_nacional) : ''],
       ['Tributos do Simples', ehMei() ? undefined : f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') + '%' : ''],
+      ['NBS padrão', f.nbs_padrao ? formatarNbs(f.nbs_padrao) : 'Não definida'],
       ['Contador', pro ? (f.contador_email || '') : undefined],
       ['Resumo das notas', pro ? textoResumo(f.resumo) : undefined]
     ]);
@@ -338,6 +344,7 @@
     var dia = $('fa-resumo-dia-mes');
     if (dia.options.length === 0) for (var i = 1; i <= 28; i++) { var o = document.createElement('option'); o.value = String(i); o.textContent = String(i); dia.appendChild(o); }
     $('fa-percentual').value = f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') : '';
+    $('fa-nbs').value = f.nbs_padrao ? formatarNbs(f.nbs_padrao) : '';
     $('fa-contador').value = f.contador_email || '';
     var freq = f.resumo && f.resumo.frequencia ? f.resumo.frequencia : '';
     var radios = document.getElementsByName('fa-resumo');
@@ -345,7 +352,7 @@
     if (freq) $(freq === 'semanal' ? 'fa-resumo-dia-semana' : 'fa-resumo-dia-mes').value = String(f.resumo.dia);
     if (!st.seletor) st.seletor = nf.seletorCodigo($('fa-seletor'), { cnae: (e.empresa || {}).cnae, atual: f.codigo_servico_nacional });
   }
-  var CAMPO_FISCAL = { codigo_servico_nacional: 'fa-codigo-servico', p_tot_trib_sn: 'fa-percentual', contador_email: 'fa-contador' };
+  var CAMPO_FISCAL = { codigo_servico_nacional: 'fa-codigo-servico', p_tot_trib_sn: 'fa-percentual', nbs_padrao: 'fa-nbs', contador_email: 'fa-contador' };
   function salvarFiscal(ev) {
     ev.preventDefault();
     Object.keys(CAMPO_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_FISCAL[k], ''); });
@@ -356,7 +363,9 @@
     var falhou = false;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
     if (!mei && pct === null) { nf.erroCampo('fa-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
-    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo };
+    var nbs = lerNbs($('fa-nbs').value);
+    if (nbs === null) { nf.erroCampo('fa-nbs', MSG_NBS); falhou = true; }
+    var corpo = { acao: 'configurar', codigo_servico_nacional: codigo, nbs_padrao: nbs || null };
     if (!mei) corpo.p_tot_trib_sn = pct;
     if (st.estado.plano === 'pro') {
       var contador = nf.texto($('fa-contador').value);
@@ -375,7 +384,7 @@
       nf.ocupado(botao, false);
       if (r.ok) {
         if (r.dados && r.dados.tenant_id) st.estado = r.dados;
-        else st.estado.fiscal = { codigo_servico_nacional: codigo, p_tot_trib_sn: pct, contador_email: corpo.contador_email || null, resumo: corpo.resumo || null };
+        else st.estado.fiscal = { codigo_servico_nacional: codigo, p_tot_trib_sn: pct, nbs_padrao: nbs || null, contador_email: corpo.contador_email || null, resumo: corpo.resumo || null };
         $('fa-form-fiscal').hidden = true;
         desenhar();
         nf.aviso($('fa-aviso'), 'Dados fiscais salvos.', 'ok');
@@ -784,7 +793,7 @@
     $('fa-empresa-acao-titulo').textContent = { cert: 'Certificado A1 de ', proc: 'Procuração de ', fiscal: 'Dados fiscais de ', desativar: 'Desativar ' }[tipo] + nomeEmpresa(emp);
     if (tipo === 'proc') procEmpresa.carregar();
     ['fa-aviso-emp-cert', 'fa-aviso-emp-fiscal'].forEach(function (i) { nf.aviso($(i), ''); });
-    ['fa-emp-pfx', 'fa-emp-pfx-senha', 'fa-emp-codigo-servico', 'fa-emp-percentual'].forEach(function (i) { nf.erroCampo(i, ''); });
+    ['fa-emp-pfx', 'fa-emp-pfx-senha', 'fa-emp-codigo-servico', 'fa-emp-percentual', 'fa-emp-nbs'].forEach(function (i) { nf.erroCampo(i, ''); });
     if (tipo === 'cert') { $('fa-emp-pfx').value = ''; $('fa-emp-pfx-senha').value = ''; }
     if (tipo === 'fiscal') prepararFiscalEmpresa(emp);
     if (tipo === 'desativar') {
@@ -839,6 +848,7 @@
     var mei = emp.regime === 'mei';
     $('fa-emp-campo-percentual').hidden = mei;
     $('fa-emp-percentual').value = !mei && emp.p_tot_trib_sn != null ? String(emp.p_tot_trib_sn).replace('.', ',') : '';
+    $('fa-emp-nbs').value = emp.nbs_padrao ? formatarNbs(emp.nbs_padrao) : '';
     // O padrão de retenção vem da API do painel (a mesma da aba Emitir); até chegar, as caixas ficam desmarcadas.
     retEmp.preencher(null, mei);
     if (mei) return;
@@ -848,7 +858,7 @@
       (r.dados.empresas || []).forEach(function (e) { if (e.tenant_id === id) retEmp.preencher(e.retencao, e.regime === 'mei'); });
     });
   }
-  var CAMPO_EMP_FISCAL = { codigo_servico_nacional: 'fa-emp-codigo-servico', p_tot_trib_sn: 'fa-emp-percentual' };
+  var CAMPO_EMP_FISCAL = { codigo_servico_nacional: 'fa-emp-codigo-servico', p_tot_trib_sn: 'fa-emp-percentual', nbs_padrao: 'fa-emp-nbs' };
   function salvarFiscalEmpresa(ev) {
     ev.preventDefault();
     var ac = ec.acao;
@@ -861,9 +871,11 @@
     var falhou = false;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-emp-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
     if (!mei && pct === null) { nf.erroCampo('fa-emp-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    var nbs = lerNbs($('fa-emp-nbs').value);
+    if (nbs === null) { nf.erroCampo('fa-emp-nbs', MSG_NBS); falhou = true; }
     var erroRet = retEmp.validar();
     if (falhou || erroRet) { if (erroRet && !falhou) $(erroRet).focus(); return; }
-    var corpo = { acao: 'empresa_configurar', tenant_id: ac.tenantId, codigo_servico_nacional: codigo };
+    var corpo = { acao: 'empresa_configurar', tenant_id: ac.tenantId, codigo_servico_nacional: codigo, nbs_padrao: nbs || null };
     if (!mei) corpo.p_tot_trib_sn = pct;
     var botao = $('fa-emp-salvar-fiscal');
     var nome = nomeEmpresa(ac.empresa);
