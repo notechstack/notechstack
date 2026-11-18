@@ -24,10 +24,11 @@ LINHAS_FORMATADAS = 200  # linhas já prontas para digitar (o limite do agente �
 
 # iss_retido e inss_retido (16/11/2026) são opcionais: em branco, vale a retenção cadastrada na empresa.
 # codigo_servico (17/11/2026) também: em branco, vale o código do cliente salvo ou o padrão da empresa.
-COLUNAS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico']
-LARGURAS = [24, 24, 34, 36, 14, 46, 14, 14, 16]
+# municipio_prestacao (18/11/2026) também: em branco, vale a cidade da empresa.
+COLUNAS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico', 'municipio_prestacao']
+LARGURAS = [24, 24, 34, 36, 14, 46, 14, 14, 16, 24]
 EXEMPLOS = [
-    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br', 1500, 'Honorários contábeis - novembro/2026', None, None, '17.19.01'],
+    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br', 1500, 'Honorários contábeis - novembro/2026', None, None, '17.19.01', 'Campinas/SP'],
     ['12.345.678/0001-95', '529.982.247-25', 'Maria Exemplo da Silva', 'maria@exemplo.com.br', 350, None],
 ]
 
@@ -102,6 +103,7 @@ tabela = [
     ['iss_retido', 'não', 'ISS retido pelo tomador: a alíquota (de 2% a 5%), sim (usa a alíquota cadastrada na empresa) ou não. Só para tomador com CNPJ; MEI não tem retenção. Em branco, vale o cadastro da empresa.', '2%'],
     ['inss_retido', 'não', 'INSS retido: o percentual (11%), o valor em reais (165,00), sim (usa o percentual cadastrado na empresa) ou não. MEI não tem retenção. Em branco, vale o cadastro da empresa.', '11%'],
     ['codigo_servico', 'não', 'Código do serviço desta nota na lista nacional (6 dígitos, com ou sem pontos). Use quando a mesma empresa presta serviços diferentes (clínica com psicologia, fisioterapia e nutrição). Em branco, vale o código já usado para esse cliente ou o padrão da empresa.', '04.16.01'],
+    ['municipio_prestacao', 'não', 'Cidade onde o serviço foi prestado, quando não é a cidade da empresa: o nome com a UF (Campinas/SP) ou o código IBGE de 7 dígitos (3509502). Em branco, vale a cidade da empresa. Também aceita o nome de coluna ibge_prestacao.', 'Campinas/SP'],
 ]
 for k, linha in enumerate(tabela):
     linha_tabela(6 + k, linha)
@@ -119,6 +121,7 @@ regras = [
     'CPF e CNPJ ficam como texto, para o zero à esquerda não sumir (as colunas deste modelo já estão assim).',
     'Linha com problema fica de fora e o motivo vem no resumo; as outras seguem.',
     'Retenção: o contador informa a alíquota e o percentual; o nó.fiscal não calcula regra tributária, só confere o que a Sefin recusa.',
+    'Local da prestação: em obras, eventos e outros serviços da LC 116 (art. 3º), o ISS é devido na cidade da prestação; quem decide é a Sefin, pelo código de serviço. Serviços de obra (07.02, 07.04 a 07.08, 07.17, 07.19, 14.14.03/04) e de eventos (item 12) com outra cidade ficam de fora, porque exigem dados da obra ou do evento que o nó.fiscal ainda não envia.',
     'Código de serviço fora da lista nacional (https://www.notechstack.com.br/agentes/fiscal/dados/codigos-servico.json) deixa a linha de fora.',
     'Depois de mandar, você recebe o resumo. Nada é emitido antes de você responder confirmar. O resumo vale por 24 horas.',
     'No fim, o retorno de cada linha e os PDFs vão para o e-mail da conta e ficam em Minha conta → Relatórios.',
@@ -130,7 +133,7 @@ guia.sheet_view.showGridLines = False
 
 wb.properties.creator = 'nó.fiscal'
 wb.properties.title = 'Modelo de emissão por planilha'
-wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 17, 12, 0, 0)
+wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 18, 12, 0, 0)
 SAIDA.parent.mkdir(parents=True, exist_ok=True)
 wb.save(SAIDA)
 print(SAIDA, SAIDA.stat().st_size, 'bytes')

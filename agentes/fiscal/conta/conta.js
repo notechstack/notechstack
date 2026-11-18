@@ -1090,7 +1090,7 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
   var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
@@ -1179,8 +1179,25 @@
     $('fa-av-valor').value = m && m.valor_padrao ? valorTexto(m.valor_padrao) : '';
     $('fa-av-descricao').value = m ? (m.descricao || '') : '';
     $('fa-av-info').value = '';
+    $('fa-av-local').value = '';
     contarInfoAvulsa();
     prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
+  }
+
+  /* Local da prestação (cLocPrestacao): a lista do IBGE ("Campinas/SP") só é baixada quando o campo ganha foco. */
+  var municipiosCarregados = false;
+  function carregarMunicipios() {
+    if (municipiosCarregados) return;
+    municipiosCarregados = true;
+    fetch('/agentes/fiscal/dados/municipios.json', { method: 'GET' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.municipios)) { municipiosCarregados = false; return; }
+        var lista = $('fa-av-local-lista'), frag = document.createDocumentFragment();
+        d.municipios.forEach(function (m) { var o = document.createElement('option'); o.value = m; frag.appendChild(o); });
+        lista.appendChild(frag);
+      })
+      .catch(function () { municipiosCarregados = false; });
   }
 
   /* Informações complementares: até 2.000 caracteres (xInfComp do leiaute nacional). */
@@ -1192,7 +1209,8 @@
     var corpo = {
       tenant_id: $('fa-av-empresa').value, documento: $('fa-av-documento').value, nome: $('fa-av-nome').value,
       email: $('fa-av-email').value, valor: $('fa-av-valor').value, codigo: em.seletor ? em.seletor.valor() : '',
-      descricao: $('fa-av-descricao').value, informacoes_complementares: $('fa-av-info').value
+      descricao: $('fa-av-descricao').value, informacoes_complementares: $('fa-av-info').value,
+      municipio_prestacao: $('fa-av-local').value
     };
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     if (retAv.visivel()) {
@@ -1238,9 +1256,10 @@
       [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
       ['E-mail', t.email || 'Sem e-mail'],
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
-      ['Descrição na nota', sv.descricao],
-      ['Valor', s.valor_texto]
-    ].concat(linhasRetencaoDoResumo(s)).concat(s.informacoes_complementares ? [['Informações complementares', s.informacoes_complementares]] : []));
+      ['Descrição na nota', sv.descricao]
+    ].concat(s.local_prestacao ? [['Local da prestação', s.local_prestacao.nome + (s.local_prestacao.iss_no_local ? ' (o ISS deste serviço é devido nessa cidade)' : '')]] : [])
+      .concat([['Valor', s.valor_texto]])
+      .concat(linhasRetencaoDoResumo(s)).concat(s.informacoes_complementares ? [['Informações complementares', s.informacoes_complementares]] : []));
     var avisos = (d.bloqueio ? ['<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc('Não dá para emitir: ' + d.bloqueio.motivo + '.') + '</p>'] : [])
       .concat((d.avisos || []).map(function (a) { return '<p class="nf-aviso nf-aviso--info">' + nf.esc(a) + '</p>'; }));
     $('fa-av-avisos').innerHTML = avisos.join('');
@@ -1388,6 +1407,8 @@
   $('fa-av-modelo').addEventListener('change', escolherModelo);
   $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
   $('fa-av-info').addEventListener('input', contarInfoAvulsa);
+  $('fa-av-local').addEventListener('focus', carregarMunicipios);
+  $('fa-av-local').addEventListener('input', function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); });
   $('fa-av-emitir').addEventListener('click', emitirAvulsa);
   $('fa-av-corrigir').addEventListener('click', function () { fecharResumoAvulsa(); $('fa-av-documento').focus(); });
   $('fa-form-lote').addEventListener('submit', lerLote);
