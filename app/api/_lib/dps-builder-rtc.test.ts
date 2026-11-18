@@ -103,6 +103,46 @@ describe('cNBS', () => {
   })
 })
 
+describe('NBS padrão da empresa (fiscal_tenants.nbs_padrao)', () => {
+  // 010101 tem 11 NBS no Anexo VIII: sem a nota nem a empresa, a tabela não escolhe.
+  const dev = (servico: Record<string, unknown> = {}) =>
+    payload({ codigo_servico_nacional: '010101', descricao: 'Desenvolvimento', ...servico })
+  const empresa = tenant({ nbs_padrao: '115021000' })
+
+  it('ordem: servico.nbs da nota > padrão da empresa > Anexo VIII', () => {
+    expect(gerar(V101, dev({ nbs: '1.1502.20.00' }), empresa).rtc.nbs).toEqual({ codigo: '115022000', origem: 'nota' })
+    expect(gerar(V101, dev(), empresa).rtc.nbs).toEqual({ codigo: '115021000', origem: 'empresa' })
+    // 100401 resolve pela tabela (109059000), mas o padrão da empresa vem antes.
+    expect(gerar(V101, payload(), empresa).rtc.nbs).toEqual({ codigo: '115021000', origem: 'empresa' })
+    expect(gerar(V101, payload(), tenant()).rtc.nbs).toEqual({ codigo: '109059000', origem: 'tabela' })
+  })
+
+  it('flags desligadas: só leva o cNBS, válido nos dois leiautes', async () => {
+    const v101 = gerar(V101, dev(), empresa).xml
+    const nt009 = gerar(NT009, dev(), empresa).xml
+    expect(texto(v101, 'cNBS')).toEqual(['115021000'])
+    expect(v101).not.toMatch(/IBSCBS/)
+    expect(v101).toBe(gerar(V101, dev({ nbs: '115021000' })).xml)
+    expect(await errosXsd(v101, PROD)).toEqual([])
+    expect(await errosXsd(nt009, PR)).toEqual([])
+  })
+
+  it('com o IBSCBS ligado, a NBS da empresa destrava o grupo do código que a tabela não resolve', async () => {
+    const opcoes: OpcoesDps = { leiaute: 'nt009', ibscbs: true }
+    expect(gerar(opcoes, dev()).rtc.ibscbs).toEqual({ falta: 'NBS' })
+    const { xml, rtc } = gerar(opcoes, dev(), tenant({ nbs_padrao: '115021000', ambiente: 'producao_restrita' }))
+    expect(rtc.nbs).toEqual({ codigo: '115021000', origem: 'empresa' })
+    expect(texto(xml, 'cNBS')).toEqual(['115021000'])
+    expect(filhos(xml, 'infDPS').at(-1)).toBe('IBSCBS')
+    expect(await errosXsd(xml, PR)).toEqual([])
+  })
+
+  it('sem padrão, ou padrão fora da lista atual, a DPS sai como antes', () => {
+    expect(gerar(V101, dev(), tenant({ nbs_padrao: null })).xml).toBe(gerar(V101, dev()).xml)
+    expect(gerar(V101, dev(), tenant({ nbs_padrao: '123456789' })).xml).toBe(gerar(V101, dev()).xml)
+  })
+})
+
 describe('grupo IBSCBS (Simples e MEI, opcional em 2026)', () => {
   it('leiaute de produção: finNFSe, cIndOp, indDest e gIBSCBS com CST/cClassTrib; válido no XSD', async () => {
     const { xml, rtc } = gerar({ leiaute: 'v1.01', ibscbs: true })

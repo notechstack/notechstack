@@ -79,6 +79,7 @@ type ClaimedRow = {
   regime: string
   ambiente: Ambiente
   p_tot_trib_sn: string | null
+  nbs_padrao: string | null
 }
 
 type Claimed = { plan: Plan; tenant: SefinTenant; invoice: SefinInvoice | null; attempts: number }
@@ -157,7 +158,7 @@ async function claimNext(
 ): Promise<(Claimed & { id: string }) | null> {
   const { rows } = await tx.query<ClaimedRow>(
     `select i.id, i.tenant_id, i.external_id, i.status, i.payload, i.dps_serie, i.dps_numero, i.id_dps, i.attempts,
-            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn
+            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn, t.nbs_padrao
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
        join nofiscal.fiscal_certificados_de_emissao c on c.tenant_id = t.id
@@ -184,6 +185,7 @@ async function claimNext(
     regime: row.regime,
     ambiente: row.ambiente,
     p_tot_trib_sn: row.p_tot_trib_sn,
+    nbs_padrao: row.nbs_padrao,
   }
   const lease = minutesFrom(now, CLAIM_LEASE_MINUTES)
 

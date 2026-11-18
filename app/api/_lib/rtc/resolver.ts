@@ -12,11 +12,17 @@ export const nbsExiste = (nbs: string): boolean => NBS_VALIDAS.has(nbs)
 
 export const candidatosRtc = (cTribNac: string): ServicoRtc | null => TABELA_RTC.servicos[cTribNac] ?? null
 
-export type InformadoRtc = { nbs: string | null; cIndOp: string | null; cClassTrib: string | null }
+export type InformadoRtc = {
+  nbs: string | null
+  cIndOp: string | null
+  cClassTrib: string | null
+  /** NBS padrão da empresa (`fiscal_tenants.nbs_padrao`): abaixo da nota, acima da tabela. */
+  nbsEmpresa?: string | null
+}
 
 export type Rtc = {
-  /** De onde veio a NBS: da nota ou da tabela (uma NBS só para o código). */
-  nbs: { codigo: string; origem: 'nota' | 'tabela' } | null
+  /** De onde veio a NBS: da nota, do padrão da empresa ou da tabela (uma NBS só para o código). */
+  nbs: { codigo: string; origem: 'nota' | 'empresa' | 'tabela' } | null
   /** Grupo IBSCBS completo, ou o motivo de não dar para montá-lo. */
   ibscbs: { cIndOp: string; cst: string; cClassTrib: string } | { falta: string }
 }
@@ -37,9 +43,11 @@ export function resolverRtc(cTribNac: string, informado: InformadoRtc): Rtc {
   const nbsTabela = linha ? unico(linha.nbs) : null
   const nbs = informado.nbs
     ? { codigo: informado.nbs, origem: 'nota' as const }
-    : nbsTabela
-      ? { codigo: nbsTabela, origem: 'tabela' as const }
-      : null
+    : informado.nbsEmpresa
+      ? { codigo: informado.nbsEmpresa, origem: 'empresa' as const }
+      : nbsTabela
+        ? { codigo: nbsTabela, origem: 'tabela' as const }
+        : null
   const cIndOp = informado.cIndOp ?? (linha ? unico(linha.cIndOp) : null)
   const cClassTrib = informado.cClassTrib ?? (linha ? classTribPadrao(linha.cClassTrib) : null)
   const faltas = [!nbs && 'NBS', !cIndOp && 'cIndOp', !cClassTrib && 'cClassTrib'].filter(Boolean)

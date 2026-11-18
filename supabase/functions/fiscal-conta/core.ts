@@ -26,6 +26,7 @@ import {
   type Regime,
   soDigitos,
 } from "../_shared/fiscal/cnpj.ts";
+import { NBS_VALIDAS } from "../_shared/fiscal/nbs.ts";
 
 type Nivel = "info" | "warn" | "error";
 
@@ -228,6 +229,23 @@ export function lerPercentual(valor: unknown): string | null {
   return normalizado;
 }
 
+export const MSG_NBS_FORMATO = "A NBS tem 9 números (ex.: 1.1502.10.00). Deixe em branco se não usar.";
+export const MSG_NBS_FORA_DA_LISTA = "Esta NBS não está na lista nacional (NBS 2.0). Confira o código.";
+
+/**
+ * NBS padrão da empresa, com ou sem pontos: `null` apaga (vazio ou null), o código de 9 dígitos da lista
+ * nacional fica, e o resto volta com a mensagem do erro. A Sefin recusa NBS fora da lista (E0316).
+ */
+export function lerNbsPadrao(valor: unknown): { ok: true; nbs: string | null } | { ok: false; mensagem: string } {
+  if (valor === null || valor === undefined) return { ok: true, nbs: null };
+  if (typeof valor !== "string") return { ok: false, mensagem: MSG_NBS_FORMATO };
+  const nbs = valor.replace(/[.\s]/g, "");
+  if (nbs === "") return { ok: true, nbs: null };
+  if (!/^\d{9}$/.test(nbs)) return { ok: false, mensagem: MSG_NBS_FORMATO };
+  if (!NBS_VALIDAS.has(nbs)) return { ok: false, mensagem: MSG_NBS_FORA_DA_LISTA };
+  return { ok: true, nbs };
+}
+
 type Configuracao = { dados: Record<string, unknown>; temResumo: boolean; temContador: boolean };
 
 export async function validarConfiguracao(
@@ -255,6 +273,12 @@ export async function validarConfiguracao(
 
   const dados: Record<string, unknown> = { codigo_servico_nacional: codigo };
   if (!mei) dados.p_tot_trib_sn = percentual;
+  // NBS padrão (opcional, vale para MEI também): chave ausente mantém a gravada.
+  if (Object.hasOwn(body, "nbs_padrao")) {
+    const nbs = lerNbsPadrao(body.nbs_padrao);
+    if (!nbs.ok) return { ok: false, resultado: invalido("nbs_padrao", nbs.mensagem) };
+    dados.nbs_padrao = nbs.nbs;
+  }
   const temContador = Object.hasOwn(body, "contador_email");
   const temResumo = Object.hasOwn(body, "resumo");
   const contador = temContador && body.contador_email !== null
@@ -743,9 +767,13 @@ async function configurarEmpresa(
     codigos = null;
   }
   if (!codigos) log("warn", "fiscal_conta_lista_codigos_indisponivel", {});
-  // Só código e percentual: contador e resumo continuam sendo da conta (`configurar`).
+  // Só código, percentual e NBS padrão: contador e resumo continuam sendo da conta (`configurar`).
   const v = await validarConfiguracao(
-    { codigo_servico_nacional: b.codigo_servico_nacional, p_tot_trib_sn: b.p_tot_trib_sn },
+    {
+      codigo_servico_nacional: b.codigo_servico_nacional,
+      p_tot_trib_sn: b.p_tot_trib_sn,
+      ...(Object.hasOwn(b, "nbs_padrao") ? { nbs_padrao: b.nbs_padrao } : {}),
+    },
     "pro",
     codigos,
     regime,

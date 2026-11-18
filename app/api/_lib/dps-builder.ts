@@ -8,7 +8,8 @@
 //   `nt009` é o release 1 da NT 009, em produção restrita desde 20/10/2026 e previsto para produção em
 //   01/12/2026: `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
 //   e CST/cClassTrib sobem de `gIBSCBS` para `IBSCBS/valores/trib`.
-// - `cNBS` (0-1) vai quando a nota informa a NBS; com o IBSCBS ligado, também quando a tabela resolve.
+// - `cNBS` (0-1): `servico.nbs` da nota > NBS padrão da empresa (`tenant.nbs_padrao`) > Anexo VIII pelo código.
+//   As duas primeiras vão sempre; a da tabela, só com o IBSCBS ligado.
 // - O grupo IBSCBS é opcional para Simples e MEI em 2026 (Anexo I: obrigatório só a partir de 2027) e,
 //   se enviado, exige todos os códigos (E0322 etc.). Fica atrás de `ibscbs` (desligado por padrão) e só
 //   sai quando NBS, cIndOp e cClassTrib estão resolvidos; senão a DPS sai sem o grupo, como hoje.
@@ -307,13 +308,16 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   const tribFed = inss ? el('tribFed', leaf('vRetCP', inss.valor)) : null
 
   const { leiaute } = opcoes
+  // NBS padrão da empresa fora da lista atual (a lista mudou depois de gravada) fica de fora, sem travar a nota.
+  const nbsEmpresa = tenant.nbs_padrao && nbsExiste(tenant.nbs_padrao) ? tenant.nbs_padrao : null
   const rtc = resolverRtc(data.servico.codigo_servico_nacional, {
     nbs: data.servico.nbs,
+    nbsEmpresa,
     cIndOp: data.servico.c_ind_op,
     cClassTrib: data.servico.c_class_trib,
   })
-  // A NBS informada na nota vai sempre; a da tabela, só junto do IBSCBS.
-  const cNBS = rtc.nbs && (rtc.nbs.origem === 'nota' || opcoes.ibscbs) ? leaf('cNBS', rtc.nbs.codigo) : null
+  // A NBS informada (na nota ou como padrão da empresa) vai sempre; a da tabela, só junto do IBSCBS.
+  const cNBS = rtc.nbs && (rtc.nbs.origem !== 'tabela' || opcoes.ibscbs) ? leaf('cNBS', rtc.nbs.codigo) : null
   const ibscbs = opcoes.ibscbs && 'cst' in rtc.ibscbs ? grupoIbsCbs(leiaute, rtc.ibscbs) : null
   const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
   const xDescServ = leaf('xDescServ', data.servico.descricao)
