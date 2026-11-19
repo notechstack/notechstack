@@ -34,6 +34,12 @@ cards de pacote aceitam `badge`, `price`, `price_note`, `tagline`, `cta_label` e
 contato@maisispublicidade.com.br com o pacote no assunto; trocar pelo WhatsApp da Maisis
 quando o Lucca informar. LP: menu com `white-space:nowrap`, CTA curto abaixo de 1240 px e
 menu hambúrguer abaixo de 1024 px, para não quebrar dentro do quadro.
+Terceira rodada (06/11/2026): `next_steps.presentation` aceita `contact_href` e `contact_label`
+(destino e texto do botão "Falar com a equipe" do hero e do card "Dúvidas sobre o andamento?" das
+Etapas; só `https://` ou `mailto:`, padrão WhatsApp da nó). Enquanto o roadmap não tiver
+`contact_href`, os dois botões caem na nó, não na Maisis — gravar o WhatsApp da agência é um passo
+de dados à parte. A moldura do mockup infinito passou a medir o `<body>` do protótipo (não o `<html>`)
+e volta a encolher ao fechar um "ler mais" ou trocar de dispositivo; a troca zera a medida anterior.
 
 ## Arquivos
 

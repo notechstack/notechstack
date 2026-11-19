@@ -1,8 +1,8 @@
 import gazeta from '../onboarding/gazeta-bragantina.json'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientDashboardPage } from './client-dashboard/ClientDashboardPage'
 import type {
   DashboardData,
@@ -239,6 +239,66 @@ describe('dashboard do cliente', () => {
     expect(container.querySelector('.prototype-phone')).toHaveClass('infinite', 'mobile')
   })
 
+  describe('mockup infinito', () => {
+    afterEach(() => vi.unstubAllGlobals())
+    // jsdom não faz layout: simula o documento do protótipo (mesma origem). No <html>, reproduz o
+    // scrollHeight real do navegador, que nunca fica abaixo da altura atual do iframe — era o que
+    // impedia a moldura de encolher.
+    function fakePrototypeDocument(iframe: HTMLIFrameElement) {
+      const state = { content: 0, readyState: 'loading' }
+      const body = { getBoundingClientRect: () => ({ height: state.content }), get scrollHeight() { return state.content } }
+      const documentElement = { get scrollHeight() { return Math.max(state.content, parseFloat(iframe.style.height) || 720) } }
+      const defaultView = { getComputedStyle: () => ({ marginTop: '0px', marginBottom: '10px' }) }
+      Object.defineProperty(iframe, 'contentDocument', { configurable: true, get: () => ({ body, documentElement, defaultView, readyState: state.readyState }) })
+      return state
+    }
+
+    it('encolhe com o protótipo e zera a medida ao trocar de dispositivo', async () => {
+      const resizes: Array<() => void> = []
+      vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resizes.push(callback) } observe() {} disconnect() {} })
+      renderDashboard('prototipo')
+      const iframe = await screen.findByTitle('Protótipo navegável do projeto') as HTMLIFrameElement
+      const prototype = fakePrototypeDocument(iframe)
+      expect(iframe.style.height).toBe('')
+
+      prototype.content = 1500
+      fireEvent.load(iframe)
+      expect(iframe.style.height).toBe('1510px') // conteúdo + margens do <body>
+
+      // Um bloco "ler mais" fechou: o <body> encolheu e o ResizeObserver avisou.
+      prototype.content = 900
+      act(() => resizes.at(-1)!())
+      expect(iframe.style.height).toBe('910px')
+
+      // Celular: a moldura nova parte da altura padrão, sem herdar a medida do desktop.
+      await userEvent.click(screen.getByRole('button', { name: /Celular/ }))
+      expect(iframe.style.height).toBe('')
+      prototype.content = 2400
+      fireEvent.load(iframe)
+      expect(iframe.style.height).toBe('2410px')
+
+      // Desktop de novo: volta à altura menor em vez de manter o vão do celular.
+      await userEvent.click(screen.getByRole('button', { name: /Desktop/ }))
+      expect(iframe.style.height).toBe('')
+      prototype.content = 900
+      fireEvent.load(iframe)
+      expect(iframe.style.height).toBe('910px')
+    })
+
+    it('tela cheia mantém a rolagem própria da moldura', async () => {
+      renderDashboard('prototipo')
+      const iframe = await screen.findByTitle('Protótipo navegável do projeto') as HTMLIFrameElement
+      const prototype = fakePrototypeDocument(iframe)
+      prototype.content = 1500
+      fireEvent.load(iframe)
+      expect(iframe.style.height).toBe('1510px')
+      await userEvent.click(screen.getByRole('button', { name: 'Abrir em tela cheia' }))
+      expect(iframe.style.height).toBe('')
+      await userEvent.click(screen.getByRole('button', { name: /Fechar tela cheia/ }))
+      expect(iframe.style.height).toBe('1510px')
+    })
+  })
+
   it('C11 etapas por fase mantêm progresso real, datas e versões', async () => {
     const items = Array.from({ length: 27 }, (_, index) => kanbanItem(index + 1, index < 17 ? 'concluido' : index < 22 ? 'em_andamento' : 'a_fazer'))
     renderDashboard('etapas', dashboardData({ kanban: items }))
@@ -340,6 +400,60 @@ describe('dashboard do cliente', () => {
     renderDashboard('etapas', dashboardData({ kanban: [] }))
     expect(await screen.findByText('As etapas entram aqui assim que o plano de execução for organizado.')).toBeVisible()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('contato da equipe (presentation.contact_href)', () => {
+  const noWhatsapp = 'https://wa.me/5511939289413'
+  const thomas = 'https://wa.me/5511997151833?text=Ol%C3%A1%2C%20Thomas!'
+  const maisis = { name: 'Maisis Publicidade', logoUrl: null }
+  function withPresentation(presentation: Record<string, string>, agency: DashboardData['agency'] = maisis): DashboardData {
+    const base = dashboardData({ agency })
+    return { ...base, roadmap: { ...base.roadmap!, next_steps: { presentation } } }
+  }
+
+  it('card das Etapas abre o contato gravado no roadmap, com o rótulo informado', async () => {
+    renderDashboard('etapas', withPresentation({ contact_href: thomas, contact_label: 'Falar com o Thomas' }))
+    const card = await screen.findByRole('link', { name: /Falar com o Thomas/ })
+    expect(card).toHaveAttribute('href', thomas)
+    expect(card).toHaveAttribute('target', '_blank')
+    expect(card).toHaveTextContent('Dúvidas sobre o andamento?')
+    expect(card).toHaveTextContent('Fale diretamente pelo WhatsApp.')
+    expect(document.querySelector(`a[href="${noWhatsapp}"]`)).toBeNull()
+  })
+
+  it('botão "Falar com a equipe" do hero abre o mesmo contato em nova aba, sem passar pelas Etapas', async () => {
+    renderDashboard('como_funciona', withPresentation({ contact_href: thomas, contact_label: 'Falar com o Thomas' }))
+    const hero = await screen.findByRole('link', { name: /Falar com o Thomas/ })
+    expect(hero).toHaveAttribute('href', thomas)
+    expect(hero).toHaveAttribute('target', '_blank')
+    expect(hero.closest('.hero-actions')).not.toBeNull()
+    expect(screen.getByRole('link', { name: /Pronto para começar/ })).toHaveAttribute('href', thomas)
+    expect(document.querySelector(`a[href="${noWhatsapp}"]`)).toBeNull()
+  })
+
+  it('sem contact_href, mantém o WhatsApp da nó e o nome da equipe no rótulo', async () => {
+    renderDashboard('como_funciona', dashboardData({ agency: maisis }))
+    expect(await screen.findByRole('link', { name: /^Falar com a equipe da Maisis Publicidade/ })).toHaveAttribute('href', noWhatsapp)
+    cleanup()
+    renderDashboard('como_funciona', dashboardData({ agency: null }))
+    expect(await screen.findByRole('link', { name: /^Falar com a equipe da Nó/ })).toHaveAttribute('href', noWhatsapp)
+    cleanup()
+    renderDashboard('etapas')
+    expect(await screen.findByRole('link', { name: /Abrir WhatsApp/ })).toHaveAttribute('href', noWhatsapp)
+  })
+
+  it('aceita só https:// ou mailto:, como os cta_href dos pacotes, e ajusta a copy do card', async () => {
+    renderDashboard('etapas', withPresentation({ contact_href: 'javascript:alert(1)' }))
+    expect(await screen.findByRole('link', { name: /Abrir WhatsApp/ })).toHaveAttribute('href', noWhatsapp)
+    cleanup()
+    renderDashboard('etapas', withPresentation({ contact_href: 'http://exemplo.test/contato' }))
+    expect(await screen.findByRole('link', { name: /Abrir WhatsApp/ })).toHaveAttribute('href', noWhatsapp)
+    cleanup()
+    renderDashboard('etapas', withPresentation({ contact_href: 'mailto:contato@maisispublicidade.com.br' }))
+    const card = await screen.findByRole('link', { name: /Enviar e-mail/ })
+    expect(card).toHaveAttribute('href', 'mailto:contato@maisispublicidade.com.br')
+    expect(card).toHaveTextContent('Fale diretamente por e-mail.')
   })
 })
 
