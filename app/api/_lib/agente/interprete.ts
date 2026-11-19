@@ -47,7 +47,28 @@ export type Parsed = {
    * (Lucca, 18/11/2026). Quem acha o código IBGE é o código (local-prestacao.ts).
    */
   municipio_prestacao?: string | null
+  /**
+   * Dados da obra como escritos (Robson, Bragantina, 19/11/2026): obrigatórios nos códigos de construção civil (E0370).
+   * Quem confere CEP, CNO e o que falta é obra.ts; `cidade` vira o local da prestação quando o pedido não diz outro.
+   */
+  obra?: ObraEscrita | null
   intencao: Intencao
+}
+
+export type ObraEscrita = Partial<Record<'cno' | 'cep' | 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cidade', string>>
+
+const LIMITES_DA_OBRA = { cno: 30, cep: 12, logradouro: 255, numero: 60, complemento: 156, bairro: 60, cidade: 80 } as const
+
+/** Só os campos conhecidos, cada um texto curto; nada escrito = `null`. */
+export function obraEscrita(bruto: unknown): ObraEscrita | null {
+  if (typeof bruto !== 'object' || bruto === null || Array.isArray(bruto)) return null
+  const o = bruto as Record<string, unknown>
+  const lida: ObraEscrita = {}
+  for (const [campo, max] of Object.entries(LIMITES_DA_OBRA) as [keyof ObraEscrita, number][]) {
+    const valor = texto(typeof o[campo] === 'number' ? String(o[campo]) : o[campo], max)
+    if (valor) lida[campo] = valor
+  }
+  return Object.keys(lida).length ? lida : null
 }
 
 export type Interpretacao = { parsed: Parsed; tokens: { entrada: number; saida: number } }
@@ -100,6 +121,7 @@ export function validarParsed(bruto: unknown): Parsed {
     // Sem corte: acima de 2.000 caracteres a conversa pede um texto mais curto.
     informacoes_complementares: normalizarInfoComplementar(obj.informacoes_complementares),
     municipio_prestacao: texto(obj.municipio_prestacao, 80),
+    obra: obraEscrita(obj.obra),
     intencao,
   }
 }

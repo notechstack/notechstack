@@ -34,6 +34,7 @@ import { salvarWebhookSandbox, webhookSandbox } from './sandbox/conta.js'
 import { ATRASO_MS, cancelarNotaSandbox, criarNotaSandbox, notaSandbox, notaSandboxPorExternalId, rodadaSandbox } from './sandbox/notas.js'
 import { motivoDaRetencao, resolverRetencao, SEM_RETENCAO_PADRAO, type EnderecoDoTomador, type EnderecoNacional } from './retencao.js'
 import { parseNewInvoice, type InvoicePayload } from './validation.js'
+import { exigeObra, MOTIVO_SEM_OBRA, problemaDaObra } from './obra.js'
 
 export type Recurso = 'nfse' | 'nfe' | 'empresas' | 'sandbox'
 export type NfseAction = 'cancel' | 'pdf' | 'xml' | 'danfe'
@@ -331,11 +332,24 @@ async function prepararNfse(
     }
   }
 
+  // E0370: código de construção civil sem o CNO ou o endereço da obra; a Sefin recusaria.
+  if (problemaDaObra({ codigo, obra: pedido.servico.obra })) {
+    return {
+      ok: false,
+      resposta: errorResponse('VALIDATION_FAILED', `servico.obra é obrigatório: ${MOTIVO_SEM_OBRA}`, { campo: 'servico.obra', motivo: 'OBRA_SEM_DADOS' }),
+    }
+  }
+
   const { nbs, c_ind_op, c_class_trib, municipio_prestacao_ibge } = pedido.servico
   const rtc = Object.fromEntries(Object.entries({ nbs, c_ind_op, c_class_trib, municipio_prestacao_ibge }).filter(([, v]) => v !== undefined))
   const base = payloadDaNota(
     pedido.tomador,
-    { codigo, descricao: pedido.servico.descricao ?? DESCRICAO_PADRAO, municipio_prestacao_ibge: municipio_prestacao_ibge ?? null },
+    {
+      codigo,
+      descricao: pedido.servico.descricao ?? DESCRICAO_PADRAO,
+      municipio_prestacao_ibge: municipio_prestacao_ibge ?? null,
+      obra: exigeObra(codigo) ? (pedido.servico.obra ?? null) : null,
+    },
     pedido.valor,
     { retencao: resolvida.retencao, endereco, informacoes_complementares: pedido.informacoes_complementares ?? null },
   )

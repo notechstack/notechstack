@@ -10,6 +10,7 @@ import { readSheet } from 'read-excel-file/universal'
 import type { Db, Queryable } from '../db.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
+import { exigeObra, lerObra, type Obra } from '../obra.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
 import {
@@ -59,7 +60,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // vazia deixa o padrão de retenção da empresa. `codigo_servico` (Lucca, 17/11/2026), também opcional: a nota sai com o
 // código da linha; vazia, com o do modelo do tomador ou, sem modelo, com o da empresa. `municipio_prestacao` (Lucca,
 // 18/11/2026), opcional: o local da prestação (cLocPrestacao), por nome com UF ("Campinas/SP") ou código IBGE; vazia, o
-// município da empresa. O cabeçalho `ibge_prestacao` também vale.
+// município da empresa. O cabeçalho `ibge_prestacao` também vale. `obra_*` (Robson, Bragantina, 19/11/2026), opcionais:
+// o endereço (obra_cep, obra_logradouro, obra_numero, obra_complemento, obra_bairro) ou o obra_cno, obrigatórios nas
+// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais.
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -71,6 +74,12 @@ export const CAMPOS = [
   'inss_retido',
   'codigo_servico',
   'municipio_prestacao',
+  'obra_cep',
+  'obra_logradouro',
+  'obra_numero',
+  'obra_complemento',
+  'obra_bairro',
+  'obra_cno',
 ] as const
 export type Campo = (typeof CAMPOS)[number]
 
@@ -91,6 +100,8 @@ export const CODIGOS_DE_PROBLEMA = [
   'CODIGO_SERVICO_FALTANDO',
   'MUNICIPIO_PRESTACAO_INVALIDO',
   'MUNICIPIO_PRESTACAO_AMBIGUO',
+  'OBRA_SEM_DADOS',
+  'OBRA_INVALIDA',
   ...PROBLEMAS_DE_LOCAL,
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
@@ -388,7 +399,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa).',
+    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa). Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
     `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   ]
     .filter(Boolean)
@@ -581,7 +592,22 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       const barrado = problemaDoLocal({ codigo, municipioPrestacao })
       if (barrado) return falha(barrado, empresa.id)
     }
-    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao }
+    // Dados da obra: só nas linhas de construção civil (E0370), onde são obrigatórios.
+    let obra: Obra | null = null
+    if (exigeObra(codigo)) {
+      const lida = lerObra({
+        cep: textoDaCelula(celulas.obra_cep),
+        logradouro: textoDaCelula(celulas.obra_logradouro),
+        numero: textoDaCelula(celulas.obra_numero),
+        complemento: textoDaCelula(celulas.obra_complemento),
+        bairro: textoDaCelula(celulas.obra_bairro),
+        cno: textoDaCelula(celulas.obra_cno),
+      })
+      if (!lida.ok) return falha('OBRA_INVALIDA', empresa.id)
+      if (!lida.obra) return falha('OBRA_SEM_DADOS', empresa.id)
+      obra = lida.obra
+    }
+    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra }
     // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
     const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
@@ -694,7 +720,10 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return `${empresa} não tem código de serviço padrão: preencha a coluna codigo_servico`
     case 'MUNICIPIO_PRESTACAO_INVALIDO':
       return 'municipio_prestacao não encontrado: escreva a cidade com a UF, como Campinas/SP, ou o código IBGE de 7 dígitos'
-    case 'LOCAL_EXIGE_OBRA':
+    case 'OBRA_SEM_DADOS':
+      return 'o código de serviço é de construção civil, e a Sefin exige os dados da obra: preencha obra_cep, obra_logradouro, obra_numero e obra_bairro, ou obra_cno'
+    case 'OBRA_INVALIDA':
+      return 'dados da obra incompletos ou inválidos: o endereço precisa de obra_cep (8 dígitos), obra_logradouro, obra_numero e obra_bairro; o obra_cno, de 12 dígitos'
     case 'LOCAL_EXIGE_EVENTO':
       return motivoDoLocal(codigo)
     case 'MUNICIPIO_PRESTACAO_AMBIGUO':

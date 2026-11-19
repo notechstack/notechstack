@@ -17,6 +17,7 @@ import {
   ufDaResposta,
 } from '../local-prestacao.js'
 import { logEvent } from '../log.js'
+import { exigeObra, lerObra, problemaDaObra, rotuloDaObra, type CampoDaObra, type Obra } from '../obra.js'
 import type { InvoicePayload } from '../validation.js'
 import {
   COLUNAS_DA_RETENCAO,
@@ -47,7 +48,7 @@ import {
   type EmitenteDoPedido,
   type EmpresaDaConta,
 } from './emitente.js'
-import { validarParsed, type Interprete, type Parsed } from './interprete.js'
+import { validarParsed, type Interprete, type ObraEscrita, type Parsed } from './interprete.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
 import { registrarJanela } from './janela.js'
@@ -292,6 +293,11 @@ type Conversa = {
    */
   pergunta_uf?: { nome: string; ufs: string[] }
   emitente_id?: string | null
+  /**
+   * Dados da obra escritos até aqui (Robson, Bragantina, 19/11/2026), ainda incompletos ou já válidos: cada mensagem
+   * soma o que trouxe, e o endereço só vai para `servico.obra` quando tem CEP, rua, número e bairro (ou o CNO).
+   */
+  obra_rascunho?: ObraEscrita | null
 }
 
 type Pedido = {
@@ -435,7 +441,7 @@ export function textoDoResumo(
   emitente?: EmitenteDoPedido | null,
   retencao?: Retencao | null,
   informacoesComplementares?: string | null,
-  /** "Campinas/SP": só quando o local da prestação é outro que não o município da empresa. */
+  /** "Campinas/SP": só quando o local da prestação é outro que não o município da empresa (ou o serviço é de obra). */
   localPrestacao?: string | null,
 ): string {
   return [
@@ -446,6 +452,7 @@ export function textoDoResumo(
     `Serviço: ${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
     `Descrição na nota: ${servico.descricao}`,
     ...(localPrestacao ? [`Local da prestação: ${localPrestacao}`] : []),
+    ...(servico.obra ? [`Obra: ${rotuloDaObra(servico.obra)}`] : []),
     `Valor: ${formatarReais(valor)}`,
     ...linhasDaRetencao(valor, retencao),
     ...(informacoesComplementares ? [`Informações complementares: ${informacoesComplementares}`] : []),
@@ -459,6 +466,50 @@ export const TEXTO_LOCAL_CORRIGIR =
 /** "Campinas/SP", e o aviso de que o ISS é devido lá quando o código é dos tributados no local (E1317). */
 export const rotuloDoLocal = (ibge: string, codigo: string) =>
   `${rotuloMunicipio(ibge)}${issNoLocalDaPrestacao(codigo) ? ' (o ISS deste serviço é devido nessa cidade)' : ''}`
+
+const NOMES_DOS_CAMPOS: Record<CampoDaObra, string> = { cep: 'CEP', logradouro: 'rua', numero: 'número', bairro: 'bairro' }
+
+/**
+ * Código de construção civil sem os dados da obra (E0370). O pedido fica em correção: a próxima mensagem (o endereço
+ * ou o CNO) completa o pedido, sem precisar escrever *corrigir*.
+ */
+export function textoDaObraQueFalta(rascunho: ObraEscrita | null | undefined, cidadeDaEmpresa: string | null): string {
+  const lida = rascunho ? lerObra(rascunho) : null
+  const faltando = lida && !lida.ok ? lida.faltando : []
+  const cidade = cidadeDaEmpresa ? ` e a cidade, se não for ${cidadeDaEmpresa}` : ' e a cidade'
+  if (faltando.length && faltando.length < 4) {
+    const nomes = faltando.map((c) => NOMES_DOS_CAMPOS[c])
+    const lista = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0]
+    return `Faltou no endereço da obra: ${lista}. Me mande o que falta, e eu monto a nota. Ou responda *descartar*.`
+  }
+  return [
+    'Este serviço é de construção civil, e a Sefin exige os dados da obra na nota. Nada foi emitido ainda.',
+    `Me mande o endereço da obra: rua, número, bairro, CEP${cidade}. Por exemplo: Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP.`,
+    'Se a obra tem CNO, pode mandar só o número dele. Para desistir, responda *descartar*.',
+  ].join('\n')
+}
+
+/** Soma o que a mensagem trouxe da obra ao rascunho; `obra` só quando o resultado é válido. */
+export function juntarObra(
+  rascunho: ObraEscrita | null | undefined,
+  nova: ObraEscrita | null | undefined,
+): { rascunho: ObraEscrita | null; obra: Obra | null } {
+  const semCidade: ObraEscrita = { ...(nova ?? {}) }
+  delete semCidade.cidade
+  // CNO novo ou endereço novo completo valem sozinhos; o resto soma ao que já veio.
+  const novoCompleto = lerObra(semCidade)
+  const base = novoCompleto.ok && novoCompleto.obra ? {} : (rascunho ?? {})
+  const junto: ObraEscrita = { ...base, ...semCidade }
+  if (!Object.values(junto).some(Boolean)) return { rascunho: null, obra: null }
+  const lida = lerObra(junto)
+  return { rascunho: junto, obra: lida.ok ? lida.obra : null }
+}
+
+/** A cidade da obra vira o local da prestação quando o pedido não diz outro (o ISS da obra é devido lá, E1317). */
+export function comCidadeDaObra(parsed: Parsed): Parsed {
+  if (parsed.municipio_prestacao || !parsed.obra?.cidade) return parsed
+  return { ...parsed, municipio_prestacao: parsed.obra.cidade }
+}
 
 export const TEXTO_SEM_RETENCAO_POSSIVEL =
   'Responda *corrigir* e me diga a retenção certa (por exemplo: ISS retido 2%, INSS 11%, ou sem retenção), ou *descartar*.'
@@ -501,7 +552,7 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   // O local da prestação igual ao município da empresa sai do pedido: a nota fica como sempre foi.
   const sede = typeof linha?.codigo_municipio_ibge === 'string' ? linha.codigo_municipio_ibge : null
   const servicoLido = conversa.servico as ServicoDoPedido
-  const servico: ServicoDoPedido =
+  let servico: ServicoDoPedido =
     servicoLido.municipio_prestacao_ibge && servicoLido.municipio_prestacao_ibge === sede ? { ...servicoLido, municipio_prestacao_ibge: null } : servicoLido
   const local = servico.municipio_prestacao_ibge ?? null
   const padrao = linha ? padraoDaLinha(linha) : SEM_RETENCAO_PADRAO
@@ -516,6 +567,10 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   const nomeDaEmpresa = typeof linha?.razao_social === 'string' ? linha.razao_social : null
   const retencao = resolvida.ok && !problema ? resolvida.retencao : null
   if (!problema) problema = problemaDoLocal({ codigo: servico.codigo, municipioPrestacao: local })
+  // E0370: código de construção civil sem os dados da obra. Fora desses códigos, a obra não vai na nota.
+  if (!exigeObra(servico.codigo) && servico.obra) servico = { ...servico, obra: null }
+  const faltaObra = !problema && problemaDaObra({ codigo: servico.codigo, obra: servico.obra }) !== null
+  if (faltaObra) problema = 'OBRA_SEM_DADOS'
   let endereco: EnderecoNacional | null = null
   if (retencao?.iss) {
     const consulta = ctx.deps.consultaCnpj
@@ -530,11 +585,16 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     retencao,
     endereco,
     retencao_problema: problema,
-    corrigindo: false,
+    // Sem os dados da obra, a próxima mensagem já é lida como a correção (o endereço ou o CNO).
+    corrigindo: faltaObra,
     info_perguntada: Boolean(conversa.info_perguntada || perguntar),
     info_aberta: perguntar,
   }
   await atualizarPedido(ctx.deps.db, pedidoId, 'confirmar', atualizada, ctx.agora)
+  if (faltaObra) {
+    logEvent('agente.obra_pedida', { request_id: pedidoId, tenant_id: tenantId, parcial: Boolean(conversa.obra_rascunho) })
+    return [textoDaObraQueFalta(conversa.obra_rascunho, sede ? rotuloMunicipio(sede) : null)]
+  }
   if (problema) {
     logEvent('agente.retencao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
     return [textoDoProblemaDeRetencao(ctx, problema, nomeDaEmpresa)]
@@ -548,7 +608,8 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     conversa.emitente,
     retencao,
     conversa.informacoes_complementares,
-    local ? rotuloDoLocal(local, servico.codigo) : null,
+    // Na obra, o local aparece sempre (é onde o ISS é devido), mesmo sendo a cidade da empresa.
+    local ? rotuloDoLocal(local, servico.codigo) : servico.obra && sede ? rotuloDoLocal(sede, servico.codigo) : null,
   )
   return perguntar ? [resumo, TEXTOS.perguntaInfoComplementar, TEXTOS.semInfoComplementar] : [resumo]
 }
@@ -1065,7 +1126,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(paraIa)
-    parsed = comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa)
+    parsed = comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa))
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1093,7 +1154,8 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     // Cliente novo, mesma empresa: o emitente do pedido continua valendo (a não ser que a correção diga outro).
     const informacoes_complementares = parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null
     const municipio_prestacao = parsed.municipio_prestacao ?? atual.servico?.municipio_prestacao_ibge ?? null
-    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null, informacoes_complementares, municipio_prestacao }, tokens, {
+    const obra = juntarObra(atual.obra_rascunho, parsed.obra).rascunho
+    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null, informacoes_complementares, municipio_prestacao, obra }, tokens, {
       emitenteId: parsed.prestador ? undefined : pedido.tenant_id,
     })
     return true
@@ -1125,6 +1187,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
           servico: parsed.servico ?? null,
           informacoes_complementares: parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null,
           municipio_prestacao: parsed.municipio_prestacao ?? atual.servico?.municipio_prestacao_ibge ?? null,
+          obra: juntarObra(atual.obra_rascunho, parsed.obra).rascunho,
           intencao: 'emitir',
         },
         tokens,
@@ -1167,12 +1230,15 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, `Há ${ufs.length} cidades chamadas ${nome} (${ufs.join(', ')}). Me diga com a UF, por exemplo: prestado em ${nome}/${ufs[0]}.`)
     return true
   }
-  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo) && valor && atual.tomador && atual.servico) {
+  // Endereço ou CNO da obra na correção (ou como resposta à pergunta da obra): soma ao que já veio.
+  const obraNova = parsed.obra ? juntarObra(atual.obra_rascunho, parsed.obra) : null
+  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo || obraNova) && valor && atual.tomador && atual.servico) {
     const servico: ServicoDoPedido = {
       ...atual.servico,
       ...(parsed.descricao ? { descricao: parsed.descricao } : {}),
       ...(codigoNovo ? { codigo: codigoNovo.codigo } : {}),
       ...(localNovo ? { municipio_prestacao_ibge: localNovo.ibge } : {}),
+      ...(obraNova ? { obra: obraNova.obra } : {}),
     }
     const retencao_pedido = retencaoNova ? { ...atual.retencao_pedido, ...retencaoNova } : atual.retencao_pedido
     const conversa: Conversa = {
@@ -1182,8 +1248,9 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
       retencao_pedido,
       corrigindo: false,
       ...(infoNova ? { informacoes_complementares: infoNova, info_aberta: false } : {}),
+      ...(obraNova ? { obra_rascunho: obraNova.rascunho } : {}),
     }
-    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo', infoNova && 'info_complementar', localNovo && 'local']
+    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo', infoNova && 'info_complementar', localNovo && 'local', obraNova && 'obra']
       .filter(Boolean)
       .join(' e ')
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
@@ -1218,7 +1285,14 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
     const { tomador, servico, valor } = pedido.conversa
     if (!tomador?.documento || !tomador.nome || !servico || !valor) throw new Error('pedido sem os dados do resumo')
     if (pedido.conversa.retencao_problema) {
-      await responder(ctx, textoDoProblemaDeRetencao(ctx, pedido.conversa.retencao_problema, pedido.conversa.emitente?.razao_social))
+      // Sem os dados da obra, a pergunta de novo: o pedido continua esperando o endereço ou o CNO.
+      const problema = pedido.conversa.retencao_problema
+      await responder(
+        ctx,
+        problema === 'OBRA_SEM_DADOS'
+          ? textoDaObraQueFalta(pedido.conversa.obra_rascunho, null)
+          : textoDoProblemaDeRetencao(ctx, problema, pedido.conversa.emitente?.razao_social),
+      )
       return
     }
     const criada = await db.transaction(async (tx) => {
@@ -1533,7 +1607,7 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(paraIa)
-    parsed = comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa)
+    parsed = comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa))
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1689,6 +1763,10 @@ async function pedidoDeEmissao(
     return
   }
   const noLocal = local ? { municipio_prestacao_ibge: local.ibge } : {}
+  // Dados da obra escritos no pedido: completos vão para o serviço; incompletos ficam no rascunho, e o resumo pede o resto.
+  const daObra = juntarObra(null, parsed.obra)
+  const naObra = { ...noLocal, ...(daObra.obra ? { obra: daObra.obra } : {}) }
+  const rascunhoDaObra = daObra.rascunho ? { obra_rascunho: daObra.rascunho } : {}
 
   if (modelo) {
     const tomador: TomadorDoPedido = { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email }
@@ -1696,7 +1774,7 @@ async function pedidoDeEmissao(
     const servico: ServicoDoPedido = {
       codigo: codigoPedido?.codigo ?? modelo.codigo_servico_nacional,
       descricao: parsed.descricao ?? modelo.descricao,
-      ...noLocal,
+      ...naObra,
     }
     const pedindoDescricao = precisaDeDescricao(servico)
     const conversa: Conversa = {
@@ -1708,6 +1786,7 @@ async function pedidoDeEmissao(
       emitente,
       retencao_pedido: retencaoDoParsed(parsed),
       ...(info ? { informacoes_complementares: info } : {}),
+      ...rascunhoDaObra,
     }
     const id = await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
     if (pedindoDescricao) await responder(ctx, TEXTOS.perguntaDeDescricao)
@@ -1722,13 +1801,14 @@ async function pedidoDeEmissao(
   )
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
-    servico: { codigo: codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...noLocal },
+    servico: { codigo: codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...naObra },
     valor,
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),
     emitente,
     retencao_pedido: retencaoDoParsed(parsed),
     ...(info ? { informacoes_complementares: info } : {}),
+    ...rascunhoDaObra,
   }
   await criarPedido(ctx, { kind: 'emitir', etapa: 'dados_tomador', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
   await responder(

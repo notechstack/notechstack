@@ -16,6 +16,7 @@ import type { Db, Queryable } from './db.js'
 import { errorResponse, json } from './http.js'
 import { createOrGetInvoice } from './invoices.js'
 import { issNoLocalDaPrestacao, motivoDoLocal, problemaDoLocal, resolverMunicipio, rotuloMunicipio } from './local-prestacao.js'
+import { exigeObra, lerObra, rotuloDaObra, type Obra } from './obra.js'
 import { logEvent } from './log.js'
 import type { CatalogoDeServicos } from './agente/catalogo-servicos.js'
 import { DESCRICAO_PADRAO } from './agente/conversa.js'
@@ -138,6 +139,8 @@ export type PedidoDoPainel = {
   informacoes_complementares: string | null
   /** "Local da prestação (opcional)": IBGE; `null` = o município da empresa (também quando é o mesmo). */
   municipio_prestacao_ibge: string | null
+  /** "Dados da obra": só nos códigos de construção civil (E0370), onde são obrigatórios; `null` nos demais. */
+  obra: Obra | null
   /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
   retencao?: RetencaoDoPedido
 }
@@ -152,6 +155,7 @@ export type CampoDoPainel =
   | 'descricao'
   | 'informacoes_complementares'
   | 'municipio_prestacao'
+  | 'obra'
   | 'aliquota_iss'
   | 'inss'
   | 'retencao'
@@ -208,6 +212,21 @@ export function lerPedido(
   }
   const barrado = problemaDoLocal({ codigo, municipioPrestacao: municipio_prestacao_ibge })
   if (barrado) return falha('municipio_prestacao', `Não dá para emitir com outro local da prestação: ${motivoDoLocal(barrado)}.`)
+  // Dados da obra (campos obra_*): obrigatórios nos códigos de construção civil (E0370); nos demais, ignorados.
+  let obra: Obra | null = null
+  if (exigeObra(codigo)) {
+    const lida = lerObra({
+      cno: corpo.obra_cno,
+      cep: corpo.obra_cep,
+      logradouro: corpo.obra_logradouro,
+      numero: corpo.obra_numero,
+      complemento: corpo.obra_complemento,
+      bairro: corpo.obra_bairro,
+    })
+    if (!lida.ok) return falha('obra', `Dados da obra: ${lida.erro}.`)
+    if (!lida.obra) return falha('obra', 'Este código é de construção civil: a Sefin exige o endereço da obra (CEP, rua, número e bairro) ou o CNO.')
+    obra = lida.obra
+  }
 
   let retencao: RetencaoDoPedido | undefined
   if (typeof corpo.retem_iss === 'boolean' || typeof corpo.retem_inss === 'boolean') {
@@ -236,13 +255,14 @@ export function lerPedido(
       descricao: descricao || DESCRICAO_PADRAO,
       informacoes_complementares: info.texto,
       municipio_prestacao_ibge,
+      obra,
       retencao,
     },
   }
 }
 
 const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
-  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge }, p.valor, {
+  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge, obra: p.obra }, p.valor, {
     retencao,
     endereco,
     informacoes_complementares: p.informacoes_complementares,
@@ -428,6 +448,7 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       local_prestacao: pedido.municipio_prestacao_ibge
         ? { ibge: pedido.municipio_prestacao_ibge, nome: rotuloMunicipio(pedido.municipio_prestacao_ibge), iss_no_local: issNoLocalDaPrestacao(pedido.codigo) }
         : null,
+      obra: pedido.obra ? rotuloDaObra(pedido.obra) : null,
       valor: pedido.valor,
       valor_texto: formatarReais(pedido.valor),
       retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),
