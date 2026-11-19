@@ -754,6 +754,8 @@
       if (!emp.principal) acoes.push(botaoLinha('proc', emp, 'Procuração'));
       acoes.push(botaoLinha('fiscal', emp, 'Dados fiscais'));
       acoes.push('<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="nfe" data-nfe-empresa="' + nf.esc(emp.tenant_id) + '">NF-e</button>');
+      // Empresa que mudou na Receita (razão social, endereço, CNAE, regime): reconsulta sem recadastrar.
+      acoes.push(botaoLinha('receita', emp, 'Atualizar dados da Receita'));
     }
     if (!emp.principal) acoes.push(botaoLinha(ativa ? 'desativar' : 'reativar', emp, ativa ? 'Desativar' : 'Reativar'));
     return '<tr' + (ativa ? '' : ' class="nf-linha-off"') + '><th scope="row">' + nf.esc(nomeEmpresa(emp)) +
@@ -787,6 +789,7 @@
     var emp = empresaPorId(id);
     if (!emp) return;
     if (tipo === 'reativar') { ativarEmpresa(emp, true, botao); return; }
+    if (tipo === 'receita') { atualizarReceita(emp, botao); return; }
     ec.acao = { tipo: tipo, tenantId: id, empresa: emp };
     $('fa-empresa-acao').hidden = false;
     $('fa-form-emp-cert').hidden = tipo !== 'cert';
@@ -925,6 +928,45 @@
       }
       if (r.status === 401) return;
       nf.aviso($('fa-aviso-empresas'), nf.esc(r.mensagem || GENERICO) + (r.codigo === 'EMPRESAS_ACIMA_DO_LIMITE' ? BOTAO_FAIXA : ''), 'erro');
+    });
+  }
+
+  /* Atualizar dados da Receita: reconsulta o CNPJ e regrava razão social, município, CNAE e regime. */
+  var ROTULO_REGIME = { mei: 'MEI', simples: 'Simples Nacional' };
+  function atualizarReceita(emp, botao) {
+    var nome = nomeEmpresa(emp);
+    nf.ocupado(botao, true, 'Consultando a Receita…');
+    nf.aviso($('fa-aviso-empresas'), '');
+    nf.funcao('fiscal-conta', { acao: 'empresa_atualizar_receita', tenant_id: emp.tenant_id }).then(function (r) {
+      nf.ocupado(botao, false);
+      if (r.ok) {
+        var at = r.dados.atualizada || {}, mudou = at.mudou || [], depois = at.depois || {};
+        var msg;
+        if (!mudou.length) msg = nf.esc('Os dados de ' + nome + ' já estão iguais aos da Receita Federal.');
+        else {
+          var partes = [];
+          if (mudou.indexOf('razao_social') >= 0) partes.push('razão social agora é ' + depois.razao_social);
+          if (mudou.indexOf('regime') >= 0) partes.push('regime agora é ' + (ROTULO_REGIME[depois.regime] || depois.regime));
+          if (mudou.indexOf('codigo_municipio_ibge') >= 0) partes.push('município atualizado');
+          if (mudou.indexOf('cnae') >= 0) partes.push('CNAE atualizado');
+          msg = nf.esc('Dados atualizados pela Receita Federal: ' + partes.join('; ') + '.');
+          // Virou Simples: falta o percentual do Simples nos dados fiscais.
+          if (mudou.indexOf('regime') >= 0 && depois.regime === 'simples') {
+            msg += ' Informe o percentual do Simples nos dados fiscais. <span class="nf-acoes-linha"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-acao="fiscal" data-tenant="' +
+              nf.esc(emp.tenant_id) + '">Dados fiscais</button></span>';
+          }
+        }
+        var aviso = function () { nf.aviso($('fa-aviso-empresas'), msg, 'ok'); };
+        if (r.dados.tenant_id) { st.estado = r.dados; desenhar(); aviso(); return; }
+        return carregar().then(aviso);
+      }
+      if (r.status === 401) return;
+      // Fora do Simples/MEI, inativa ou não encontrada: o mesmo texto do cadastro, e nada muda.
+      var texto = r.mensagem || GENERICO;
+      if (r.codigo === 'CNPJ_FORA_DO_SIMPLES' || r.codigo === 'CNPJ_INATIVO' || r.codigo === 'CNPJ_NAO_ENCONTRADO') {
+        texto = 'Não atualizamos ' + nome + '. ' + texto.replace(/\.?$/, '.');
+      }
+      nf.aviso($('fa-aviso-empresas'), nf.esc(texto), 'erro');
     });
   }
 

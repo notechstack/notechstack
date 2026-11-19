@@ -222,6 +222,52 @@ test('Minhas empresas: situações e ações por linha', async () => {
   assert.deepEqual(p.rede.de('fiscal-conta:empresa_ativar')[1].corpo, { acao: 'empresa_ativar', tenant_id: EMP_OFF, ativa: true });
 });
 
+test('atualizar dados da Receita de empresa já cadastrada', async () => {
+  // Caso de 19/11/2026: a empresa mudou de razão social na Receita; o painel não deixava corrigir.
+  const renomeada = () => {
+    const lista = empresas();
+    lista[1] = { ...lista[1], razao_social: 'PADARIA NOVA ERA LTDA' };
+    return estadoEscritorio({}, { empresas: lista });
+  };
+  let resposta = () => ({ status: 200, corpo: { ...renomeada(), atualizada: { tenant_id: EMP_PRONTA, mudou: ['razao_social'], antes: { razao_social: 'PADARIA BOA LTDA' }, depois: { razao_social: 'PADARIA NOVA ERA LTDA', regime: 'simples' } } } });
+  const p = await painel({ 'fiscal-conta:empresa_atualizar_receita': (c) => resposta(c) }, '/agentes/fiscal/conta/#empresas');
+
+  // Botão em cada empresa ativa (inclusive a do escritório); a desativada não tem.
+  for (const t of [TENANT, EMP_PRONTA, EMP_VENCENDO, EMP_MEI]) assert.equal(p.texto(botaoDe(p, t, 'receita')), 'Atualizar dados da Receita');
+  assert.equal(botaoDe(p, EMP_OFF, 'receita'), null);
+  assert.equal(botaoDe(p, EMP_PRONTA, 'receita').getAttribute('aria-label'), 'Atualizar dados da Receita: PADARIA BOA LTDA');
+
+  await p.clicar(botaoDe(p, EMP_PRONTA, 'receita'));
+  assert.deepEqual(p.rede.de('fiscal-conta:empresa_atualizar_receita')[0].corpo, { acao: 'empresa_atualizar_receita', tenant_id: EMP_PRONTA });
+  assert.equal(p.texto(linhaDe(p, EMP_PRONTA).querySelector('th')), 'PADARIA NOVA ERA LTDA', 'a linha mostra o nome novo');
+  assert.equal(p.texto('fa-aviso-empresas'), 'Dados atualizados pela Receita Federal: razão social agora é PADARIA NOVA ERA LTDA.');
+  assert.equal(p.visivel('fa-empresa-acao'), false, 'não abre painel: é uma ação só');
+
+  // Já igual à Receita.
+  resposta = () => ({ status: 200, corpo: { ...renomeada(), atualizada: { tenant_id: EMP_PRONTA, mudou: [], antes: {}, depois: {} } } });
+  await p.clicar(botaoDe(p, EMP_PRONTA, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Os dados de PADARIA NOVA ERA LTDA já estão iguais aos da Receita Federal.');
+
+  // MEI que virou Simples: avisa do percentual, com atalho para os dados fiscais.
+  resposta = () => ({ status: 200, corpo: { ...estadoEscritorio(), atualizada: { tenant_id: EMP_MEI, mudou: ['regime'], antes: { regime: 'mei' }, depois: { razao_social: 'JOANA MEI', regime: 'simples' } } } });
+  await p.clicar(botaoDe(p, EMP_MEI, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Dados atualizados pela Receita Federal: regime agora é Simples Nacional. Informe o percentual do Simples nos dados fiscais. Dados fiscais');
+  await p.clicar(p.$('fa-aviso-empresas').querySelector('button[data-acao="fiscal"]'));
+  assert.ok(p.visivel('fa-form-emp-fiscal'));
+  assert.equal(p.texto('fa-empresa-acao-titulo'), 'Dados fiscais de JOANA MEI');
+
+  // Saiu do Simples: o mesmo aviso do cadastro, e a linha não muda.
+  resposta = () => ({ status: 422, corpo: { ok: false, error_code: 'CNPJ_FORA_DO_SIMPLES', mensagem: 'O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples', campo: 'cnpj' } });
+  await p.clicar(botaoDe(p, EMP_VENCENDO, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Não atualizamos OFICINA RAPIDA LTDA. O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples.');
+  assert.equal(p.texto(linhaDe(p, EMP_VENCENDO).querySelector('th')), 'OFICINA RAPIDA LTDA');
+
+  // Receita fora do ar: a mensagem da função.
+  resposta = () => ({ status: 503, corpo: { ok: false, error_code: 'CONSULTA_INDISPONIVEL', mensagem: 'Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.' } });
+  await p.clicar(botaoDe(p, EMP_VENCENDO, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.');
+});
+
 test('adicionar empresa e limite da faixa', async () => {
   let resposta = r(409, { ok: false, error_code: 'EMPRESAS_ACIMA_DO_LIMITE', mensagem: 'Seu plano permite até 5 empresas.', limite: 5 });
   const p = await painel({ 'fiscal-conta:empresa_adicionar': (c, ch, m) => resposta(c, ch, m) }, '/agentes/fiscal/conta/#empresas');
