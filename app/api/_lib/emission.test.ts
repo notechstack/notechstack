@@ -18,6 +18,7 @@ import { fakeSefin } from '../_tests/sefin-fake.js'
 import { verifySignature } from '../_tests/verify-signature.js'
 import { closeSharedDb } from './db.js'
 import { runEmission } from './emission.js'
+import { notasDoMes } from './agente/lote.js'
 import { handleNfseRequest } from './nfse-routes.js'
 import { createSefinClient } from './sefin-client.js'
 
@@ -156,6 +157,8 @@ describe('emissão autorizada (C3)', () => {
     await runEmission({ db, sefin: createSefinClient({ transport: sefin.transport }), now: () => t0, tenantId: r.id })
     expect((await readInvoice(db, nota.id)).last_error_code).toBe('E0039')
     expect(await sit(recusa)).toEqual({ situacao: 'recusada', origem: 'recusa_sefin' })
+    // A nota recusada porque a cidade não atende não consome a franquia do plano (Lucca, 19/11/2026).
+    expect(await notasDoMes(db, r.id, t0)).toBe(0)
     await db.query("update nofiscal.fiscal_tenants set codigo_servico_nacional = '170201' where id = any($1::uuid[])", [[vizinha.id, simplesDaCidade.id]])
     const bloqueio = async (id: string) => (await db.query<{ b: string | null }>('select nofiscal.emission_block($1) as b', [id])).rows[0].b
     expect(await bloqueio(vizinha.id)).toBe('MUNICIPIO_SEM_PRESUMIDO')

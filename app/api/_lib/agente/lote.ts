@@ -959,7 +959,9 @@ export function chaveDoPayload(tenantId: string, payload: unknown): string | nul
 
 /**
  * Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). A NF-e
- * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia.
+ * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia. Nota recusada pela Sefin não consome a franquia —
+ * inclusive a do Presumido/Real recusada porque a cidade não aceita o regime (E0037/E0038/E0039; Lucca, 19/11/2026):
+ * ela sai da fila como `rejected`, sem `issued_at`.
  */
 export async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
   const local = partesLocais(agora)
