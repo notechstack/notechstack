@@ -1,7 +1,7 @@
 // Empresas da conta pela API (parceiro com sistema próprio): cadastrar a empresa cliente, ler a situação dela (pronta,
 // falta A1, procuração pendente…) e mudar dados fiscais e retenção, sem depender do painel. As regras são as do painel:
 // os dados do CNPJ vêm da Receita (mesma consulta do cadastro), o limite de empresas e a procuração passam pelas
-// mesmas funções do banco (migração 20261118090000) e a situação é o mesmo `emission_block` do motor.
+// mesmas funções do banco (migração 20261119090000) e a situação é o mesmo `emission_block` do motor.
 // O A1 não entra pela API: certificado e senha só pelo painel (Minha conta → Minhas empresas). Com procuração, a
 // empresa não precisa de A1: quem assina é o A1 do escritório. A nó nunca assina nota de cliente.
 import type { Queryable } from '../db.js'

@@ -1,4 +1,4 @@
-// Webhook de retorno do parceiro (migração 20261118090000). Quando uma nota de qualquer empresa da conta chega a um
+// Webhook de retorno do parceiro (migração 20261119090000). Quando uma nota de qualquer empresa da conta chega a um
 // estado final, o worker grava o evento em `nofiscal.fiscal_webhook_entregas` (retrato da nota naquele momento) e,
 // na mesma rodada e nas seguintes, faz o POST na URL da conta-mãe, com reenvio e espera até a URL responder 2xx.
 //

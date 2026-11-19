@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { NFSE_ROUTES } from '../nfse-routes.js'
 
-const ler = (relativo: string) => readFileSync(fileURLToPath(new URL(relativo, import.meta.url)), 'utf8')
+const ler = (relativo: string) =>
+  readFileSync(fileURLToPath(new URL(relativo, import.meta.url)), 'utf8').replace(/\r\n/g, '\n')
 const openapi = ler('../../../../agentes/fiscal/dados/api/openapi.yaml')
 const readme = ler('../../../../agentes/fiscal/dados/api/README.md')
 

@@ -85,7 +85,7 @@ describe('rotas do Nó Fiscal', () => {
     }
 
     // Nenhum código publicado chama a função que grava o A1. O segredo do webhook só é gravado pela aba API do painel
-    // (sessão da conta Escritório, migração 20261118090000), nunca por rota de chave de API.
+    // (sessão da conta Escritório, migração 20261119090000), nunca por rota de chave de API.
     const publicados = walk(API_DIR).filter((path) => path.endsWith('.ts') && !path.endsWith('.test.ts') && !posix(path).startsWith('api/_tests/'))
     for (const path of publicados) {
       const source = readFileSync(path, 'utf8')

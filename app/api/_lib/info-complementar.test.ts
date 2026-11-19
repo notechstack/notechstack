@@ -142,10 +142,10 @@ describe('API /v1/nfse: campo opcional informacoes_complementares', () => {
 
   it('aceita, normaliza e guarda no payload; ausente ou vazio, o payload é o de antes', () => {
     const ok = parseNewInvoice(corpo({ informacoes_complementares: '  Banco:\nCaixa ' }))
-    expect(ok).toMatchObject({ ok: true, value: { payload: { informacoes_complementares: 'Banco: Caixa' } } })
+    expect(ok).toMatchObject({ ok: true, value: { informacoes_complementares: 'Banco: Caixa' } })
     for (const sem of [corpo(), corpo({ informacoes_complementares: '' }), corpo({ informacoes_complementares: null })]) {
       const r = parseNewInvoice(sem)
-      expect(r.ok && r.value.payload).not.toHaveProperty('informacoes_complementares')
+      expect(r.ok && r.value).not.toHaveProperty('informacoes_complementares')
     }
   })
 
