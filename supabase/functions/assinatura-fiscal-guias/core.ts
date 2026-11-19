@@ -55,7 +55,7 @@ export type DepsGuias = {
   contexto: (tenantId: string) => Promise<ContextoGuias>;
   reservar: (tenantId: string, limite: number) => Promise<{ ok: boolean; erro?: string; reservado?: boolean; geracao?: number; pagarme_subscription_id?: string }>;
   soltar: (tenantId: string) => Promise<void>;
-  registrar: (a: { tenantId: string; subscriptionId: string; limite: number; cupom: string | null; inicio: string | null }) => Promise<Record<string, unknown>>;
+  registrar: (a: { tenantId: string; subscriptionId: string; limite: number; cupom: string | null; inicio: string | null }) => Promise<{ ok?: boolean; erro?: string; cancelar?: string } & Record<string, unknown>>;
   ligarModulo: (tenantId: string, limite: number) => Promise<Record<string, unknown>>;
   desligar: (tenantId: string) => Promise<{ ok: boolean; erro?: string; cancelar?: string | null }>;
   cancelamentoPedido: (tenantId: string, subscriptionId: string) => Promise<void>;
@@ -117,6 +117,7 @@ export function corpoAssinaturaGuias(a: {
   principal: Principal;
   cupom: CupomValido | null;
   agora: Date;
+  geracao?: number;
 }): Record<string, unknown> {
   const inicio = a.principal.proximaCobranca && Date.parse(a.principal.proximaCobranca) > a.agora.getTime()
     ? new Date(Date.parse(a.principal.proximaCobranca)).toISOString()
@@ -133,6 +134,8 @@ export function corpoAssinaturaGuias(a: {
       produto: "guias",
       tenant_id: a.tenantId,
       limite_mes: a.limite,
+      // O banco só casa um aviso pela metadata se for desta geração (não de uma Guias anterior, já cancelada).
+      geracao: a.geracao ?? 0,
       ...(a.cupom ? { cupom: a.cupom.codigo } : {}),
     },
   };
@@ -172,7 +175,8 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
   let cupom: CupomValido | null = null;
   if (codigo) {
     const r = await deps.validarCupom(tenantId, codigo);
-    if (!r || !r.ok || (r.tipo !== "percentual" && r.tipo !== "valor") || typeof r.valor !== "number" || r.cortesia) {
+    // Só cupom em reais (como o FUNDADORGUIAS): o percentual não está no cálculo do valor que Meus dados mostra.
+    if (!r || !r.ok || r.tipo !== "valor" || typeof r.valor !== "number" || r.cortesia) {
       return erro(422, r?.motivo || "CUPOM_INVALIDO", "cupom não vale para o módulo Guias");
     }
     cupom = { codigo: r.codigo || codigo, descricao: r.descricao ?? null, tipo: r.tipo, valor: r.valor, cortesia: false, ciclos: typeof r.ciclos === "number" ? r.ciclos : null, diasDeTeste: null };
@@ -180,7 +184,11 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
   }
 
   const reserva = await deps.reservar(tenantId, limite);
-  if (!reserva.ok) return erro(409, reserva.erro || "CRIACAO_EM_ANDAMENTO", "outra chamada está criando a assinatura Guias agora");
+  if (!reserva.ok) {
+    return erro(409, reserva.erro || "CRIACAO_EM_ANDAMENTO", reserva.erro === "CANCELAMENTO_PENDENTE"
+      ? "a Guias anterior ainda não foi cancelada no Pagar.me; o ciclo cancela em até 15 minutos, depois tente de novo"
+      : "outra chamada está criando a assinatura Guias agora");
+  }
   if (!reserva.reservado) {
     // Já existe: só garante o módulo ligado (idempotente), sem nova assinatura.
     await deps.ligarModulo(tenantId, limite);
@@ -207,16 +215,17 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
   }
 
   const agora = (deps.agora ?? (() => new Date()))();
-  const corpo = corpoAssinaturaGuias({ planId, tenantId, limite, principal, cupom, agora });
+  const corpo = corpoAssinaturaGuias({ planId, tenantId, limite, principal, cupom, agora, geracao: reserva.geracao });
   let subscriptionId: string;
+  let criada: Record<string, unknown>;
   try {
     const res = await deps.fetch(`${config.apiUrl}/subscriptions`, {
       method: "POST",
       headers: { ...headers, "Idempotency-Key": `nofiscal-guias-${tenantId}-${reserva.geracao ?? 0}` },
       body: JSON.stringify(corpo),
     });
-    const json = obj(await res.json().catch(() => null));
-    const id = texto(json.id);
+    criada = obj(await res.json().catch(() => null));
+    const id = texto(criada.id);
     if (!res.ok || !id) throw new Error(`HTTP ${res.status}`);
     subscriptionId = id;
   } catch {
@@ -224,9 +233,30 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
     log("error", "assinatura_guias_criar_falhou", { tenant_id: tenantId });
     return erro(502, "PAGARME_FALHOU", "o Pagar.me não criou a assinatura Guias");
   }
+  // Sem start_at a 1ª cobrança é na hora: cartão recusado volta "failed"/"canceled". Cancela e não liga nada.
+  if (criada.status === "failed" || criada.status === "canceled") {
+    await cancelarNoPagarme(deps, subscriptionId);
+    await deps.soltar(tenantId);
+    log("warn", "assinatura_guias_recusada", { tenant_id: tenantId, subscription_id: subscriptionId, status: criada.status });
+    return erro(402, "PAGAMENTO_RECUSADO", "o Pagar.me recusou a primeira cobrança da Guias no cartão da principal");
+  }
 
-  const inicio = typeof corpo.start_at === "string" ? corpo.start_at : null;
-  const registro = await deps.registrar({ tenantId, subscriptionId, limite, cupom: cupom?.codigo ?? null, inicio });
+  const inicio = typeof corpo.start_at === "string" ? corpo.start_at : texto(criada.next_billing_at);
+  let registro: Awaited<ReturnType<DepsGuias["registrar"]>>;
+  try {
+    registro = await deps.registrar({ tenantId, subscriptionId, limite, cupom: cupom?.codigo ?? null, inicio });
+  } catch {
+    // A assinatura nasceu mas o banco não gravou: cancela no Pagar.me para não cobrar sem o módulo.
+    const cancelada = await cancelarNoPagarme(deps, subscriptionId);
+    await deps.soltar(tenantId).catch(() => undefined);
+    log("error", "assinatura_guias_registro_falhou", { tenant_id: tenantId, subscription_id: subscriptionId, cancelada });
+    return erro(500, "REGISTRO_FALHOU", cancelada ? "o banco não gravou; a assinatura criada foi cancelada no Pagar.me" : `o banco não gravou e o cancelamento falhou: cancele ${subscriptionId} no Pagar.me`);
+  }
+  if (registro.cancelar) {
+    // Desligado (ou principal cancelada) enquanto a Guias nascia: cancela já; se falhar, o ciclo cancela.
+    if (await cancelarNoPagarme(deps, subscriptionId)) await deps.cancelamentoPedido(tenantId, subscriptionId);
+    return erro(409, "DESLIGADO_DURANTE_A_CRIACAO", "o módulo foi desligado enquanto a assinatura nascia; ela foi cancelada");
+  }
   log("info", "assinatura_guias_criada", { tenant_id: tenantId, subscription_id: subscriptionId, inicio, cupom: cupom?.codigo ?? null });
   return {
     http: 201,

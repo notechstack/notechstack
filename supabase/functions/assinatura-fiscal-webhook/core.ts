@@ -67,7 +67,7 @@ export function envelopeSeguro(eventId: string, tipo: string, data: Record<strin
   const guias = metadataDeGuias(d);
   return {
     // Módulo Guias: produto e tenant da metadata (só ids), para o banco achar a assinatura antes de o id ser gravado.
-    ...(guias ? { produto: "guias", tenant_id: guias.tenantId } : {}),
+    ...(guias ? { produto: "guias", tenant_id: guias.tenantId, ...(guias.geracao !== null ? { geracao: guias.geracao } : {}) } : {}),
     id: eventId,
     type: tipo,
     data: {
@@ -87,13 +87,14 @@ export function envelopeSeguro(eventId: string, tipo: string, data: Record<strin
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Assinatura "nó.fiscal Guias" pela metadata (do aviso de assinatura, da fatura ou da cobrança). */
-export function metadataDeGuias(data: Record<string, unknown>): { tenantId: string } | null {
+export function metadataDeGuias(data: Record<string, unknown>): { tenantId: string; geracao: number | null } | null {
   const d = obj(data);
   const invoice = obj(d.invoice);
   const fontes = [obj(d.metadata), obj(obj(d.subscription).metadata), obj(obj(invoice.subscription).metadata), obj(invoice.metadata)];
   for (const m of fontes) {
     const tenant = texto(m.tenant_id);
-    if (m.produto === "guias" && tenant && UUID.test(tenant)) return { tenantId: tenant };
+    const geracao = typeof m.geracao === "number" || (typeof m.geracao === "string" && /^\d+$/.test(m.geracao)) ? Number(m.geracao) : null;
+    if (m.produto === "guias" && tenant && UUID.test(tenant)) return { tenantId: tenant, geracao };
   }
   return null;
 }

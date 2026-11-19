@@ -139,8 +139,11 @@ begin
           v_limite, case when p_ligado then 'ativo' else 'desligado' end)
   on conflict (tenant_id, produto) do update
     set limite_mes = excluded.limite_mes, faixa = excluded.faixa, status = excluded.status,
+        -- Desligar marca a Guias para cancelar no Pagar.me; durante a criação (ainda sem id) também: o registro
+        -- encontra a marca, não liga e a assinatura nova é cancelada.
         cancelar_no_gateway = case
-          when not p_ligado and nofiscal.fiscal_addons.pagarme_subscription_id is not null
+          when not p_ligado and (nofiscal.fiscal_addons.pagarme_subscription_id is not null
+                                 or nofiscal.fiscal_addons.pagarme_status = 'criando')
                and coalesce(nofiscal.fiscal_addons.pagarme_status, '') not in ('cancelada', 'cancelamento_pedido') then true
           else nofiscal.fiscal_addons.cancelar_no_gateway end,
         updated_at = now();
@@ -206,7 +209,11 @@ begin
   values (p_tenant_id, 'guias', p_limite_mes, 'desligado')
   on conflict (tenant_id, produto) do nothing;
   select a.* into v_a from nofiscal.fiscal_addons a where a.tenant_id = p_tenant_id and a.produto = 'guias' for update;
-  if v_a.pagarme_subscription_id is not null and coalesce(v_a.pagarme_status, '') <> 'cancelada' then
+  -- Desligada com o cancelamento ainda não aceito pelo Pagar.me: espera o ciclo cancelar a antiga antes de criar outra.
+  if v_a.cancelar_no_gateway then
+    return jsonb_build_object('ok', false, 'erro', 'CANCELAMENTO_PENDENTE');
+  end if;
+  if v_a.pagarme_subscription_id is not null and coalesce(v_a.pagarme_status, '') not in ('cancelada', 'cancelamento_pedido') then
     return jsonb_build_object('ok', true, 'reservado', false, 'pagarme_subscription_id', v_a.pagarme_subscription_id,
                               'pagarme_status', v_a.pagarme_status);
   end if;
@@ -215,7 +222,7 @@ begin
   end if;
   update nofiscal.fiscal_addons
      set pagarme_status = 'criando', criando_em = now(), pagarme_subscription_id = null, cancelar_no_gateway = false,
-         geracao = geracao + case when v_a.pagarme_status = 'cancelada' then 1 else 0 end,
+         geracao = geracao + case when v_a.pagarme_status in ('cancelada', 'cancelamento_pedido') then 1 else 0 end,
          cupom_id = null, desconto_valor = null, desconto_ciclos = null, ciclos_pagos = 0, ultimo_evento_gateway_em = null,
          updated_at = now()
    where id = v_a.id;
@@ -246,15 +253,25 @@ as $$
 declare
   v_cupom jsonb;
   v_ligar jsonb;
+  v_a record;
 begin
   if p_tenant_id is null or p_subscription_id is null or btrim(p_subscription_id) = '' then
     raise exception 'fiscal_guias_registrar: parametro invalido' using errcode = '22023';
   end if;
+  select a.* into v_a from nofiscal.fiscal_addons a where a.tenant_id = p_tenant_id and a.produto = 'guias' for update;
+  -- Desligada (ou principal cancelada) durante a criação: grava o id para o ciclo cancelar e não liga.
+  if v_a.cancelar_no_gateway then
+    update nofiscal.fiscal_addons
+       set pagarme_subscription_id = p_subscription_id, pagarme_status = 'pendente', criando_em = null, updated_at = now()
+     where id = v_a.id;
+    return jsonb_build_object('ok', false, 'erro', 'DESLIGADO_DURANTE_A_CRIACAO', 'cancelar', p_subscription_id);
+  end if;
   update nofiscal.fiscal_addons
-     set pagarme_subscription_id = p_subscription_id,
-         pagarme_status = case when pagarme_status = 'criando' or pagarme_status is null then 'pendente' else pagarme_status end,
+     set pagarme_status = case when pagarme_subscription_id is distinct from p_subscription_id
+                                    or pagarme_status = 'criando' or pagarme_status is null then 'pendente' else pagarme_status end,
+         pagarme_subscription_id = p_subscription_id,
          criando_em = null, proxima_cobranca = p_inicio, cancelar_no_gateway = false, updated_at = now()
-   where tenant_id = p_tenant_id and produto = 'guias';
+   where id = v_a.id;
   if p_cupom is not null and btrim(p_cupom) <> '' then
     v_cupom := nofiscal.cupom_avaliar(p_tenant_id, p_cupom, 'guias');
     if (v_cupom ->> 'ok')::boolean then
@@ -378,9 +395,11 @@ begin
      where a.produto = 'guias' and a.pagarme_subscription_id = p_subscription_id
      for update;
     if not found and p_payload ->> 'produto' = 'guias' and (p_payload ->> 'tenant_id') ~ '^[0-9a-f-]{36}$' then
+      -- Só a assinatura da geração atual: aviso atrasado de uma Guias anterior (cancelada) não pega a reserva nova.
       select a.* into v_addon from nofiscal.fiscal_addons a
        where a.produto = 'guias' and a.tenant_id = (p_payload ->> 'tenant_id')::uuid
          and (a.pagarme_subscription_id is null or a.pagarme_status = 'criando')
+         and (p_payload ->> 'geracao') ~ '^\d+$' and (p_payload ->> 'geracao')::int = a.geracao
        for update;
       if found then
         update nofiscal.fiscal_addons set pagarme_subscription_id = p_subscription_id where id = v_addon.id;
@@ -429,7 +448,7 @@ begin
   if p_status = 'cancelada' then
     update nofiscal.fiscal_addons
        set status = 'desligado',
-           cancelar_no_gateway = pagarme_subscription_id is not null
+           cancelar_no_gateway = (pagarme_subscription_id is not null or pagarme_status = 'criando')
                                  and coalesce(pagarme_status, '') not in ('cancelada', 'cancelamento_pedido'),
            updated_at = now()
      where tenant_id = v_atual.tenant_id and produto = 'guias';
@@ -448,7 +467,7 @@ set search_path = ''
 as $$
   update nofiscal.fiscal_addons
      set status = 'desligado',
-         cancelar_no_gateway = pagarme_subscription_id is not null
+         cancelar_no_gateway = (pagarme_subscription_id is not null or pagarme_status = 'criando')
                                and coalesce(pagarme_status, '') not in ('cancelada', 'cancelamento_pedido'),
          updated_at = now()
    where tenant_id = p_tenant_id and produto = 'guias';

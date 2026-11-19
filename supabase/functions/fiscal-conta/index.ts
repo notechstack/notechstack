@@ -78,6 +78,11 @@ Deno.serve(async (request) => {
       agendarCancelamento: async (userId, fimCiclo) =>
         await rpc("fiscal_agendar_cancelamento", { p_user_id: userId, p_fim_ciclo: fimCiclo }),
       apagarConta: async (userId) => await rpc("fiscal_apagar_conta", { p_user_id: userId }),
+      assinaturaGuias: async (tenantId) => {
+        const c = (await rpc("fiscal_guias_contexto", { p_tenant_id: tenantId })) as { guias?: { pagarme_subscription_id?: string | null; pagarme_status?: string | null } | null } | null;
+        const g = c && c.guias;
+        return g && g.pagarme_subscription_id && !["cancelada", "cancelamento_pedido"].includes(g.pagarme_status || "") ? g.pagarme_subscription_id : null;
+      },
       escritorio: async (userId) => (await rpc("fiscal_escritorio_estado", { p_user_id: userId })) as EscritorioBanco | null,
       empresaAdicionar: async (userId, a) =>
         await rpc("fiscal_empresa_adicionar", {

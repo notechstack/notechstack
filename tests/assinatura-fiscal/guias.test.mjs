@@ -207,7 +207,7 @@ test("G2/G3/G7: cria no cartão da principal, começando no fim do teste dela, c
     payment_method: "credit_card",
     start_at: FIM_DO_TESTE,
     discounts: [{ value: 5000, discount_type: "flat", cycles: 12 }],
-    metadata: { origem: "agente-fiscal", produto: "guias", tenant_id: e.tenantId, limite_mes: 500, cupom: "FUNDADORGUIAS" },
+    metadata: { origem: "agente-fiscal", produto: "guias", tenant_id: e.tenantId, limite_mes: 500, geracao: 0, cupom: "FUNDADORGUIAS" },
   });
   assert.ok(post.headers["Idempotency-Key"].startsWith(`nofiscal-guias-${e.tenantId}-`));
   const a = await addon(e.tenantId);
@@ -372,9 +372,105 @@ test("G5: aviso da Guias antes de o id ser gravado é reconhecido pela metadata"
   const e = await escritorio(pg);
   await rpc("fiscal_guias_reservar", { p_tenant_id: e.tenantId, p_limite_mes: 500 });
   const sub = `sub_guias_${randomBytes(4).toString("hex")}`;
-  const r = await aviso("invoice.paid", { id: "in_m1", subscription: { id: sub, metadata: { produto: "guias", tenant_id: e.tenantId } } });
+  const r = await aviso("invoice.paid", { id: "in_m1", subscription: { id: sub, metadata: { produto: "guias", tenant_id: e.tenantId, geracao: 0 } } });
   assert.equal(r.body.produto, "guias");
   const a = await addon(e.tenantId);
   assert.equal(a.pagarme_subscription_id, sub);
   assert.equal(a.pagarme_status, "paga");
+});
+
+test("revisão 1: desligar e religar cria uma Guias nova; com o cancelamento ainda pendente, recusa até o ciclo cancelar", async () => {
+  const pg = pagarme();
+  const e = await escritorio(pg);
+  const antiga = (await ligar(pg, e.tenantId)).body.pagarme_subscription_id;
+  await processarGuias({ metodo: "POST", autorizado: true, body: { acao: "desligar", tenant_id: e.tenantId } }, depsGuias(pg));
+  const r = await ligar(pg, e.tenantId);
+  assert.equal(r.http, 201, JSON.stringify(r.body));
+  assert.notEqual(r.body.pagarme_subscription_id, antiga);
+  const a = await addon(e.tenantId);
+  assert.equal(a.status, "ativo");
+  assert.equal(a.pagarme_status, "pendente");
+  assert.equal(a.pagarme_subscription_id, r.body.pagarme_subscription_id);
+  assert.equal(a.geracao, 1);
+  const chaves = pg.chamadas.filter((c) => c.metodo === "POST").map((c) => c.headers["Idempotency-Key"]);
+  assert.equal(new Set(chaves).size, 2, "geração nova, chave nova");
+
+  const e2 = await escritorio(pg);
+  await ligar(pg, e2.tenantId);
+  pg.falhar.delete = true;
+  await processarGuias({ metodo: "POST", autorizado: true, body: { acao: "desligar", tenant_id: e2.tenantId } }, depsGuias(pg));
+  pg.falhar.delete = false;
+  const pendente = await ligar(pg, e2.tenantId);
+  assert.equal(pendente.body.error_code, "CANCELAMENTO_PENDENTE");
+  assert.equal((await addon(e2.tenantId)).status, "desligado");
+  await ciclo(pg);
+  assert.equal((await ligar(pg, e2.tenantId)).http, 201);
+});
+
+test("revisão 2: aviso atrasado de uma Guias anterior não pega a reserva nova", async () => {
+  const pg = pagarme();
+  const e = await escritorio(pg);
+  const antiga = (await ligar(pg, e.tenantId)).body.pagarme_subscription_id;
+  await processarGuias({ metodo: "POST", autorizado: true, body: { acao: "desligar", tenant_id: e.tenantId } }, depsGuias(pg));
+  await aviso("subscription.canceled", { id: antiga, status: "canceled", metadata: { produto: "guias", tenant_id: e.tenantId, geracao: 0 } });
+  await rpc("fiscal_guias_reservar", { p_tenant_id: e.tenantId, p_limite_mes: 500 });
+  // Reenvio atrasado da antiga (geração 0) com a reserva da geração 1 aberta.
+  const r = await aviso("invoice.payment_failed", { id: "in_velha", subscription: { id: antiga, metadata: { produto: "guias", tenant_id: e.tenantId, geracao: 0 } } });
+  assert.notEqual(r.body.produto, "guias");
+  const a = await addon(e.tenantId);
+  assert.equal(a.pagarme_subscription_id, null);
+  assert.equal(a.pagarme_status, "criando");
+});
+
+test("revisão 3: Guias recusada já na criação é cancelada e não liga nada; sem start_at a próxima cobrança vem do Pagar.me", async () => {
+  const pg = pagarme();
+  const e = await escritorio(pg, { status: "active" });
+  pg.subs.get(e.principal).next_billing_at = null;
+  pg.subs.get(e.principal).start_at = "2026-01-01T00:00:00Z";
+  const fetchOriginal = pg.fetch;
+  const recusar = { sim: true };
+  pg.fetch = async (url, init = {}) => {
+    const res = await fetchOriginal(url, init);
+    if ((init.method || "GET") === "POST") {
+      const j = await res.json();
+      pg.subs.get(j.id).status = recusar.sim ? "failed" : "active";
+      pg.subs.get(j.id).next_billing_at = "2026-12-19T15:00:00.000Z";
+      return new Response(JSON.stringify(pg.subs.get(j.id)), { status: 200 });
+    }
+    return res;
+  };
+  const r = await ligar(pg, e.tenantId);
+  assert.equal(r.http, 402);
+  assert.equal(r.body.error_code, "PAGAMENTO_RECUSADO");
+  assert.ok(pg.chamadas.some((c) => c.metodo === "DELETE"));
+  const a = await addon(e.tenantId);
+  assert.equal(a.status, "desligado");
+  assert.equal(a.pagarme_subscription_id, null);
+  recusar.sim = false;
+  const ok = await ligar(pg, e.tenantId);
+  assert.equal(ok.http, 201);
+  assert.equal("start_at" in pg.chamadas.filter((c) => c.metodo === "POST").at(-1).corpo, false);
+  assert.equal(new Date((await addon(e.tenantId)).proxima_cobranca).toISOString(), "2026-12-19T15:00:00.000Z");
+});
+
+test("revisão: desligado enquanto a Guias nascia — não liga e cancela a recém-criada; cupom percentual é recusado", async () => {
+  const pg = pagarme();
+  const e = await escritorio(pg);
+  const deps = depsGuias(pg);
+  const registrar = deps.registrar;
+  deps.registrar = async (a) => {
+    await rpc("fiscal_definir_modulo_guias", { p_tenant_id: e.tenantId, p_ligado: false, p_limite_mes: null });
+    return registrar(a);
+  };
+  const r = await processarGuias({ metodo: "POST", autorizado: true, body: { acao: "ligar", tenant_id: e.tenantId } }, deps);
+  assert.equal(r.body.error_code, "DESLIGADO_DURANTE_A_CRIACAO");
+  const a = await addon(e.tenantId);
+  assert.equal(a.status, "desligado");
+  assert.equal(pg.subs.get(a.pagarme_subscription_id).status, "canceled");
+  assert.equal(a.pagarme_status, "cancelamento_pedido");
+
+  await bancos.dono.query(`insert into nofiscal.fiscal_cupons (codigo, tipo, valor, planos) values ('TESTEGUIASPCT', 'percentual', 10, array['guias']) on conflict do nothing`);
+  const e2 = await escritorio(pg);
+  assert.equal((await ligar(pg, e2.tenantId, { cupom: "TESTEGUIASPCT" })).body.error_code, "CUPOM_INVALIDO");
+  await bancos.dono.query(`delete from nofiscal.fiscal_cupons where codigo = 'TESTEGUIASPCT'`);
 });
