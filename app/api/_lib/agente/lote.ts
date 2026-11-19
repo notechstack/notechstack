@@ -750,6 +750,8 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return `a procuração de ${empresa} venceu`
     case 'PROCURADOR_CERT_INVALIDO':
       return `o certificado A1 do escritório, que assina por procuração, não está valendo`
+    case 'MUNICIPIO_SEM_PRESUMIDO':
+      return `a prefeitura de ${empresa} não aceita Lucro Presumido/Real no Emissor Nacional (a Sefin recusou); a empresa está na lista de espera`
     case 'FISCAL_CONFIG_MISSING':
       return `faltam os dados fiscais de ${empresa} (código de serviço e percentual do Simples)`
     case 'TENANT_INACTIVE':

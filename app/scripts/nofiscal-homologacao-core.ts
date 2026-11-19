@@ -15,6 +15,13 @@ import type { OpcoesDps } from '../api/_lib/dps-builder.js'
 import type { SignatureProfile } from '../api/_lib/xml-signer.js'
 import { cpfValido, makeMasker, parseFlags, SPIKE_AMBIENTE, SpikeRefused } from './nofiscal-spike-core.js'
 
+export function urlsDoConvenio(municipio: string): string[] {
+  return [
+    `${SEFIN_BASE_URLS[SPIKE_AMBIENTE]}/parametros_municipais/${municipio}/convenio`,
+    `https://adn.producaorestrita.nfse.gov.br/parametrizacao/parametros_municipais/${municipio}/convenio`,
+  ]
+}
+
 export type HomologacaoDeps = {
   argv: string[]
   ask: (question: string, options?: { hidden?: boolean }) => Promise<string>
@@ -154,6 +161,11 @@ export type RelatorioHomologacao = {
   certificado_valido_ate: string
   notas: ResultadoNota[]
   codigos_vistos: string[]
+  /**
+   * Sonda dos parâmetros municipais (GET, sem efeito), para conhecer o formato da resposta antes de o cadastro depender
+   * dela: o schema não é público. Corpo inteiro gravado (dados da prefeitura, sem dado da empresa), mascarado.
+   */
+  convenio: { url: string; status: number | null; corpo: unknown; erro?: string }[]
 }
 
 const tag = (xml: string, nome: string) => new RegExp(`<(?:\\w+:)?${nome}>([^<]*)</(?:\\w+:)?${nome}>`).exec(xml)?.[1] ?? null
@@ -251,6 +263,25 @@ export async function runHomologacao(deps: HomologacaoDeps): Promise<{ relatorio
     notas.push(nota)
   }
 
+  // Parâmetros municipais com o A1 (mTLS). Dois endereços possíveis no Manual de Contribuintes: o da Sefin e o do ADN.
+  const convenio: RelatorioHomologacao['convenio'] = []
+  const tls = { key: pem.keyPem, cert: [pem.certPem, ...pem.chainPem].join('\n') }
+  for (const url of urlsDoConvenio(p.municipio)) {
+    try {
+      const r = await inner({ method: 'GET', url, headers: { accept: 'application/json' } }, tls)
+      let corpo: unknown = r.body.slice(0, 20000)
+      try {
+        corpo = JSON.parse(r.body)
+      } catch {
+        // fica o texto
+      }
+      convenio.push({ url, status: r.status, corpo })
+      deps.print(`convenio ${url}: HTTP ${r.status}`)
+    } catch (error) {
+      convenio.push({ url, status: null, corpo: null, erro: mask(error instanceof Error ? error.message : String(error)) })
+    }
+  }
+
   const relatorio: RelatorioHomologacao = {
     gerado_em: deps.now().toISOString(),
     ambiente: SPIKE_AMBIENTE,
@@ -261,6 +292,7 @@ export async function runHomologacao(deps: HomologacaoDeps): Promise<{ relatorio
     certificado_valido_ate: pem.notAfter.toISOString(),
     notas,
     codigos_vistos: [...codigos].sort(),
+    convenio,
   }
   const texto = mask(JSON.stringify(relatorio, null, 2))
   const path = `${p.saida.replace(/[\\/]+$/, '')}/homologacao-nt009-${p.regime}-${relatorio.gerado_em.replace(/[:.]/g, '-')}.json`

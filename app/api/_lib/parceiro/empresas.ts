@@ -10,7 +10,7 @@ import { logEvent } from '../log.js'
 import { motivoDoProblema } from '../agente/lote.js'
 import { lerRetencaoDaEmpresa } from '../painel-emissao.js'
 import { gerarChave } from './chave.js'
-import { avaliarRegime, cnpjValido, consultarCnpj, lerRegimeNormal, type Consulta, type RegimeNormal } from './receita.js'
+import { avaliarRegime, cnpjValido, consultarCnpj, ibgeDaConsulta, lerRegimeNormal, situacaoDoMunicipio, type Consulta, type RegimeNormal } from './receita.js'
 
 /** `regimeDeclarado`: Presumido ou Real, que a Receita não distingue (só vale se a base disser "fora do Simples"). */
 export type ConsultaReceita = (cnpj: string, regimeDeclarado?: RegimeNormal | null) => Promise<Consulta>
@@ -45,6 +45,8 @@ export function situacaoDoBloqueio(codigo: string | null): string {
       return 'procuracao_vencida'
     case 'PROCURADOR_CERT_INVALIDO':
       return 'a1_do_escritorio_invalido'
+    case 'MUNICIPIO_SEM_PRESUMIDO':
+      return 'municipio_sem_presumido'
     case 'FISCAL_CONFIG_MISSING':
       return 'falta_dados_fiscais'
     case 'TENANT_INACTIVE':
@@ -311,9 +313,19 @@ export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Re
 
   const consulta = await ctx.receita(cnpj, d.regime ?? null)
   // Fora do Simples (19/11/2026): Presumido/Real só em cidade de emissor nacional pleno; lá, pede o `regime`.
-  const avaliacao = avaliarRegime(consulta)
+  const ibge = ibgeDaConsulta(consulta)
+  const situacao = ibge
+    ? await ctx.db
+        .query<{ s: string | null }>('select public.fiscal_municipio_presumido($1) as s', [ibge])
+        .then((r) => r.rows[0]?.s ?? null)
+        .catch(() => null)
+    : null
+  const avaliacao = avaliarRegime(consulta, situacao)
   if (avaliacao?.codigo === 'REGIME_A_DECLARAR') {
-    return errorResponse('REGIME_A_DECLARAR', 'CNPJ fora do Simples em cidade que emite Presumido e Real pelo Emissor Nacional: informe regime "presumido" ou "real"', { campo: 'regime' })
+    return errorResponse('REGIME_A_DECLARAR', 'CNPJ fora do Simples: informe regime "presumido" ou "real"', {
+      campo: 'regime',
+      municipio_a_conferir: avaliacao.a_conferir,
+    })
   }
   if (avaliacao) return errorResponse('FORA_DO_SIMPLES', avaliacao.mensagem, { campo: 'cnpj', lista_espera: 'lista_espera' in avaliacao })
   if (!consulta.ok) {
@@ -365,7 +377,14 @@ export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Re
     const erro = (await extras.json()) as Record<string, unknown>
     return json(201, { criada: true, empresa, aviso: erro.error })
   }
-  return json(r.reativada ? 200 : 201, { criada: !r.reativada, reativada: Boolean(r.reativada), empresa })
+  // Presumido/Real em cidade onde ninguém emitiu ainda: a primeira nota confirma (recusa E0039 bloqueia a cidade).
+  const aConferir = naoOptante(dados.regime) && situacaoDoMunicipio(dados.codigo_municipio_ibge, situacao) === null
+  return json(r.reativada ? 200 : 201, {
+    criada: !r.reativada,
+    reativada: Boolean(r.reativada),
+    empresa,
+    ...(aConferir ? { municipio_a_conferir: true } : {}),
+  })
 }
 
 export async function alterarEmpresa(ctx: EmpresasCtx, cnpj: string, corpo: unknown): Promise<Response> {

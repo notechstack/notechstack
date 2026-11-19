@@ -215,6 +215,7 @@ x-api-key: nfk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | `falta_dados_fiscais` | `codigo_servico_nacional` e, no Simples, `simples_percentual`; no Presumido e no Real, `tributos_aproximados` (`PATCH`). |
 | `desativada` | A empresa foi desativada no painel. |
 | `assinatura_inativa` | A assinatura da conta não está ativa. |
+| `municipio_sem_presumido` | Presumido/Real numa cidade que não aceita esses regimes no Emissor Nacional (a Sefin recusou). Lista de espera. |
 | `bloqueada` | Outro motivo; veja `bloqueio.motivo`. |
 
 ### 5.2 `GET /v1/empresas`
@@ -231,7 +232,7 @@ Cadastra uma empresa cliente na conta. Só no plano **Escritório**.
 
 | Campo | Tipo | Obrigatório | Regra |
 |---|---|---|---|
-| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**; **Lucro Presumido ou Real** só nas cidades que usam o Emissor Nacional para todas as empresas (hoje Rio de Janeiro, Porto Alegre e Vitória). |
+| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**; **Lucro Presumido ou Real** onde a prefeitura usa o Emissor Nacional para todas as empresas. Cidade recusada (norma ou recusa da Sefin, como São Paulo e DF) devolve `FORA_DO_SIMPLES` com `lista_espera`; cidade onde ainda ninguém emitiu entra com `"municipio_a_conferir": true`, e a primeira nota confirma. |
 | `regime` | string | no Presumido/Real | `"presumido"` ou `"real"`. A Receita só diz "fora do Simples", então quem cadastra informa. Ignorado se a Receita disser MEI ou Simples. |
 | `codigo_servico_nacional` | string | sim | 6 dígitos da lista nacional (cTribNac), por exemplo `"040101"`. Vira o código padrão das notas. |
 | `simples_percentual` | string | no Simples | `"0"` a `"100"`, até 2 casas. Ignorado no MEI. |
@@ -248,7 +249,8 @@ Respostas:
 - `409 CNPJ_JA_CADASTRADO` — o CNPJ está em outra conta do nó.fiscal.
 - `409 EMPRESAS_ACIMA_DO_LIMITE` — o plano já tem o máximo de empresas ativas (`limite` na resposta).
 - `422 CNPJ_NAO_ENCONTRADO`, `CNPJ_INATIVO`, `FORA_DO_SIMPLES` — resposta da Receita. Fora do Simples numa cidade sem emissor nacional para todos, `FORA_DO_SIMPLES` vem com `"lista_espera": true`.
-- `422 REGIME_A_DECLARAR` — CNPJ fora do Simples numa cidade que emite Presumido e Real pelo Emissor Nacional: repita com `regime`.
+- `422 REGIME_A_DECLARAR` — CNPJ fora do Simples: repita com `regime`. `municipio_a_conferir: true` quando ninguém emitiu Presumido na cidade ainda.
+- `201` com `"municipio_a_conferir": true` — criada numa cidade a conferir. Se a Sefin recusar a primeira nota por convênio (E0037/E0038/E0039), a cidade passa a recusada e a `situacao` das empresas Presumido/Real dela vira `municipio_sem_presumido`.
 - `503 RECEITA_INDISPONIVEL` — a consulta à Receita falhou; tente de novo em alguns minutos.
 
 ### 5.4 `GET /v1/empresas/{cnpj}` e `PATCH /v1/empresas/{cnpj}`
@@ -653,7 +655,7 @@ Campos extras (`campo`, `bloqueio`, `motivo`, `limite`, `problemas`) ficam **for
 | 422 | `VALIDATION_FAILED` | Campo inválido (`campo`, às vezes `motivo` ou `problemas`). |
 | 422 | `UNKNOWN_FIELD` | Campo não aceito. |
 | 422 | `CNPJ_NAO_ENCONTRADO` / `CNPJ_INATIVO` / `FORA_DO_SIMPLES` | Resposta da Receita no cadastro. |
-| 422 | `REGIME_A_DECLARAR` | CNPJ fora do Simples em cidade de emissor nacional pleno: informe `regime` (`presumido` ou `real`). |
+| 422 | `REGIME_A_DECLARAR` | CNPJ fora do Simples: informe `regime` (`presumido` ou `real`). |
 | 500 | `INTERNAL` | Erro do nó.fiscal. Pode repetir (idempotente). |
 | 501 | `SANDBOX_SEM_NFE` | NF-e com a chave sandbox (ainda sem sandbox de NF-e). |
 | 503 | `RECEITA_INDISPONIVEL` | Consulta de CNPJ fora do ar. Tente de novo. |

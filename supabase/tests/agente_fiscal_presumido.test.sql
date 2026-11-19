@@ -84,5 +84,22 @@ select ok(nofiscal.dados_fiscais_completos('real', '170201', null, 10, 5), 'Real
 select is(nofiscal.ler_tributos_aproximados('{"fed":13.45,"est":"","mun":"5"}'), '{"fed": 13.45, "est": 0, "mun": 5}'::jsonb,
   'número ou texto; est vazio é 0');
 
+-- Cidades do Presumido: ponto de partida e aprendizado com a Sefin.
+select is(public.fiscal_municipio_presumido('3304557'), 'aceita', 'Rio aceita (norma)');
+select is(public.fiscal_municipio_presumido('3550308'), 'recusada', 'São Paulo recusada (norma)');
+select ok(public.fiscal_municipio_presumido('4106902') is null, 'Curitiba a conferir');
+select is(nofiscal.registrar_municipio_presumido('3550308', 'recusada', 'recusa_sefin', 'E0039'), 'recusada', 'recusa não troca a norma');
+select is((select origem from nofiscal.fiscal_municipios_presumido where codigo_ibge = '3550308'), 'norma', 'origem continua norma');
+select is(nofiscal.registrar_municipio_presumido('4106902', 'recusada', 'recusa_sefin', 'E0039: teste'), 'recusada', 'cidade a conferir vira recusada');
+select is(nofiscal.registrar_municipio_presumido('4106902', 'aceita', 'nota_autorizada', 'nota'), 'aceita', 'nota autorizada depois vale mais');
+select throws_ok($$select nofiscal.registrar_municipio_presumido('4106902', 'aceita', 'norma', 'x')$$, '22023', null,
+  'o automático não grava origem norma');
+
+-- Empresa Presumido numa cidade recusada: bloqueio e situação no painel.
+update nofiscal.fiscal_tenants set codigo_municipio_ibge = '5300108' where cnpj = '83444777000161';
+select is(nofiscal.emission_block((select id from ids where cnpj = '83444777000161')), 'MUNICIPIO_SEM_PRESUMIDO',
+  'Presumido em cidade recusada não emite');
+update nofiscal.fiscal_tenants set codigo_municipio_ibge = '3304557' where cnpj = '83444777000161';
+
 select * from finish();
 rollback;

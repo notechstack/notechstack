@@ -369,6 +369,10 @@
       if (r.ok) {
         st.consulta = { cnpj: cnpj, razao_social: r.dados.razao_social, municipio: r.dados.municipio, uf: r.dados.uf, cnae: r.dados.cnae, regime: r.dados.regime, padrao_nacional: r.dados.padrao_nacional, regimes_possiveis: r.dados.regimes_possiveis || null };
         mostrarRegime(!!st.consulta.regimes_possiveis);
+        // Cidade onde ninguém emitiu Presumido ainda: a primeira nota confirma (mensagem do fiscal-cadastro).
+        if (st.consulta.regimes_possiveis) $('fc-regime-dica').textContent = r.dados.municipio_a_conferir && r.dados.mensagem_regime
+          ? r.dados.mensagem_regime + '.'
+          : 'Este CNPJ não está no Simples. Na sua cidade, a prefeitura usa o Emissor Nacional para todas as empresas, e o nó.fiscal emite também para Lucro Presumido e Real.';
         if (r.dados.razao_social) $('fc-empresa').value = r.dados.razao_social;
         $('fc-cnpj-dica').textContent = [r.dados.municipio && (r.dados.municipio + (r.dados.uf ? '/' + r.dados.uf : '')), r.dados.cnae && ('CNAE ' + r.dados.cnae), ROTULO_REGIME[r.dados.regime]].filter(Boolean).join(' · ');
         if (r.dados.padrao_nacional === false) nf.aviso($('fc-aviso-1'), MSG.municipio, 'erro');

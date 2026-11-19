@@ -72,6 +72,12 @@ describe('homologação da NT 009', () => {
     expect(dps[0]).not.toContain('<IBSCBS>')
     expect(dps[1]).toContain('<IBSCBS>')
     expect(dps[2]).toContain('<vRetIRRF>15.00</vRetIRRF><vRetCSLL>46.50</vRetCSLL>')
+    // A sonda do convênio vai aos dois endereços, só com GET.
+    expect(relatorio?.convenio.map((c) => c.url)).toEqual([
+      'https://sefin.producaorestrita.nfse.gov.br/SefinNacional/parametros_municipais/3304557/convenio',
+      'https://adn.producaorestrita.nfse.gov.br/parametrizacao/parametros_municipais/3304557/convenio',
+    ])
+    expect(r.fake.requests.filter((q) => q.url.includes('/convenio')).every((q) => q.method === 'GET')).toBe(true)
     // O relatório não leva nada que identifique a empresa ou o tomador.
     const texto = r.escritos[0].content
     expect(path).toMatch(/^C:\/relatorios\/homologacao-nt009-presumido-/)

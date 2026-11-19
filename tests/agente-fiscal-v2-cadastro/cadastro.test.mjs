@@ -278,6 +278,28 @@ test("Presumido declarado não muda o regime de quem está no Simples, e fora da
   assert.deepEqual(Object.keys(MUNICIPIOS_TODOS_OS_REGIMES).sort(), ["3205309", "3304557", "4314902"]);
 });
 
+test("Presumido em cidade a conferir (Curitiba): entra com aviso; recusada pelo banco vai à lista de espera", async () => {
+  const cnpj = cnpjValido();
+  const telefone = telefoneAleatorio();
+  const u = await criarUsuario(bancos.dono);
+  limpar.push({ userId: u.id, cnpj, telefone });
+  const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj, { regime: "presumido", ibge: 4106902, municipio: "CURITIBA", uf: "PR" }) });
+  const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+  assert.equal(consulta.status, 200);
+  assert.equal(consulta.body.municipio_a_conferir, true);
+  assert.match(consulta.body.mensagem_regime, /primeira nota confirma/);
+  const r = await chamar({ acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro", regime: "presumido" }, { api, userId: u.id });
+  assert.equal(r.status, 201);
+
+  const { avaliarRegime } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const fora = { ok: false, motivo: "fora_do_simples", dados: { cnpj, razao_social: "X", municipio: "CURITIBA", uf: "PR", codigo_municipio_ibge: "4106902", cnae: null } };
+  assert.equal(avaliarRegime(fora, "recusada").codigo, "CNPJ_FORA_DO_SIMPLES");
+  assert.equal(avaliarRegime(fora, "aceita").a_conferir, false);
+  assert.equal(avaliarRegime(fora, null).a_conferir, true);
+  // O banco manda sobre a lista do código: Rio recusado pelo banco é recusado.
+  assert.equal(avaliarRegime({ ...fora, dados: { ...fora.dados, codigo_municipio_ibge: "3304557" } }, "recusada").codigo, "CNPJ_FORA_DO_SIMPLES");
+});
+
 test("consulta sem as opções do Simples e do MEI não confirma o regime: 503", async () => {
   const cnpj = cnpjValido();
   const { opcao_pelo_mei: _m, opcao_pelo_simples: _s, ...semOpcoes } = respostaBrasilApi(cnpj);

@@ -112,14 +112,15 @@ describe('emissão autorizada (C3)', () => {
   it('Lucro Presumido: sem pTotTrib fica na fila; configurado, chega a issued com opSimpNac 1 e pTotTrib', async () => {
     const t0 = new Date()
     const cert = sharedTestCertificate()
-    const sem = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null })
+    const sem = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, codigoMunicipioIbge: '3304557' })
     const parada = await insertQueuedInvoice(db, sem.id)
     const sefin0 = fakeSefin()
     await runEmission({ db, sefin: createSefinClient({ transport: sefin0.transport }), now: () => t0, tenantId: sem.id })
     expect((await readInvoice(db, parada.id)).last_error_code).toBe('TRIBUTOS_NOT_CONFIGURED')
     expect(sefin0.requests).toHaveLength(0)
 
-    const t = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, pTotTrib: { fed: '13.45', est: '0', mun: '5' } })
+    // Rio (aceita por norma): a nota autorizada não muda o que a norma já diz.
+    const t = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, pTotTrib: { fed: '13.45', est: '0', mun: '5' }, codigoMunicipioIbge: '3304557' })
     const invoice = await insertQueuedInvoice(db, t.id)
     const sefin = fakeSefin()
     await runEmission({ db, sefin: createSefinClient({ transport: sefin.transport }), now: () => t0, tenantId: t.id })
@@ -127,6 +128,39 @@ describe('emissão autorizada (C3)', () => {
     expect(row.status).toBe('issued')
     expect(row.xml_dps).toContain('<regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib>')
     expect(row.xml_dps).toContain('<pTotTrib><pTotTribFed>13.45</pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>5.00</pTotTribMun></pTotTrib>')
+  })
+
+  it('cidade a conferir: nota de Presumido autorizada marca aceita; recusa E0039 marca recusada e bloqueia a cidade', async () => {
+    const t0 = new Date()
+    const cert = sharedTestCertificate()
+    const PCT = { fed: '13.45', est: '0', mun: '5' }
+    // Duas cidades fictícias de 7 dígitos, sem registro na tabela.
+    const aceita = `99${String(Date.now()).slice(-5)}`
+    const recusa = `98${String(Date.now()).slice(-5)}`
+    await db.query('delete from nofiscal.fiscal_municipios_presumido where codigo_ibge in ($1, $2)', [aceita, recusa])
+
+    const a = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, pTotTrib: PCT, codigoMunicipioIbge: aceita })
+    await insertQueuedInvoice(db, a.id)
+    await runEmission({ db, sefin: createSefinClient({ transport: fakeSefin().transport }), now: () => t0, tenantId: a.id })
+    const sit = async (ibge: string) =>
+      (await db.query<{ situacao: string; origem: string }>('select situacao, origem from nofiscal.fiscal_municipios_presumido where codigo_ibge = $1', [ibge])).rows[0]
+    expect(await sit(aceita)).toEqual({ situacao: 'aceita', origem: 'nota_autorizada' })
+
+    const r = await tenant({ certificado: cert.certificado, regime: 'real', pTotTribSn: null, pTotTrib: PCT, codigoMunicipioIbge: recusa })
+    const vizinha = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, pTotTrib: PCT, codigoMunicipioIbge: recusa })
+    const simplesDaCidade = await tenant({ certificado: cert.certificado, codigoMunicipioIbge: recusa })
+    const nota = await insertQueuedInvoice(db, r.id)
+    const sefin = fakeSefin({
+      emitir: () => ({ status: 400, body: JSON.stringify({ erros: [{ Codigo: 'E0039', Descricao: 'Município emissor não parametrizado para emissores públicos nacionais' }] }) }),
+    })
+    await runEmission({ db, sefin: createSefinClient({ transport: sefin.transport }), now: () => t0, tenantId: r.id })
+    expect((await readInvoice(db, nota.id)).last_error_code).toBe('E0039')
+    expect(await sit(recusa)).toEqual({ situacao: 'recusada', origem: 'recusa_sefin' })
+    await db.query("update nofiscal.fiscal_tenants set codigo_servico_nacional = '170201' where id = any($1::uuid[])", [[vizinha.id, simplesDaCidade.id]])
+    const bloqueio = async (id: string) => (await db.query<{ b: string | null }>('select nofiscal.emission_block($1) as b', [id])).rows[0].b
+    expect(await bloqueio(vizinha.id)).toBe('MUNICIPIO_SEM_PRESUMIDO')
+    expect(await bloqueio(simplesDaCidade.id)).not.toBe('MUNICIPIO_SEM_PRESUMIDO')
+    await db.query('delete from nofiscal.fiscal_municipios_presumido where codigo_ibge in ($1, $2)', [aceita, recusa])
   })
 })
 

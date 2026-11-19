@@ -8,6 +8,11 @@
 --   (Lei 12.741/2012) em três colunas novas. O estadual é 0 para quem só presta serviço.
 -- - As funções abaixo são as da produção em 19/11/2026 (pg_get_functiondef, md5 conferido com as migrations), com a
 --   troca mínima: aceitar os regimes novos e conferir os percentuais certos de cada regime.
+-- - Cidades do Presumido (Lucca, 19/11/2026): `fiscal_municipios_presumido` guarda o que já se sabe de cada cidade
+--   (aceita/recusada) e de onde veio (norma, nota autorizada, recusa da Sefin). Cidade sem registro entra "a conferir":
+--   a primeira nota de Presumido/Real autorizada lá marca `aceita`; recusa de convênio (E0037/E0038/E0039) marca
+--   `recusada`, e o emission_block passa a barrar as empresas Presumido/Real dessa cidade (MUNICIPIO_SEM_PRESUMIDO).
+--   Linha de origem `norma` (decreto lido por gente) não é trocada pelo automático.
 -- - NF-e (nfe_emission_block) continua só Simples e MEI: CRT 3 não está no motor da NF-e.
 -- Reversão: as colunas e os valores novos ficam inertes se o código voltar; para desfazer de fato, restaure as funções
 -- da migração anterior de cada uma e volte o check de regime (só depois de desativar empresas presumido/real).
@@ -72,6 +77,70 @@ begin
   return jsonb_build_object('fed', v_fed::numeric, 'est', v_est::numeric, 'mun', v_mun::numeric);
 end;
 $$;
+
+create table nofiscal.fiscal_municipios_presumido (
+  codigo_ibge text primary key check (codigo_ibge ~ '^[0-9]{7}$'),
+  situacao text not null check (situacao in ('aceita', 'recusada')),
+  origem text not null check (origem in ('norma', 'nota_autorizada', 'recusa_sefin')),
+  detalhe text check (length(detalhe) <= 500),
+  atualizado_em timestamptz not null default now()
+);
+alter table nofiscal.fiscal_municipios_presumido enable row level security;
+revoke all on nofiscal.fiscal_municipios_presumido from public, anon, authenticated;
+grant select on nofiscal.fiscal_municipios_presumido to nofiscal_service;
+
+comment on table nofiscal.fiscal_municipios_presumido is
+  'Presumido/Real no Emissor Nacional por cidade: aceita ou recusada, por norma, nota autorizada ou recusa da Sefin (E0039).';
+
+-- Ponto de partida: as normas lidas em 19/11/2026. São Paulo e DF mantêm emissor próprio para quem não é do Simples.
+insert into nofiscal.fiscal_municipios_presumido (codigo_ibge, situacao, origem, detalhe) values
+  ('3304557', 'aceita', 'norma', 'Rio de Janeiro: só emissor nacional desde 01/01/2026'),
+  ('4314902', 'aceita', 'norma', 'Porto Alegre: obrigatório para todos desde 01/11/2025'),
+  ('3205309', 'aceita', 'norma', 'Vitória: Decreto 25.903/2025, todos desde 01/01/2026'),
+  ('3550308', 'recusada', 'norma', 'São Paulo: emissor próprio; só o Simples migrou (01/11/2026)'),
+  ('5300108', 'recusada', 'norma', 'Distrito Federal: ISSnet próprio; só o Simples migrou');
+
+-- Situação conhecida da cidade (null = a conferir). Para as edge functions do cadastro e para a API.
+create function public.fiscal_municipio_presumido(p_ibge text)
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.situacao from nofiscal.fiscal_municipios_presumido m where m.codigo_ibge = p_ibge;
+$$;
+
+-- O worker aprende com a Sefin. `aceita` por nota autorizada vale sempre (a cidade passou a aceitar); `recusada` por
+-- recusa não troca o que veio de norma. Devolve a situação gravada.
+create function nofiscal.registrar_municipio_presumido(p_ibge text, p_situacao text, p_origem text, p_detalhe text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_atual record;
+begin
+  if p_ibge !~ '^[0-9]{7}$' or p_situacao not in ('aceita', 'recusada') or p_origem not in ('nota_autorizada', 'recusa_sefin') then
+    raise exception 'registrar_municipio_presumido: parametro invalido' using errcode = '22023';
+  end if;
+  select situacao, origem into v_atual from nofiscal.fiscal_municipios_presumido where codigo_ibge = p_ibge for update;
+  if found and (v_atual.situacao = p_situacao or (v_atual.origem = 'norma' and p_situacao = 'recusada')) then
+    return v_atual.situacao;
+  end if;
+  insert into nofiscal.fiscal_municipios_presumido (codigo_ibge, situacao, origem, detalhe, atualizado_em)
+  values (p_ibge, p_situacao, p_origem, left(p_detalhe, 500), now())
+  on conflict (codigo_ibge) do update
+    set situacao = excluded.situacao, origem = excluded.origem, detalhe = excluded.detalhe, atualizado_em = now();
+  return p_situacao;
+end;
+$$;
+
+revoke all on function public.fiscal_municipio_presumido(text) from public, anon, authenticated;
+grant execute on function public.fiscal_municipio_presumido(text) to service_role, nofiscal_service;
+revoke all on function nofiscal.registrar_municipio_presumido(text, text, text, text) from public, anon, authenticated;
+grant execute on function nofiscal.registrar_municipio_presumido(text, text, text, text) to nofiscal_service;
 
 revoke all on function nofiscal.dados_fiscais_completos(text, text, numeric, numeric, numeric) from public, anon, authenticated;
 revoke all on function nofiscal.ler_tributos_aproximados(jsonb) from public, anon, authenticated;
@@ -256,7 +325,7 @@ declare
   v_status text;
   v_proc record;
 begin
-  select t.active, t.codigo_servico_nacional, t.p_tot_trib_sn, t.p_tot_trib_fed, t.p_tot_trib_mun, t.regime, t.escritorio_tenant_id, t.modo_autenticacao
+  select t.active, t.codigo_servico_nacional, t.p_tot_trib_sn, t.p_tot_trib_fed, t.p_tot_trib_mun, t.regime, t.codigo_municipio_ibge, t.escritorio_tenant_id, t.modo_autenticacao
     into v_tenant
     from nofiscal.fiscal_tenants t
    where t.id = p_tenant_id;
@@ -277,6 +346,13 @@ begin
   if not nofiscal.dados_fiscais_completos(v_tenant.regime, v_tenant.codigo_servico_nacional, v_tenant.p_tot_trib_sn,
                                           v_tenant.p_tot_trib_fed, v_tenant.p_tot_trib_mun) then
     return 'FISCAL_CONFIG_MISSING';
+  end if;
+
+  -- Presumido/Real numa cidade que a Sefin recusou (ou que a norma diz não usar o Emissor Nacional para todos).
+  if v_tenant.regime in ('presumido', 'real') and exists (
+       select 1 from nofiscal.fiscal_municipios_presumido m
+        where m.codigo_ibge = v_tenant.codigo_municipio_ibge and m.situacao = 'recusada') then
+    return 'MUNICIPIO_SEM_PRESUMIDO';
   end if;
 
   if v_tenant.modo_autenticacao = 'procuracao' then
@@ -670,6 +746,9 @@ begin
           when ce.tenant_id is null then 'falta_certificado'
           when ce.not_after <= now() then 'certificado_vencido'
           when not nofiscal.dados_fiscais_completos(t.regime, t.codigo_servico_nacional, t.p_tot_trib_sn, t.p_tot_trib_fed, t.p_tot_trib_mun) then 'falta_dados_fiscais'
+          when t.regime in ('presumido', 'real') and exists (
+                 select 1 from nofiscal.fiscal_municipios_presumido m
+                  where m.codigo_ibge = t.codigo_municipio_ibge and m.situacao = 'recusada') then 'municipio_sem_presumido'
           when ce.not_after <= now() + interval '30 days' then 'certificado_vencendo'
           else 'pronta'
         end) as e

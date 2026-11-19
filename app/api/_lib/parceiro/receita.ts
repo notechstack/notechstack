@@ -244,16 +244,42 @@ export function aceitaTodosOsRegimes(ibge: string): boolean {
   return Object.hasOwn(MUNICIPIOS_TODOS_OS_REGIMES, ibge);
 }
 
+/** Cidades com emissor próprio para quem não é do Simples (norma lida em 19/11/2026). */
+export const MUNICIPIOS_SEM_PRESUMIDO: Readonly<Record<string, string>> = {
+  "3550308": "São Paulo/SP",
+  "5300108": "Brasília/DF",
+};
+
+/**
+ * O que se sabe da cidade para Presumido/Real: `aceita`, `recusada` ou `null` (a conferir). A fonte principal é a tabela
+ * `nofiscal.fiscal_municipios_presumido` (public.fiscal_municipio_presumido), que o worker atualiza com a Sefin: nota
+ * autorizada marca aceita; recusa de convênio (E0037/E0038/E0039) marca recusada. Sem resposta do banco, valem as
+ * listas acima. Cidade a conferir entra no cadastro: a primeira nota decide.
+ */
+export type SituacaoMunicipio = "aceita" | "recusada" | null;
+
+export function situacaoDoMunicipio(ibge: string, doBanco?: SituacaoMunicipio | string | null): SituacaoMunicipio {
+  if (doBanco === "aceita" || doBanco === "recusada") return doBanco;
+  if (aceitaTodosOsRegimes(ibge)) return "aceita";
+  if (Object.hasOwn(MUNICIPIOS_SEM_PRESUMIDO, ibge)) return "recusada";
+  return null;
+}
+
+/** O IBGE da empresa numa consulta (também fora do Simples, quando a base devolveu os dados). */
+export function ibgeDaConsulta(c: Consulta): string | null {
+  if (c.ok) return c.dados.codigo_municipio_ibge;
+  return c.motivo === "fora_do_simples" && c.dados ? c.dados.codigo_municipio_ibge : null;
+}
+
 // O MEI emite pelo Emissor Nacional em qualquer município: as regras E0037, E0038 e E0039 da Sefin
 // (Anexo I v1.01, aba RN DPS_NFS-e) exceptuam o MEI.
 // Desde a competência 01/11/2026, a Resolução CGSN 191/2026 obriga a ME/EPP do Simples a emitir
 // "exclusivamente pelo Emissor Nacional (Web ou API)", "independentemente de o município possuir emissor
 // próprio" (gov.br/nfse, notícia de 29/10/2026). Por isso o Simples também passa em qualquer município, e a
 // lista (padraoNacional) deixou de barrar o cadastro.
-// Presumido e Real só onde o município usa o Emissor Nacional para todos (E0039 sem exceção para não optante).
+// Presumido e Real: a cidade é decidida por `avaliarRegime` (aceita, recusada ou a conferir), não por esta lista.
 export function municipioAtendido(d: Pick<DadosCnpj, "regime" | "codigo_municipio_ibge">, lista: ListaMunicipios): boolean {
-  if (d.regime === "mei" || d.regime === "simples") return true;
-  if (d.regime === "presumido" || d.regime === "real") return aceitaTodosOsRegimes(d.codigo_municipio_ibge);
+  if (d.regime === "mei" || d.regime === "simples" || d.regime === "presumido" || d.regime === "real") return true;
   return padraoNacional(d.codigo_municipio_ibge, lista);
 }
 
@@ -263,39 +289,50 @@ export const MSG_FORA_DO_SIMPLES_SEM_DADOS =
   "O nó.fiscal atende MEI, Simples Nacional e, em algumas cidades, Lucro Presumido e Real. Não conseguimos confirmar o regime deste CNPJ na Receita Federal";
 export const MSG_DECLARAR_REGIME =
   "Este CNPJ não está no Simples Nacional. Escolha o regime da empresa: Lucro Presumido ou Lucro Real";
+export const MSG_MUNICIPIO_A_CONFERIR =
+  "Ainda não emitimos Lucro Presumido nesta cidade: a primeira nota confirma se a prefeitura aceita esse regime no Emissor Nacional. Se a Sefin recusar, avisamos na hora e a empresa vai para a lista de espera";
 
 export function msgPresumidoForaDaCidade(municipio: string, uf: string): string {
   const cidade = [municipio, uf].filter(Boolean).join("/") || "Esta cidade";
   return `Para Lucro Presumido e Real, o nó.fiscal emite só onde a prefeitura usa o Emissor Nacional para todas as empresas ` +
-    `(por ora, ${CIDADES_TODOS_OS_REGIMES.join(", ")}). ${cidade} ainda emite esses regimes pelo sistema próprio. ` +
+    `(por exemplo, ${CIDADES_TODOS_OS_REGIMES.join(", ")}). ${cidade} ainda emite esses regimes pelo sistema próprio. ` +
     `Fale com a nó pelo WhatsApp para entrar na lista de espera`;
 }
 
 export type AvaliacaoDoRegime =
-  | { codigo: "REGIME_A_DECLARAR"; mensagem: string; dados: DadosSemRegime }
+  | { codigo: "REGIME_A_DECLARAR"; mensagem: string; dados: DadosSemRegime; a_conferir: boolean }
   | { codigo: "CNPJ_FORA_DO_SIMPLES"; mensagem: string; lista_espera: true }
   | { codigo: "CNPJ_FORA_DO_SIMPLES"; mensagem: string };
 
 /**
- * O que fazer com um CNPJ fora do Simples (cadastro, Minhas empresas e API do parceiro), ou `null` para seguir:
- * - Presumido ou Real declarado numa cidade de emissor nacional pleno: segue;
- * - fora do Simples, sem regime declarado, em cidade de emissor pleno: pedir Presumido ou Real;
- * - Presumido/Real em outra cidade: recusa com a lista de espera;
+ * O que fazer com um CNPJ fora do Simples (cadastro, Minhas empresas e API do parceiro), ou `null` para seguir.
+ * `situacao` é a da cidade (`situacaoDoMunicipio`, com o que o banco sabe):
+ * - cidade recusada: recusa com a lista de espera, declarado ou não;
+ * - Presumido ou Real declarado em cidade aceita ou a conferir: segue;
+ * - fora do Simples sem regime declarado: pedir Presumido ou Real (`a_conferir` quando ninguém emitiu lá ainda);
  * - sem os dados da empresa (a base não respondeu o regime): a recusa de sempre.
  */
-export function avaliarRegime(c: Consulta): AvaliacaoDoRegime | null {
+export function avaliarRegime(c: Consulta, situacao?: SituacaoMunicipio | string | null): AvaliacaoDoRegime | null {
+  const ibge = ibgeDaConsulta(c);
+  const sit = ibge ? situacaoDoMunicipio(ibge, situacao) : null;
   if (c.ok) {
-    if ((c.dados.regime === "presumido" || c.dados.regime === "real") && !aceitaTodosOsRegimes(c.dados.codigo_municipio_ibge)) {
+    if ((c.dados.regime === "presumido" || c.dados.regime === "real") && sit === "recusada") {
       return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: msgPresumidoForaDaCidade(c.dados.municipio, c.dados.uf), lista_espera: true };
     }
     return null;
   }
   if (c.motivo !== "fora_do_simples") return null;
   if (!c.dados) return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: MSG_FORA_DO_SIMPLES_SEM_DADOS };
-  if (!aceitaTodosOsRegimes(c.dados.codigo_municipio_ibge)) {
+  if (sit === "recusada") {
     return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: msgPresumidoForaDaCidade(c.dados.municipio, c.dados.uf), lista_espera: true };
   }
-  return { codigo: "REGIME_A_DECLARAR", mensagem: MSG_DECLARAR_REGIME, dados: c.dados };
+  const aConferir = sit !== "aceita";
+  return {
+    codigo: "REGIME_A_DECLARAR",
+    mensagem: aConferir ? `${MSG_DECLARAR_REGIME}. ${MSG_MUNICIPIO_A_CONFERIR}` : MSG_DECLARAR_REGIME,
+    dados: c.dados,
+    a_conferir: aConferir,
+  };
 }
 
 export function lerListaMunicipios(conteudo: string | null): ListaMunicipios {

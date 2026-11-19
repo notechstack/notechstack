@@ -19,6 +19,7 @@ import {
 } from "../assinatura-fiscal/core.ts";
 import {
   avaliarRegime,
+  ibgeDaConsulta,
   cnpjValido,
   type Consulta,
   consultarCnpj,
@@ -143,6 +144,8 @@ export type Deps = {
   estado: (userId: string) => Promise<EstadoBanco | null>;
   /** Regime confirmado à mão (public.fiscal_regime_confirmado), quando a base pública nega o Simples. */
   regimeConfirmado?: (cnpj: string) => Promise<"mei" | "simples" | null>;
+  /** Presumido/Real: o que se sabe da cidade (public.fiscal_municipio_presumido): aceita, recusada ou null. */
+  situacaoMunicipio?: (ibge: string) => Promise<string | null>;
   configurar: (userId: string, dados: Record<string, unknown>) => Promise<RespostaBanco>;
   trocarPlano: (userId: string, plano: PlanoDaConta) => Promise<RespostaBanco>;
   /** public.fiscal_escritorio_estado. Ausente: a conta é tratada como Inicial/Pro. */
@@ -687,10 +690,15 @@ async function conferirTroca(
 }
 
 // Nenhuma empresa entra sem a Receita confirmar o CNPJ (mesma regra e mesmos textos de fiscal-cadastro).
+async function situacaoDaCidade(c: Consulta, deps: Deps): Promise<string | null> {
+  const ibge = ibgeDaConsulta(c);
+  return ibge && deps.situacaoMunicipio ? await deps.situacaoMunicipio(ibge).catch(() => null) : null;
+}
+
 // Fora do Simples (Lucca, 19/11/2026): Presumido/Real só em cidade de emissor nacional pleno; lá, o escritório escolhe
 // o regime (`regime` no corpo) e reenvia.
-function respostaConsulta(c: Consulta): Resultado | null {
-  const regime = avaliarRegime(c);
+function respostaConsulta(c: Consulta, situacao: string | null = null): Resultado | null {
+  const regime = avaliarRegime(c, situacao);
   if (regime) {
     const { codigo, mensagem, ...extra } = regime;
     return erro(422, codigo, mensagem, { campo: "cnpj", ...extra });
@@ -749,7 +757,7 @@ async function adicionarEmpresa(
     regimeConfirmado: deps.regimeConfirmado,
     regimeDeclarado: lerRegimeNormal(b.regime),
   });
-  const recusa = respostaConsulta(c);
+  const recusa = respostaConsulta(c, await situacaoDaCidade(c, deps));
   if (recusa || !c.ok) {
     if (!c.ok) log("info", "fiscal_conta_empresa_consulta", { motivo: c.motivo });
     return recusa!;
@@ -884,7 +892,7 @@ async function atualizarReceita(
     regimeConfirmado: deps.regimeConfirmado,
     regimeDeclarado: lerRegimeNormal(b.regime) ?? lerRegimeNormal(empresa.regime),
   });
-  const recusa = respostaConsulta(c);
+  const recusa = respostaConsulta(c, await situacaoDaCidade(c, deps));
   if (recusa || !c.ok) {
     log("info", "fiscal_conta_empresa_receita_recusada", { tenant_id: tenantId, motivo: c.ok ? null : c.motivo });
     return recusa!;

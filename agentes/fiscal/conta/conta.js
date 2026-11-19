@@ -475,6 +475,7 @@
     pronta: ['Pronta', 'ok'],
     falta_certificado: ['Falta certificado A1', ''],
     falta_dados_fiscais: ['Faltam dados fiscais', ''],
+    municipio_sem_presumido: ['Cidade sem Presumido (lista de espera)', 'erro'],
     certificado_vencido: ['Certificado vencido', 'erro'],
     procuracao_pendente: ['Procuração pendente', ''],
     desativada: ['Desativada', 'off']
