@@ -14,6 +14,7 @@ import { interpreteClaude } from './interprete-claude.js'
 import type { ModelosDoAgente } from './janela.js'
 import { linksFromEnv } from './links.js'
 import { emailResend } from './resend.js'
+import { storageFromEnv } from '../guias/storage.js'
 import type { AgenteDeps } from './tarefas.js'
 import { whatsappCloud, type BaixaMidia } from './whatsapp-cloud.js'
 
@@ -58,6 +59,13 @@ export function conversaFromEnv(): ConversaDeps {
     catalogo: catalogoDoSite({ site: links.site }),
     numeroProprio: numeroProprioFromEnv(),
     midia: midiaFromEnv() ?? undefined,
+    // Módulo Guias: respostas dos contatos de guia (alerta ao escritório por e-mail e 2ª via do PDF).
+    guias: {
+      email: process.env.RESEND_API_KEY
+        ? emailResend({ apiKey: process.env.RESEND_API_KEY, from: variavel('AGENTE_FISCAL_EMAIL_FROM'), baseUrl: variavel('RESEND_API_URL') })
+        : null,
+      storage: storageFromEnv(),
+    },
   }
 }
 

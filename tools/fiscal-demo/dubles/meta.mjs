@@ -33,8 +33,11 @@ function textoDaMensagem(b) {
   if (b.type === 'text') return (b.text && b.text.body) || '';
   if (b.type === 'template') {
     const t = b.template || {};
-    const params = (t.components || []).flatMap((c) => (c.parameters || []).map((x) => x.text)).filter(Boolean);
-    return `[modelo ${t.name || '?'}] ${params.join(' · ')}`;
+    const corpo = (t.components || []).filter((c) => c.type === 'body' || !c.type);
+    const params = corpo.flatMap((c) => (c.parameters || []).map((x) => x.text)).filter(Boolean);
+    const doc = (t.components || []).filter((c) => c.type === 'header').flatMap((c) => c.parameters || []).find((x) => x.type === 'document');
+    const botoes = (t.components || []).filter((c) => c.type === 'button').length;
+    return `[modelo ${t.name || '?'}${doc ? ` + PDF ${doc.document && doc.document.filename}` : ''}${botoes ? ` + ${botoes} botões` : ''}] ${params.join(' · ')}`;
   }
   if (b.type === 'document') return `[documento ${(b.document && b.document.filename) || ''}] ${(b.document && b.document.caption) || ''}`;
   if (b.type === 'interactive') return `[botões] ${JSON.stringify(b.interactive)}`;
@@ -69,15 +72,19 @@ export async function iniciarMeta({ porta = 3004, webhookUrl, segredo, phoneNumb
     if (req.method === 'POST' && envio) {
       if (!/^Bearer\s+\S+/i.test(req.headers.authorization || '')) { json(res, 401, { error: { message: 'Invalid OAuth access token', code: 190 } }); return; }
       if (envio[2] === 'media') {
-        await lerCorpo(req);
+        const bruto = await lerCorpo(req);
         const m = id('media_');
-        midias.set(m, true);
+        midias.set(m, { bytes: bruto.length, pdf: bruto.includes(Buffer.from('%PDF-')) });
         json(res, 200, { id: m });
         return;
       }
       const b = (await lerJson(req)) || {};
-      falar(b.to, 'agente', textoDaMensagem(b), { tipo: b.type });
+      falar(b.to, 'agente', textoDaMensagem(b), { tipo: b.type, ...(b.type === 'template' ? { modelo: b.template } : {}) });
       json(res, 200, { messaging_product: 'whatsapp', contacts: [{ input: b.to, wa_id: digitos(b.to) }], messages: [{ id: id('wamid.') }] });
+      return;
+    }
+    if (req.method === 'GET' && p === '/api/midias') {
+      json(res, 200, Object.fromEntries(midias));
       return;
     }
     if (req.method === 'GET' && p === '/api/conversa') {

@@ -164,6 +164,8 @@ export type Deps = {
     fimCiclo: string | null,
   ) => Promise<{ status: string; cancelamento_agendado_para?: string }>;
   apagarConta: (userId: string) => Promise<RespostaBanco>;
+  /** Módulo Guias (20261119190000): id da assinatura "nó.fiscal Guias" ativa da conta, para o cartão novo valer nela também. */
+  assinaturaGuias?: (tenantId: string) => Promise<string | null>;
   /** Códigos da lista nacional (`codigos-servico.json`), ou null quando a lista não está à mão. */
   codigosServico?: () => Promise<Set<string> | null>;
   agora?: () => Date;
@@ -510,6 +512,17 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     if (!r || r.status >= 500) return erro(502, "PAGARME_FALHOU", MSG_PAGARME);
     if (!r.ok) return erro(402, "CARTAO_RECUSADO", MSG_CARTAO_RECUSADO);
     log("info", "fiscal_conta_cartao_trocado", { tenant_id: estado.tenant_id });
+    // O token do cartão é de uso único: a Guias recebe o cartão novo pelo id, lido da principal já trocada.
+    const guias = deps.assinaturaGuias ? await deps.assinaturaGuias(estado.tenant_id).catch(() => null) : null;
+    if (guias) {
+      const principal = await chamar("fiscal_conta_cartao_guias_falhou", "GET", caminhoAssinatura(sub.pagarme_subscription_id));
+      const cardId = principal && principal.ok ? obj(obj(principal.json).card).id : null;
+      const g = typeof cardId === "string"
+        ? await chamar("fiscal_conta_cartao_guias_falhou", "PATCH", `${caminhoAssinatura(guias)}/payment-method`, { payment_method: "credit_card", card_id: cardId })
+        : null;
+      log(g && g.ok ? "info" : "error", "fiscal_conta_cartao_guias", { tenant_id: estado.tenant_id, trocado: Boolean(g && g.ok) });
+      return { http: 200, body: { ok: true, guias: g && g.ok ? "cartao_trocado" : "cartao_nao_trocado" } };
+    }
     return { http: 200, body: { ok: true } };
   }
 

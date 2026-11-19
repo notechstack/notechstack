@@ -115,6 +115,8 @@ export const PADRAO = {
   'app:clientes:ler_pdf': () => r(200, { candidato: { ...CANDIDATOS[0], nome: 'Lido do PDF', tomador_documento: '04252011000110', origem: 'importacao_pdf' } }),
   'app:clientes:salvar': (c) => r(201, { salvos: c.modelos.length, ignorados: [] }),
   'app:ativacao': () => r(201, { codigo: '482913', mensagem: 'Quero ativar o nó.fiscal da CLINICA AURORA LTDA no plano Pro. Código de ativação: 482913', whatsapp_url: 'https://wa.me/5511900000000?text=' + encodeURIComponent('Quero ativar o nó.fiscal da CLINICA AURORA LTDA no plano Pro. Código de ativação: 482913'), expira_em: emDias(1) }),
+  // Sem o módulo Guias ligado, a aba não aparece.
+  'app:guias:estado': () => r(200, { ligado: false }),
   'dados:codigos-servico.json': () => r(200, CODIGOS),
   'dados:cnae-servico.json': () => r(200, CNAE)
 };
@@ -151,6 +153,8 @@ function rota(url, metodo, corpo) {
     if (caminho === '/agentes/fiscal/api/v1/onboarding/procuracao/') return 'app:procuracao:' + (corpo && corpo.acao);
     // Aba Emitir do painel: JSON com `acao`; a planilha vai em multipart (sem `acao`).
     if (caminho === '/agentes/fiscal/api/v1/fiscal/emissao/') return 'app:emissao:' + ((corpo && corpo.acao) || 'lote_ler');
+    // Módulo Guias (19/11/2026): JSON com `acao`; o GET do CSV vem com ?exportar=csv.
+    if (caminho === '/agentes/fiscal/api/v1/fiscal/guias/') return 'app:guias:' + ((corpo && corpo.acao) || u.searchParams.get('exportar') || '');
     const d = /^\/agentes\/fiscal\/dados\/([\w-]+\.json)$/.exec(caminho);
     if (d) return 'dados:' + d[1];
   }

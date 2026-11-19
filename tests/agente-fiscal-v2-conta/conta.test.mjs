@@ -630,3 +630,22 @@ test("apagar conta", async () => {
   assert.equal(t.contador_email, null);
   assert.equal(await bloqueio(e), "TENANT_INACTIVE");
 });
+
+test("trocar cartão com o módulo Guias: o cartão novo vale também na assinatura nó.fiscal Guias (pelo id)", async () => {
+  const e = await empresa({ configurado: true, certificado: true });
+  const { subId } = await criarAssinatura(bancos.dono, e, { status: "paga" });
+  const gateway = pagarme((method) => (method === "GET" ? { json: { id: subId, card: { id: "card_novo" } } } : {}));
+  const r = await processarConta("POST", { acao: "trocar_cartao", card_token: "token_novo123", endereco: ENDERECO }, {
+    env: ENV, fetch: gateway.fetch, sessao: async () => e.userId, estado: banco.estado, configurar: banco.configurar,
+    trocarPlano: banco.trocarPlano, agendarCancelamento: banco.agendarCancelamento, apagarConta: banco.apagarConta,
+    codigosServico: async () => LISTA, log: () => {}, assinaturaGuias: async () => "sub_guias_x",
+  });
+  assert.equal(r.http, 200, JSON.stringify(r.body));
+  assert.equal(r.body.guias, "cartao_trocado");
+  assert.deepEqual(gateway.chamadas.map((c) => [c.method, c.url.replace(API, "")]), [
+    ["PATCH", `/subscriptions/${subId}/payment-method`],
+    ["GET", `/subscriptions/${subId}`],
+    ["PATCH", "/subscriptions/sub_guias_x/payment-method"],
+  ]);
+  assert.deepEqual(gateway.chamadas[2].body, { payment_method: "credit_card", card_id: "card_novo" });
+});

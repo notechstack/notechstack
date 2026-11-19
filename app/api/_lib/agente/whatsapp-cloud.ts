@@ -7,7 +7,7 @@
 // `mime_type`, `file_size`) seguido de `GET <url>`, os dois com `Authorization: Bearer <token>`. Versão v26.0 (changelog da Graph API, 29/07/2026).
 // A base vem de `WHATSAPP_GRAPH_URL` (padrão oficial; Landing v2, lote C), para a demonstração.
 // O token e o corpo das respostas nunca vão para o log.
-import type { AnexoEmail, Enviada, EnviaWhatsApp } from './canais.js'
+import type { AnexoEmail, Enviada, EnviaWhatsApp, ExtrasDoModelo } from './canais.js'
 
 export const GRAPH_API = 'https://graph.facebook.com'
 export const GRAPH_VERSION = 'v26.0'
@@ -84,13 +84,36 @@ async function erroDaResposta(res: Response): Promise<WhatsAppHttpError> {
   return new WhatsAppHttpError(res.status, typeof erro?.code === 'number' ? erro.code : null, typeof detalhe === 'string' ? detalhe.slice(0, 300) : null)
 }
 
+/**
+ * Componentes de envio de um modelo ("Send message templates"): cabeçalho de documento por `id` da mídia, corpo e um
+ * componente `button` por botão com parâmetro (`sub_type` `url` com o sufixo, `quick_reply` com o payload).
+ */
+export function componentesDoModelo(parametros: string[], extras?: ExtrasDoModelo): Record<string, unknown>[] {
+  const componentes: Record<string, unknown>[] = []
+  if (extras?.documento) {
+    componentes.push({
+      type: 'header',
+      parameters: [{ type: 'document', document: { id: extras.documento.mediaId, filename: extras.documento.nome } }],
+    })
+  }
+  if (parametros.length) componentes.push({ type: 'body', parameters: parametros.map((text) => ({ type: 'text', text })) })
+  for (const botao of extras?.botoes ?? []) {
+    componentes.push(
+      botao.tipo === 'url'
+        ? { type: 'button', sub_type: 'url', index: String(botao.indice), parameters: [{ type: 'text', text: botao.texto }] }
+        : { type: 'button', sub_type: 'quick_reply', index: String(botao.indice), parameters: [{ type: 'payload', payload: botao.payload }] },
+    )
+  }
+  return componentes
+}
+
 export function whatsappCloud(opcoes: {
   token: string
   phoneNumberId: string
   versao?: string
   graphUrl?: string
   fetch?: FetchLike
-}): EnviaWhatsApp & BaixaMidia {
+}): EnviaWhatsApp & BaixaMidia & { subirMidia(anexo: AnexoEmail): Promise<string> } {
   const doFetch = opcoes.fetch ?? fetch
   const raiz = (opcoes.graphUrl || GRAPH_API).replace(/\/+$/, '')
   const versao = `${raiz}/${opcoes.versao ?? GRAPH_VERSION}`
@@ -159,12 +182,12 @@ export function whatsappCloud(opcoes: {
       const id = await subirMidia(anexo)
       return mensagem({ to: destino(para), type: 'document', document: { id, filename: anexo.nome, caption: legenda } })
     },
-    enviarModelo(para, nome, parametros) {
+    enviarModelo(para, nome, parametros, extras) {
       const template: Record<string, unknown> = { name: nome, language: { code: IDIOMA_DOS_MODELOS } }
-      if (parametros.length) {
-        template.components = [{ type: 'body', parameters: parametros.map((text) => ({ type: 'text', text })) }]
-      }
+      const componentes = componentesDoModelo(parametros, extras)
+      if (componentes.length) template.components = componentes
       return mensagem({ to: destino(para), type: 'template', template })
     },
+    subirMidia,
   }
 }
