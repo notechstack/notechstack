@@ -29,9 +29,10 @@ export const MODELOS: Record<ModeloDeGuia['nome'], ModeloDeGuia> = {
     parametros: ['escritorio', 'tipo', 'empresa', 'competencia', 'valor', 'vencimento', 'linha'],
     cabecalhoDocumento: true,
     botoes: [
+      // A Meta exige as respostas rápidas juntas: Recebi (0), Falar com o escritório (1), URL (2).
       { tipo: 'QUICK_REPLY', texto: 'Recebi', acao: 'recebi' },
-      { tipo: 'URL', texto: 'Ver e copiar o código', url: 'https://app.notechstack.com.br/g/{{1}}' },
       { tipo: 'QUICK_REPLY', texto: 'Falar com o escritório', acao: 'escritorio' },
+      { tipo: 'URL', texto: 'Ver e copiar o código', url: 'https://app.notechstack.com.br/g/{{1}}' },
     ],
   },
   guia_lembrete: {
@@ -51,9 +52,10 @@ export const MODELOS: Record<ModeloDeGuia['nome'], ModeloDeGuia> = {
     parametros: ['escritorio', 'mes', 'valor', 'vencimento', 'linha'],
     cabecalhoDocumento: true,
     botoes: [
+      // A Meta exige as respostas rápidas juntas: Recebi (0), Falar com o escritório (1), URL (2).
       { tipo: 'QUICK_REPLY', texto: 'Recebi', acao: 'recebi' },
-      { tipo: 'URL', texto: 'Ver e copiar o código', url: 'https://app.notechstack.com.br/g/{{1}}' },
       { tipo: 'QUICK_REPLY', texto: 'Falar com o escritório', acao: 'escritorio' },
+      { tipo: 'URL', texto: 'Ver e copiar o código', url: 'https://app.notechstack.com.br/g/{{1}}' },
     ],
   },
 }

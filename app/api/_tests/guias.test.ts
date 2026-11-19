@@ -320,8 +320,8 @@ describe('worker: disparo, idempotência, teto e lembretes', () => {
     const token = tokenDaGuia(SEGREDO, das.id)
     expect(doDas.extras?.botoes).toEqual([
       { tipo: 'resposta', indice: 0, payload: `guia:${das.id}:recebi` },
-      { tipo: 'url', indice: 1, texto: token },
-      { tipo: 'resposta', indice: 2, payload: `guia:${das.id}:escritorio` },
+      { tipo: 'resposta', indice: 1, payload: `guia:${das.id}:escritorio` },
+      { tipo: 'url', indice: 2, texto: token },
     ])
     expect(wa.midias.some((m) => m.nome === 'das.pdf' && m.tipo === 'application/pdf')).toBe(true)
     const doHonorario = modelos.find((m) => m.para === FONE_2)!
@@ -573,6 +573,12 @@ describe('link /g/<token>, acompanhamento e modelos', () => {
       expect(m.corpo.trim()).not.toMatch(/^\{\{|\}\}$/)
     }
     expect(MODELOS.guia_nova.cabecalhoDocumento).toBe(true)
+    // Respostas rápidas juntas, URL por último (como cadastrado no WhatsApp Manager).
+    for (const m of [MODELOS.guia_nova, MODELOS.honorario_aviso]) {
+      expect(m.botoes.map((b) => b.tipo)).toEqual(['QUICK_REPLY', 'QUICK_REPLY', 'URL'])
+      expect(m.botoes.map((b) => b.texto)).toEqual(['Recebi', 'Falar com o escritório', 'Ver e copiar o código'])
+    }
+    expect(MODELOS.guia_lembrete.botoes.map((b) => b.texto)).toEqual(['Já paguei', 'Mandar de novo'])
     expect(lerPayload('guia:00000000-0000-4000-8000-000000000000:paguei')).toEqual({ guiaId: '00000000-0000-4000-8000-000000000000', acao: 'paguei' })
     expect(lerPayload('guia:xx:paguei')).toBeNull()
   })

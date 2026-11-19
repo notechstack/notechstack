@@ -160,7 +160,8 @@ async function principal() {
   ok(midias[doc.document.id] && midias[doc.document.id].pdf === true, 'a mídia subida na Meta é o PDF');
   const corpo = modelos[0].modelo.components.find((c) => c.type === 'body').parameters.map((p) => p.text);
   ok(corpo[0] === 'Contabilidade Demo Guias Ltda', `a mensagem leva o nome do escritório ("${corpo[0]}")`);
-  ok(modelos[0].modelo.components.filter((c) => c.type === 'button').length === 3, 'botões Recebi, Ver e copiar o código, Falar com o escritório');
+  const botoes = modelos[0].modelo.components.filter((c) => c.type === 'button').map((c) => `${c.index}:${c.sub_type}`);
+  ok(botoes.join(',') === '0:quick_reply,1:quick_reply,2:url', `botões na ordem do modelo cadastrado: Recebi, Falar com o escritório, Ver e copiar o código (${botoes.join(', ')})`);
   const conversa2 = await (await fetch(`${META}/api/conversa?numero=${encodeURIComponent(C2.fone)}`)).json();
   ok(conversa2.some((m) => m.modelo && m.modelo.name === 'honorario_aviso'), 'o Mercado recebeu honorario_aviso (boleto de honorários)');
   const emails = await (await fetch(`${RESEND}/api/emails?to=${encodeURIComponent(C1.email)}`)).json();
