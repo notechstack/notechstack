@@ -166,6 +166,7 @@
           <small class="nf-erro" id="fa-codigo-servico-erro" hidden></small>
         </fieldset>
         <div class="nf-campo" id="fa-campo-percentual"><label for="fa-percentual">Percentual de tributos do Simples (%)</label><input id="fa-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-percentual-erro" hidden></small></div>
+        <div class="nf-campo" id="fa-campo-tottrib" hidden><label for="fa-pct-fed">Tributos federais aproximados (%)</label><input id="fa-pct-fed" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-pct-fed-erro" hidden></small><label for="fa-pct-mun">Tributos municipais aproximados (%)</label><input id="fa-pct-mun" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-pct-mun-erro" hidden></small><small class="nf-dica">Lucro Presumido e Real (Lei 12.741): percentuais aproximados da tabela do IBPT ou da contabilidade. O estadual fica em 0.</small></div>
         <div class="nf-campo"><label for="fa-nbs">NBS padrão (opcional)</label><input id="fa-nbs" inputmode="decimal" autocomplete="off" maxlength="14" placeholder="1.1502.10.00" aria-describedby="fa-nbs-dica"><small class="nf-dica" id="fa-nbs-dica">Código da NBS 2.0 (9 números) que vai nas notas quando o pedido não traz outro. Na dúvida, pergunte ao seu contador ou deixe em branco.</small><small class="nf-erro" id="fa-nbs-erro" hidden></small></div>
         <div class="nf-pro" id="fa-pro" hidden>
           <div class="nf-campo nf-campo--largo"><label for="fa-contador">E-mail do contador (opcional)</label><input id="fa-contador" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-contador-erro" hidden></small></div>
@@ -223,7 +224,13 @@
         <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-abrir-adicionar" aria-expanded="false" aria-controls="fa-form-adicionar">Adicionar empresa</button></div>
         <form id="fa-form-adicionar" class="nf-form nf-bloco" novalidate hidden>
           <div class="nf-campo"><label for="fa-add-cnpj">CNPJ da empresa</label><input id="fa-add-cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00"><small class="nf-erro" id="fa-add-cnpj-erro" hidden></small></div>
-          <p class="nf-dica nf-campo--largo">Razão social, município e regime vêm da Receita Federal. A empresa precisa ser MEI ou do Simples Nacional.</p>
+          <p class="nf-dica nf-campo--largo">Razão social, município e regime vêm da Receita Federal. A empresa precisa ser MEI ou do Simples Nacional; Lucro Presumido e Real, só nas cidades que usam o Emissor Nacional para todas as empresas (por ora, Rio de Janeiro e Porto Alegre).</p>
+          <fieldset class="nf-grupo nf-campo--largo" id="fa-add-regime" hidden>
+            <legend>Regime tributário da empresa</legend>
+            <label class="nf-opcao"><input type="radio" name="fa-add-regime" value="presumido"><span>Lucro Presumido</span></label>
+            <label class="nf-opcao"><input type="radio" name="fa-add-regime" value="real"><span>Lucro Real</span></label>
+            <small class="nf-erro" id="fa-add-regime-erro" hidden></small>
+          </fieldset>
           <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-add-retencao">
             <legend>Retenção nas notas desta empresa</legend>
             <label class="nf-aceite"><input type="checkbox" id="fa-add-retem-iss" aria-controls="fa-add-campo-iss" aria-expanded="false"> <span>Tem retenção de ISS? O cliente que recebe a nota retém o ISS.</span></label>
@@ -273,6 +280,7 @@
               <small class="nf-erro" id="fa-emp-codigo-servico-erro" hidden></small>
             </fieldset>
             <div class="nf-campo" id="fa-emp-campo-percentual"><label for="fa-emp-percentual">Percentual de tributos do Simples (%)</label><input id="fa-emp-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-percentual-erro" hidden></small></div>
+            <div class="nf-campo" id="fa-emp-campo-tottrib" hidden><label for="fa-emp-pct-fed">Tributos federais aproximados (%)</label><input id="fa-emp-pct-fed" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-pct-fed-erro" hidden></small><label for="fa-emp-pct-mun">Tributos municipais aproximados (%)</label><input id="fa-emp-pct-mun" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-pct-mun-erro" hidden></small><small class="nf-dica">Lucro Presumido e Real (Lei 12.741): percentuais aproximados da tabela do IBPT ou da contabilidade. O estadual fica em 0.</small></div>
             <div class="nf-campo"><label for="fa-emp-nbs">NBS padrão (opcional)</label><input id="fa-emp-nbs" inputmode="decimal" autocomplete="off" maxlength="14" placeholder="1.1502.10.00" aria-describedby="fa-emp-nbs-dica"><small class="nf-dica" id="fa-emp-nbs-dica">Código da NBS 2.0 (9 números) que vai nas notas desta empresa quando o pedido não traz outro. Deixe em branco se não usar.</small><small class="nf-erro" id="fa-emp-nbs-erro" hidden></small></div>
             <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-emp-retencao">
               <legend>Retenção nas notas desta empresa</legend>
