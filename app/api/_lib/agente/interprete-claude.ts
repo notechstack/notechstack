@@ -4,7 +4,8 @@
 import { pedirJson, type Ia } from '../ia/claude.js'
 import { validarParsed, type Interprete } from './interprete.js'
 
-const TEXTO_OU_NULO = { anyOf: [{ type: 'string' }, { type: 'null' }] }
+const TEXTO = { type: 'string' }
+const TEXTO_OU_NULO = { anyOf: [TEXTO, { type: 'null' }] }
 const SIM_NAO_OU_NULO = { anyOf: [{ type: 'boolean' }, { type: 'null' }] }
 
 export const SCHEMA_PARSED = {
@@ -24,24 +25,22 @@ export const SCHEMA_PARSED = {
     servico: TEXTO_OU_NULO,
     informacoes_complementares: TEXTO_OU_NULO,
     municipio_prestacao: TEXTO_OU_NULO,
+    // Sem `anyOf` aqui: a saída estruturada aceita no máximo 16 parâmetros com união no schema
+    // inteiro (400 imediato, sem retry). Com o grupo obra nulável eram 22 e toda mensagem nova
+    // caía em `ia_falhou` (19/11/2026). Campo não escrito vem "" e `obraEscrita` vira null.
     obra: {
-      anyOf: [
-        {
-          type: 'object',
-          properties: {
-            cno: TEXTO_OU_NULO,
-            cep: TEXTO_OU_NULO,
-            logradouro: TEXTO_OU_NULO,
-            numero: TEXTO_OU_NULO,
-            complemento: TEXTO_OU_NULO,
-            bairro: TEXTO_OU_NULO,
-            cidade: TEXTO_OU_NULO,
-          },
-          required: ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade'],
-          additionalProperties: false,
-        },
-        { type: 'null' },
-      ],
+      type: 'object',
+      properties: {
+        cno: TEXTO,
+        cep: TEXTO,
+        logradouro: TEXTO,
+        numero: TEXTO,
+        complemento: TEXTO,
+        bairro: TEXTO,
+        cidade: TEXTO,
+      },
+      required: ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade'],
+      additionalProperties: false,
     },
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
@@ -67,7 +66,7 @@ export const INSTRUCOES = [
   '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
   '- informacoes_complementares: o que a pessoa pede para ir nas informações complementares da nota, e não na descrição do serviço: dados bancários (banco, agência, conta, PIX), observações ("obs: …"), número de pedido ou contrato, ou o que vier depois de "informações complementares". Copie como está escrito, sem mudar nenhum número. Isso não entra em descricao. Senão null.',
   '- municipio_prestacao: a cidade onde o serviço foi prestado, só quando a mensagem diz ("serviço prestado em Campinas", "prestado em Campinas/SP", "realizado em Santos", "local da prestação: Jundiaí"), com a UF se vier escrita ("Campinas/SP"); senão null. A cidade do cliente, do endereço ou da empresa não é o local da prestação. Isso não entra em descricao.',
-  '- obra: os dados da obra (construção civil, reforma, alvenaria) quando a mensagem traz o endereço ou o CNO da obra ("obra na Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP", "endereço da obra: …", "CNO 12.345.67890/12"), ou quando a mensagem é só um endereço ou um CNO, que é a resposta à pergunta dos dados da obra. cno: o número do CNO ou CEI como escrito; cep: como escrito; logradouro: tipo e nome da rua ("Rua das Flores"); numero: o número do imóvel ("120", "s/n"); complemento: casa, bloco, lote, quadra, se houver; bairro; cidade: a cidade da obra com a UF se vier ("Atibaia/SP"). Campo não escrito fica null; sem nada da obra, obra é null. O endereço da obra não entra em descricao nem em municipio_prestacao.',
+  '- obra: os dados da obra (construção civil, reforma, alvenaria) quando a mensagem traz o endereço ou o CNO da obra ("obra na Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP", "endereço da obra: …", "CNO 12.345.67890/12"), ou quando a mensagem é só um endereço ou um CNO, que é a resposta à pergunta dos dados da obra. cno: o número do CNO ou CEI como escrito; cep: como escrito; logradouro: tipo e nome da rua ("Rua das Flores"); numero: o número do imóvel ("120", "s/n"); complemento: casa, bloco, lote, quadra, se houver; bairro; cidade: a cidade da obra com a UF se vier ("Atibaia/SP"). Campo não escrito fica "" (texto vazio); sem nada da obra, todos os campos de obra ficam "". O endereço da obra não entra em descricao nem em municipio_prestacao.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 
