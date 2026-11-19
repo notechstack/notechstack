@@ -108,6 +108,26 @@ describe('emissão autorizada (C3)', () => {
     expect(row.xml_dps).toContain('<indTotTrib>0</indTotTrib>')
     expect(row.xml_dps).not.toContain('pTotTribSN')
   })
+
+  it('Lucro Presumido: sem pTotTrib fica na fila; configurado, chega a issued com opSimpNac 1 e pTotTrib', async () => {
+    const t0 = new Date()
+    const cert = sharedTestCertificate()
+    const sem = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null })
+    const parada = await insertQueuedInvoice(db, sem.id)
+    const sefin0 = fakeSefin()
+    await runEmission({ db, sefin: createSefinClient({ transport: sefin0.transport }), now: () => t0, tenantId: sem.id })
+    expect((await readInvoice(db, parada.id)).last_error_code).toBe('TRIBUTOS_NOT_CONFIGURED')
+    expect(sefin0.requests).toHaveLength(0)
+
+    const t = await tenant({ certificado: cert.certificado, regime: 'presumido', pTotTribSn: null, pTotTrib: { fed: '13.45', est: '0', mun: '5' } })
+    const invoice = await insertQueuedInvoice(db, t.id)
+    const sefin = fakeSefin()
+    await runEmission({ db, sefin: createSefinClient({ transport: sefin.transport }), now: () => t0, tenantId: t.id })
+    const row = await readInvoice(db, invoice.id)
+    expect(row.status).toBe('issued')
+    expect(row.xml_dps).toContain('<regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib>')
+    expect(row.xml_dps).toContain('<pTotTrib><pTotTribFed>13.45</pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>5.00</pTotTribMun></pTotTrib>')
+  })
 })
 
 describe('retentativa com consulta prévia (C17)', () => {
