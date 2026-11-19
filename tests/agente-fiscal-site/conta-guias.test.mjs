@@ -40,12 +40,12 @@ function guia(n, cor, extra = {}) {
 }
 
 /** Surface com o módulo ligado (ou não) e o Storage: PUT na URL assinada guarda o arquivo. */
-function rede({ ligado = true } = {}) {
+function rede({ ligado = true, estadoGuias = ESTADO_LIGADO } = {}) {
   const puts = [];
   const lote = { guias: [] };
   const base = superficie({
     'fiscal-conta:estado': r(200, estadoEscritorio()),
-    'app:guias:estado': r(200, ligado ? ESTADO_LIGADO : { ligado: false }),
+    'app:guias:estado': r(200, ligado ? estadoGuias : { ligado: false }),
     'app:guias:lotes_listar': () => ({ status: 200, corpo: { lotes: lote.guias.length ? [{ id: LOTE, total_arquivos: 3, lidos: 3, com_problema: 2, status: 'conferir', criado_em: '2026-11-19T15:00:00.000Z' }] : [] } }),
     'app:guias:lote_criar': r(200, { lote_id: LOTE }),
     'app:guias:lote_arquivos': (c) => r(200, { arquivos: c.arquivos.map((a, i) => ({ guia_id: G(i + 1), nome: a.nome, url: `${STORAGE}${TENANT}/${LOTE}/${i}.pdf?token=t${i}` })) })(),
@@ -171,4 +171,19 @@ test('enviar: o PDF vai direto ao Storage; a conferência mostra as cores; só a
   await esvaziar(60);
   assert.deepEqual(rd.de('app:guias:contato_salvar')[0].corpo.contato, { documento: '99.888.777/0001-66', nome: 'Cliente Novo', whatsapps: '', emails: 'novo@cliente.test', aceite_origem: 'Declarado na conferência das guias' });
   assert.deepEqual(p.erros, []);
+});
+
+test('Meus dados: com o módulo, as duas mensalidades (Escritório e Guias) com valor e próxima cobrança; sem ele, como hoje', async () => {
+  const sem = await painel({ ligado: false });
+  assert.equal(sem.p.visivel('fa-plano-mensalidades'), false);
+  const cobranca = { valor_centavos: 19700, valor_atual_centavos: 14700, desconto_ciclos_restantes: 12, proxima_cobranca: '2026-12-16T18:42:00.000Z', status: 'pendente' };
+  const { p } = await painel({ estadoGuias: { ...ESTADO_LIGADO, cobranca, bloqueio: null } });
+  assert.equal(p.visivel('fa-plano-mensalidades'), true);
+  const dts = [...p.$('fa-plano-mensalidades').querySelectorAll('dt')].map((x) => x.textContent);
+  const dds = [...p.$('fa-plano-mensalidades').querySelectorAll('dd')].map((x) => x.textContent);
+  assert.deepEqual(dts, ['nó.fiscal Escritório', 'nó.fiscal Guias']);
+  assert.match(dds[0], /R\$ 297\/mês · próxima cobrança 05\/12\/2026/);
+  assert.match(dds[1], /R\$ 147\/mês nas próximas 12 cobranças, depois R\$ 197 · próxima cobrança 16\/12\/2026/);
+  const bloqueada = await painel({ estadoGuias: { ...ESTADO_LIGADO, cobranca: { ...cobranca, status: 'recusada' }, bloqueio: 'PAGAMENTO_RECUSADO' } });
+  assert.match(bloqueada.p.texto('fa-plano-mensalidades'), /pagamento recusado/);
 });

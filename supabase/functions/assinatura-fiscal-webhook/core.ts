@@ -64,7 +64,10 @@ export function envelopeSeguro(eventId: string, tipo: string, data: Record<strin
   const invoice = obj(d.invoice);
   const charge = obj(d.charge);
   const { subscriptionId, status } = mapearEvento(tipo, d);
+  const guias = metadataDeGuias(d);
   return {
+    // Módulo Guias: produto e tenant da metadata (só ids), para o banco achar a assinatura antes de o id ser gravado.
+    ...(guias ? { produto: "guias", tenant_id: guias.tenantId } : {}),
     id: eventId,
     type: tipo,
     data: {
@@ -79,6 +82,20 @@ export function envelopeSeguro(eventId: string, tipo: string, data: Record<strin
     },
     status_aplicado: status,
   };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Assinatura "nó.fiscal Guias" pela metadata (do aviso de assinatura, da fatura ou da cobrança). */
+export function metadataDeGuias(data: Record<string, unknown>): { tenantId: string } | null {
+  const d = obj(data);
+  const invoice = obj(d.invoice);
+  const fontes = [obj(d.metadata), obj(obj(d.subscription).metadata), obj(obj(invoice.subscription).metadata), obj(invoice.metadata)];
+  for (const m of fontes) {
+    const tenant = texto(m.tenant_id);
+    if (m.produto === "guias" && tenant && UUID.test(tenant)) return { tenantId: tenant };
+  }
+  return null;
 }
 
 async function digest(value: string): Promise<Uint8Array> {
@@ -192,7 +209,9 @@ export async function processarAviso(
   // novo (duplicado aqui, e a chave da cobrança no banco segura invoice.paid + charge.paid do mesmo pagamento).
   // "fora_de_ordem" e "cancelada_final" só dizem respeito ao status: a cobrança foi paga do mesmo jeito.
   const pagamento = pagamentoDoAviso(tipo, data);
-  if (pagamento && subscriptionId && deps.medirCobranca && !result?.duplicado) {
+  // A cobrança da Guias não é a compra do plano (a medição é da principal).
+  const daGuias = result?.produto === "guias" || metadataDeGuias(data) !== null;
+  if (pagamento && subscriptionId && deps.medirCobranca && !result?.duplicado && !daGuias) {
     try {
       const medida = await deps.medirCobranca({ subscriptionId, tipo, pagamento });
       log("info", "assinatura_fiscal_webhook_cobranca", { gateway_event_id: eventId, subscription_id: subscriptionId, ...medida });

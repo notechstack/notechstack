@@ -37,14 +37,31 @@
       st.estado = r.dados;
       $('fa-aba-guias').hidden = false;
       desenharUso(r.dados.uso);
+      desenharMensalidades(r.dados);
       // Entrou direto em #guias: a aba só existe agora.
       if (location.hash === '#guias' && window.contaAbas && window.contaAbas.atual() !== 'guias') window.contaAbas.mostrar('guias', { hash: false });
       return true;
     });
     return st.verificando;
   }
+  /* Meus dados: "nó.fiscal Escritório" e "nó.fiscal Guias", cada uma com valor e próxima cobrança. */
+  function desenharMensalidades(d) {
+    var el = $('fa-plano-mensalidades'), c = d.cobranca, p = window.contaPlano || {};
+    var guias;
+    if (!c) guias = 'Sem mensalidade (piloto)';
+    else if (c.status === 'cancelada' || c.status === 'cancelamento_pedido') guias = 'Cancelada';
+    else {
+      guias = nf.reais(c.valor_atual_centavos) + '/mês' +
+        (c.valor_atual_centavos !== c.valor_centavos && c.desconto_ciclos_restantes ? ' nas próximas ' + c.desconto_ciclos_restantes + ' cobranças, depois ' + nf.reais(c.valor_centavos) : '') +
+        (d.bloqueio ? ' · pagamento recusado: o disparo está bloqueado' : c.proxima_cobranca ? ' · próxima cobrança ' + nf.dataBR(c.proxima_cobranca) : '');
+    }
+    var linhas = [['nó.fiscal Escritório', (p.valor || '—') + (p.proxima ? ' · próxima cobrança ' + p.proxima : '')], ['nó.fiscal Guias', guias]];
+    el.innerHTML = linhas.map(function (l) { return '<dt>' + nf.esc(l[0]) + '</dt><dd>' + nf.esc(l[1]) + '</dd>'; }).join('');
+    el.hidden = false;
+  }
   function esconder() {
     st.ligado = false;
+    if ($('fa-plano-mensalidades')) $('fa-plano-mensalidades').hidden = true;
     $('fa-aba-guias').hidden = true;
     $('fa-painel-guias').hidden = true;
     if (window.contaAbas && window.contaAbas.atual() === 'guias') window.contaAbas.mostrar('dados', { hash: false });

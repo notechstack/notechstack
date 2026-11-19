@@ -541,7 +541,11 @@
       else { p.removeAttribute('role'); p.removeAttribute('aria-labelledby'); }
     });
     $('fa-abas').hidden = !x;
-    // O módulo Guias pergunta à API se está ligado e só então mostra a aba.
+    // O módulo Guias pergunta à API se está ligado e só então mostra a aba (e as duas mensalidades em Meus dados).
+    if (x) {
+      var fx = nf.FAIXAS[x.plano] || { centavos: null };
+      window.contaPlano = { valor: fx.centavos ? nf.reais(fx.centavos) + '/mês' : '', proxima: proximaCobranca(st.estado && st.estado.assinatura) };
+    }
     if (window.contaGuias) window.contaGuias.verificar(!!x);
     $('certificado').hidden = !!x;
     $('fa-secao-fiscal').hidden = !!x;

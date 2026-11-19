@@ -139,6 +139,8 @@ async function dispararAgendadas(deps: GuiasWorkerDeps, now: () => Date, teto: T
   const { rows } = await deps.db.query<Agendada>(
     `${SELECT_DA_GUIA}
       where g.status = 'agendada' and g.agendada_para <= $1 and nofiscal.guias_ligado(g.escritorio_tenant_id)
+        -- Cobrança da assinatura Guias recusada: o módulo fica bloqueado (não dispara).
+        and nofiscal.guias_bloqueio(g.escritorio_tenant_id) is null
       order by g.agendada_para, g.created_at limit 50`,
     [now()],
   )
@@ -262,6 +264,7 @@ async function enviarLembretes(deps: GuiasWorkerDeps, now: () => Date, teto: Tet
         -- A guia que saiu hoje não recebe lembrete no mesmo dia (o envio já diz o vencimento).
         and (g.enviada_em at time zone 'America/Sao_Paulo')::date < $1::date
         and nofiscal.guias_ligado(g.escritorio_tenant_id)
+        and nofiscal.guias_bloqueio(g.escritorio_tenant_id) is null
       order by g.vencimento limit 200`,
     [hoje, hora],
   )

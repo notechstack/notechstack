@@ -702,5 +702,44 @@ describe('revisão independente: cada defeito com o seu teste', () => {
   })
 })
 
+describe('cobrança da assinatura Guias (20261119190000)', () => {
+  it('estado mostra valor e próxima cobrança; cobrança recusada bloqueia o disparo (409) e o worker, e a paga desbloqueia', async () => {
+    const esc = await escritorio('Cobranca Guias', true)
+    await admin.db.query(
+      `update nofiscal.fiscal_addons set pagarme_subscription_id = $2, pagarme_status = 'pendente', proxima_cobranca = '2026-12-16T18:42:00Z',
+              desconto_valor = 5000, desconto_ciclos = 12 where tenant_id = $1`,
+      [esc.tenant.id, `sub_guias_${randomBytes(4).toString('hex')}`],
+    )
+    const est = await chamar(deps, esc.ownerUserId, { acao: 'estado' })
+    expect(est.corpo.cobranca).toMatchObject({ valor_centavos: 19700, valor_atual_centavos: 14700, desconto_ciclos_restantes: 12, status: 'pendente' })
+    expect(new Date(est.corpo.cobranca.proxima_cobranca).toISOString()).toBe('2026-12-16T18:42:00.000Z')
+    expect(est.corpo.bloqueio).toBeNull()
+
+    const fone = randomPhone()
+    const doc = cnpjDe('818283840001')
+    await chamar(deps, esc.ownerUserId, { acao: 'contato_salvar', contato: { documento: doc, nome: 'Bloq', whatsapps: [fone] } })
+    const lote = (await chamar(deps, esc.ownerUserId, { acao: 'lote_criar', total: 1 })).corpo.lote_id
+    const pdf = await gerarGuiaPdf({ tipo: 'das', cnpj: doc, vencimento: '2026-12-20', valorCentavos: 1000 })
+    const arq = (await chamar(deps, esc.ownerUserId, { acao: 'lote_arquivos', lote_id: lote, arquivos: [{ nome: 'b.pdf', tamanho: pdf.pdf.length }] })).corpo.arquivos[0]
+    st.subir(arq.url, pdf.pdf)
+    await chamar(deps, esc.ownerUserId, { acao: 'lote_confirmar', lote_id: lote, guia_ids: [arq.guia_id], fim: true })
+    await chamar(deps, esc.ownerUserId, { acao: 'ler', lote_id: lote })
+    await chamar(deps, esc.ownerUserId, { acao: 'disparar', guia_ids: [arq.guia_id] })
+
+    await admin.db.query(`update nofiscal.fiscal_addons set pagarme_status = 'recusada' where tenant_id = $1`, [esc.tenant.id])
+    expect((await chamar(deps, esc.ownerUserId, { acao: 'estado' })).corpo.bloqueio).toBe('PAGAMENTO_RECUSADO')
+    const bloqueado = await chamar(deps, esc.ownerUserId, { acao: 'disparar', guia_ids: [arq.guia_id] })
+    expect(bloqueado.status).toBe(409)
+    expect(bloqueado.corpo.error.code).toBe('GUIAS_BLOQUEADO')
+    await rodadaDeGuias(workerDeps())
+    expect(wa.saidas.some((x) => x.para === fone)).toBe(false)
+    expect((await guiasDe(esc.tenant.id))[0].status).toBe('agendada')
+
+    await admin.db.query(`update nofiscal.fiscal_addons set pagarme_status = 'paga' where tenant_id = $1`, [esc.tenant.id])
+    await rodadaDeGuias(workerDeps())
+    expect(wa.saidas.some((x) => x.para === fone)).toBe(true)
+  })
+})
+
 // Garante que o Db de serviço é o usado (tipo).
 export type _Uso = Db

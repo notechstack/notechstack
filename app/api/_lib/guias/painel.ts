@@ -114,6 +114,9 @@ export async function handlePainelGuias(request: Request, deps: PainelGuiasDeps)
   } catch (error) {
     if (error instanceof Recusa) return error.resposta
     if (error instanceof Error && /GUIAS_DESLIGADO/.test(error.message)) return errorResponse('GUIAS_DESLIGADO', 'O módulo Guias não está ligado nesta conta.')
+    if (error instanceof Error && /GUIAS_BLOQUEADO/.test(error.message)) {
+      return errorResponse('GUIAS_BLOQUEADO', 'A mensalidade do módulo Guias não foi paga: o disparo fica bloqueado até a cobrança passar.')
+    }
     if (error instanceof Error && /CONTATO_NAO_ENCONTRADO/.test(error.message)) return errorResponse('VALIDATION_FAILED', 'Contato não encontrado.')
     logEvent('guias.painel_erro', { error_name: error instanceof Error ? error.name : 'unknown' })
     return errorResponse('INTERNAL', 'erro interno')
@@ -151,8 +154,15 @@ async function estado(ctx: Ctx) {
       [ctx.conta],
     )
     const r = rows[0]
+    const { rows: cob } = await q.query<{ cobranca: Record<string, unknown> | null; bloqueio: string | null }>(
+      'select nofiscal.guias_cobranca($1) as cobranca, nofiscal.guias_bloqueio($1) as bloqueio',
+      [ctx.conta],
+    )
     return {
       ligado: true,
+      // Assinatura "nó.fiscal Guias" (20261119190000): valor, próxima cobrança e situação; bloqueio se não foi paga.
+      cobranca: cob[0]?.cobranca ?? null,
+      bloqueio: cob[0]?.bloqueio ?? null,
       escritorio: r?.razao_social ?? '',
       uso: await usoDoMes(q, ctx.conta, ctx.agora),
       regras: {
