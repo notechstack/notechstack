@@ -221,6 +221,30 @@ describe('chave do parceiro', () => {
     expect((acima.corpo.avisos as string[])[0]).toMatch(/^Franquia: o mês está em \d+ notas, acima das 1 do plano/)
   })
 
+  it('leva NBS, IBS/CBS, local da prestação e informações complementares ao payload do worker', async () => {
+    const { dono, padaria } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    const r = await api(chave, 'POST', '/v1/nfse', {
+      ...venda('rtc-1', { cnpj_prestador: padaria.cnpj }),
+      servico: { descricao: 'Consultoria', nbs: '1.1502.10.00', c_ind_op: '100301', c_class_trib: '000001', municipio_prestacao_ibge: '3509502' },
+      informacoes_complementares: 'Banco 001, agência 1234',
+    })
+    expect(r.status).toBe(202)
+    expect((await readInvoice(admin.db, r.corpo.id as string)).payload).toEqual({
+      tomador: { cpf: CPF, nome: 'Maria Tomadora', email: 'maria@tomador.test' },
+      servico: {
+        codigo_servico_nacional: '010701',
+        descricao: 'Consultoria',
+        municipio_prestacao_ibge: '3509502',
+        nbs: '115021000',
+        c_ind_op: '100301',
+        c_class_trib: '000001',
+      },
+      valor: '150.00',
+      informacoes_complementares: 'Banco 001, agência 1234',
+    })
+  })
+
   it('aplica a retenção padrão da empresa e aceita a retenção do pedido', async () => {
     const { dono, padaria } = await novoEscritorio()
     const chave = await chaveDoPainel(dono)
