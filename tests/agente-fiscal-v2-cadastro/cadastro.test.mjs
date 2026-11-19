@@ -275,7 +275,7 @@ test("Presumido declarado não muda o regime de quem está no Simples, e fora da
   assert.equal(avaliarRegime(sp).lista_espera, true);
   const poa = await consultarCnpj(cnpj, { fetch: fetch(respostaBrasilApi(cnpj, { regime: "excluido", ibge: 4314902 })), regimeDeclarado: "real" });
   assert.equal(avaliarRegime(poa), null);
-  assert.deepEqual(Object.keys(MUNICIPIOS_TODOS_OS_REGIMES).sort(), ["3304557", "4314902"]);
+  assert.deepEqual(Object.keys(MUNICIPIOS_TODOS_OS_REGIMES).sort(), ["3205309", "3304557", "4314902"]);
 });
 
 test("consulta sem as opções do Simples e do MEI não confirma o regime: 503", async () => {

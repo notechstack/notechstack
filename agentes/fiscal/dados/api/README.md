@@ -231,7 +231,7 @@ Cadastra uma empresa cliente na conta. Só no plano **Escritório**.
 
 | Campo | Tipo | Obrigatório | Regra |
 |---|---|---|---|
-| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**; **Lucro Presumido ou Real** só nas cidades que usam o Emissor Nacional para todas as empresas (hoje Rio de Janeiro e Porto Alegre). |
+| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**; **Lucro Presumido ou Real** só nas cidades que usam o Emissor Nacional para todas as empresas (hoje Rio de Janeiro, Porto Alegre e Vitória). |
 | `regime` | string | no Presumido/Real | `"presumido"` ou `"real"`. A Receita só diz "fora do Simples", então quem cadastra informa. Ignorado se a Receita disser MEI ou Simples. |
 | `codigo_servico_nacional` | string | sim | 6 dígitos da lista nacional (cTribNac), por exemplo `"040101"`. Vira o código padrão das notas. |
 | `simples_percentual` | string | no Simples | `"0"` a `"100"`, até 2 casas. Ignorado no MEI. |

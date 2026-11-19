@@ -228,12 +228,13 @@ export function padraoNacional(ibge: string, lista: ListaMunicipios): boolean {
  * regApTribSN 1; a planilha de aderentes do gov.br (coluna AderenteEmissorNacional) não separa por regime, e o
  * GET /parametros_municipais/{ibge}/convenio só responde com certificado. Para incluir uma cidade: decreto ou página
  * oficial dizendo que todo prestador emite pelo Emissor Nacional, e de preferência uma nota de Presumido autorizada lá.
- * Fora da lista ficam, por ora: São Paulo e DF (emissor próprio; só o Simples migrou), Curitiba e Belo Horizonte
- * (a confirmar na norma da prefeitura). Método: 05-Núcleo/methods/nofiscal-virada-nt009.md.
+ * Fora da lista ficam, por ora: São Paulo e DF (emissor próprio; só o Simples migrou), Curitiba, Belo Horizonte, Serra,
+ * Vila Velha e Cariacica (a confirmar na norma da prefeitura). Método: 05-Núcleo/methods/nofiscal-virada-nt009.md.
  */
 export const MUNICIPIOS_TODOS_OS_REGIMES: Readonly<Record<string, { nome: string; desde: string; fonte: string }>> = {
   "3304557": { nome: "Rio de Janeiro/RJ", desde: "2026-01-01", fonte: "Prefeitura do Rio (carioca.rio): só emissor nacional desde 01/01/2026" },
   "4314902": { nome: "Porto Alegre/RS", desde: "2025-11-01", fonte: "Prefeitura de Porto Alegre (prefeitura.poa.br): obrigatório para todos desde 01/11/2025" },
+  "3205309": { nome: "Vitória/ES", desde: "2026-01-01", fonte: "Decreto municipal 25.903/2025: todo prestador emite pelo Emissor Nacional desde 01/01/2026" },
 };
 
 export function aceitaTodosOsRegimes(ibge: string): boolean {
@@ -263,7 +264,7 @@ export const MSG_DECLARAR_REGIME =
 export function msgPresumidoForaDaCidade(municipio: string, uf: string): string {
   const cidade = [municipio, uf].filter(Boolean).join("/") || "Esta cidade";
   return `Para Lucro Presumido e Real, o nó.fiscal emite só onde a prefeitura usa o Emissor Nacional para todas as empresas ` +
-    `(por ora, ${CIDADES_TODOS_OS_REGIMES.join(" e ")}). ${cidade} ainda emite esses regimes pelo sistema próprio. ` +
+    `(por ora, ${CIDADES_TODOS_OS_REGIMES.join(", ")}). ${cidade} ainda emite esses regimes pelo sistema próprio. ` +
     `Fale com a nó pelo WhatsApp para entrar na lista de espera`;
 }
 

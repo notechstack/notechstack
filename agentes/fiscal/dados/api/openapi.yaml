@@ -378,7 +378,7 @@ components:
       properties:
         cnpj: { type: string, pattern: '^\d{14}$' }
         codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
-        regime: { type: string, enum: [presumido, real], description: 'Só para CNPJ fora do Simples em cidade de emissor nacional pleno (hoje Rio de Janeiro e Porto Alegre)' }
+        regime: { type: string, enum: [presumido, real], description: 'Só para CNPJ fora do Simples em cidade de emissor nacional pleno (hoje Rio de Janeiro, Porto Alegre e Vitória)' }
         simples_percentual: { type: string, description: 'Obrigatório no Simples (ME/EPP); 0 a 100, até 2 casas' }
         tributos_aproximados:
           type: object
