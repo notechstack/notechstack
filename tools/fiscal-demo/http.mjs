@@ -21,7 +21,7 @@ export async function lerJson(req) {
 
 const CORS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, content-type, x-api-key, anthropic-version, apikey',
+  'access-control-allow-headers': 'authorization, content-type, x-api-key, anthropic-version, apikey, x-upsert',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
 };
 
