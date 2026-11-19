@@ -33,7 +33,7 @@ import {
 import { tratarAtivacao } from './ativacao.js'
 import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
-import { textoComRetentativa, whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
+import { textoComRetentativa, whatsappComRetentativa, type EnviaEmail, type EnviaWhatsApp } from './canais.js'
 import { buscarServicos, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { conversaAssumida, registrarEvento } from './central.js'
 import { tratarComando } from './comandos.js'
@@ -60,6 +60,8 @@ import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { ehSairDaEscolha, lerEscolhaDeNota, listaDeOpcoes, type Candidata } from './escolher-nota.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 import type { BaixaMidia } from './whatsapp-cloud.js'
+import { tratarRespostaDeGuia } from '../guias/respostas.js'
+import type { ArmazemDeGuias } from '../guias/storage.js'
 
 export const VALIDADE_DO_PEDIDO_MS = 24 * 3600_000
 export const MAX_CANDIDATAS = 5
@@ -80,6 +82,9 @@ export type MensagemRecebida = {
   texto: string | null
   /** `midiaId` = `document.id` da Meta, para baixar a planilha do lote (conta Escritório). */
   arquivo: { nome: string | null; mime: string | null; midiaId?: string | null } | null
+  /** Botão de resposta rápida de um modelo (`type: 'button'`): o texto do botão e o payload do envio (módulo Guias).
+   * `texto` continua null nesse caso: a conversa das contas não muda. */
+  botao?: { texto: string | null; payload: string | null } | null
 }
 
 /** Nome do CNPJ nos dados públicos (porta; sem cliente real neste lote). */
@@ -102,6 +107,8 @@ export type ConversaDeps = {
   numeroProprio?: boolean
   /** Download da planilha do lote (`baixarMidia` da Cloud API); sem ele, a planilha é recusada com aviso. */
   midia?: BaixaMidia
+  /** Módulo Guias: respostas dos contatos de guia (número que não emite). Sem ele, esses números seguem o caminho de sempre. */
+  guias?: { email: EnviaEmail | null; storage: ArmazemDeGuias | null }
   now?: () => Date
 }
 
@@ -852,7 +859,7 @@ function noEnderecoRecebido(whatsapp: EnviaWhatsApp, msg: MensagemRecebida): Env
   return {
     enviarTexto: (destino, texto) => whatsapp.enviarTexto(para(destino), texto),
     enviarDocumento: (destino, anexo, legenda) => whatsapp.enviarDocumento(para(destino), anexo, legenda),
-    enviarModelo: (destino, nome, parametros) => whatsapp.enviarModelo(para(destino), nome, parametros),
+    enviarModelo: (destino, nome, parametros, extras) => whatsapp.enviarModelo(para(destino), nome, parametros, extras),
   }
 }
 
@@ -883,6 +890,11 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
 
   const numero = await numeroPodeEmitir(deps.db, msg.de)
   if (!numero) {
+    // Módulo Guias: o contato que recebe guias responde ao escritório ("paguei", "2ª via", "SAIR"…).
+    if (deps.guias) {
+      const guias = { db: deps.db, whatsapp: noEnderecoRecebido(deps.whatsapp, msg), email: deps.guias.email, storage: deps.guias.storage, now: deps.now }
+      if (await tratarRespostaDeGuia(guias, msg)) return
+    }
     await numeroSemPermissao(deps, msg, links, fora, agora)
     return
   }

@@ -11,6 +11,7 @@ import { logEvent } from '../log.js'
 import { gravarEntrada, gravarMarca, type MarcaDeEnvio, type StatusDoEnvio } from './central.js'
 import { processarMensagem, type ConversaDeps, type MensagemRecebida } from './conversa.js'
 import { comNonoDigito } from './normalizacao.js'
+import { marcarEnviosDeGuia } from '../guias/marcas.js'
 
 export type WebhookDeps = {
   verifyToken: string | undefined
@@ -95,6 +96,9 @@ export function mensagensDaNotificacao(corpo: unknown, phoneNumberId?: string): 
         arquivo: documento
           ? { nome: textoOuNulo(documento.filename), mime: textoOuNulo(documento.mime_type), midiaId: textoOuNulo(documento.id) }
           : null,
+        ...(tipo === 'button' && obj(m.button)
+          ? { botao: { texto: textoOuNulo(obj(m.button)?.text), payload: textoOuNulo(obj(m.button)?.payload) } }
+          : {}),
       })
     }
   }
@@ -159,6 +163,11 @@ export async function handleWhatsAppWebhook(request: Request, deps: WebhookDeps)
     await naCentral(async () => {
       const db = conversa?.db ?? deps.central?.()
       for (const marca of db ? marcas : []) await gravarMarca(db as Queryable, marca)
+    })
+    // Módulo Guias: as mesmas marcas atualizam os envios de guia (entregue, lida, falhou).
+    await naCentral(async () => {
+      const db = conversa?.db ?? deps.central?.()
+      if (db) await marcarEnviosDeGuia(db, marcas)
     })
   }
   if (!conversa) return json(200, { ok: true })

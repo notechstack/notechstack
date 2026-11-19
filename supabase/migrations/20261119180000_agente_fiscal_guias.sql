@@ -266,8 +266,12 @@ begin
     update nofiscal.guia_contatos c
        set nome = coalesce(p_dados ->> 'nome', c.nome),
            documento = case when v_doc = '' then c.documento else v_doc end,
-           whatsapps = coalesce((select array_agg(x) from jsonb_array_elements_text(p_dados -> 'whatsapps') x), c.whatsapps),
-           emails = coalesce((select array_agg(lower(x)) from jsonb_array_elements_text(p_dados -> 'emails') x), c.emails),
+           whatsapps = case when p_dados ? 'whatsapps'
+                            then coalesce((select array_agg(x) from jsonb_array_elements_text(p_dados -> 'whatsapps') x), '{}')
+                            else c.whatsapps end,
+           emails = case when p_dados ? 'emails'
+                         then coalesce((select array_agg(lower(x)) from jsonb_array_elements_text(p_dados -> 'emails') x), '{}')
+                         else c.emails end,
            aceite_em = case when p_dados ? 'aceite_em' then (p_dados ->> 'aceite_em')::timestamptz else c.aceite_em end,
            aceite_origem = case when p_dados ? 'aceite_origem' then p_dados ->> 'aceite_origem' else c.aceite_origem end,
            ativo = coalesce((p_dados ->> 'ativo')::boolean, c.ativo),

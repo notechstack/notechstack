@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto'
 import type { Queryable } from '../db.js'
 import { logEvent } from '../log.js'
-import { emailSaiu, type EnviaEmail, type Enviada, type EnviaWhatsApp } from './canais.js'
+import { emailSaiu, type AnexoEmail, type EnviaEmail, type Enviada, type EnviaWhatsApp } from './canais.js'
 import type { MensagemRecebida } from './conversa.js'
 import { comNonoDigito } from './normalizacao.js'
 import { diaLocal, FUSO } from './tempo.js'
@@ -145,10 +145,11 @@ export function whatsappGravado(
     enviarTexto: (para, texto) => gravar(para, { tipo: 'text', texto, arquivo: null }, () => whatsapp.enviarTexto(para, texto)),
     enviarDocumento: (para, anexo, legenda) =>
       gravar(para, { tipo: 'document', texto: legenda, arquivo: anexo.nome }, () => whatsapp.enviarDocumento(para, anexo, legenda)),
-    enviarModelo: (para, nome, parametros) =>
-      gravar(para, { tipo: 'template', texto: [nome, ...parametros].join(' · '), arquivo: null }, () =>
-        whatsapp.enviarModelo(para, nome, parametros),
+    enviarModelo: (para, nome, parametros, extras) =>
+      gravar(para, { tipo: 'template', texto: [nome, ...parametros].join(' · '), arquivo: extras?.documento?.nome ?? null }, () =>
+        whatsapp.enviarModelo(para, nome, parametros, extras),
       ),
+    ...(whatsapp.subirMidia ? { subirMidia: (anexo: AnexoEmail) => (whatsapp.subirMidia as (a: AnexoEmail) => Promise<string>)(anexo) } : {}),
   }
 }
 
