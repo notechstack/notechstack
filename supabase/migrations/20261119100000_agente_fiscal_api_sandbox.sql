@@ -8,7 +8,7 @@
 --    (app/api/_lib/sandbox/), com a DPS montada pelo mesmo `buildDps` da produção.
 -- 3. `fiscal_sandbox_webhook_entregas`: eventos das notas simuladas para o webhook sandbox.
 --
--- A chave é gerada fora do banco (scripts/nofiscal-sandbox/gerar-chave.mjs) e chega aqui só como hash, por
+-- A chave é gerada fora do banco (app/scripts/nofiscal-sandbox-chave.mjs) e chega aqui só como hash, por
 -- `public.fiscal_definir_chave_sandbox` (service_role).
 
 -- ------------------------------------------------------------ Contas com sandbox

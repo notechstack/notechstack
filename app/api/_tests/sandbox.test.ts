@@ -375,7 +375,7 @@ describe('isolamento no código', () => {
   })
 
   it('o script da nó gera a chave no mesmo formato da API', async () => {
-    const caminho = new URL('../../../scripts/nofiscal-sandbox/gerar-chave.mjs', import.meta.url).href
+    const caminho = new URL('../../scripts/nofiscal-sandbox-chave.mjs', import.meta.url).href
     const script = (await import(/* @vite-ignore */ caminho)) as {
       gerarChaveSandbox: (bytes?: () => Buffer) => { chave: string; hash: string; prefixo: string }
       sqlDaChave: (a: { conta?: string | null; cnpj?: string | null; hash: string | null; prefixo: string | null }) => string
