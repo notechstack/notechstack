@@ -639,3 +639,58 @@ test('retenção: as caixas do Adicionar empresa viram o padrão; no Emitir vêm
     assert.ok(doResumo.includes(s), `"${s}" no resumo`);
   }
 });
+
+test('obra (E0370): o bloco "Dados da obra" aparece só nos códigos de construção civil, vai no pedido e no resumo', async () => {
+  const semRetencao = { retem_iss: false, aliquota_iss: null, retem_inss: false, inss_percentual: null };
+  const contexto = {
+    empresas: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null, regime: 'simples', retencao: semRetencao },
+      { tenant_id: EMP_MEI, razao_social: 'ELISIO MEI', cnpj: '04252011000110', principal: false, codigo_servico_nacional: '070201', bloqueio: null, regime: 'mei', retencao: semRetencao }
+    ],
+    franquia: { limite: 500, no_mes: 3 }
+  };
+  const resumo = {
+    resumo: {
+      empresa: { tenant_id: EMP_MEI, razao_social: 'ELISIO MEI', cnpj: '04252011000110' },
+      tomador: { documento: '11222333000181', tipo: 'cnpj', nome: 'Sakata Seed', email: null },
+      servico: { codigo: '070201', nome: 'Execução de obras', descricao: 'Alvenaria' },
+      obra: 'Rua das Flores, 120 - Centro, CEP 12900-000',
+      valor: '3800.00', valor_texto: 'R$ 3.800,00', retencao: null, endereco_tomador: null
+    },
+    bloqueio: null,
+    avisos: []
+  };
+  let primeira = true;
+  const p = await painel({
+    'app:emissao:contexto': r(200, contexto),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:avulsa_conferir': () => {
+      if (primeira) { primeira = false; return { status: 422, corpo: { error: { code: 'VALIDATION_FAILED', message: 'Dados da obra: endereço da obra sem bairro.' }, campo: 'obra' } }; }
+      return { status: 200, corpo: resumo };
+    }
+  }, '/agentes/fiscal/conta/#emitir');
+
+  await p.clicar('fa-aba-emitir');
+  await p.preencher('fa-av-empresa', TENANT);
+  assert.equal(p.visivel('fa-av-obra'), false, 'código 17.02.01: sem o bloco da obra');
+  await p.preencher('fa-av-empresa', EMP_MEI);
+  assert.ok(p.visivel('fa-av-obra'), 'código 07.02.01: o bloco da obra aparece');
+
+  await p.preencher('fa-av-documento', '11.222.333/0001-81');
+  await p.preencher('fa-av-nome', 'Sakata Seed');
+  await p.preencher('fa-av-valor', '3800');
+  await p.preencher('fa-av-obra-cep', '12900-000');
+  await p.preencher('fa-av-obra-logradouro', 'Rua das Flores');
+  await p.preencher('fa-av-obra-numero', '120');
+  await p.enviar('fa-form-avulsa');
+  assert.equal(p.texto('fa-av-obra-erro'), 'Dados da obra: endereço da obra sem bairro.');
+
+  await p.preencher('fa-av-obra-bairro', 'Centro');
+  await p.enviar('fa-form-avulsa');
+  const corpo = p.rede.de('app:emissao:avulsa_conferir')[1].corpo;
+  assert.deepEqual(
+    [corpo.obra_cep, corpo.obra_logradouro, corpo.obra_numero, corpo.obra_bairro, corpo.obra_complemento, corpo.obra_cno],
+    ['12900-000', 'Rua das Flores', '120', 'Centro', '', '']
+  );
+  assert.ok(p.texto('fa-av-resumo').includes('Rua das Flores, 120 - Centro, CEP 12900-000'), 'a obra no resumo');
+});
