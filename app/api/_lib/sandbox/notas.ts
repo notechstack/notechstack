@@ -158,7 +158,7 @@ function montarDps(empresa: EmpresaDaDps, numero: number, payload: unknown, agor
       numero,
       payload,
       now: agora,
-      opcoes: opcoesDpsDoAmbiente(empresa),
+      opcoes: opcoesDpsDoAmbiente(empresa, process.env, agora),
     })
     return { ok: true, id: dps.id, xml: dps.xml }
   } catch (error) {

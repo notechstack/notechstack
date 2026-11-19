@@ -55,11 +55,28 @@ export type NfseData = {
     vDescCond: string | null
     tribISSQN: string | null
     tpRetISSQN: string | null
+    /** `trib/tribFed` (opcional): retenções federais e PIS/COFINS próprios. */
+    tribFed: TribFed | null
     pTotTribSN: string | null
     pTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
     vTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
     xInfComp: string | null
   }
+}
+
+export type TribFed = {
+  vRetCP: string | null
+  vRetIRRF: string | null
+  vRetCSLL: string | null
+  piscofins: {
+    CST: string | null
+    vBCPisCofins: string | null
+    pAliqPis: string | null
+    pAliqCofins: string | null
+    vPis: string | null
+    vCofins: string | null
+    tpRetPisCofins: string | null
+  } | null
 }
 
 export class NfseXmlError extends Error {
@@ -127,6 +144,27 @@ function pessoa(node: El | null): Pessoa {
     fone: text(node, 'fone'),
     email: text(node, 'email'),
     endereco: endereco(node),
+  }
+}
+
+function tribFed(node: El | null): TribFed | null {
+  if (!node) return null
+  const pc = child(node, 'piscofins')
+  return {
+    vRetCP: text(node, 'vRetCP'),
+    vRetIRRF: text(node, 'vRetIRRF'),
+    vRetCSLL: text(node, 'vRetCSLL'),
+    piscofins: pc
+      ? {
+          CST: text(pc, 'CST'),
+          vBCPisCofins: text(pc, 'vBCPisCofins'),
+          pAliqPis: text(pc, 'pAliqPis'),
+          pAliqCofins: text(pc, 'pAliqCofins'),
+          vPis: text(pc, 'vPis'),
+          vCofins: text(pc, 'vCofins'),
+          tpRetPisCofins: text(pc, 'tpRetPisCofins'),
+        }
+      : null,
   }
 }
 
@@ -199,6 +237,7 @@ export function parseNfseXml(xml: string): NfseData {
       vDescCond: text(valoresDps, 'vDescCondIncond', 'vDescCond'),
       tribISSQN: text(valoresDps, 'trib', 'tribMun', 'tribISSQN'),
       tpRetISSQN: text(valoresDps, 'trib', 'tribMun', 'tpRetISSQN'),
+      tribFed: tribFed(child(valoresDps, 'trib', 'tribFed')),
       pTotTribSN: text(totTrib, 'pTotTribSN'),
       pTotTrib: triple(child(totTrib, 'pTotTrib'), 'p'),
       vTotTrib: triple(child(totTrib, 'vTotTrib'), 'v'),

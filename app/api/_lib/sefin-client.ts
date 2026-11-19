@@ -5,7 +5,7 @@
 import https from 'node:https'
 import { rootCertificates } from 'node:tls'
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { buildDps, buildIdDps, DpsInvalidError, opcoesDpsDoAmbiente } from './dps-builder.js'
+import { buildDps, buildIdDps, DpsInvalidError, opcoesDpsDoAmbiente, type OpcoesDps } from './dps-builder.js'
 import { buildPedidoCancelamento } from './evento-builder.js'
 import { CertificateError, pfxToPem, type PemCredentials } from './pfx.js'
 import type {
@@ -156,12 +156,15 @@ export type SefinClientOptions = {
   transport?: SefinTransport
   perfilAssinatura?: SignatureProfile
   now?: () => Date
+  /** Leiaute e IBSCBS de cada DPS. Padrão: `opcoesDpsDoAmbiente` (ambiente da empresa + variáveis da Vercel). */
+  opcoesDps?: (tenant: SefinTenant) => OpcoesDps
 }
 
 export function createSefinClient(options: SefinClientOptions = {}): SefinClient {
   const transport = options.transport ?? httpsTransport()
   const profile = options.perfilAssinatura ?? DEFAULT_SIGNATURE_PROFILE
   const now = options.now ?? (() => new Date())
+  const opcoesDps = options.opcoesDps ?? ((tenant: SefinTenant) => opcoesDpsDoAmbiente(tenant, process.env, now()))
 
   const tlsOf = (pem: PemCredentials): TlsCredentials => ({ key: pem.keyPem, cert: [pem.certPem, ...pem.chainPem].join('\n') })
   const url = (tenant: SefinTenant, path: string) => `${SEFIN_BASE_URLS[tenant.ambiente]}${path}`
@@ -214,7 +217,7 @@ export function createSefinClient(options: SefinClientOptions = {}): SefinClient
           numero: invoice.dps_numero,
           payload: invoice.payload,
           now: now(),
-          opcoes: opcoesDpsDoAmbiente(tenant),
+          opcoes: opcoesDps(tenant),
         })
       } catch (error) {
         if (error instanceof DpsInvalidError) return { kind: 'rejected', code: error.code, message: error.message }
