@@ -476,6 +476,17 @@ components:
             c_ind_op: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: indicador da operação' }
             c_class_trib: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: classificação tributária' }
             municipio_prestacao_ibge: { type: string, pattern: '^\d{7}$', description: 'IBGE do local da prestação. Ausente = o da empresa.' }
+            obra:
+              type: object
+              additionalProperties: false
+              description: 'Obrigatório nos 13 códigos de construção civil (E0370): o CNO (ou CEI) ou o endereço da obra. Ignorado nos outros códigos.'
+              properties:
+                cno: { type: string, description: 'CNO ou CEI, 12 dígitos (aceita com máscara)' }
+                cep: { type: string, description: '8 dígitos (aceita 12900-000)' }
+                logradouro: { type: string, maxLength: 255 }
+                numero: { type: string, maxLength: 60 }
+                complemento: { type: string, maxLength: 156 }
+                bairro: { type: string, maxLength: 60 }
         valor: { type: [string, number], pattern: '^\d{1,12}(\.\d{1,2})?$', description: 'No sandbox, 1.11, 2.22 e 3.33 provocam erros (README, seção 15).' }
         informacoes_complementares: { type: string, maxLength: 2000 }
         retencao:

@@ -113,8 +113,10 @@ export function lerMunicipioPrestacao(
 // - Incidência num município fora do sistema nacional não rejeita (E0628/E0631 tratam o caso); num município do
 //   sistema que não administra o código, a Sefin recusa (E0312, não vale para MEI). Não dá para conferir antes.
 // - Retenção com outro município: as E0031/E0672 só valem quando o tomador emite a DPS; a nó emite como prestador.
-// - E0370/E0390: os grupos `obra` (construção civil) e `atvEvento` (item 12) são obrigatórios nesses códigos, e a nó
-//   ainda não os envia. Com local informado, esses códigos são barrados aqui, com o motivo, em vez de ir à Sefin.
+// - E0370: o grupo `obra` (construção civil) é obrigatório nesses códigos, com ou sem outro local; a nó o envia desde
+//   19/11/2026 (obra.ts), e quem barra o pedido sem os dados da obra é `problemaDaObra`.
+// - E0390: o grupo `atvEvento` (item 12) é obrigatório, e a nó ainda não o envia. Com local informado, esses códigos são
+//   barrados aqui, com o motivo, em vez de ir à Sefin.
 
 /** E1317 (aba MUN.INCID_INFO.SERV., coluna LP): ISS devido no município da prestação. */
 export const CODIGOS_ISS_NO_LOCAL = new Set([
@@ -125,11 +127,8 @@ export const CODIGOS_ISS_NO_LOCAL = new Set([
   '141402', '141403', '141404', '160101', '160102', '160103', '160104', '160201', '171001', '171002', '200201',
   '200301', '220101',
 ])
-/** E0370: grupo `obra` obrigatório. */
-export const CODIGOS_COM_OBRA = new Set([
-  '070201', '070202', '070401', '070501', '070502', '070601', '070602', '070701', '070801', '071701', '071901',
-  '141403', '141404',
-])
+/** E0370: grupo `obra` obrigatório (obra.ts, que monta o grupo). */
+export { CODIGOS_COM_OBRA } from './obra.js'
 /** E0390: grupo `atvEvento` obrigatório (todo o item 12). */
 export const CODIGOS_COM_EVENTO = new Set([
   '120101', '120201', '120301', '120401', '120501', '120601', '120701', '120801', '120901', '120902', '120903',
@@ -139,21 +138,18 @@ export const CODIGOS_COM_EVENTO = new Set([
 /** O ISS desta nota é devido no local da prestação (e não no município da empresa). */
 export const issNoLocalDaPrestacao = (codigo: string) => CODIGOS_ISS_NO_LOCAL.has(codigo)
 
-export const PROBLEMAS_DE_LOCAL = ['LOCAL_EXIGE_OBRA', 'LOCAL_EXIGE_EVENTO'] as const
+export const PROBLEMAS_DE_LOCAL = ['LOCAL_EXIGE_EVENTO'] as const
 export type ProblemaDeLocal = (typeof PROBLEMAS_DE_LOCAL)[number]
 
 /** Combinação que a Sefin recusaria (ver acima). `null` = pode emitir. */
 export function problemaDoLocal(d: { codigo: string; municipioPrestacao: string | null }): ProblemaDeLocal | null {
   if (!d.municipioPrestacao) return null
-  if (CODIGOS_COM_OBRA.has(d.codigo)) return 'LOCAL_EXIGE_OBRA'
   if (CODIGOS_COM_EVENTO.has(d.codigo)) return 'LOCAL_EXIGE_EVENTO'
   return null
 }
 
 export function motivoDoLocal(problema: string): string {
   switch (problema) {
-    case 'LOCAL_EXIGE_OBRA':
-      return 'este código de serviço (construção civil) exige os dados da obra na nota (CNO ou endereço da obra), e o nó.fiscal ainda não envia esses dados'
     case 'LOCAL_EXIGE_EVENTO':
       return 'este código de serviço (eventos, item 12) exige os dados do evento na nota (nome, data e endereço), e o nó.fiscal ainda não envia esses dados'
     default:

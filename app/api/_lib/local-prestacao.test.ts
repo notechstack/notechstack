@@ -167,14 +167,15 @@ describe('regras da Sefin para outro local (Anexo I v1.01)', () => {
     expect(issNoLocalDaPrestacao('010101')).toBe(false)
   })
 
-  it('obra (E0370) e evento (E0390) obrigatórios: barrados com o local informado; sem local, nada muda', () => {
+  it('evento (E0390) obrigatório: barrado com o local informado; a obra (E0370) tem regra própria (obra.test.ts)', () => {
     expect(CODIGOS_COM_OBRA.size).toBe(13)
     expect(CODIGOS_COM_EVENTO.size).toBe(19)
-    expect(problemaDoLocal({ codigo: '070201', municipioPrestacao: CAMPINAS })).toBe('LOCAL_EXIGE_OBRA')
     expect(problemaDoLocal({ codigo: '120101', municipioPrestacao: CAMPINAS })).toBe('LOCAL_EXIGE_EVENTO')
+    // Obra em outra cidade agora sai, com os dados da obra (obra.ts).
+    expect(problemaDoLocal({ codigo: '070201', municipioPrestacao: CAMPINAS })).toBeNull()
     expect(problemaDoLocal({ codigo: '070901', municipioPrestacao: CAMPINAS })).toBeNull()
-    expect(problemaDoLocal({ codigo: '070201', municipioPrestacao: null })).toBeNull()
-    expect(motivoDoProblema('LOCAL_EXIGE_OBRA')).toMatch(/dados da obra/)
+    expect(problemaDoLocal({ codigo: '120101', municipioPrestacao: null })).toBeNull()
+    expect(motivoDoProblema('LOCAL_EXIGE_EVENTO')).toMatch(/dados do evento/)
   })
 })
 
@@ -228,7 +229,7 @@ describe('planilha (coluna municipio_prestacao ou ibge_prestacao)', () => {
       'MUNICIPIO_PRESTACAO_INVALIDO',
       'MUNICIPIO_PRESTACAO_AMBIGUO',
     ])
-    expect(ler('municipio_prestacao', ['Campinas/SP'], '07.02.01')[0].problema).toBe('LOCAL_EXIGE_OBRA')
+    expect(ler('municipio_prestacao', ['Campinas/SP'], '07.02.01')[0].problema).toBe('OBRA_SEM_DADOS')
     expect(motivoDoProblema('MUNICIPIO_PRESTACAO_AMBIGUO')).toMatch(/UF/)
   })
 })

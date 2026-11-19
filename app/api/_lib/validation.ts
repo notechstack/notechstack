@@ -10,6 +10,7 @@ import { normalizarEmail } from './agente/normalizacao.js'
 import { DpsInvalidError, parseNbs } from './dps-builder.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import { lerMunicipioPrestacao } from './local-prestacao.js'
+import { lerObra, type Obra } from './obra.js'
 import type { EnderecoNacional, Retencao, RetencaoDoPedido } from './retencao.js'
 
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
@@ -25,6 +26,8 @@ export type InvoicePayload = {
     c_class_trib?: string
     /** `cLocPrestacao` (local-prestacao.ts): IBGE de 7 dígitos. Ausente = município da empresa. */
     municipio_prestacao_ibge?: string
+    /** `serv/obra` (obra.ts): `{ cno }` ou o endereço. Obrigatório nos códigos de construção civil (E0370). */
+    obra?: Record<string, string>
   }
   valor: string
   /** Resolvida por retencao.ts (agente, painel e API) a partir do padrão da empresa e do pedido. */
@@ -47,6 +50,7 @@ export type PedidoDaApi = {
     c_ind_op?: string
     c_class_trib?: string
     municipio_prestacao_ibge?: string
+    obra?: Obra
   }
   valor: string
   /** Ausente = o padrão de retenção da empresa. */
@@ -99,7 +103,8 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const extra =
     unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email'], 'tomador.') : null) ??
-    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge'], 'servico.') : null) ??
+    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge', 'obra'], 'servico.') : null) ??
+    (isObject(body.servico) && isObject(body.servico.obra) ? unknownField(body.servico.obra, ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro'], 'servico.obra.') : null) ??
     (isObject(body.retencao) ? unknownField(body.retencao, ['retem_iss', 'aliquota_iss', 'retem_inss', 'inss'], 'retencao.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
@@ -147,7 +152,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     if (error instanceof DpsInvalidError) return fail(`servico.nbs: ${error.message}`)
     throw error
   }
-  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string } = nbs ? { nbs } : {}
+  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string; obra?: Obra } = nbs ? { nbs } : {}
   for (const campo of ['c_ind_op', 'c_class_trib'] as const) {
     const v = servico[campo]
     if (v === undefined || v === null || v === '') continue
@@ -157,6 +162,10 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const local = lerMunicipioPrestacao(servico.municipio_prestacao_ibge)
   if (!local.ok) return fail(`servico.municipio_prestacao_ibge ${local.erro}`)
   if (local.ibge) rtc.municipio_prestacao_ibge = local.ibge
+  // A exigência do grupo (E0370) depende do código final, que pode vir da empresa: quem confere é a rota.
+  const obra = lerObra(servico.obra)
+  if (!obra.ok) return fail(`servico.obra ${obra.erro}`)
+  if (obra.obra) rtc.obra = obra.obra
 
   const bruta = body.informacoes_complementares
   if (bruta !== undefined && bruta !== null && typeof bruta !== 'string') return fail('informacoes_complementares deve ser texto')

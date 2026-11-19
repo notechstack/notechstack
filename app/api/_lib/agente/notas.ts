@@ -1,6 +1,7 @@
 // Notas vistas pelo agente: o número que a pessoa lê e o que vai no payload do motor
 // (Landing, lote B - conversa: número exibido e payload gravado).
 import { parseNfseXml } from '../nfse-xml.js'
+import { obraNoPayload, type Obra } from '../obra.js'
 import type { EnderecoNacional, Retencao } from '../retencao.js'
 import { tipoDoDocumento } from './documentos.js'
 
@@ -18,8 +19,11 @@ export function numeroDaNota(nota: { xml_nfse: string | null; dps_numero: string
 }
 
 export type TomadorDoPedido = { documento: string; nome: string; email: string | null }
-/** `municipio_prestacao_ibge`: local da prestação (local-prestacao.ts); ausente ou `null` = município da empresa. */
-export type ServicoDoPedido = { codigo: string; descricao: string; municipio_prestacao_ibge?: string | null }
+/**
+ * `municipio_prestacao_ibge`: local da prestação (local-prestacao.ts); ausente ou `null` = município da empresa.
+ * `obra`: CNO ou endereço da obra (obra.ts), obrigatório nos códigos de construção civil (E0370).
+ */
+export type ServicoDoPedido = { codigo: string; descricao: string; municipio_prestacao_ibge?: string | null; obra?: Obra | null }
 
 /**
  * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção, e `informacoes_complementares`
@@ -43,6 +47,7 @@ export function payloadDaNota(
       codigo_servico_nacional: servico.codigo,
       descricao: servico.descricao,
       ...(servico.municipio_prestacao_ibge ? { municipio_prestacao_ibge: servico.municipio_prestacao_ibge } : {}),
+      ...(servico.obra ? { obra: obraNoPayload(servico.obra) } : {}),
     },
     valor,
     ...(retencao ? { retencao } : {}),

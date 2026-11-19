@@ -24,9 +24,28 @@ export const SCHEMA_PARSED = {
     servico: TEXTO_OU_NULO,
     informacoes_complementares: TEXTO_OU_NULO,
     municipio_prestacao: TEXTO_OU_NULO,
+    obra: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            cno: TEXTO_OU_NULO,
+            cep: TEXTO_OU_NULO,
+            logradouro: TEXTO_OU_NULO,
+            numero: TEXTO_OU_NULO,
+            complemento: TEXTO_OU_NULO,
+            bairro: TEXTO_OU_NULO,
+            cidade: TEXTO_OU_NULO,
+          },
+          required: ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade'],
+          additionalProperties: false,
+        },
+        { type: 'null' },
+      ],
+    },
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
-  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'municipio_prestacao', 'intencao'],
+  required: ['tomador', 'documento', 'valor', 'modelo', 'descricao', 'prestador', 'iss_retido', 'aliquota_iss', 'inss_retido', 'inss', 'codigo_servico', 'servico', 'informacoes_complementares', 'municipio_prestacao', 'obra', 'intencao'],
   additionalProperties: false,
 }
 
@@ -48,6 +67,7 @@ export const INSTRUCOES = [
   '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
   '- informacoes_complementares: o que a pessoa pede para ir nas informações complementares da nota, e não na descrição do serviço: dados bancários (banco, agência, conta, PIX), observações ("obs: …"), número de pedido ou contrato, ou o que vier depois de "informações complementares". Copie como está escrito, sem mudar nenhum número. Isso não entra em descricao. Senão null.',
   '- municipio_prestacao: a cidade onde o serviço foi prestado, só quando a mensagem diz ("serviço prestado em Campinas", "prestado em Campinas/SP", "realizado em Santos", "local da prestação: Jundiaí"), com a UF se vier escrita ("Campinas/SP"); senão null. A cidade do cliente, do endereço ou da empresa não é o local da prestação. Isso não entra em descricao.',
+  '- obra: os dados da obra (construção civil, reforma, alvenaria) quando a mensagem traz o endereço ou o CNO da obra ("obra na Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP", "endereço da obra: …", "CNO 12.345.67890/12"), ou quando a mensagem é só um endereço ou um CNO, que é a resposta à pergunta dos dados da obra. cno: o número do CNO ou CEI como escrito; cep: como escrito; logradouro: tipo e nome da rua ("Rua das Flores"); numero: o número do imóvel ("120", "s/n"); complemento: casa, bloco, lote, quadra, se houver; bairro; cidade: a cidade da obra com a UF se vier ("Atibaia/SP"). Campo não escrito fica null; sem nada da obra, obra é null. O endereço da obra não entra em descricao nem em municipio_prestacao.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 
@@ -58,7 +78,7 @@ export function interpreteClaude(ia: Ia): Interprete {
         system: INSTRUCOES,
         content: texto,
         schema: SCHEMA_PARSED,
-        maxTokens: 512,
+        maxTokens: 768,
       })
       return { parsed: validarParsed(json), tokens }
     },

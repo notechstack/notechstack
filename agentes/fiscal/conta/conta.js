@@ -1093,7 +1093,7 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
   var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
@@ -1105,6 +1105,19 @@
     b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
     var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
     return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  /* Construção civil (E0370, obra.ts): nestes códigos a Sefin exige o endereço da obra ou o CNO. */
+  var CODIGOS_COM_OBRA = ['070201', '070202', '070401', '070501', '070502', '070601', '070602', '070701', '070801', '071701', '071901', '141403', '141404'];
+  var CAMPOS_DA_OBRA = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cno'];
+  function codigoDaAvulsa() {
+    var c = em.seletor ? em.seletor.valor() : '';
+    if (c) return String(c).replace(/\D/g, '');
+    var emp = empresaDaEmissao($('fa-av-empresa').value);
+    return emp && emp.codigo_servico_nacional ? String(emp.codigo_servico_nacional) : '';
+  }
+  function atualizarObraAvulsa(forcar) {
+    var mostrar = forcar === true || CODIGOS_COM_OBRA.indexOf(codigoDaAvulsa()) >= 0;
+    $('fa-av-obra').hidden = !mostrar;
   }
   function comQuebras(t) { return nf.esc(t || '').replace(/\n/g, '<br>'); }
   function centavosDoTexto(v) { return Math.round(Number(v || 0) * 100); }
@@ -1152,6 +1165,7 @@
     var emp = empresaPorId(tenantId) || {};
     var cnae = emp.cnae || (emp.principal ? (st.estado.empresa || {}).cnae : null);
     em.seletor = nf.seletorCodigo(novo, { cnae: cnae, atual: codigo || '' });
+    atualizarObraAvulsa();
   }
   function carregarModelos(emp) {
     var sel = $('fa-av-modelo');
@@ -1183,6 +1197,7 @@
     $('fa-av-descricao').value = m ? (m.descricao || '') : '';
     $('fa-av-info').value = '';
     $('fa-av-local').value = '';
+    CAMPOS_DA_OBRA.forEach(function (k) { $('fa-av-obra-' + k).value = ''; });
     contarInfoAvulsa();
     prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
   }
@@ -1215,6 +1230,7 @@
       descricao: $('fa-av-descricao').value, informacoes_complementares: $('fa-av-info').value,
       municipio_prestacao: $('fa-av-local').value
     };
+    if (!$('fa-av-obra').hidden) CAMPOS_DA_OBRA.forEach(function (k) { corpo['obra_' + k] = $('fa-av-obra-' + k).value; });
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     if (retAv.visivel()) {
       var r = retAv.ler();
@@ -1231,6 +1247,7 @@
   function conferirAvulsa(ev) {
     ev.preventDefault();
     limparErrosAvulsa();
+    atualizarObraAvulsa();
     var corpo = lerAvulsa(), falhou = null;
     function erro(campo, msg) { nf.erroCampo(CAMPO_AVULSA[campo], msg); if (!falhou) falhou = campo; }
     if (!corpo.tenant_id) erro('tenant_id', 'Escolha a empresa que emite a nota.');
@@ -1247,6 +1264,7 @@
       nf.ocupado(botao, false);
       if (r.ok) { em.pedido = corpo; em.chave = novaChave(); desenharResumoAvulsa(r.dados); return; }
       if (r.status === 401) return;
+      if (r.dados && r.dados.campo === 'obra') { atualizarObraAvulsa(true); erro('obra', r.mensagem || 'Confira os dados da obra.'); $('fa-av-obra-cep').focus(); return; }
       if (r.dados && CAMPO_AVULSA[r.dados.campo]) { erro(r.dados.campo, r.mensagem || 'Confira este campo.'); var c = $(CAMPO_AVULSA[r.dados.campo]); if (c) c.focus(); return; }
       nf.aviso($('fa-aviso-emitir'), nf.esc(r.mensagem || GENERICO), 'erro');
     });
@@ -1261,6 +1279,7 @@
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
       ['Descrição na nota', sv.descricao]
     ].concat(s.local_prestacao ? [['Local da prestação', s.local_prestacao.nome + (s.local_prestacao.iss_no_local ? ' (o ISS deste serviço é devido nessa cidade)' : '')]] : [])
+      .concat(s.obra ? [['Obra', s.obra]] : [])
       .concat([['Valor', s.valor_texto]])
       .concat(linhasRetencaoDoResumo(s)).concat(s.informacoes_complementares ? [['Informações complementares', s.informacoes_complementares]] : []));
     var avisos = (d.bloqueio ? ['<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc('Não dá para emitir: ' + d.bloqueio.motivo + '.') + '</p>'] : [])
@@ -1411,6 +1430,10 @@
   $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
   $('fa-av-info').addEventListener('input', contarInfoAvulsa);
   $('fa-av-local').addEventListener('focus', carregarMunicipios);
+  // O seletor de código é recriado a cada empresa ou modelo: a escuta fica no formulário.
+  ['click', 'change', 'input'].forEach(function (tipo) {
+    $('fa-form-avulsa').addEventListener(tipo, function (ev) { if (!ev.target.closest || !ev.target.closest('#fa-av-obra')) atualizarObraAvulsa(); });
+  });
   $('fa-av-local').addEventListener('input', function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); });
   $('fa-av-emitir').addEventListener('click', emitirAvulsa);
   $('fa-av-corrigir').addEventListener('click', function () { fecharResumoAvulsa(); $('fa-av-documento').focus(); });
