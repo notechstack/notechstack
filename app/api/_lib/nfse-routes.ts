@@ -253,6 +253,9 @@ const CAMPO_DA_RETENCAO: Record<string, string> = {
   ISS_RETIDO_CPF: 'tomador',
   RETENCAO_MEI: 'retencao',
   ENDERECO_TOMADOR: 'tomador.cnpj',
+  RETENCAO_FEDERAL_SO_LUCRO: 'retencao',
+  IRRF_INVALIDO: 'retencao.irrf',
+  CSRF_INVALIDO: 'retencao.csrf',
 }
 
 type Preparada =

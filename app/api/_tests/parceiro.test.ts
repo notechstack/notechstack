@@ -540,7 +540,7 @@ describe('empresas do Lucro Presumido pela API (19/11/2026)', () => {
     e.empresas.push({ id: rows[0].id } as TestTenant)
     const patch = await api(chave, 'PATCH', `/v1/empresas/${rio}`, { tributos_aproximados: { federal: '14', municipal: '2' } })
     expect(patch.status).toBe(200)
-    expect(patch.corpo.empresa.dados_fiscais.tributos_aproximados).toEqual({ federal: '14.00', estadual: '0.00', municipal: '2.00' })
+    expect((patch.corpo.empresa as { dados_fiscais: { tributos_aproximados: unknown } }).dados_fiscais.tributos_aproximados).toEqual({ federal: '14.00', estadual: '0.00', municipal: '2.00' })
 
     const sp = cnpjNovo()
     RECEITA[sp] = {

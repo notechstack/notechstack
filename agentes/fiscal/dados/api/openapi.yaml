@@ -353,7 +353,7 @@ components:
               enum: [INVALID_JSON, UNAUTHORIZED, TENANT_INACTIVE, SO_ESCRITORIO, NOT_FOUND, EMPRESA_NAO_ENCONTRADA,
                      METHOD_NOT_ALLOWED, EMISSAO_BLOQUEADA, EMPRESA_INATIVA, NOT_ISSUED, CNPJ_JA_CADASTRADO,
                      EMPRESAS_ACIMA_DO_LIMITE, PROCURACAO_RECUSADA, NFE_NAO_CANCELAVEL, VALIDATION_FAILED, UNKNOWN_FIELD,
-                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, INTERNAL, RECEITA_INDISPONIVEL,
+                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, REGIME_A_DECLARAR, INTERNAL, RECEITA_INDISPONIVEL,
                      SO_SANDBOX, SANDBOX_SOMENTE_LEITURA, SANDBOX_SEM_NFE]
             message: { type: string }
         campo: { type: string }
@@ -378,7 +378,16 @@ components:
       properties:
         cnpj: { type: string, pattern: '^\d{14}$' }
         codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
+        regime: { type: string, enum: [presumido, real], description: 'Só para CNPJ fora do Simples em cidade de emissor nacional pleno (hoje Rio de Janeiro e Porto Alegre)' }
         simples_percentual: { type: string, description: 'Obrigatório no Simples (ME/EPP); 0 a 100, até 2 casas' }
+        tributos_aproximados:
+          type: object
+          additionalProperties: false
+          description: 'Lucro Presumido e Real: percentuais da Lei 12.741 (pTotTrib); estadual ausente = 0'
+          properties:
+            federal: { type: [string, number] }
+            estadual: { type: [string, number] }
+            municipal: { type: [string, number] }
         retencao: { $ref: '#/components/schemas/Retencao' }
         procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
 
@@ -388,6 +397,14 @@ components:
       properties:
         codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
         simples_percentual: { type: string }
+        tributos_aproximados:
+          type: object
+          additionalProperties: false
+          description: 'Lucro Presumido e Real: percentuais da Lei 12.741 (pTotTrib); estadual ausente = 0'
+          properties:
+            federal: { type: [string, number] }
+            estadual: { type: [string, number] }
+            municipal: { type: [string, number] }
         retencao: { $ref: '#/components/schemas/Retencao' }
         procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
 
@@ -442,6 +459,7 @@ components:
           properties:
             codigo_servico_nacional: { type: [string, 'null'] }
             simples_percentual: { type: [string, 'null'] }
+            tributos_aproximados: { type: [object, 'null'], description: 'Presumido e Real: { federal, estadual, municipal }' }
         retencao: { $ref: '#/components/schemas/Retencao' }
         nfe:
           type: object
@@ -486,6 +504,8 @@ components:
             aliquota_iss: { type: [string, number] }
             retem_inss: { type: boolean }
             inss: { type: [string, number], description: 'percentual ("11%") ou valor em reais ("165.00")' }
+            irrf: { type: [string, number], description: 'Só Lucro Presumido e Real: IRRF retido, percentual ("1,5%") ou valor ("15.00")' }
+            csrf: { type: [string, number], description: 'Só Lucro Presumido e Real: PIS + COFINS + CSLL retidos, somados, percentual ("4,65%") ou valor ("46.50")' }
 
     WebhookSandbox:
       type: object
