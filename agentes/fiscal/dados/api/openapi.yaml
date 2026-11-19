@@ -162,6 +162,46 @@ paths:
         '404': { $ref: '#/components/responses/Erro' }
         '409': { $ref: '#/components/responses/Erro' }
 
+  /v1/sandbox/webhook:
+    get:
+      tags: [Sandbox]
+      summary: URL do webhook do sandbox (só com a chave nfk_test_)
+      operationId: lerWebhookSandbox
+      responses:
+        '200':
+          description: Webhook do sandbox
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSandbox' }
+        '403': { $ref: '#/components/responses/Erro' }
+    put:
+      tags: [Sandbox]
+      summary: Grava ou tira a URL do webhook do sandbox; o segredo whsec_test_ volta uma vez só
+      operationId: salvarWebhookSandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                url: { type: [string, 'null'], format: uri, description: 'https público; null tira a URL' }
+                novo_segredo: { type: boolean }
+      responses:
+        '200':
+          description: Webhook do sandbox e, quando gerado agora, o segredo
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/WebhookSandbox'
+                  - type: object
+                    properties: { segredo: { type: [string, 'null'] } }
+        '403': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+
   /v1/nfe:
     post:
       tags: [NF-e]
@@ -313,7 +353,8 @@ components:
               enum: [INVALID_JSON, UNAUTHORIZED, TENANT_INACTIVE, SO_ESCRITORIO, NOT_FOUND, EMPRESA_NAO_ENCONTRADA,
                      METHOD_NOT_ALLOWED, EMISSAO_BLOQUEADA, EMPRESA_INATIVA, NOT_ISSUED, CNPJ_JA_CADASTRADO,
                      EMPRESAS_ACIMA_DO_LIMITE, PROCURACAO_RECUSADA, NFE_NAO_CANCELAVEL, VALIDATION_FAILED, UNKNOWN_FIELD,
-                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, INTERNAL, RECEITA_INDISPONIVEL]
+                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, INTERNAL, RECEITA_INDISPONIVEL,
+                     SO_SANDBOX, SANDBOX_SOMENTE_LEITURA, SANDBOX_SEM_NFE]
             message: { type: string }
         campo: { type: string }
         bloqueio: { type: string }
@@ -431,7 +472,12 @@ components:
           properties:
             codigo_servico_nacional: { type: string }
             descricao: { type: string, minLength: 1, maxLength: 2000 }
-        valor: { type: [string, number], pattern: '^\d{1,12}(\.\d{1,2})?$' }
+            nbs: { type: string, description: 'NBS, 9 dígitos (aceita com pontos). Ausente = NBS padrão da empresa.' }
+            c_ind_op: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: indicador da operação' }
+            c_class_trib: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: classificação tributária' }
+            municipio_prestacao_ibge: { type: string, pattern: '^\d{7}$', description: 'IBGE do local da prestação. Ausente = o da empresa.' }
+        valor: { type: [string, number], pattern: '^\d{1,12}(\.\d{1,2})?$', description: 'No sandbox, 1.11, 2.22 e 3.33 provocam erros (README, seção 15).' }
+        informacoes_complementares: { type: string, maxLength: 2000 }
         retencao:
           type: object
           additionalProperties: false
@@ -441,10 +487,21 @@ components:
             retem_inss: { type: boolean }
             inss: { type: [string, number], description: 'percentual ("11%") ou valor em reais ("165.00")' }
 
+    WebhookSandbox:
+      type: object
+      properties:
+        ambiente: { type: string, enum: [sandbox] }
+        webhook:
+          type: object
+          properties:
+            url: { type: [string, 'null'] }
+            tem_segredo: { type: boolean }
+
     Nfse:
       type: object
       required: [id, external_id, status, cnpj_prestador]
       properties:
+        ambiente: { type: string, enum: [sandbox], description: 'Só nas notas da chave sandbox (nfk_test_).' }
         id: { type: string, format: uuid }
         external_id: { type: string }
         status: { type: string, enum: [queued, signing, sent, issued, rejected, cancel_requested, cancelled, skipped] }

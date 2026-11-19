@@ -9,6 +9,7 @@
     { "source": "/api/v1/nfe", "destination": "/api/v1/nfse?recurso=nfe" },
     { "source": "/api/v1/empresas/:cnpj", "destination": "/api/v1/nfse?recurso=empresas&id=:cnpj" },
     { "source": "/api/v1/empresas", "destination": "/api/v1/nfse?recurso=empresas" },
+    { "source": "/api/v1/sandbox/:id", "destination": "/api/v1/nfse?recurso=sandbox&id=:id" },
     { "source": "/((?!hub/|api/|assets/|fonts/|icons/|agencies/|prototipos/|(?:stages|how-it-works)-team\\.(?:png|webp)|no-tech-stack-(?:tinta|branca)-ponto-ambar\\.svg|mascote-cliente\\.png|barra-topo-4-cores\\.svg|no-editor-preview\\.js|favicon\\.svg).*)", "destination": "/index.html" }
   ],
   "headers": [{ "source": "/((?!hub/).*)", "headers": [

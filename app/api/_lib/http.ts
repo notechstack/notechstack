@@ -38,6 +38,10 @@ export type ErrorCode =
   | 'RECEITA_INDISPONIVEL'
   | 'PROCURACAO_RECUSADA'
   | 'NFE_NAO_CANCELAVEL'
+  // Sandbox da API do parceiro (19/11/2026).
+  | 'SO_SANDBOX'
+  | 'SANDBOX_SOMENTE_LEITURA'
+  | 'SANDBOX_SEM_NFE'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -72,6 +76,9 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   RECEITA_INDISPONIVEL: 503,
   PROCURACAO_RECUSADA: 409,
   NFE_NAO_CANCELAVEL: 409,
+  SO_SANDBOX: 403,
+  SANDBOX_SOMENTE_LEITURA: 403,
+  SANDBOX_SEM_NFE: 501,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }

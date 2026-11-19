@@ -37,7 +37,11 @@ export function sha256Hex(value) {
 }
 
 export function generateApiKey(randomBytes = nodeRandomBytes) {
-  return `${API_KEY_PREFIX}${randomBytes(32).toString('base64url')}`
+  // `nfk_test_` é o prefixo da chave sandbox (api/_lib/auth.ts): uma chave de produção nunca começa assim.
+  for (;;) {
+    const key = `${API_KEY_PREFIX}${randomBytes(32).toString('base64url')}`
+    if (!key.startsWith('nfk_test_')) return key
+  }
 }
 
 export function generateWebhookSecret(randomBytes = nodeRandomBytes) {

@@ -92,7 +92,7 @@ export function corpoDoEvento(e: { id: string; evento: string; recurso: string; 
 
 type Envio = { ok: true; http: number } | { ok: false; http: number | null; erro: string }
 
-async function postar(fetch: FetchLike, url: string, segredo: string, corpo: string, extra: Record<string, string>): Promise<Envio> {
+export async function postar(fetch: FetchLike, url: string, segredo: string, corpo: string, extra: Record<string, string>): Promise<Envio> {
   try {
     const r = await fetch(url, {
       method: 'POST',

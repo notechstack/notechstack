@@ -4,7 +4,7 @@
 > integração. Tudo o que a API aceita e devolve está aqui. O contrato em OpenAPI 3.1 está em
 > [`openapi.yaml`](./openapi.yaml), na mesma pasta.
 >
-> Versão do documento: 2026-11-18. Base da API: `https://app.notechstack.com.br/api`.
+> Versão do documento: 2026-11-19. Base da API: `https://app.notechstack.com.br/api`.
 
 ## Sumário
 
@@ -22,6 +22,7 @@
 12. [Limites](#12-limites)
 13. [White label: o que leva a marca da nó](#13-white-label-o-que-leva-a-marca-da-nó)
 14. [Checklist da integração](#14-checklist-da-integração)
+15. [Sandbox, produção restrita e chave de produção](#15-sandbox-produção-restrita-e-chave-de-produção)
 
 ---
 
@@ -51,6 +52,10 @@ assinatura e cobrança, e os dados de NF-e da empresa (IE, endereço, série —
 ## 2. Do zero à primeira nota
 
 Passo a passo de uma conta Escritório. Os exemplos usam `curl`; troque `$CHAVE` pela sua chave.
+
+> **Comece pelo sandbox.** Com a chave `nfk_test_…` que a nó entrega, os mesmos passos funcionam sem Sefin, sem
+> certificado e sem risco fiscal. O caminho completo (sandbox → produção restrita → produção) está em
+> [15](#15-sandbox-produção-restrita-e-chave-de-produção).
 
 **Passo 1 — Gerar a chave.** No painel (`https://www.notechstack.com.br/agentes/fiscal/conta/`), aba **API**, clique
 em **Gerar chave**. A chave (`nfk_…`) aparece **uma vez só**: guarde no cofre de segredos do seu servidor. Trocar a
@@ -133,6 +138,8 @@ x-api-key: nfk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
 - A chave tem `nfk_` + 43 caracteres. O nó.fiscal guarda só o hash dela; quem perde a chave gera outra no painel.
+- A chave **sandbox** tem `nfk_test_` + 43 caracteres e vai no mesmo header. Ela só enxerga o sandbox
+  ([15](#15-sandbox-produção-restrita-e-chave-de-produção)).
 - A chave vale para a conta inteira. **Nunca** use no navegador ou em app instalado: só no seu servidor.
 - Chave ausente ou errada: `401 UNAUTHORIZED`. Conta desativada: `403 TENANT_INACTIVE`.
 - Trocar a chave no painel invalida a anterior **na hora**. Para trocar sem parar, atualize o segredo no seu servidor
@@ -304,6 +311,10 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 | `tomador.email` | string | não | Usado no e-mail da nota (se os e-mails da nó estiverem ligados). |
 | `servico.codigo_servico_nacional` | string | não | Padrão: o código da empresa. |
 | `servico.descricao` | string | não | 1 a 2.000 caracteres. Padrão: `"Prestação de serviços"`. |
+| `servico.nbs` | string | não | Código NBS (9 dígitos; aceita com pontos, `"1.1502.10.00"`). Ausente = o NBS padrão da empresa. |
+| `servico.c_ind_op` / `servico.c_class_trib` | string | não | Reforma Tributária (IBS/CBS): 6 dígitos cada. |
+| `servico.municipio_prestacao_ibge` | string | não | Código IBGE (7 dígitos) do município onde o serviço foi prestado. Ausente = o da empresa. |
+| `informacoes_complementares` | string | não | Até 2.000 caracteres (dados bancários, observações). Vai no campo de informações complementares da NFS-e. |
 | `valor` | string | sim | Valor do serviço, positivo, até 2 casas. |
 | `retencao` | objeto | não | Ver abaixo. Ausente = padrão da empresa. |
 
@@ -621,6 +632,8 @@ Campos extras (`campo`, `bloqueio`, `motivo`, `limite`, `problemas`) ficam **for
 | 401 | `UNAUTHORIZED` | Chave ausente ou inválida. |
 | 403 | `TENANT_INACTIVE` | Conta desativada. |
 | 403 | `SO_ESCRITORIO` | Recurso do plano Escritório. |
+| 403 | `SO_SANDBOX` | Rota `/v1/sandbox/…` chamada com a chave de produção. |
+| 403 | `SANDBOX_SOMENTE_LEITURA` | Cadastro ou alteração de empresa com a chave sandbox. |
 | 404 | `NOT_FOUND` | Rota ou nota não encontrada (inclusive nota de outra conta). |
 | 404 | `EMPRESA_NAO_ENCONTRADA` | CNPJ não é de nenhuma empresa da conta. |
 | 405 | `METHOD_NOT_ALLOWED` | Método errado para a rota. |
@@ -635,6 +648,7 @@ Campos extras (`campo`, `bloqueio`, `motivo`, `limite`, `problemas`) ficam **for
 | 422 | `UNKNOWN_FIELD` | Campo não aceito. |
 | 422 | `CNPJ_NAO_ENCONTRADO` / `CNPJ_INATIVO` / `FORA_DO_SIMPLES` | Resposta da Receita no cadastro. |
 | 500 | `INTERNAL` | Erro do nó.fiscal. Pode repetir (idempotente). |
+| 501 | `SANDBOX_SEM_NFE` | NF-e com a chave sandbox (ainda sem sandbox de NF-e). |
 | 503 | `RECEITA_INDISPONIVEL` | Consulta de CNPJ fora do ar. Tente de novo. |
 
 **Recusas da Sefin** (não são erro HTTP: chegam no webhook `nfse.recusada` e em `last_error_code`). Exemplos comuns:
@@ -698,4 +712,90 @@ pedida pela API nunca gera WhatsApp por nota.
 - [ ] Em `nfse.emitida`: baixar PDF e XML e entregar ao cliente.
 - [ ] Em `nfse.recusada`: mostrar `last_error` e permitir reemitir com novo `external_id`.
 - [ ] Rotina diária que consulta notas que ficaram em `queued`/`sent` há mais de 1 hora (rede caída do seu lado).
+- [ ] No sandbox: os três valores mágicos (`1.11`, `2.22`, `3.33`), o erro de leiaute e o webhook sandbox tratados.
 - [ ] Testar tudo com uma empresa em `producao_restrita` antes de virar para `producao`.
+
+---
+
+## 15. Sandbox, produção restrita e chave de produção
+
+O caminho até a primeira nota de verdade tem três etapas. Cada uma testa uma coisa que a anterior não testa.
+
+| Etapa | Chave | O que prova | Risco fiscal |
+|---|---|---|---|
+| 1. Sandbox | `nfk_test_…` | O seu código: chamadas, validação, status, webhook, PDF, cancelamento. | Nenhum: nada vai à Sefin. |
+| 2. Produção restrita | `nfk_…` de uma conta de homologação | O certificado A1 real de um CNPJ seu e a Sefin de verdade, no ambiente de testes dela. | Nenhum: nota sem validade jurídica. |
+| 3. Produção | `nfk_…` da sua conta | Notas reais. | Nota fiscal de verdade. |
+
+### 15.1 Sandbox (chave `nfk_test_`)
+
+A chave sandbox é gerada pela nó para a sua conta e entregue por canal seguro. Ela usa **a mesma base**, **as mesmas
+rotas** e **a mesma validação** da chave de produção, mas:
+
+- **nada vai à Sefin**, nada usa certificado A1, nenhuma nota tem validade;
+- a nota **não consome franquia**, não usa a numeração de DPS das empresas e **não aparece** no painel nem nos
+  relatórios;
+- a chave de produção **não enxerga** nota sandbox e a chave sandbox **não enxerga** nota real (`404`);
+- as notas sandbox são das **empresas já cadastradas** na sua conta (o mesmo `cnpj_prestador`), com o código de
+  serviço, o regime e a retenção padrão delas.
+
+**O que é igual à produção:** o corpo do `POST /v1/nfse` (campos, `UNKNOWN_FIELD`, retenção, `external_id`
+idempotente por empresa), a montagem da DPS no leiaute oficial (o erro de leiaute vira `rejected` com
+`last_error_code: "DPS_INVALID"`, como na produção), o objeto `nfse`, os status, o cancelamento, o PDF, o XML e o
+formato e a assinatura do webhook.
+
+**O que muda:**
+
+| | Sandbox |
+|---|---|
+| Objeto `nfse` | Traz `"ambiente": "sandbox"`. |
+| Bloqueio por A1, procuração ou assinatura | Não barra: a nota sai e `avisos` diz o que barraria na produção (`Sandbox: em produção esta nota seria barrada agora (CERT_MISSING)…`). Falta de dados fiscais da empresa (`FISCAL_CONFIG_MISSING`) barra igual à produção. |
+| Tempo | A "Sefin" do sandbox responde em cerca de **3 segundos**. |
+| Chave de acesso e XML | Simulados, no formato da Sefin, ambiente de produção restrita (`tpAmb` 2), série da DPS `49999`. A DPS dentro do XML não é assinada. |
+| PDF | DANFSe com a tarja **"NFS-e SEM VALIDADE JURÍDICA"**. |
+| `GET`, `POST` e `PATCH /v1/empresas` | Só `GET` (consulta). `POST` e `PATCH` respondem `403 SANDBOX_SOMENTE_LEITURA`: cadastrar empresa ou declarar procuração muda a conta real, então isso se faz pelo painel ou com a chave de produção. |
+| NF-e (`/v1/nfe`) | Ainda sem sandbox: `501 SANDBOX_SEM_NFE`. |
+| Webhook | URL e segredo **próprios do sandbox** (ver 15.2). |
+
+**Erros provocáveis por valor mágico** (campo `valor` do `POST /v1/nfse`):
+
+| `valor` | O que acontece | Para testar |
+|---|---|---|
+| `"1.11"` | A Sefin recusa: `status: "rejected"`, `last_error_code: "E0718"` (assinatura sem o certificado do emitente; na vida real, procuração não achada). Webhook `nfse.recusada`. | Tela de nota recusada e reemissão com novo `external_id`. |
+| `"2.22"` | A Sefin fica fora do ar por ~1 minuto: a nota continua `queued` com `last_error_code: "SEFIN_UNAVAILABLE"` e depois sai `issued`. | Nota que demora; consulta periódica; nenhum webhook até o fim. |
+| `"3.33"` | A nota sai, mas o **cancelamento é recusado**: fica `cancel_requested` com `last_error_code: "SANDBOX_CANCELAMENTO_RECUSADO"`. Webhook `nfse.cancelamento_recusado`. | Tratamento de cancelamento recusado. |
+
+Qualquer outro valor emite normalmente. Para provocar **erro de leiaute**, mande o tomador com o mesmo CNPJ da
+empresa (`tomador.cnpj` = `cnpj_prestador`): a nota vem `rejected` com `DPS_INVALID` e
+`last_error: "tomador é o próprio prestador"`.
+
+### 15.2 Webhook do sandbox
+
+A URL de produção (aba API do painel) não recebe nada do sandbox. A URL do sandbox se cadastra com a própria chave
+sandbox:
+
+```
+GET /v1/sandbox/webhook                       → { "ambiente": "sandbox", "webhook": { "url": …, "tem_segredo": … } }
+PUT /v1/sandbox/webhook  { "url": "https://…" } → { "ambiente": "sandbox", "webhook": { … }, "segredo": "whsec_test_…" | null }
+PUT /v1/sandbox/webhook  { "url": null }        → tira a URL
+```
+
+- O segredo (`whsec_test_…`) volta **uma vez só**, no primeiro `PUT` (ou com `"novo_segredo": true`).
+- Mesmo corpo, mesmos headers e mesma assinatura da produção ([8](#8-webhook-de-retorno)), com
+  `"ambiente": "sandbox"` no corpo e o header `x-nofiscal-ambiente: sandbox`.
+- Reenvio mais curto: até 3 tentativas. Se a sua URL falhar, as novas tentativas saem na próxima chamada sua à API
+  sandbox depois de 1 e de 5 minutos (o sandbox não tem fila rodando o tempo todo).
+- Com a chave de produção, `/v1/sandbox/…` responde `403 SO_SANDBOX`.
+
+### 15.3 Produção restrita com o A1 real
+
+Quando o sandbox estiver redondo, a nó prepara uma conta de **homologação** com **um CNPJ seu** e o **certificado A1
+real** dele, apontada para a **produção restrita** da Sefin (o ambiente de testes oficial). Ali a nota é assinada e
+transmitida de verdade, mas não tem validade jurídica (o DANFSe sai com a mesma tarja). Essa etapa prova o que o
+sandbox não prova: certificado, procuração e a resposta real da Sefin. A chave dessa conta é uma `nfk_…` comum.
+
+### 15.4 Chave de produção
+
+Depois da rodada em produção restrita, gere a chave de produção no painel ([2](#2-do-zero-à-primeira-nota)),
+cadastre o webhook de produção e troque a chave no seu servidor. A chave sandbox continua valendo para os seus testes
+(e as notas sandbox continuam separadas); peça à nó para revogá-la quando não precisar mais.

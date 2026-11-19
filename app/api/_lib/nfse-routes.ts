@@ -7,6 +7,10 @@
 // `cnpj_emitente`); sem ele, pela própria conta-mãe. Conta do produto (self-service) passa pelo mesmo
 // `emission_block` do WhatsApp e do painel antes de pôr a nota na fila (procuração, A1, assinatura, dados fiscais);
 // a franquia não barra, só avisa. Documentação: agentes/fiscal/dados/api/.
+//
+// Sandbox (19/11/2026): a chave `nfk_test_…` (auth.ts) cai em `sandbox()`, no fim deste arquivo. Valida igual
+// (`prepararNfse`, o mesmo caminho da produção) e grava só nas tabelas do sandbox (sandbox/notas.ts). Nenhuma rota
+// sandbox lê ou grava `fiscal_invoices`, e nenhuma rota de produção lê as tabelas do sandbox.
 import { findTenantByApiKey, type AuthenticatedTenant } from './auth.js'
 import { requestCancel } from './cancel.js'
 import { renderDanfse } from './danfse-renderer.js'
@@ -24,10 +28,14 @@ import { criarNfe, pedirCancelamento } from './nfe/servico.js'
 import { alterarEmpresa, consultaReceitaFromEnv, criarEmpresa, empresaPorCnpj, listarEmpresas, type ConsultaReceita } from './parceiro/empresas.js'
 import { lerPedidoNfe } from './parceiro/nfe-api.js'
 import { visaoNfe, visaoNfePorExternalId, visaoNfse, visaoNfsePorExternalId } from './parceiro/visoes.js'
+import type { FetchLike } from './parceiro/webhook.js'
+import { agendarNaVercel, type Agendar } from './sandbox/agenda.js'
+import { salvarWebhookSandbox, webhookSandbox } from './sandbox/conta.js'
+import { ATRASO_MS, cancelarNotaSandbox, criarNotaSandbox, notaSandbox, notaSandboxPorExternalId, rodadaSandbox } from './sandbox/notas.js'
 import { motivoDaRetencao, resolverRetencao, SEM_RETENCAO_PADRAO, type EnderecoDoTomador, type EnderecoNacional } from './retencao.js'
 import { parseNewInvoice, type InvoicePayload } from './validation.js'
 
-export type Recurso = 'nfse' | 'nfe' | 'empresas'
+export type Recurso = 'nfse' | 'nfe' | 'empresas' | 'sandbox'
 export type NfseAction = 'cancel' | 'pdf' | 'xml' | 'danfe'
 
 export type NfseRoute =
@@ -36,7 +44,7 @@ export type NfseRoute =
 
 const PREFIXO = '/api/v1/'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const ACOES: Record<Recurso, readonly string[]> = { nfse: ['cancel', 'pdf', 'xml'], nfe: ['cancel', 'danfe', 'xml'], empresas: [] }
+const ACOES: Record<Recurso, readonly string[]> = { nfse: ['cancel', 'pdf', 'xml'], nfe: ['cancel', 'danfe', 'xml'], empresas: [], sandbox: [] }
 
 function decode(segment: string): string | null {
   try {
@@ -64,9 +72,11 @@ export const NFSE_ROUTES = [
   { method: 'POST', path: '/v1/empresas' },
   { method: 'GET', path: '/v1/empresas/:cnpj' },
   { method: 'PATCH', path: '/v1/empresas/:cnpj' },
+  { method: 'GET', path: '/v1/sandbox/webhook' },
+  { method: 'PUT', path: '/v1/sandbox/webhook' },
 ] as const
 
-const RECURSOS: readonly string[] = ['nfse', 'nfe', 'empresas']
+const RECURSOS: readonly string[] = ['nfse', 'nfe', 'empresas', 'sandbox']
 
 export function parseNfseRoute(url: URL): NfseRoute | null {
   const path = url.pathname.replace(/\/+$/, '')
@@ -106,6 +116,10 @@ export type NfseDeps = {
   enderecos?: EnderecoDoTomador | null
   /** Consulta de CNPJ do cadastro de empresa (POST /v1/empresas). Padrão: a real, pelo ambiente. */
   receita?: ConsultaReceita
+  /** POST do webhook sandbox. Padrão: o `fetch` global. */
+  fetch?: FetchLike
+  /** Rodada do sandbox depois da resposta. Padrão: `waitUntil` da Vercel (sandbox/agenda.ts). */
+  agendar?: Agendar
 }
 
 export async function handleNfseRequest(request: Request, deps: NfseDeps): Promise<Response> {
@@ -138,6 +152,8 @@ async function route(request: Request, deps: NfseDeps): Promise<Response> {
   if (!tenant.active) return errorResponse('TENANT_INACTIVE', 'tenant inativo')
   const ctx: Ctx = { deps, db: deps.db, agora: (deps.now ?? (() => new Date()))(), tenant, url }
 
+  if (tenant.sandbox) return sandbox(ctx, request, target)
+  if (target.recurso === 'sandbox') return errorResponse('SO_SANDBOX', 'as rotas /v1/sandbox/ são da chave sandbox (nfk_test_)')
   if (target.recurso === 'empresas') return empresas(ctx, request, target)
   if (target.recurso === 'nfe') return nfe(ctx, request, target)
   return nfse(ctx, request, target)
@@ -239,29 +255,57 @@ const CAMPO_DA_RETENCAO: Record<string, string> = {
   ENDERECO_TOMADOR: 'tomador.cnpj',
 }
 
-async function criarNfse(ctx: Ctx, corpo: unknown): Promise<Response> {
+type Preparada =
+  | { ok: true; empresa: Empresa; externalId: string; valor: string; payload: InvoicePayload; avisos: string[] }
+  | { ok: false; resposta: Response }
+  | { ok: 'existente'; visao: object }
+
+/** Bloqueios que o sandbox também respeita: dados da empresa, não A1, procuração nem assinatura. */
+const BLOQUEIOS_DE_CADASTRO: readonly string[] = ['TENANT_NOT_FOUND', 'TENANT_INACTIVE', 'FISCAL_CONFIG_MISSING']
+
+/**
+ * O caminho comum do POST /v1/nfse, produção e sandbox: corpo, empresa da conta, idempotência, bloqueio, código de
+ * serviço, retenção e o payload que o worker lê. No sandbox, o bloqueio de A1, procuração ou assinatura vira aviso.
+ */
+async function prepararNfse(
+  ctx: Ctx,
+  corpo: unknown,
+  existente: (empresaId: string, externalId: string) => Promise<object | null>,
+): Promise<Preparada> {
   const parsed = parseNewInvoice(corpo)
-  if (!parsed.ok) return errorResponse(parsed.code, parsed.message)
+  if (!parsed.ok) return { ok: false, resposta: errorResponse(parsed.code, parsed.message) }
   const pedido = parsed.value
   const p = await prestador(ctx, pedido.cnpj_prestador, 'cnpj_prestador')
-  if (!p.ok) return p.resposta
+  if (!p.ok) return p
   const empresa = p.empresa
 
   // Repetição do mesmo external_id: devolve a nota que já existe, sem conferir de novo (idempotência).
-  const existente = await visaoNfsePorExternalId(ctx.db, empresa.id, pedido.external_id)
-  if (existente) return json(202, { ...existente, avisos: [] })
+  const ja = await existente(empresa.id, pedido.external_id)
+  if (ja) return { ok: 'existente', visao: ja }
 
-  if (ctx.tenant.selfService) {
+  const avisos: string[] = []
+  if (ctx.tenant.selfService || ctx.tenant.sandbox) {
     const { rows } = await ctx.db.query<{ b: string | null }>('select nofiscal.emission_block($1) as b', [empresa.id])
     const bloqueio = rows[0]?.b ?? null
-    if (bloqueio) {
-      logEvent('nofiscal.api_nfse_bloqueada', { tenant_id: empresa.id, bloqueio })
-      return errorResponse('EMISSAO_BLOQUEADA', `Não dá para emitir: ${motivoDoProblema(bloqueio, { empresa: empresa.razao_social })}.`, { bloqueio })
+    if (bloqueio && (!ctx.tenant.sandbox || BLOQUEIOS_DE_CADASTRO.includes(bloqueio))) {
+      logEvent('nofiscal.api_nfse_bloqueada', { tenant_id: empresa.id, bloqueio, sandbox: Boolean(ctx.tenant.sandbox) })
+      return {
+        ok: false,
+        resposta: errorResponse('EMISSAO_BLOQUEADA', `Não dá para emitir: ${motivoDoProblema(bloqueio, { empresa: empresa.razao_social })}.`, { bloqueio }),
+      }
     }
+    if (bloqueio) avisos.push(`Sandbox: em produção esta nota seria barrada agora (${bloqueio}): ${motivoDoProblema(bloqueio, { empresa: empresa.razao_social })}.`)
   }
 
   const codigo = pedido.servico.codigo ?? empresa.codigo_servico_nacional
-  if (!codigo) return errorResponse('VALIDATION_FAILED', 'servico.codigo_servico_nacional é obrigatório (a empresa não tem código padrão)', { campo: 'servico.codigo_servico_nacional' })
+  if (!codigo) {
+    return {
+      ok: false,
+      resposta: errorResponse('VALIDATION_FAILED', 'servico.codigo_servico_nacional é obrigatório (a empresa não tem código padrão)', {
+        campo: 'servico.codigo_servico_nacional',
+      }),
+    }
+  }
 
   const resolvida = resolverRetencao({
     padrao: empresa.retencao ?? SEM_RETENCAO_PADRAO,
@@ -271,26 +315,41 @@ async function criarNfse(ctx: Ctx, corpo: unknown): Promise<Response> {
     tomadorTipo: tipoDoDocumento(pedido.tomador.documento),
   })
   if (!resolvida.ok) {
-    return errorResponse('VALIDATION_FAILED', motivoDaRetencao(resolvida.problema), { campo: CAMPO_DA_RETENCAO[resolvida.problema] ?? 'retencao', motivo: resolvida.problema })
+    return {
+      ok: false,
+      resposta: errorResponse('VALIDATION_FAILED', motivoDaRetencao(resolvida.problema), {
+        campo: CAMPO_DA_RETENCAO[resolvida.problema] ?? 'retencao',
+        motivo: resolvida.problema,
+      }),
+    }
   }
   let endereco: EnderecoNacional | null = null
   if (resolvida.retencao?.iss) {
     endereco = ctx.deps.enderecos ? await ctx.deps.enderecos.endereco(pedido.tomador.documento).catch(() => null) : null
-    if (!endereco) return errorResponse('VALIDATION_FAILED', motivoDaRetencao('ENDERECO_TOMADOR'), { campo: 'tomador.cnpj', motivo: 'ENDERECO_TOMADOR' })
+    if (!endereco) {
+      return { ok: false, resposta: errorResponse('VALIDATION_FAILED', motivoDaRetencao('ENDERECO_TOMADOR'), { campo: 'tomador.cnpj', motivo: 'ENDERECO_TOMADOR' }) }
+    }
   }
 
-  const { codigo: _c, descricao: _d, ...rtc } = pedido.servico
+  const { nbs, c_ind_op, c_class_trib, municipio_prestacao_ibge } = pedido.servico
+  const rtc = Object.fromEntries(Object.entries({ nbs, c_ind_op, c_class_trib, municipio_prestacao_ibge }).filter(([, v]) => v !== undefined))
   const base = payloadDaNota(
     pedido.tomador,
-    { codigo, descricao: pedido.servico.descricao ?? DESCRICAO_PADRAO, municipio_prestacao_ibge: rtc.municipio_prestacao_ibge ?? null },
+    { codigo, descricao: pedido.servico.descricao ?? DESCRICAO_PADRAO, municipio_prestacao_ibge: municipio_prestacao_ibge ?? null },
     pedido.valor,
     { retencao: resolvida.retencao, endereco, informacoes_complementares: pedido.informacoes_complementares ?? null },
   )
   // NBS e IBS/CBS (dps-builder.ts) não passam por payloadDaNota, que é do agente; entram aqui.
   const payload = { ...base, servico: { ...base.servico, ...rtc } } as unknown as InvoicePayload
-  const nota = await ctx.db.transaction((tx) =>
-    createOrGetInvoice(tx, empresa.id, { external_id: pedido.external_id, payload, origem: 'api' }),
-  )
+  return { ok: true, empresa, externalId: pedido.external_id, valor: pedido.valor, payload, avisos }
+}
+
+async function criarNfse(ctx: Ctx, corpo: unknown): Promise<Response> {
+  const pronta = await prepararNfse(ctx, corpo, (empresaId, externalId) => visaoNfsePorExternalId(ctx.db, empresaId, externalId))
+  if (pronta.ok === false) return pronta.resposta
+  if (pronta.ok === 'existente') return json(202, { ...pronta.visao, avisos: [] })
+  const { empresa, externalId, payload } = pronta
+  const nota = await ctx.db.transaction((tx) => createOrGetInvoice(tx, empresa.id, { external_id: externalId, payload, origem: 'api' }))
   logEvent('nofiscal.api_nfse_criada', { tenant_id: empresa.id, invoice_id: nota.id, status: nota.status })
   const visao = await visaoNfse(ctx.db, nota.id)
   return json(202, { ...visao, avisos: await avisoDeFranquia(ctx) })
@@ -383,4 +442,99 @@ async function empresas(ctx: Ctx, request: Request, target: NfseRoute): Promise<
   const lido = await lerJson(request)
   if (!lido.ok) return lido.resposta
   return alterarEmpresa(ectx, cnpj, lido.corpo)
+}
+
+// ---------------------------------------------------------------------------------------
+// Sandbox (chave nfk_test_). Só as tabelas do sandbox; a franquia não conta, o painel não vê.
+
+async function sandbox(ctx: Ctx, request: Request, target: NfseRoute): Promise<Response> {
+  const donoId = ctx.tenant.id
+  const fetch: FetchLike = ctx.deps.fetch ?? ((url, init) => globalThis.fetch(url, init))
+  const agendar = ctx.deps.agendar ?? agendarNaVercel
+  const relogio = ctx.deps.now ?? (() => new Date())
+  // Rodada preguiçosa: o que já devia ter avançado avança antes de responder.
+  await rodadaSandbox(ctx.db, fetch, donoId, ctx.agora)
+  const depois = () => {
+    const rodar = async (): Promise<void> => {
+      const { proxima } = await rodadaSandbox(ctx.db, fetch, donoId, relogio())
+      // Sefin "fora do ar" (valor 2.22): mais uma rodada quando ela "voltar", se couber na vida da função.
+      const espera = proxima ? proxima.getTime() - relogio().getTime() : null
+      if (espera !== null && espera < 90_000) agendar(rodar, Math.max(espera, 0) + 200)
+    }
+    agendar(rodar, ATRASO_MS + 200)
+  }
+
+  if (target.recurso === 'nfe') return errorResponse('SANDBOX_SEM_NFE', 'a NF-e ainda não tem sandbox')
+  if (target.recurso === 'sandbox') {
+    if (target.kind !== 'item' || target.id !== 'webhook' || target.action !== null) return errorResponse('NOT_FOUND', 'rota não encontrada')
+    if (request.method === 'GET') return webhookSandbox({ db: ctx.db, donoId, agora: ctx.agora })
+    if (request.method !== 'PUT') return errorResponse('METHOD_NOT_ALLOWED', 'use GET ou PUT')
+    const lido = await lerJson(request)
+    if (!lido.ok) return lido.resposta
+    return salvarWebhookSandbox({ db: ctx.db, donoId, agora: ctx.agora }, lido.corpo)
+  }
+  if (target.recurso === 'empresas') {
+    // Ler as empresas da conta, sim; cadastrar ou declarar procuração com chave de teste, não (muda a conta real).
+    if (request.method !== 'GET') {
+      return errorResponse('SANDBOX_SOMENTE_LEITURA', 'no sandbox, empresas só se consultam; cadastre pelo painel ou com a chave de produção')
+    }
+    return empresas(ctx, request, target)
+  }
+
+  if (target.kind === 'collection') {
+    if (request.method === 'GET') {
+      const externalId = ctx.url.searchParams.get('external_id')
+      if (!externalId) return errorResponse('VALIDATION_FAILED', 'informe external_id (e cnpj_prestador, se não for a conta-mãe)')
+      const p = await prestador(ctx, ctx.url.searchParams.get('cnpj_prestador'), 'cnpj_prestador')
+      if (!p.ok) return p.resposta
+      const visao = await notaSandboxPorExternalId(ctx.db, donoId, p.empresa.id, externalId)
+      return visao ? json(200, visao) : errorResponse('NOT_FOUND', 'nota não encontrada')
+    }
+    if (request.method !== 'POST') return errorResponse('METHOD_NOT_ALLOWED', 'use POST')
+    const lido = await lerJson(request)
+    if (!lido.ok) return lido.resposta
+    const pronta = await prepararNfse(ctx, lido.corpo, (empresaId, externalId) => notaSandboxPorExternalId(ctx.db, donoId, empresaId, externalId))
+    if (pronta.ok === false) return pronta.resposta
+    if (pronta.ok === 'existente') return json(202, { ...pronta.visao, avisos: [] })
+    const { visao } = await criarNotaSandbox(ctx.db, {
+      donoId,
+      tenantId: pronta.empresa.id,
+      externalId: pronta.externalId,
+      payload: pronta.payload,
+      valor: pronta.valor,
+      agora: ctx.agora,
+    })
+    depois()
+    return json(202, { ...visao, avisos: pronta.avisos })
+  }
+
+  const nota = UUID.test(target.id) ? await notaSandbox(ctx.db, donoId, target.id) : null
+  if (!nota) return errorResponse('NOT_FOUND', 'nota não encontrada')
+  const { xml_nfse: xml, ...visao } = nota
+  if (target.action === null) {
+    if (request.method !== 'GET') return errorResponse('METHOD_NOT_ALLOWED', 'use GET')
+    return json(200, visao)
+  }
+  if (target.action === 'cancel') {
+    if (request.method !== 'POST') return errorResponse('METHOD_NOT_ALLOWED', 'use POST')
+    const r = await cancelarNotaSandbox(ctx.db, donoId, visao.id, ctx.agora)
+    if (!r) return errorResponse('NOT_FOUND', 'nota não encontrada')
+    if (r.status === 'cancel_requested') depois()
+    return json(202, r)
+  }
+  if (request.method !== 'GET') return errorResponse('METHOD_NOT_ALLOWED', 'use GET')
+  if (!PDF_STATUSES.includes(visao.status) || !xml) return errorResponse('NOT_ISSUED', 'a nota ainda não foi emitida')
+  const nome = `${target.action === 'xml' ? 'nfse' : 'danfse'}-sandbox-${visao.chave_acesso ?? visao.id}`
+  if (target.action === 'xml') {
+    return new Response(xml, {
+      status: 200,
+      headers: { 'content-type': 'application/xml; charset=utf-8', 'content-disposition': `attachment; filename="${nome}.xml"`, 'cache-control': 'no-store' },
+    })
+  }
+  // tpAmb 2 na DPS: o DANFSe sai com a tarja "NFS-e SEM VALIDADE JURÍDICA".
+  const pdf = await renderDanfse(xml, { cancelada: visao.status === 'cancelled' })
+  return new Response(Buffer.from(pdf), {
+    status: 200,
+    headers: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="${nome}.pdf"`, 'cache-control': 'no-store' },
+  })
 }
