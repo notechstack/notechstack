@@ -275,6 +275,13 @@ begin
            aceite_em = case when p_dados ? 'aceite_em' then (p_dados ->> 'aceite_em')::timestamptz else c.aceite_em end,
            aceite_origem = case when p_dados ? 'aceite_origem' then p_dados ->> 'aceite_origem' else c.aceite_origem end,
            ativo = coalesce((p_dados ->> 'ativo')::boolean, c.ativo),
+           -- "SAIR": o painel registra o pedido de sair do e-mail (que chega ao escritório) e reativa o WhatsApp com aceite novo.
+           sair_whatsapp_em = case when p_dados ? 'sair_whatsapp'
+                                   then case when (p_dados ->> 'sair_whatsapp')::boolean then coalesce(c.sair_whatsapp_em, now()) end
+                                   else c.sair_whatsapp_em end,
+           sair_email_em = case when p_dados ? 'sair_email'
+                                then case when (p_dados ->> 'sair_email')::boolean then coalesce(c.sair_email_em, now()) end
+                                else c.sair_email_em end,
            updated_at = now()
      where c.id = (p_dados ->> 'id')::uuid and c.escritorio_tenant_id = v_conta
     returning c.id into v_id;

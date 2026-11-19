@@ -73,8 +73,7 @@ export async function handleLinkDaGuia(request: Request, deps: LinkDeps): Promis
     if (!robo && request.method === 'GET') {
       await deps.db.query(
         `update nofiscal.guias set baixada_em = coalesce(baixada_em, $2),
-                status = case when nofiscal.guia_status_ordem(status) < nofiscal.guia_status_ordem('baixada') and status not in ('falhou', 'cancelada')
-                              then 'baixada' else status end,
+                status = case when status in ('enviada', 'entregue', 'lida') then 'baixada' else status end,
                 updated_at = now()
           where id = $1`,
         [g.id, agora],

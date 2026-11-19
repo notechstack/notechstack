@@ -80,6 +80,8 @@ export async function handlePainelGuias(request: Request, deps: PainelGuiasDeps)
         return json(200, await contatoSalvar(ctx, corpo))
       case 'contato_ativar':
         return json(200, await contatoAtivar(ctx, corpo))
+      case 'contato_canal':
+        return json(200, await contatoCanal(ctx, corpo))
       case 'contatos_importar':
         return json(200, await contatosImportar(ctx, corpo))
       case 'lote_criar':
@@ -235,6 +237,30 @@ async function contatoAtivar(ctx: Ctx, corpo: Corpo) {
   if (typeof corpo.ativo !== 'boolean') throw recusar('informe ativo')
   await tx(ctx, (q) => q.query('select nofiscal.guias_contato_salvar($1, $2::jsonb)', [ctx.userId, JSON.stringify({ id, ativo: corpo.ativo })]))
   return { id, ativo: corpo.ativo }
+}
+
+/**
+ * "SAIR" por canal: `sair_email` registra (ou desfaz) o pedido de sair do e-mail, que chega ao escritório pelo
+ * reply-to; `sair_whatsapp: false` reativa o WhatsApp de quem respondeu SAIR, e só com o aceite novo declarado.
+ */
+async function contatoCanal(ctx: Ctx, corpo: Corpo) {
+  const id = uuidDe(corpo.id, 'contato')
+  const dados: Record<string, unknown> = { id }
+  if (typeof corpo.sair_email === 'boolean') dados.sair_email = corpo.sair_email
+  if (typeof corpo.sair_whatsapp === 'boolean') {
+    if (corpo.sair_whatsapp === false) {
+      const aceite = aceiteDe(corpo, ctx.agora)
+      if (!aceite.aceite_origem) throw recusar('Para reativar o WhatsApp, registre como o cliente autorizou de novo.', { campo: 'aceite_origem' })
+      Object.assign(dados, aceite)
+    }
+    dados.sair_whatsapp = corpo.sair_whatsapp
+  }
+  if (Object.keys(dados).length === 1) throw recusar('informe sair_email ou sair_whatsapp')
+  await tx(ctx, async (q) => {
+    await q.query('select nofiscal.guias_contato_salvar($1, $2::jsonb)', [ctx.userId, JSON.stringify(dados)])
+    await recontarLotes(q, ctx.conta)
+  })
+  return { id }
 }
 
 async function contatosImportar(ctx: Ctx, corpo: Corpo) {

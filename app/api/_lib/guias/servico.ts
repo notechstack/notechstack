@@ -54,7 +54,9 @@ const lista = (v: unknown): string[] =>
 
 /** Documento (CNPJ/CPF com DV), nome, WhatsApps em E.164 (com o 9) e e-mails; pelo menos um canal. */
 export function validarContato(bruto: Record<string, unknown>): ContatoValidado {
-  const documento = String(bruto.documento ?? '').replace(/\D/g, '')
+  let documento = String(bruto.documento ?? '').replace(/\D/g, '')
+  // Planilha que virou número perde o zero à esquerda (CNPJ com 13 dígitos, CPF com 10).
+  if (documento.length === 13 || documento.length === 10) documento = documento.padStart(documento.length + 1, '0')
   if (!(documento.length === 14 ? cnpjValido(documento) : documento.length === 11 && cpfValido(documento))) {
     return { ok: false, motivo: 'CNPJ ou CPF inválido' }
   }

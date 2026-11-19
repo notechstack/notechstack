@@ -578,5 +578,129 @@ describe('link /g/<token>, acompanhamento e modelos', () => {
   })
 })
 
+// ------------------------------------------------------------------ Defeitos achados na revisão independente
+
+describe('revisão independente: cada defeito com o seu teste', () => {
+  /** Escritório novo, contato com WhatsApp e e-mail, uma guia lida e verde pronta para disparar. */
+  async function cenario(nome: string, venc = '2026-12-20') {
+    const esc = await escritorio(nome, true)
+    const fone = randomPhone()
+    const doc = cnpjDe(`5${randomBytes(4).readUInt32BE() % 9000000 + 1000000}0001`.slice(0, 12))
+    await chamar(deps, esc.ownerUserId, { acao: 'contato_salvar', contato: { documento: doc, nome: `Cliente ${nome}`, whatsapps: [fone], emails: [`c-${randomBytes(3).toString('hex')}@cliente.test`] } })
+    const lote = (await chamar(deps, esc.ownerUserId, { acao: 'lote_criar', total: 1 })).corpo.lote_id
+    const pdf = await gerarGuiaPdf({ tipo: 'das', cnpj: doc, vencimento: venc, valorCentavos: 5000 })
+    const arq = (await chamar(deps, esc.ownerUserId, { acao: 'lote_arquivos', lote_id: lote, arquivos: [{ nome: 'g.pdf', tamanho: pdf.pdf.length }] })).corpo.arquivos[0]
+    st.subir(arq.url, pdf.pdf)
+    await chamar(deps, esc.ownerUserId, { acao: 'lote_confirmar', lote_id: lote, guia_ids: [arq.guia_id], fim: true })
+    await chamar(deps, esc.ownerUserId, { acao: 'ler', lote_id: lote })
+    return { esc, fone, guiaId: arq.guia_id as string, caminho: (await guiasDe(esc.tenant.id))[0].pdf_path as string }
+  }
+
+  it('1. erro no módulo (ex.: migration não aplicada) não tira a resposta de sempre de um número desconhecido', async () => {
+    const r = whatsappDouble()
+    const quebrado = new Proxy(servico.db, {
+      get(alvo, p) {
+        if (p === 'query') return (sql: string, v?: unknown[]) => (/guia_contatos/.test(sql) ? Promise.reject(new Error('relation "nofiscal.guia_contatos" does not exist')) : alvo.query(sql, v))
+        return Reflect.get(alvo, p)
+      },
+    }) as Db
+    const outro = randomPhone()
+    await processarMensagem({ db: quebrado, whatsapp: r.whatsapp, interprete: interpreteDouble({}).interprete, links: linksDoSite(), guias: { email: null, storage: st.armazem } }, { id: `wamid.x-${randomUUID()}`, de: outro, tipo: 'text', texto: 'oi', arquivo: null })
+    expect(r.saidas).toHaveLength(1)
+    expect(r.saidas[0]).toMatchObject({ tipo: 'texto', para: outro })
+  })
+
+  it('2. 2ª via com o Storage fora: avisa o cliente e não deixa envio "pendente" travando a próxima tentativa', async () => {
+    const c = await cenario('Rev Dois')
+    await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })
+    await rodadaDeGuias(workerDeps())
+    const r = whatsappDouble()
+    const pdf = st.arquivos.get(c.caminho)!
+    st.arquivos.delete(c.caminho)
+    const conv = (): ConversaDeps => ({ db: servico.db, whatsapp: r.whatsapp, interprete: interpreteDouble({}).interprete, links: linksDoSite(), guias: { email: null, storage: st.armazem } })
+    await processarMensagem(conv(), { id: `wamid.s-${randomUUID()}`, de: c.fone, tipo: 'text', texto: '2ª via', arquivo: null })
+    expect((r.saidas.at(-1) as any).texto).toMatch(/Não consegui mandar o PDF/)
+    expect((await enviosDe(c.guiaId)).filter((e) => e.motivo === 'segunda_via')).toEqual([])
+    st.arquivos.set(c.caminho, pdf)
+    await processarMensagem(conv(), { id: `wamid.s-${randomUUID()}`, de: c.fone, tipo: 'text', texto: '2ª via', arquivo: null })
+    expect(r.saidas.at(-1)).toMatchObject({ tipo: 'documento', para: c.fone })
+  })
+
+  it('3. a guia disparada no dia não recebe lembrete no mesmo dia', async () => {
+    const c = await cenario('Rev Tres', '2026-12-20')
+    await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })
+    const vespera = new Date('2026-12-19T13:00:00Z')
+    await rodadaDeGuias(workerDeps({ now: () => vespera }))
+    const envios = await enviosDe(c.guiaId)
+    expect(envios.filter((e) => e.motivo === 'envio').length).toBe(2)
+    expect(envios.filter((e) => e.motivo === 'lembrete')).toEqual([])
+    // No dia seguinte (vencimento), o lembrete sai.
+    await rodadaDeGuias(workerDeps({ now: () => new Date('2026-12-20T13:00:00Z') }))
+    expect((await enviosDe(c.guiaId)).filter((e) => e.motivo === 'lembrete').length).toBe(1)
+  })
+
+  it('4. lembrete que falhou não gasta a cota de 2: a retentativa do mesmo dia é que conta', async () => {
+    const c = await cenario('Rev Quatro', '2026-12-20')
+    await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })
+    await rodadaDeGuias(workerDeps())
+    wa.estado.falhar = true
+    try {
+      await rodadaDeGuias(workerDeps({ now: () => new Date('2026-12-19T12:30:00Z') }))
+    } finally {
+      wa.estado.falhar = false
+    }
+    const lembretes = async () => (await admin.db.query('select lembretes_enviados from nofiscal.guias where id = $1', [c.guiaId])).rows[0].lembretes_enviados
+    expect(await lembretes()).toBe(0)
+    await rodadaDeGuias(workerDeps({ now: () => new Date('2026-12-19T12:31:00Z') }))
+    expect(await lembretes()).toBe(1)
+    expect((await enviosDe(c.guiaId)).find((e) => e.motivo === 'lembrete')?.status).toBe('enviada')
+  })
+
+  it('5. "SAIR" tem volta pelo painel (com aceite novo) e o pedido de sair do e-mail é registrável', async () => {
+    const c = await cenario('Rev Cinco')
+    const conv = (): ConversaDeps => ({ db: servico.db, whatsapp: whatsappDouble().whatsapp, interprete: interpreteDouble({}).interprete, links: linksDoSite(), guias: { email: null, storage: st.armazem } })
+    await processarMensagem(conv(), { id: `wamid.q-${randomUUID()}`, de: c.fone, tipo: 'text', texto: 'sair', arquivo: null })
+    const contato = async () => (await admin.db.query('select id, sair_whatsapp_em, sair_email_em, aceite_origem from nofiscal.guia_contatos where $1 = any(whatsapps)', [c.fone])).rows[0]
+    const antes = await contato()
+    expect(antes.sair_whatsapp_em).not.toBeNull()
+    expect((await chamar(deps, c.esc.ownerUserId, { acao: 'contato_canal', id: antes.id, sair_whatsapp: false })).status).toBe(422)
+    expect((await chamar(deps, c.esc.ownerUserId, { acao: 'contato_canal', id: antes.id, sair_whatsapp: false, aceite_origem: 'Pediu de volta por telefone' })).status).toBe(200)
+    expect(await contato()).toMatchObject({ sair_whatsapp_em: null, aceite_origem: 'Pediu de volta por telefone' })
+    await chamar(deps, c.esc.ownerUserId, { acao: 'contato_canal', id: antes.id, sair_email: true })
+    expect((await contato()).sair_email_em).not.toBeNull()
+    // Outro escritório não mexe.
+    expect((await chamar(deps, B.ownerUserId, { acao: 'contato_canal', id: antes.id, sair_email: false })).status).toBe(422)
+  })
+
+  it('6. PDF sumido no disparo: a guia vira "falhou" e não trava a fila', async () => {
+    const c = await cenario('Rev Seis')
+    await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })
+    const pdf = st.arquivos.get(c.caminho)!
+    st.arquivos.delete(c.caminho)
+    const r = await rodadaDeGuias(workerDeps())
+    expect(r.falharam).toBeGreaterThanOrEqual(1)
+    expect((await guiasDe(c.esc.tenant.id))[0].status).toBe('falhou')
+    st.arquivos.set(c.caminho, pdf)
+    // Disparar de novo funciona.
+    expect((await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })).corpo.agendadas).toBe(1)
+    await rodadaDeGuias(workerDeps())
+    expect((await guiasDe(c.esc.tenant.id))[0].status).toBe('enviada')
+  })
+
+  it('link de guia ainda na fila (agendada) não a tira da fila; CSV com CNPJ sem o zero à esquerda é aceito', async () => {
+    const c = await cenario('Rev Sete')
+    await chamar(deps, c.esc.ownerUserId, { acao: 'disparar', guia_ids: [c.guiaId] })
+    const token = tokenDaGuia(SEGREDO, c.guiaId)
+    await admin.db.query(`update nofiscal.guias set link_token_hash = encode(sha256(convert_to($2, 'UTF8')), 'hex'), link_expira_em = now() + interval '1 day' where id = $1`, [c.guiaId, token])
+    const res = await handleLinkDaGuia(new Request(`https://app.teste/x?token=${token}`, { headers: { 'user-agent': 'Mozilla/5.0' } }), { db: servico.db, storage: st.armazem })
+    expect(res.status).toBe(200)
+    expect((await guiasDe(c.esc.tenant.id))[0].status).toBe('agendada')
+    const comZero = cnpjDe('012345670001')
+    expect(comZero.startsWith('0')).toBe(true)
+    const imp = await chamar(deps, c.esc.ownerUserId, { acao: 'contatos_importar', csv: `${comZero.slice(1)},Zero Ltda,,zero@cliente.test` })
+    expect(imp.corpo).toMatchObject({ importados: 1, erros: [] })
+  })
+})
+
 // Garante que o Db de serviço é o usado (tipo).
 export type _Uso = Db

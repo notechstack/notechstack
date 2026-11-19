@@ -156,7 +156,20 @@ async function dispararAgendadas(deps: GuiasWorkerDeps, now: () => Date, teto: T
         resumo.adiadas_pelo_teto++
         continue
       }
-      const pdf = await deps.storage.baixar(g.pdf_path)
+      let pdf: Uint8Array
+      try {
+        pdf = await deps.storage.baixar(g.pdf_path)
+      } catch (error) {
+        // PDF sumido ou Storage fora: a guia sai da fila como 'falhou' (dá para disparar de novo) e não trava as outras.
+        await deps.db.query(
+          `update nofiscal.guias set status = 'falhou', leitura = leitura || '{"erro_envio": "PDF_INDISPONIVEL"}'::jsonb, updated_at = now()
+            where id = $1 and status = 'agendada'`,
+          [g.id],
+        )
+        resumo.falharam++
+        logEvent('guias.pdf_indisponivel', { guia_id: g.id, error_name: error instanceof Error ? error.name : 'unknown' })
+        continue
+      }
       const anexo: AnexoEmail = { nome: g.pdf_nome, tipo: 'application/pdf', conteudo: pdf }
       const token = tokenDaGuia(deps.segredo, g.id)
       await deps.db.query(
@@ -226,7 +239,7 @@ export function emailDaGuia(d: DadosDaMensagem, link: string): { assunto: string
       `O PDF está anexo. Para ver e copiar o código: ${link}`,
       '',
       `Dúvidas? Responda este e-mail que a mensagem vai para ${d.escritorio}.`,
-      `Para não receber mais, responda SAIR.`,
+      `Para não receber mais por e-mail, avise ${d.escritorio} respondendo esta mensagem.`,
     ].join('\n'),
   }
 }
@@ -246,6 +259,8 @@ async function enviarLembretes(deps: GuiasWorkerDeps, now: () => Date, teto: Tet
         and g.vencimento between $1::date and $1::date + 3
         and ($1::date - g.vencimento) = any(coalesce(r.lembrete_dias, '{-1,0}'::int[]))
         and $2 >= coalesce(r.hora_envio, 9)
+        -- A guia que saiu hoje não recebe lembrete no mesmo dia (o envio já diz o vencimento).
+        and (g.enviada_em at time zone 'America/Sao_Paulo')::date < $1::date
         and nofiscal.guias_ligado(g.escritorio_tenant_id)
       order by g.vencimento limit 200`,
     [hoje, hora],
@@ -260,32 +275,33 @@ async function enviarLembretes(deps: GuiasWorkerDeps, now: () => Date, teto: Tet
       if (!cabe(teto, deps.teto, whatsapps)) continue
       const quando = g.delta === 0 ? 'hoje' : g.delta === -1 ? 'amanhã' : `em ${-g.delta} dias`
       const dados = { guiaId: g.id, escritorio: g.escritorio, empresa: g.empresa, tipo: g.tipo, competencia: g.competencia, valorCentavos: Number(g.valor_centavos), vencimento: g.vencimento }
-      let reivindicou = false
+      let saiu = false
       for (const numero of whatsapps) {
         const msg = mensagemDeLembrete(dados, quando)
         const id = await reivindicar(deps.db, { guiaId: g.id, conta: g.conta, canal: 'whatsapp', destino: numero, motivo: 'lembrete', modelo: msg.nome, chave: `lembrete:${g.id}:${hoje}:whatsapp:${numero}` })
         if (!id) continue
-        reivindicou = true
         teto.usados.add(numero)
         const r = await comTentativas(() => (deps.whatsapp as CanalWhatsAppGuias).enviarModelo(numero, msg.nome, msg.parametros, msg.extras))
         await concluirEnvio(deps.db, id, r)
+        saiu ||= r.ok
       }
       for (const email of emails) {
         const id = await reivindicar(deps.db, { guiaId: g.id, conta: g.conta, canal: 'email', destino: email, motivo: 'lembrete', modelo: null, chave: `lembrete:${g.id}:${hoje}:email:${email}` })
         if (!id) continue
-        reivindicou = true
         const r = await comTentativas(async () => {
           await (deps.email as EnviaEmail).enviar({
             para: email,
             assunto: `Lembrete: guia ${ROTULO_DO_TIPO[g.tipo]} de ${g.empresa} vence ${quando}`,
-            texto: `Lembrete de ${g.escritorio}: a guia ${ROTULO_DO_TIPO[g.tipo]} de ${g.empresa} (R$ ${reaisSemSimbolo(Number(g.valor_centavos))}) vence ${quando} (${dataBr(g.vencimento)}).\n\nSe já pagou, responda "paguei". Para não receber mais, responda SAIR.`,
+            texto: `Lembrete de ${g.escritorio}: a guia ${ROTULO_DO_TIPO[g.tipo]} de ${g.empresa} (R$ ${reaisSemSimbolo(Number(g.valor_centavos))}) vence ${quando} (${dataBr(g.vencimento)}).\n\nSe já pagou, avise ${g.escritorio} respondendo este e-mail.`,
             idempotencia: `guia-lembrete-${g.id}-${hoje}-${email}`,
             ...(g.responder_para ? { responderPara: g.responder_para } : {}),
           })
         })
         await concluirEnvio(deps.db, id, r)
+        saiu ||= r.ok
       }
-      if (reivindicou) {
+      // Só conta o lembrete que saiu: a falha da véspera não gasta o do dia.
+      if (saiu) {
         await deps.db.query(`update nofiscal.guias set lembretes_enviados = lembretes_enviados + 1, updated_at = now() where id = $1 and lembretes_enviados < ${MAX_LEMBRETES}`, [g.id])
         enviados++
       }

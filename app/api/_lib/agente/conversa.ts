@@ -893,7 +893,12 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
     // Módulo Guias: o contato que recebe guias responde ao escritório ("paguei", "2ª via", "SAIR"…).
     if (deps.guias) {
       const guias = { db: deps.db, whatsapp: noEnderecoRecebido(deps.whatsapp, msg), email: deps.guias.email, storage: deps.guias.storage, now: deps.now }
-      if (await tratarRespostaDeGuia(guias, msg)) return
+      // Falha do módulo (ex.: tabela ainda não migrada) nunca tira a resposta de sempre de quem não é contato de guia.
+      const tratada = await tratarRespostaDeGuia(guias, msg).catch((error: unknown) => {
+        logEvent('guias.resposta_falhou', { message_id: msg.id, error_name: error instanceof Error ? error.name : 'unknown' })
+        return false
+      })
+      if (tratada) return
     }
     await numeroSemPermissao(deps, msg, links, fora, agora)
     return

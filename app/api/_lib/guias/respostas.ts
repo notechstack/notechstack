@@ -90,7 +90,7 @@ export async function tratarRespostaDeGuia(deps: RespostasDeps, msg: MensagemRec
     case 'sair': {
       await deps.db.query(`update nofiscal.guia_contatos set sair_whatsapp_em = $2, updated_at = now() where id = any($1::uuid[]) and sair_whatsapp_em is null`, [ids, agora])
       await responder(deps, de, `Pronto: você não vai mais receber guias de ${contato.escritorio} por este WhatsApp. Para voltar, fale com o escritório.`)
-      await alertar(deps, contato, `${contato.nome} pediu para sair do WhatsApp`, `${contato.nome} respondeu SAIR no WhatsApp: as próximas guias vão só por e-mail (se houver). Para voltar, fale com o cliente e edite o contato.`)
+      await alertar(deps, contato, `${contato.nome} pediu para sair do WhatsApp`, `${contato.nome} respondeu SAIR no WhatsApp: as próximas guias vão só por e-mail (se houver). Se o cliente quiser voltar, registre o novo aceite em Guias › Clientes › Reativar WhatsApp.`)
       return true
     }
     case 'paguei': {
@@ -117,9 +117,17 @@ export async function tratarRespostaDeGuia(deps: RespostasDeps, msg: MensagemRec
         await alertar(deps, contato, `${contato.nome} pediu 2ª via`, `${contato.nome} pediu a 2ª via pelo WhatsApp, mas não achei guia em aberto: "${textoRecebido}".`)
         return true
       }
+      // O PDF antes da reivindicação: se o Storage falhar, nada fica 'pendente' e a reentrega da Meta tenta de novo.
+      let pdf: Uint8Array
+      try {
+        pdf = await deps.storage.baixar(guia.pdf_path)
+      } catch (error) {
+        logEvent('guias.segunda_via_sem_pdf', { guia_id: guia.id, error_name: error instanceof Error ? error.name : 'unknown' })
+        await responder(deps, de, `Não consegui mandar o PDF agora. Peça a 2ª via de novo em alguns minutos.`)
+        return true
+      }
       const id = await reivindicar(deps.db, { guiaId: guia.id, conta: guia.conta, canal: 'whatsapp', destino: de, motivo: 'segunda_via', modelo: null, chave: `segunda_via:${guia.id}:${msg.id}` })
       if (!id) return true
-      const pdf = await deps.storage.baixar(guia.pdf_path)
       const legenda = `2ª via: guia ${ROTULO_DO_TIPO[guia.tipo]}, R$ ${reaisSemSimbolo(Number(guia.valor_centavos))}, vence ${dataBr(guia.vencimento)}.${guia.linha_digitavel ? `\nLinha digitável: ${formatarLinha(guia.linha_digitavel)}` : ''}`
       const r = await comTentativas(() => deps.whatsapp.enviarDocumento(de, { nome: guia.pdf_nome, tipo: 'application/pdf', conteudo: pdf }, legenda))
       await concluirEnvio(deps.db, id, r)
@@ -155,6 +163,10 @@ async function guiaDaResposta(db: Queryable, contatos: string[], guiaId: string 
   const { rows } = await db.query<GuiaAberta>(
     `select ${colunas} from nofiscal.guias g
       where g.contato_id = any($1::uuid[]) and g.status in ${abertas}
+        -- O mesmo número em dois escritórios: vale o escritório da última guia que saiu para ele.
+        and g.escritorio_tenant_id = (select x.escritorio_tenant_id from nofiscal.guias x
+                                       where x.contato_id = any($1::uuid[]) and x.enviada_em is not null
+                                       order by x.enviada_em desc limit 1)
       order by g.vencimento asc, g.enviada_em desc limit 1`,
     [contatos],
   )

@@ -141,7 +141,8 @@ export function mensagemDeEnvio(d: DadosDaMensagem, documento: { mediaId: string
     const m = MODELOS.honorario_aviso
     return {
       nome: m.nome,
-      parametros: [d.escritorio, mesPorExtenso(d.competencia), valor, dataBr(d.vencimento), d.linha].map(parametro),
+      // Sem competência lida, vale o mês do vencimento ("honorários de dezembro/2026").
+      parametros: [d.escritorio, mesPorExtenso(d.competencia ?? `${d.vencimento.slice(0, 7)}-01`), valor, dataBr(d.vencimento), d.linha].map(parametro),
       extras: extrasDe(m, d.guiaId, d.token, documento),
     }
   }

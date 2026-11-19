@@ -338,7 +338,9 @@
           '<td>' + canais(c.whatsapps, c.sair_whatsapp_em) + '</td><td>' + canais(c.emails, c.sair_email_em) + '</td>' +
           '<td>' + (c.aceite_em ? nf.esc(new Date(c.aceite_em).toLocaleDateString('pt-BR')) + '<span class="nf-sub">' + nf.esc(c.aceite_origem || '') + '</span>' : '—') + '</td>' +
           '<td class="nf-acoes-linha"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-contato-editar="' + nf.esc(c.id) + '">Editar</button>' +
-          '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-contato-ativar="' + nf.esc(c.id) + '" data-ativo="' + (c.ativo ? 'false' : 'true') + '">' + (c.ativo ? 'Desativar' : 'Reativar') + '</button></td></tr>';
+          '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-contato-ativar="' + nf.esc(c.id) + '" data-ativo="' + (c.ativo ? 'false' : 'true') + '">' + (c.ativo ? 'Desativar' : 'Reativar') + '</button>' +
+          (c.sair_whatsapp_em ? '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-contato-canal="' + nf.esc(c.id) + '" data-sair-whatsapp="false">Reativar WhatsApp</button>' : '') +
+          ((c.emails || []).length ? '<button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-contato-canal="' + nf.esc(c.id) + '" data-sair-email="' + (c.sair_email_em ? 'false' : 'true') + '">' + (c.sair_email_em ? 'Voltar o e-mail' : 'Pediu para sair do e-mail') + '</button>' : '') + '</td></tr>';
       }).join('');
     });
   }
@@ -370,6 +372,22 @@
       if (!r.ok) { if (r.status !== 401) nf.aviso($('fa-guias-ct-aviso'), nf.esc(erroDe(r)), 'erro'); return; }
       $('fa-form-guias-contato').hidden = true;
       $('fa-guias-novo-contato').setAttribute('aria-expanded', 'false');
+      listarContatos();
+    });
+  }
+  function mudarCanal(b) {
+    var corpo = { acao: 'contato_canal', id: b.getAttribute('data-contato-canal') };
+    if (b.hasAttribute('data-sair-email')) corpo.sair_email = b.getAttribute('data-sair-email') === 'true';
+    if (b.hasAttribute('data-sair-whatsapp')) {
+      var origem = window.prompt('O cliente pediu para sair do WhatsApp. Como ele autorizou receber de novo?');
+      if (!origem || !origem.trim()) return;
+      corpo.sair_whatsapp = false;
+      corpo.aceite_origem = origem.trim();
+    }
+    nf.ocupado(b, true, '…');
+    nf.app(ROTA, corpo).then(function (r) {
+      nf.ocupado(b, false);
+      if (!r.ok && r.status !== 401) nf.aviso($('fa-aviso-guias'), nf.esc(erroDe(r)), 'erro');
       listarContatos();
     });
   }
@@ -466,6 +484,8 @@
   $('fa-guias-contatos-linhas').addEventListener('click', function (ev) {
     var ed = ev.target.closest && ev.target.closest('[data-contato-editar]');
     if (ed) { abrirContato(ed.getAttribute('data-contato-editar')); return; }
+    var canalB = ev.target.closest && ev.target.closest('[data-contato-canal]');
+    if (canalB) { mudarCanal(canalB); return; }
     var at = ev.target.closest && ev.target.closest('[data-contato-ativar]');
     if (!at) return;
     nf.ocupado(at, true, '…');
