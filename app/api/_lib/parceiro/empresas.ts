@@ -10,15 +10,17 @@ import { logEvent } from '../log.js'
 import { motivoDoProblema } from '../agente/lote.js'
 import { lerRetencaoDaEmpresa } from '../painel-emissao.js'
 import { gerarChave } from './chave.js'
-import { cnpjValido, consultarCnpj, type Consulta } from './receita.js'
+import { avaliarRegime, cnpjValido, consultarCnpj, lerRegimeNormal, type Consulta, type RegimeNormal } from './receita.js'
 
-export type ConsultaReceita = (cnpj: string) => Promise<Consulta>
+/** `regimeDeclarado`: Presumido ou Real, que a Receita não distingue (só vale se a base disser "fora do Simples"). */
+export type ConsultaReceita = (cnpj: string, regimeDeclarado?: RegimeNormal | null) => Promise<Consulta>
 
 /** Consulta real: BrasilAPI (`CNPJ_API_URL` opcional), CNPJ.ws de reserva e o regime confirmado à mão no banco. */
 export function consultaReceitaFromEnv(db: Queryable, env: NodeJS.ProcessEnv = process.env): ConsultaReceita {
-  return (cnpj) =>
+  return (cnpj, regimeDeclarado = null) =>
     consultarCnpj(cnpj, {
       apiUrl: env.CNPJ_API_URL,
+      regimeDeclarado,
       regimeConfirmado: async (c) => {
         const { rows } = await db.query<{ r: string | null }>('select public.fiscal_regime_confirmado($1) as r', [c])
         const r = rows[0]?.r
@@ -67,6 +69,9 @@ type LinhaEmpresa = {
   modo_autenticacao: string
   codigo_servico_nacional: string | null
   p_tot_trib_sn: string | null
+  p_tot_trib_fed: string | null
+  p_tot_trib_est: string | null
+  p_tot_trib_mun: string | null
   retem_iss: boolean
   aliquota_iss: string | null
   retem_inss: boolean
@@ -83,6 +88,7 @@ type LinhaEmpresa = {
 const SELECT_EMPRESA = `
   select t.id, t.cnpj, t.razao_social, t.regime, t.ambiente, t.active, t.id = $1 as principal, t.modo_autenticacao,
          t.codigo_servico_nacional, t.p_tot_trib_sn::text as p_tot_trib_sn,
+         t.p_tot_trib_fed::text as p_tot_trib_fed, t.p_tot_trib_est::text as p_tot_trib_est, t.p_tot_trib_mun::text as p_tot_trib_mun,
          coalesce(t.retem_iss, false) as retem_iss, t.aliquota_iss::text as aliquota_iss,
          coalesce(t.retem_inss, false) as retem_inss, t.inss_percentual::text as inss_percentual,
          c.not_after as cert_not_after,
@@ -119,7 +125,13 @@ function visaoDaEmpresa(e: LinhaEmpresa, procurador: { cnpj: string; razao_socia
       : null,
     // A quem a empresa dá a procuração (Portal de Serviços da Receita, serviço NFS-e): sempre o escritório.
     procurador: e.principal ? null : procurador,
-    dados_fiscais: { codigo_servico_nacional: e.codigo_servico_nacional, simples_percentual: e.p_tot_trib_sn },
+    dados_fiscais: {
+      codigo_servico_nacional: e.codigo_servico_nacional,
+      simples_percentual: e.p_tot_trib_sn,
+      // Presumido e Real: percentuais da Lei 12.741/2012 (DPS totTrib/pTotTrib).
+      tributos_aproximados:
+        e.p_tot_trib_fed === null ? null : { federal: e.p_tot_trib_fed, estadual: e.p_tot_trib_est, municipal: e.p_tot_trib_mun },
+    },
     retencao: { retem_iss: e.retem_iss, aliquota_iss: e.aliquota_iss, retem_inss: e.retem_inss, inss_percentual: e.inss_percentual },
     nfe: { bloqueio: e.bloqueio_nfe },
   }
@@ -161,6 +173,10 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/
 export type DadosDaEmpresa = {
   codigo_servico_nacional?: string
   simples_percentual?: string
+  /** Presumido e Real (POST): o regime que a Receita não distingue. */
+  regime?: RegimeNormal
+  /** Presumido e Real: pTotTrib federal, estadual (padrão 0) e municipal. */
+  tributos_aproximados?: { fed: string; est: string; mun: string }
   retencao?: Obj
   procuracao?: { valida_ate: string | null }
 }
@@ -183,6 +199,27 @@ export function lerDadosDaEmpresa(corpo: Obj, permitidos: string[]): Leitura<Dad
       return { ok: false, codigo: 'VALIDATION_FAILED', mensagem: 'simples_percentual deve ser de 0 a 100, com até 2 casas (ex.: "6.00")', campo: 'simples_percentual' }
     }
     d.simples_percentual = pct
+  }
+  if (corpo.regime !== undefined && corpo.regime !== null) {
+    const regime = lerRegimeNormal(corpo.regime)
+    if (!regime) return { ok: false, codigo: 'VALIDATION_FAILED', mensagem: 'regime deve ser "presumido" ou "real" (MEI e Simples vêm da Receita)', campo: 'regime' }
+    d.regime = regime
+  }
+  if (corpo.tributos_aproximados !== undefined && corpo.tributos_aproximados !== null) {
+    const t = corpo.tributos_aproximados
+    if (!isObj(t)) return { ok: false, codigo: 'VALIDATION_FAILED', mensagem: 'tributos_aproximados deve ser um objeto', campo: 'tributos_aproximados' }
+    const extraT = Object.keys(t).find((k) => !['federal', 'estadual', 'municipal'].includes(k))
+    if (extraT) return { ok: false, codigo: 'UNKNOWN_FIELD', mensagem: `campo não aceito: tributos_aproximados.${extraT}` }
+    const ler = (v: unknown) => (typeof v === 'number' ? String(v) : typeof v === 'string' ? v.trim().replace(',', '.') : '')
+    const fed = ler(t.federal)
+    const est = t.estadual === undefined || t.estadual === null || t.estadual === '' ? '0' : ler(t.estadual)
+    const mun = ler(t.municipal)
+    for (const [campo, v] of [['federal', fed], ['estadual', est], ['municipal', mun]] as const) {
+      if (!PCT.test(v) || Number(v) > 100) {
+        return { ok: false, codigo: 'VALIDATION_FAILED', mensagem: `tributos_aproximados.${campo} deve ser de 0 a 100, com até 2 casas`, campo: `tributos_aproximados.${campo}` }
+      }
+    }
+    d.tributos_aproximados = { fed, est, mun }
   }
   if (corpo.retencao !== undefined) {
     if (!isObj(corpo.retencao)) return { ok: false, codigo: 'VALIDATION_FAILED', mensagem: 'retencao deve ser um objeto', campo: 'retencao' }
@@ -249,8 +286,15 @@ function retencaoValida(d: DadosDaEmpresa, regime: string): Response | null {
   return lido.ok ? null : errorResponse('VALIDATION_FAILED', lido.mensagem, { campo: `retencao.${lido.campo === 'retencao' ? 'retem_iss' : lido.campo}` })
 }
 
-const CAMPOS_POST = ['cnpj', 'codigo_servico_nacional', 'simples_percentual', 'retencao', 'procuracao']
-const CAMPOS_PATCH = ['codigo_servico_nacional', 'simples_percentual', 'retencao', 'procuracao']
+const CAMPOS_POST = ['cnpj', 'regime', 'codigo_servico_nacional', 'simples_percentual', 'tributos_aproximados', 'retencao', 'procuracao']
+const CAMPOS_PATCH = ['codigo_servico_nacional', 'simples_percentual', 'tributos_aproximados', 'retencao', 'procuracao']
+
+const naoOptante = (regime: string) => regime === 'presumido' || regime === 'real'
+
+/** O jsonb de `fiscal_empresa_configurar` para o regime: pTotTribSN do Simples ou pTotTrib do Presumido/Real. */
+function configuracaoDoRegime(regime: string, codigo: string, pct: string | null, tot: { fed: string; est: string; mun: string } | null) {
+  return naoOptante(regime) ? { codigo_servico_nacional: codigo, p_tot_trib: tot } : { codigo_servico_nacional: codigo, p_tot_trib_sn: pct }
+}
 
 export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Response> {
   if (!isObj(corpo)) return errorResponse('VALIDATION_FAILED', 'o corpo deve ser um objeto JSON')
@@ -265,7 +309,13 @@ export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Re
   const existente = await empresaPorCnpj(ctx.db, ctx.donoId, cnpj)
   if (existente && existente.ativa) return json(200, { criada: false, empresa: existente })
 
-  const consulta = await ctx.receita(cnpj)
+  const consulta = await ctx.receita(cnpj, d.regime ?? null)
+  // Fora do Simples (19/11/2026): Presumido/Real só em cidade de emissor nacional pleno; lá, pede o `regime`.
+  const avaliacao = avaliarRegime(consulta)
+  if (avaliacao?.codigo === 'REGIME_A_DECLARAR') {
+    return errorResponse('REGIME_A_DECLARAR', 'CNPJ fora do Simples em cidade que emite Presumido e Real pelo Emissor Nacional: informe regime "presumido" ou "real"', { campo: 'regime' })
+  }
+  if (avaliacao) return errorResponse('FORA_DO_SIMPLES', avaliacao.mensagem, { campo: 'cnpj', lista_espera: 'lista_espera' in avaliacao })
   if (!consulta.ok) {
     if (consulta.motivo === 'indisponivel') return errorResponse('RECEITA_INDISPONIVEL', 'não conseguimos confirmar o CNPJ na Receita agora; tente de novo em alguns minutos')
     if (consulta.motivo === 'nao_encontrado') return errorResponse('CNPJ_NAO_ENCONTRADO', 'CNPJ não encontrado na Receita Federal', { campo: 'cnpj' })
@@ -273,7 +323,11 @@ export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Re
     return errorResponse('FORA_DO_SIMPLES', 'o nó.fiscal atende MEI e Simples Nacional; na Receita, este CNPJ não está no Simples', { campo: 'cnpj' })
   }
   const dados = consulta.dados
-  if (dados.regime !== 'mei' && d.simples_percentual === undefined) {
+  if (naoOptante(dados.regime)) {
+    if (!d.tributos_aproximados) {
+      return errorResponse('VALIDATION_FAILED', 'tributos_aproximados (federal e municipal, Lei 12.741) é obrigatório para Lucro Presumido ou Real', { campo: 'tributos_aproximados' })
+    }
+  } else if (dados.regime !== 'mei' && d.simples_percentual === undefined) {
     return errorResponse('VALIDATION_FAILED', 'simples_percentual é obrigatório para empresa do Simples (ME/EPP)', { campo: 'simples_percentual' })
   }
   const retencaoRuim = retencaoValida(d, dados.regime)
@@ -289,7 +343,7 @@ export async function criarEmpresa(ctx: EmpresasCtx, corpo: unknown): Promise<Re
       dados.cnae,
       dados.regime,
       gerarChave().hash,
-      JSON.stringify({ codigo_servico_nacional: d.codigo_servico_nacional, p_tot_trib_sn: d.simples_percentual ?? null }),
+      JSON.stringify(configuracaoDoRegime(dados.regime, d.codigo_servico_nacional, d.simples_percentual ?? null, d.tributos_aproximados ?? null)),
     ],
   )
   const r = rows[0]?.r
@@ -325,18 +379,25 @@ export async function alterarEmpresa(ctx: EmpresasCtx, cnpj: string, corpo: unkn
   const retencaoRuim = retencaoValida(d, atual.regime)
   if (retencaoRuim) return retencaoRuim
 
-  if (d.codigo_servico_nacional !== undefined || d.simples_percentual !== undefined) {
+  if (d.codigo_servico_nacional !== undefined || d.simples_percentual !== undefined || d.tributos_aproximados !== undefined) {
     const codigo = d.codigo_servico_nacional ?? atual.dados_fiscais.codigo_servico_nacional
     const pct = d.simples_percentual ?? atual.dados_fiscais.simples_percentual
+    const ta = atual.dados_fiscais.tributos_aproximados
+    const tot = d.tributos_aproximados ?? (ta ? { fed: ta.federal as string, est: (ta.estadual ?? '0') as string, mun: ta.municipal as string } : null)
     if (!codigo) return errorResponse('VALIDATION_FAILED', 'codigo_servico_nacional é obrigatório', { campo: 'codigo_servico_nacional' })
-    if (atual.regime !== 'mei' && !pct) return errorResponse('VALIDATION_FAILED', 'simples_percentual é obrigatório para empresa do Simples', { campo: 'simples_percentual' })
+    if (naoOptante(atual.regime)) {
+      if (!tot) return errorResponse('VALIDATION_FAILED', 'tributos_aproximados é obrigatório para Lucro Presumido ou Real', { campo: 'tributos_aproximados' })
+    } else if (atual.regime !== 'mei' && !pct) {
+      return errorResponse('VALIDATION_FAILED', 'simples_percentual é obrigatório para empresa do Simples', { campo: 'simples_percentual' })
+    }
     const { rows } = await ctx.db.query<{ r: { ok: boolean; erro?: string; campo?: string } }>(
       'select nofiscal.api_empresa_configurar($1, $2, $3::jsonb) as r',
-      [ctx.donoId, tenantId, JSON.stringify({ codigo_servico_nacional: codigo, p_tot_trib_sn: pct })],
+      [ctx.donoId, tenantId, JSON.stringify(configuracaoDoRegime(atual.regime, codigo, pct, tot))],
     )
     const r = rows[0]?.r
     if (!r?.ok) {
-      const campo = r?.campo === 'p_tot_trib_sn' ? 'simples_percentual' : (r?.campo ?? 'codigo_servico_nacional')
+      const campo =
+        r?.campo === 'p_tot_trib_sn' ? 'simples_percentual' : r?.campo === 'p_tot_trib' ? 'tributos_aproximados' : (r?.campo ?? 'codigo_servico_nacional')
       return errorResponse('VALIDATION_FAILED', `${campo} recusado`, { campo })
     }
   }

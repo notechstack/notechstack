@@ -3,8 +3,8 @@
 // regra de CNPJ, mude as duas (o teste parceiro/receita.test.ts confere que o corpo é igual ao da edge function).
 // CNPJ do cadastro (critérios 2 e 3): dígitos verificadores, consulta na BrasilAPI
 // (`GET <CNPJ_API_URL>/api/cnpj/v1/<cnpj>`, padrão oficial https://brasilapi.com.br, que espelha os
-// dados abertos da Receita Federal), situação cadastral ativa, regime (MEI ou Simples ME/EPP) e o
-// município no padrão nacional.
+// dados abertos da Receita Federal), situação cadastral ativa, regime (MEI, Simples ME/EPP, ou Lucro Presumido/Real
+// declarado) e o município no padrão nacional.
 // Sem Deno.*: roda também no node --test.
 
 export const CNPJ_API_PADRAO = "https://brasilapi.com.br";
@@ -39,12 +39,27 @@ export type DadosCnpj = {
   regime: Regime;
 };
 
-/** `opSimpNac` da DPS: mei = 2, simples (ME/EPP) = 3. Quem não é do Simples não é atendido. */
-export type Regime = "mei" | "simples";
+/**
+ * `opSimpNac` da DPS: mei = 2, simples (ME/EPP) = 3, presumido e real = 1 (não optante; Lucca, 19/11/2026).
+ * As bases públicas só dizem "fora do Simples": Presumido ou Real é declarado por quem cadastra, e só vale em
+ * município que usa o Emissor Nacional para todos os regimes (`municipioAtendido`).
+ */
+export type Regime = "mei" | "simples" | "presumido" | "real";
+export type RegimeNormal = "presumido" | "real";
+export const REGIMES_NORMAIS: readonly RegimeNormal[] = ["presumido", "real"];
+
+export function lerRegimeNormal(v: unknown): RegimeNormal | null {
+  const t = typeof v === "string" ? v.trim().toLowerCase().replace(/^lucro[\s_-]*/, "") : "";
+  return t === "presumido" || t === "real" ? t : null;
+}
+
+/** Fora do Simples, a consulta devolve os dados da empresa (sem regime) para o cadastro oferecer o Presumido. */
+export type DadosSemRegime = Omit<DadosCnpj, "regime">;
 
 export type Consulta =
   | { ok: true; dados: DadosCnpj }
-  | { ok: false; motivo: "nao_encontrado" | "indisponivel" | "fora_do_simples" }
+  | { ok: false; motivo: "nao_encontrado" | "indisponivel" }
+  | { ok: false; motivo: "fora_do_simples"; dados?: DadosSemRegime }
   | { ok: false; motivo: "inativo"; situacao: string };
 
 function texto(v: unknown): string {
@@ -66,15 +81,23 @@ export async function consultarCnpj(
     fetch?: (url: string, init?: RequestInit) => Promise<Response>;
     /** Regime confirmado à mão (nofiscal.fiscal_regime_confirmado), usado quando a base pública nega o Simples. */
     regimeConfirmado?: (cnpj: string) => Promise<Regime | null>;
+    /**
+     * Lucro Presumido ou Real, declarado por quem cadastra. Só vale quando a Receita diz que o CNPJ está fora do
+     * Simples: se a base disser MEI ou Simples, manda a base (a Sefin recusa a DPS com o regime errado).
+     */
+    regimeDeclarado?: RegimeNormal | null;
   } = {},
 ): Promise<Consulta> {
   const r = await consultarPublico(cnpj, o);
-  if (r.ok || r.motivo !== "fora_do_simples" || !o.regimeConfirmado) return r;
-  const regime = await o.regimeConfirmado(cnpj).catch(() => null);
-  if (regime !== "mei" && regime !== "simples") return r;
-  // Os dados (razão social, município) vêm da consulta pública; só o regime vem da confirmação.
-  const dados = await consultarPublico(cnpj, o, regime);
-  return dados.ok ? dados : r;
+  if (r.ok || r.motivo !== "fora_do_simples") return r;
+  const confirmado = o.regimeConfirmado ? await o.regimeConfirmado(cnpj).catch(() => null) : null;
+  if (confirmado === "mei" || confirmado === "simples") {
+    // Os dados (razão social, município) vêm da consulta pública; só o regime vem da confirmação.
+    const dados = await consultarPublico(cnpj, o, confirmado);
+    if (dados.ok) return dados;
+  }
+  if (o.regimeDeclarado && r.dados) return { ok: true, dados: { ...r.dados, regime: o.regimeDeclarado } };
+  return r;
 }
 
 async function consultarPublico(
@@ -114,24 +137,21 @@ async function consultarPublico(
   // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou); sem as chaves, não confirma nada.
   if (!("opcao_pelo_mei" in b) || !("opcao_pelo_simples" in b)) return { ok: false, motivo: "indisponivel" };
   const regime: Regime | null = regimeForcado ?? (b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null);
+  const empresa: DadosSemRegime = {
+    cnpj,
+    razao_social: razao.slice(0, 150),
+    municipio: texto(b.municipio),
+    uf: texto(b.uf).toUpperCase(),
+    codigo_municipio_ibge: ibge,
+    cnae: codigo(b.cnae_fiscal, 7),
+  };
   if (!regime) {
     // A base da BrasilAPI pode estar atrás da Receita no regime: em 17/11/2026 ela disse "fora do Simples" para
     // um escritório optante. Antes de recusar, pergunta à reserva; só aceita se ela confirmar MEI ou Simples.
     const segunda = await consultarReserva(cnpj, f, o.reservaUrl);
-    return segunda.ok ? segunda : { ok: false, motivo: "fora_do_simples" };
+    return segunda.ok ? segunda : { ok: false, motivo: "fora_do_simples", dados: empresa };
   }
-  return {
-    ok: true,
-    dados: {
-      cnpj,
-      razao_social: razao.slice(0, 150),
-      municipio: texto(b.municipio),
-      uf: texto(b.uf).toUpperCase(),
-      codigo_municipio_ibge: ibge,
-      cnae: codigo(b.cnae_fiscal, 7),
-      regime,
-    },
-  };
+  return { ok: true, dados: { ...empresa, regime } };
 }
 
 /** Reserva: API pública da CNPJ.ws (`GET <reserva>/cnpj/<cnpj>`), usada só quando a BrasilAPI responde 404. */
@@ -183,19 +203,16 @@ async function consultarReserva(
   const optante = simples ? simNao(simples.simples) : null;
   if (!regimeForcado && mei === null && optante === null) return { ok: false, motivo: "indisponivel" };
   const regime: Regime | null = regimeForcado ?? (mei === true ? "mei" : optante === true ? "simples" : null);
-  if (!regime) return { ok: false, motivo: "fora_do_simples" };
-  return {
-    ok: true,
-    dados: {
-      cnpj,
-      razao_social: razao.slice(0, 150),
-      municipio: texto(cidade.nome).toUpperCase(),
-      uf: texto(estado.sigla).toUpperCase(),
-      codigo_municipio_ibge: ibge,
-      cnae: codigo(atividade.id, 7),
-      regime,
-    },
+  const empresa: DadosSemRegime = {
+    cnpj,
+    razao_social: razao.slice(0, 150),
+    municipio: texto(cidade.nome).toUpperCase(),
+    uf: texto(estado.sigla).toUpperCase(),
+    codigo_municipio_ibge: ibge,
+    cnae: codigo(atividade.id, 7),
   };
+  if (!regime) return { ok: false, motivo: "fora_do_simples", dados: empresa };
+  return { ok: true, dados: { ...empresa, regime } };
 }
 
 /** Conteúdo de municipios-padrao-nacional.json (lote P). */
@@ -207,15 +224,77 @@ export function padraoNacional(ibge: string, lista: ListaMunicipios): boolean {
   return lista.codigos_ibge.map(String).includes(ibge);
 }
 
+/**
+ * Municípios que usam o Emissor Nacional para TODOS os regimes, inclusive Lucro Presumido e Real (Lucca, 19/11/2026).
+ * Lista mantida à mão, uma linha por cidade, com a norma: a Sefin não publica quem aceita não optante. A regra E0039 do
+ * Anexo I (o município precisa estar parametrizado para os emissores nacionais) exceptua só o MEI e a ME/EPP com
+ * regApTribSN 1; a planilha de aderentes do gov.br (coluna AderenteEmissorNacional) não separa por regime, e o
+ * GET /parametros_municipais/{ibge}/convenio só responde com certificado. Para incluir uma cidade: decreto ou página
+ * oficial dizendo que todo prestador emite pelo Emissor Nacional, e de preferência uma nota de Presumido autorizada lá.
+ * Fora da lista ficam, por ora: São Paulo e DF (emissor próprio; só o Simples migrou), Curitiba e Belo Horizonte
+ * (a confirmar na norma da prefeitura). Método: 05-Núcleo/methods/nofiscal-virada-nt009.md.
+ */
+export const MUNICIPIOS_TODOS_OS_REGIMES: Readonly<Record<string, { nome: string; desde: string; fonte: string }>> = {
+  "3304557": { nome: "Rio de Janeiro/RJ", desde: "2026-01-01", fonte: "Prefeitura do Rio (carioca.rio): só emissor nacional desde 01/01/2026" },
+  "4314902": { nome: "Porto Alegre/RS", desde: "2025-11-01", fonte: "Prefeitura de Porto Alegre (prefeitura.poa.br): obrigatório para todos desde 01/11/2025" },
+};
+
+export function aceitaTodosOsRegimes(ibge: string): boolean {
+  return Object.hasOwn(MUNICIPIOS_TODOS_OS_REGIMES, ibge);
+}
+
 // O MEI emite pelo Emissor Nacional em qualquer município: as regras E0037, E0038 e E0039 da Sefin
 // (Anexo I v1.01, aba RN DPS_NFS-e) exceptuam o MEI.
 // Desde a competência 01/11/2026, a Resolução CGSN 191/2026 obriga a ME/EPP do Simples a emitir
 // "exclusivamente pelo Emissor Nacional (Web ou API)", "independentemente de o município possuir emissor
 // próprio" (gov.br/nfse, notícia de 29/10/2026). Por isso o Simples também passa em qualquer município, e a
-// lista (padraoNacional) deixou de barrar o cadastro. Ela fica para quando surgir regime que dependa dela.
+// lista (padraoNacional) deixou de barrar o cadastro.
+// Presumido e Real só onde o município usa o Emissor Nacional para todos (E0039 sem exceção para não optante).
 export function municipioAtendido(d: Pick<DadosCnpj, "regime" | "codigo_municipio_ibge">, lista: ListaMunicipios): boolean {
   if (d.regime === "mei" || d.regime === "simples") return true;
+  if (d.regime === "presumido" || d.regime === "real") return aceitaTodosOsRegimes(d.codigo_municipio_ibge);
   return padraoNacional(d.codigo_municipio_ibge, lista);
+}
+
+const CIDADES_TODOS_OS_REGIMES = Object.values(MUNICIPIOS_TODOS_OS_REGIMES).map((m) => m.nome.replace(/\/[A-Z]{2}$/, ""));
+
+export const MSG_FORA_DO_SIMPLES_SEM_DADOS =
+  "O nó.fiscal atende MEI, Simples Nacional e, em algumas cidades, Lucro Presumido e Real. Não conseguimos confirmar o regime deste CNPJ na Receita Federal";
+export const MSG_DECLARAR_REGIME =
+  "Este CNPJ não está no Simples Nacional. Escolha o regime da empresa: Lucro Presumido ou Lucro Real";
+
+export function msgPresumidoForaDaCidade(municipio: string, uf: string): string {
+  const cidade = [municipio, uf].filter(Boolean).join("/") || "Esta cidade";
+  return `Para Lucro Presumido e Real, o nó.fiscal emite só onde a prefeitura usa o Emissor Nacional para todas as empresas ` +
+    `(por ora, ${CIDADES_TODOS_OS_REGIMES.join(" e ")}). ${cidade} ainda emite esses regimes pelo sistema próprio. ` +
+    `Fale com a nó pelo WhatsApp para entrar na lista de espera`;
+}
+
+export type AvaliacaoDoRegime =
+  | { codigo: "REGIME_A_DECLARAR"; mensagem: string; dados: DadosSemRegime }
+  | { codigo: "CNPJ_FORA_DO_SIMPLES"; mensagem: string; lista_espera: true }
+  | { codigo: "CNPJ_FORA_DO_SIMPLES"; mensagem: string };
+
+/**
+ * O que fazer com um CNPJ fora do Simples (cadastro, Minhas empresas e API do parceiro), ou `null` para seguir:
+ * - Presumido ou Real declarado numa cidade de emissor nacional pleno: segue;
+ * - fora do Simples, sem regime declarado, em cidade de emissor pleno: pedir Presumido ou Real;
+ * - Presumido/Real em outra cidade: recusa com a lista de espera;
+ * - sem os dados da empresa (a base não respondeu o regime): a recusa de sempre.
+ */
+export function avaliarRegime(c: Consulta): AvaliacaoDoRegime | null {
+  if (c.ok) {
+    if ((c.dados.regime === "presumido" || c.dados.regime === "real") && !aceitaTodosOsRegimes(c.dados.codigo_municipio_ibge)) {
+      return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: msgPresumidoForaDaCidade(c.dados.municipio, c.dados.uf), lista_espera: true };
+    }
+    return null;
+  }
+  if (c.motivo !== "fora_do_simples") return null;
+  if (!c.dados) return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: MSG_FORA_DO_SIMPLES_SEM_DADOS };
+  if (!aceitaTodosOsRegimes(c.dados.codigo_municipio_ibge)) {
+    return { codigo: "CNPJ_FORA_DO_SIMPLES", mensagem: msgPresumidoForaDaCidade(c.dados.municipio, c.dados.uf), lista_espera: true };
+  }
+  return { codigo: "REGIME_A_DECLARAR", mensagem: MSG_DECLARAR_REGIME, dados: c.dados };
 }
 
 export function lerListaMunicipios(conteudo: string | null): ListaMunicipios {

@@ -18,6 +18,7 @@
 // O limite do plano não entra na seleção (critério 29).
 import type { Db, Queryable } from './db.js'
 import { allocateDpsNumber } from './dps-number.js'
+import { pTotTribDaLinha, tributosConfigurados } from './dps-builder.js'
 import { logEvent } from './log.js'
 import { errorText, MAX_ERROR_LENGTH, redactCertificate } from './redact.js'
 import type {
@@ -79,6 +80,9 @@ type ClaimedRow = {
   regime: string
   ambiente: Ambiente
   p_tot_trib_sn: string | null
+  p_tot_trib_fed: string | null
+  p_tot_trib_est: string | null
+  p_tot_trib_mun: string | null
   nbs_padrao: string | null
 }
 
@@ -158,7 +162,8 @@ async function claimNext(
 ): Promise<(Claimed & { id: string }) | null> {
   const { rows } = await tx.query<ClaimedRow>(
     `select i.id, i.tenant_id, i.external_id, i.status, i.payload, i.dps_serie, i.dps_numero, i.id_dps, i.attempts,
-            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn, t.nbs_padrao
+            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn, t.nbs_padrao,
+            t.p_tot_trib_fed::text as p_tot_trib_fed, t.p_tot_trib_est::text as p_tot_trib_est, t.p_tot_trib_mun::text as p_tot_trib_mun
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
        join nofiscal.fiscal_certificados_de_emissao c on c.tenant_id = t.id
@@ -185,6 +190,7 @@ async function claimNext(
     regime: row.regime,
     ambiente: row.ambiente,
     p_tot_trib_sn: row.p_tot_trib_sn,
+    p_tot_trib: pTotTribDaLinha(row),
     nbs_padrao: row.nbs_padrao,
   }
   const lease = minutesFrom(now, CLAIM_LEASE_MINUTES)
@@ -204,7 +210,7 @@ async function claimNext(
         )
         return { id: row.id, plan: 'skip', tenant, invoice: null, attempts: row.attempts }
       }
-      if (row.p_tot_trib_sn === null && row.regime !== 'mei') {
+      if (!tributosConfigurados(tenant)) {
         await tx.query(
           `update nofiscal.fiscal_invoices
               set last_error_code = 'TRIBUTOS_NOT_CONFIGURED', next_attempt_at = $2, updated_at = $3

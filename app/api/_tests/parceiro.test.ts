@@ -81,7 +81,12 @@ async function painel(userId: string, corpo: Record<string, unknown>, fetch?: Fe
 }
 
 const RECEITA: Record<string, Consulta> = {}
-const receita = async (cnpj: string): Promise<Consulta> => RECEITA[cnpj] ?? { ok: false, motivo: 'nao_encontrado' }
+// Como a consulta real: Presumido/Real declarado só vale quando a Receita diz "fora do Simples" (com os dados).
+const receita = async (cnpj: string, regimeDeclarado?: 'presumido' | 'real' | null): Promise<Consulta> => {
+  const r = RECEITA[cnpj] ?? { ok: false, motivo: 'nao_encontrado' }
+  if (!r.ok && r.motivo === 'fora_do_simples' && r.dados && regimeDeclarado) return { ok: true, dados: { ...r.dados, regime: regimeDeclarado } }
+  return r
+}
 const enderecos: EnderecoDoTomador = {
   endereco: async () => ({ cMun: '3550308', cep: '01001000', logradouro: 'Praça da Sé', numero: '1', complemento: null, bairro: 'Sé' }),
 }
@@ -501,6 +506,53 @@ describe('empresas pela API', () => {
     const acima = await api(chave, 'POST', '/v1/empresas', { cnpj: sexta, codigo_servico_nacional: '040101' })
     expect(acima.status).toBe(409)
     expect(acima.corpo).toMatchObject({ limite: 5, error: { code: 'EMPRESAS_ACIMA_DO_LIMITE' } })
+  })
+})
+
+describe('empresas do Lucro Presumido pela API (19/11/2026)', () => {
+  it('pede o regime no Rio, recusa fora das cidades de emissor pleno e grava os percentuais da Lei 12.741', async () => {
+    const { e, dono } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    const rio = cnpjNovo()
+    RECEITA[rio] = {
+      ok: false,
+      motivo: 'fora_do_simples',
+      dados: { cnpj: rio, razao_social: 'Consultoria Rio Ltda', municipio: 'RIO DE JANEIRO', uf: 'RJ', codigo_municipio_ibge: '3304557', cnae: null },
+    }
+    const semRegime = await api(chave, 'POST', '/v1/empresas', { cnpj: rio, codigo_servico_nacional: '170201' })
+    expect(semRegime.status).toBe(422)
+    expect(semRegime.corpo).toMatchObject({ campo: 'regime', error: { code: 'REGIME_A_DECLARAR' } })
+    const semTributos = await api(chave, 'POST', '/v1/empresas', { cnpj: rio, regime: 'presumido', codigo_servico_nacional: '170201' })
+    expect(semTributos.corpo).toMatchObject({ campo: 'tributos_aproximados' })
+    const criada = await api(chave, 'POST', '/v1/empresas', {
+      cnpj: rio,
+      regime: 'presumido',
+      codigo_servico_nacional: '170201',
+      tributos_aproximados: { federal: '13.45', municipal: 5 },
+    })
+    expect(criada.status).toBe(201)
+    expect(criada.corpo.empresa).toMatchObject({
+      regime: 'presumido',
+      situacao: 'falta_a1',
+      dados_fiscais: { codigo_servico_nacional: '170201', simples_percentual: null, tributos_aproximados: { federal: '13.45', estadual: '0.00', municipal: '5.00' } },
+    })
+    const { rows } = await admin.db.query<{ id: string }>('select id from nofiscal.fiscal_tenants where cnpj = $1', [rio])
+    e.empresas.push({ id: rows[0].id } as TestTenant)
+    const patch = await api(chave, 'PATCH', `/v1/empresas/${rio}`, { tributos_aproximados: { federal: '14', municipal: '2' } })
+    expect(patch.status).toBe(200)
+    expect(patch.corpo.empresa.dados_fiscais.tributos_aproximados).toEqual({ federal: '14.00', estadual: '0.00', municipal: '2.00' })
+
+    const sp = cnpjNovo()
+    RECEITA[sp] = {
+      ok: false,
+      motivo: 'fora_do_simples',
+      dados: { cnpj: sp, razao_social: 'Consultoria SP Ltda', municipio: 'SAO PAULO', uf: 'SP', codigo_municipio_ibge: '3550308', cnae: null },
+    }
+    const fora = await api(chave, 'POST', '/v1/empresas', { cnpj: sp, regime: 'presumido', codigo_servico_nacional: '170201' })
+    expect(fora.status).toBe(422)
+    expect(fora.corpo).toMatchObject({ lista_espera: true, error: { code: 'FORA_DO_SIMPLES' } })
+    expect(fora.corpo.error.message).toMatch(/Lucro Presumido e Real/)
+    expect((await api(chave, 'POST', '/v1/empresas', { cnpj: sp, regime: 'arbitrado', codigo_servico_nacional: '170201' })).corpo).toMatchObject({ campo: 'regime' })
   })
 })
 

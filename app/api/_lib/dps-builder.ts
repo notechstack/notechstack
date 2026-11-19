@@ -246,6 +246,29 @@ export const tpAmbOf = (tenant: Pick<SefinTenant, 'ambiente'>): '1' | '2' => (te
 /** Presumido ou Real: prestador não optante do Simples (`opSimpNac 1`). */
 export const regimeNaoOptante = (regime: string | null | undefined): boolean => regime === 'presumido' || regime === 'real'
 
+/**
+ * A empresa tem os percentuais que a DPS do regime dela exige? MEI não informa nenhum (indTotTrib 0); Simples, o
+ * pTotTribSN; Presumido e Real, o federal e o municipal do pTotTrib (o estadual, sem valor, é 0). Mesma regra de
+ * `nofiscal.dados_fiscais_completos` no banco.
+ */
+export function tributosConfigurados(
+  t: Pick<SefinTenant, 'regime' | 'p_tot_trib_sn' | 'p_tot_trib'>,
+): boolean {
+  if (t.regime === 'mei') return true
+  if (regimeNaoOptante(t.regime)) return Boolean(t.p_tot_trib && t.p_tot_trib.fed !== null && t.p_tot_trib.mun !== null)
+  return t.p_tot_trib_sn !== null && t.p_tot_trib_sn !== undefined
+}
+
+/** Linha de `fiscal_tenants` (colunas `p_tot_trib_fed/est/mun`, texto) → `SefinTenant.p_tot_trib`. */
+export function pTotTribDaLinha(row: {
+  p_tot_trib_fed?: string | null
+  p_tot_trib_est?: string | null
+  p_tot_trib_mun?: string | null
+}): SefinTenant['p_tot_trib'] {
+  if (row.p_tot_trib_fed === null || row.p_tot_trib_fed === undefined) return null
+  return { fed: row.p_tot_trib_fed, est: row.p_tot_trib_est ?? null, mun: row.p_tot_trib_mun ?? null }
+}
+
 /** `pTotTrib` (TSDec3V2): percentual de 0 a 100 com 2 casas. */
 function percentualTotTrib(value: string | null | undefined, esfera: string): string {
   if (value === null || value === undefined || value === '') {

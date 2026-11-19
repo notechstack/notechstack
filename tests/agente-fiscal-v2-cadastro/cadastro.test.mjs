@@ -219,7 +219,10 @@ test("fora do Simples (Lucro Presumido/Real ou excluído): consulta e criar resp
     const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
     assert.equal(consulta.status, 422, regime);
     assert.equal(consulta.body.error_code, "CNPJ_FORA_DO_SIMPLES");
-    assert.match(consulta.body.mensagem, /MEI e empresas do Simples Nacional/);
+    // São Paulo não usa o Emissor Nacional para todos: Presumido fica na lista de espera (19/11/2026).
+    assert.match(consulta.body.mensagem, /Lucro Presumido e Real/);
+    assert.match(consulta.body.mensagem, /lista de espera/);
+    assert.equal(consulta.body.lista_espera, true);
 
     const r = await chamar(
       { acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro" },
@@ -230,6 +233,49 @@ test("fora do Simples (Lucro Presumido/Real ou excluído): consulta e criar resp
     assert.equal(r.chamadasCriar.length, 0);
     assert.deepEqual(await contar(cnpj, telefone, u.email), { tenants: 0, phones: 0, clients: 0 });
   }
+});
+
+test("Lucro Presumido/Real no Rio de Janeiro: a consulta pede o regime, criar sem regime é 422, com regime grava", async () => {
+  for (const declarado of ["presumido", "real"]) {
+    const cnpj = cnpjValido();
+    const telefone = telefoneAleatorio();
+    const u = await criarUsuario(bancos.dono);
+    limpar.push({ userId: u.id, cnpj, telefone });
+    const api = brasilApi({ [cnpj]: respostaBrasilApi(cnpj, { regime: "presumido", ibge: 3304557, municipio: "RIO DE JANEIRO", uf: "RJ" }) });
+
+    const consulta = await chamar({ acao: "consultar_cnpj", cnpj }, { api });
+    assert.equal(consulta.status, 200);
+    assert.equal(consulta.body.regime, null);
+    assert.deepEqual(consulta.body.regimes_possiveis, ["presumido", "real"]);
+    assert.equal(consulta.body.codigo_municipio_ibge, "3304557");
+
+    const corpo = { acao: "criar", cnpj, razao_social: "Empresa", responsavel: "Maria Souza", telefone, plano: "pro" };
+    const sem = await chamar(corpo, { api, userId: u.id });
+    assert.equal(sem.status, 422);
+    assert.equal(sem.body.error_code, "REGIME_A_DECLARAR");
+    assert.equal(sem.chamadasCriar.length, 0);
+
+    const com = await chamar({ ...corpo, regime: declarado === "real" ? "Lucro Real" : declarado }, { api, userId: u.id });
+    assert.equal(com.status, 201, declarado);
+    assert.equal(com.chamadasCriar[0].regime, declarado);
+    const t = (await bancos.dono.query("select regime, codigo_municipio_ibge from nofiscal.fiscal_tenants where id = $1", [com.body.tenant_id])).rows[0];
+    assert.deepEqual(t, { regime: declarado, codigo_municipio_ibge: "3304557" });
+  }
+});
+
+test("Presumido declarado não muda o regime de quem está no Simples, e fora da lista de cidades é recusado", async () => {
+  const { consultarCnpj, avaliarRegime, MUNICIPIOS_TODOS_OS_REGIMES } = await import("../../supabase/functions/_shared/fiscal/cnpj.ts");
+  const cnpj = cnpjValido();
+  const fetch = (corpo) => async () => new Response(JSON.stringify(corpo), { status: 200 });
+  const simples = await consultarCnpj(cnpj, { fetch: fetch(respostaBrasilApi(cnpj)), regimeDeclarado: "presumido" });
+  assert.equal(simples.dados.regime, "simples");
+  const sp = await consultarCnpj(cnpj, { fetch: fetch(respostaBrasilApi(cnpj, { regime: "presumido" })), regimeDeclarado: "presumido" });
+  assert.equal(sp.dados.regime, "presumido");
+  assert.equal(avaliarRegime(sp).codigo, "CNPJ_FORA_DO_SIMPLES");
+  assert.equal(avaliarRegime(sp).lista_espera, true);
+  const poa = await consultarCnpj(cnpj, { fetch: fetch(respostaBrasilApi(cnpj, { regime: "excluido", ibge: 4314902 })), regimeDeclarado: "real" });
+  assert.equal(avaliarRegime(poa), null);
+  assert.deepEqual(Object.keys(MUNICIPIOS_TODOS_OS_REGIMES).sort(), ["3304557", "4314902"]);
 });
 
 test("consulta sem as opções do Simples e do MEI não confirma o regime: 503", async () => {
@@ -493,12 +539,12 @@ test("BrasilAPI diz fora do Simples: a reserva confirma o Simples e o cadastro s
   const fora = await consultarCnpj(cnpj, {
     fetch: async (url) => new Response(JSON.stringify(url.includes("/api/cnpj/v1/") ? brasil : { ...reserva, simples: { mei: "Não", simples: "Não" } }), { status: 200 }),
   });
-  assert.deepEqual(fora, { ok: false, motivo: "fora_do_simples" });
+  assert.deepEqual({ ok: fora.ok, motivo: fora.motivo }, { ok: false, motivo: "fora_do_simples" });
   // Reserva fora do ar: mantém a resposta da BrasilAPI.
   const semReserva = await consultarCnpj(cnpj, {
     fetch: async (url) => url.includes("/api/cnpj/v1/") ? new Response(JSON.stringify(brasil), { status: 200 }) : new Response("{}", { status: 503 }),
   });
-  assert.deepEqual(semReserva, { ok: false, motivo: "fora_do_simples" });
+  assert.deepEqual({ ok: semReserva.ok, motivo: semReserva.motivo }, { ok: false, motivo: "fora_do_simples" });
 });
 
 test("regime confirmado à mão vence a base pública que nega o Simples (Consulta Optantes oficial)", async () => {
@@ -509,14 +555,14 @@ test("regime confirmado à mão vence a base pública que nega o Simples (Consul
     ? new Response(JSON.stringify(brasil), { status: 200 })
     : new Response("{}", { status: 503 });
   const sem = await consultarCnpj(cnpj, { fetch });
-  assert.deepEqual(sem, { ok: false, motivo: "fora_do_simples" });
+  assert.deepEqual({ ok: sem.ok, motivo: sem.motivo }, { ok: false, motivo: "fora_do_simples" });
   const com = await consultarCnpj(cnpj, { fetch, regimeConfirmado: async (c) => (c === cnpj ? "simples" : null) });
   assert.equal(com.ok, true);
   assert.equal(com.dados.regime, "simples");
   assert.equal(com.dados.razao_social, brasil.razao_social);
   // Sem confirmação para o CNPJ, a recusa continua.
   const outro = await consultarCnpj(cnpj, { fetch, regimeConfirmado: async () => null });
-  assert.deepEqual(outro, { ok: false, motivo: "fora_do_simples" });
+  assert.deepEqual({ ok: outro.ok, motivo: outro.motivo }, { ok: false, motivo: "fora_do_simples" });
   // Empresa inativa não passa nem com confirmação.
   const inativa = await consultarCnpj(cnpj, {
     fetch: async () => new Response(JSON.stringify({ ...brasil, descricao_situacao_cadastral: "BAIXADA" }), { status: 200 }),
@@ -536,7 +582,7 @@ test("reserva: fora do Simples, inativo e reserva fora do ar", async () => {
   const com = (corpo, status = 200) => async (url) =>
     url.includes("/api/cnpj/v1/") ? new Response("{}", { status: 404 }) : new Response(JSON.stringify(corpo), { status });
   const fora = await consultarCnpj(cnpj, { fetch: com({ ...base, simples: { mei: "Não", simples: "Não" } }) });
-  assert.deepEqual(fora, { ok: false, motivo: "fora_do_simples" });
+  assert.deepEqual({ ok: fora.ok, motivo: fora.motivo }, { ok: false, motivo: "fora_do_simples" });
   const inativo = await consultarCnpj(cnpj, {
     fetch: com({ ...base, simples: { mei: "Não", simples: "Sim" }, estabelecimento: { ...base.estabelecimento, situacao_cadastral: "Baixada" } }),
   });

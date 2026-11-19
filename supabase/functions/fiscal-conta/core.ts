@@ -18,10 +18,13 @@ import {
   PLANOS_PAGARME,
 } from "../assinatura-fiscal/core.ts";
 import {
+  avaliarRegime,
   cnpjValido,
   type Consulta,
   consultarCnpj,
+  lerRegimeNormal,
   type ListaMunicipios,
+  MSG_FORA_DO_SIMPLES_SEM_DADOS,
   municipioAtendido,
   type Regime,
   soDigitos,
@@ -59,8 +62,8 @@ export const MSG_NAO_ENCONTRADO = "Não encontramos este CNPJ na Receita Federal
 export const MSG_INDISPONIVEL = "Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.";
 export const MSG_FORA_DO_PADRAO =
   "Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional";
-export const MSG_FORA_DO_SIMPLES =
-  "O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples";
+/** Fora do Simples sem os dados da empresa (a base pública não respondeu o regime). Ver `avaliarRegime`. */
+export const MSG_FORA_DO_SIMPLES = MSG_FORA_DO_SIMPLES_SEM_DADOS;
 
 export const MSG_CNPJ_JA_CADASTRADO = "Este CNPJ já está cadastrado no nó.fiscal.";
 export const MSG_OUTRA_FAMILIA =
@@ -263,16 +266,35 @@ export async function validarConfiguracao(
   }
   // MEI não informa o percentual do Simples na DPS (E0710): o campo não existe para ele.
   const mei = regime === "mei";
-  const percentual = mei ? null : lerPercentual(body.p_tot_trib_sn);
-  if (!mei && percentual === null) {
-    return {
-      ok: false,
-      resultado: invalido("p_tot_trib_sn", "Informe o percentual de tributos do Simples entre 0 e 100, com até 2 casas."),
-    };
-  }
-
+  // Presumido e Real (19/11/2026): não informam o percentual do Simples (E0713), e sim o pTotTrib da Lei 12.741/2012,
+  // federal e municipal (o estadual, sem valor, é 0: quem só presta serviço não tem tributo estadual).
+  const naoOptante = regime === "presumido" || regime === "real";
   const dados: Record<string, unknown> = { codigo_servico_nacional: codigo };
-  if (!mei) dados.p_tot_trib_sn = percentual;
+  if (naoOptante) {
+    const t = body.p_tot_trib && typeof body.p_tot_trib === "object" ? body.p_tot_trib as Record<string, unknown> : {};
+    const fed = lerPercentual(t.fed);
+    const mun = lerPercentual(t.mun);
+    const est = t.est === undefined || t.est === null || t.est === "" ? "0" : lerPercentual(t.est);
+    if (fed === null || mun === null || est === null) {
+      return {
+        ok: false,
+        resultado: invalido(
+          "p_tot_trib",
+          "Informe os percentuais aproximados dos tributos (Lei 12.741): federal e municipal, entre 0 e 100, com até 2 casas.",
+        ),
+      };
+    }
+    dados.p_tot_trib = { fed, est, mun };
+  } else if (!mei) {
+    const percentual = lerPercentual(body.p_tot_trib_sn);
+    if (percentual === null) {
+      return {
+        ok: false,
+        resultado: invalido("p_tot_trib_sn", "Informe o percentual de tributos do Simples entre 0 e 100, com até 2 casas."),
+      };
+    }
+    dados.p_tot_trib_sn = percentual;
+  }
   // NBS padrão (opcional, vale para MEI também): chave ausente mantém a gravada.
   if (Object.hasOwn(body, "nbs_padrao")) {
     const nbs = lerNbsPadrao(body.nbs_padrao);
@@ -650,7 +672,14 @@ async function conferirTroca(
 }
 
 // Nenhuma empresa entra sem a Receita confirmar o CNPJ (mesma regra e mesmos textos de fiscal-cadastro).
+// Fora do Simples (Lucca, 19/11/2026): Presumido/Real só em cidade de emissor nacional pleno; lá, o escritório escolhe
+// o regime (`regime` no corpo) e reenvia.
 function respostaConsulta(c: Consulta): Resultado | null {
+  const regime = avaliarRegime(c);
+  if (regime) {
+    const { codigo, mensagem, ...extra } = regime;
+    return erro(422, codigo, mensagem, { campo: "cnpj", ...extra });
+  }
   if (c.ok) return null;
   if (c.motivo === "nao_encontrado") return erro(404, "CNPJ_NAO_ENCONTRADO", MSG_NAO_ENCONTRADO, { campo: "cnpj" });
   if (c.motivo === "inativo") {
@@ -662,7 +691,6 @@ function respostaConsulta(c: Consulta): Resultado | null {
       { campo: "cnpj" },
     );
   }
-  if (c.motivo === "fora_do_simples") return erro(422, "CNPJ_FORA_DO_SIMPLES", MSG_FORA_DO_SIMPLES, { campo: "cnpj" });
   return erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL);
 }
 
@@ -698,8 +726,14 @@ async function adicionarEmpresa(
     }
   }
 
-  // Razão social, município, CNAE e regime vêm sempre da consulta, nunca do corpo.
-  const c = await consultarCnpj(cnpj, { apiUrl: deps.env.CNPJ_API_URL, fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
+  // Razão social, município, CNAE e regime vêm sempre da consulta, nunca do corpo. Exceção: Presumido ou Real, que a
+  // Receita não distingue, vem declarado (`regime`) e só vale se a base disser "fora do Simples".
+  const c = await consultarCnpj(cnpj, {
+    apiUrl: deps.env.CNPJ_API_URL,
+    fetch: deps.fetch,
+    regimeConfirmado: deps.regimeConfirmado,
+    regimeDeclarado: lerRegimeNormal(b.regime),
+  });
   const recusa = respostaConsulta(c);
   if (recusa || !c.ok) {
     if (!c.ok) log("info", "fiscal_conta_empresa_consulta", { motivo: c.motivo });
@@ -772,6 +806,7 @@ async function configurarEmpresa(
     {
       codigo_servico_nacional: b.codigo_servico_nacional,
       p_tot_trib_sn: b.p_tot_trib_sn,
+      p_tot_trib: b.p_tot_trib,
       ...(Object.hasOwn(b, "nbs_padrao") ? { nbs_padrao: b.nbs_padrao } : {}),
     },
     "pro",

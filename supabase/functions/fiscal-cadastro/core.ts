@@ -6,7 +6,18 @@
 // únicos). As demais empresas do escritório entram depois, em Minha conta.
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
-import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, municipioAtendido, type Regime, soDigitos } from "../_shared/fiscal/cnpj.ts";
+import {
+  avaliarRegime,
+  cnpjValido,
+  type Consulta,
+  consultarCnpj,
+  lerRegimeNormal,
+  type ListaMunicipios,
+  municipioAtendido,
+  type Regime,
+  type RegimeNormal,
+  soDigitos,
+} from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
 export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
@@ -53,18 +64,20 @@ const MSG_NAO_ENCONTRADO = "Não encontramos este CNPJ na Receita Federal.";
 const MSG_INDISPONIVEL = "Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.";
 const MSG_FORA_DO_PADRAO =
   "Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional";
-const MSG_FORA_DO_SIMPLES =
-  "O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples";
-
 // Nenhum caminho cria empresa sem a Receita confirmar o CNPJ: fora do ar também bloqueia (Lucca, 22/10/2026).
+// Fora do Simples (Lucca, 19/11/2026): Presumido/Real só em cidade de emissor nacional pleno (avaliarRegime).
 function respostaConsulta(c: Consulta, h: H): Response | null {
+  const regime = avaliarRegime(c);
+  if (regime) {
+    const { codigo, mensagem, ...extra } = regime;
+    return json(422, { ok: false, error_code: codigo, mensagem, ...extra }, h);
+  }
   if (c.ok) return null;
   if (c.motivo === "nao_encontrado") return erro(404, "CNPJ_NAO_ENCONTRADO", MSG_NAO_ENCONTRADO, h);
   if (c.motivo === "inativo") {
     const situacao = c.situacao.toLowerCase();
     return erro(422, "CNPJ_INATIVO", `Este CNPJ está com situação ${situacao} na Receita Federal. Só empresas ativas podem emitir notas.`, h);
   }
-  if (c.motivo === "fora_do_simples") return erro(422, "CNPJ_FORA_DO_SIMPLES", MSG_FORA_DO_SIMPLES, h);
   return erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL, h);
 }
 
@@ -96,16 +109,22 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     return erro(400, "DADOS_INVALIDOS", "Não recebemos os dados. Recarregue a página e tente de novo.", h);
   }
 
-  const consultar = (cnpj: string) =>
-    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
+  const consultar = (cnpj: string, regimeDeclarado: RegimeNormal | null = null) =>
+    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado, regimeDeclarado });
 
   if (b.acao === "consultar_cnpj") {
     const cnpj = soDigitos(b.cnpj);
     if (!cnpjValido(cnpj)) return erro(422, "CNPJ_INVALIDO", MSG_CNPJ_INVALIDO, h);
     const c = await consultar(cnpj);
+    // Fora do Simples numa cidade de emissor pleno: a página mostra a escolha entre Presumido e Real.
+    const av = avaliarRegime(c);
+    if (av?.codigo === "REGIME_A_DECLARAR") {
+      log("fiscal_cadastro_consulta", { motivo: "regime_a_declarar" });
+      return json(200, { ok: true, ...av.dados, regime: null, regimes_possiveis: ["presumido", "real"], padrao_nacional: true }, h);
+    }
     const r = respostaConsulta(c, h);
     if (r || !c.ok) {
-      if (!c.ok) log("fiscal_cadastro_consulta", { motivo: c.motivo });
+      log("fiscal_cadastro_consulta", { motivo: av ? av.codigo.toLowerCase() : c.ok ? "ok" : c.motivo });
       return r!;
     }
     return json(200, { ok: true, ...c.dados, padrao_nacional: municipioAtendido(c.dados, await deps.municipios()) }, h);
@@ -139,8 +158,9 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     plano = b.plano === "pro" ? "pro" : "inicial";
   }
 
-  // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3).
-  const c = await consultar(cnpj);
+  // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3). A exceção é Presumido ou Real,
+  // que a Receita não distingue: o corpo declara (`regime`), e só vale se a base disser "fora do Simples".
+  const c = await consultar(cnpj, lerRegimeNormal(b.regime));
   const r = respostaConsulta(c, h);
   if (r || !c.ok) return r!;
   if (!municipioAtendido(c.dados, await deps.municipios())) {
