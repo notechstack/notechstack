@@ -170,3 +170,7 @@
 
 /* Retenção (16/11/2026): o campo aberto pela caixa fica recuado e estreito, embaixo dela. */
 .nf-retencao .nf-campo{max-width:320px;margin-left:28px}
+
+/* Aba API (18/11/2026): a chave e o segredo aparecem uma vez, inteiros, e quebram linha no celular. */
+#fa-api-chave-nova,#fa-api-segredo{margin-top:16px;padding:14px 16px;border:1.5px dashed var(--fi-borda);border-radius:14px}
+.nf-codigo-api{font:500 13px/1.5 var(--font-mono,'JetBrains Mono',monospace);word-break:break-all}

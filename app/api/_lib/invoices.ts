@@ -26,11 +26,11 @@ const VIEW_COLUMNS = 'id, external_id, status, chave_acesso, last_error_code'
 
 export async function createOrGetInvoice(db: Queryable, tenantId: string, invoice: NewInvoice): Promise<InvoiceView> {
   const inserted = await db.query<InvoiceView>(
-    `insert into nofiscal.fiscal_invoices (tenant_id, external_id, payload)
-     values ($1, $2, $3::jsonb)
+    `insert into nofiscal.fiscal_invoices (tenant_id, external_id, payload, origem)
+     values ($1, $2, $3::jsonb, $4)
      on conflict (tenant_id, external_id) do nothing
      returning ${VIEW_COLUMNS}`,
-    [tenantId, invoice.external_id, JSON.stringify(invoice.payload)],
+    [tenantId, invoice.external_id, JSON.stringify(invoice.payload), invoice.origem ?? null],
   )
   if (inserted.rows[0]) return inserted.rows[0]
   const existing = await db.query<InvoiceView>(

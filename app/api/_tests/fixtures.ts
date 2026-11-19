@@ -58,7 +58,8 @@ const randomDigits = (n: number) =>
 
 export async function createTestTenant(db: Db, options: TestTenantOptions = {}): Promise<TestTenant> {
   const cnpj = randomDigits(14)
-  const apiKey = `nfk_test_${randomBytes(24).toString('base64url')}`
+  // Chave de produção de teste: nunca `nfk_test_`, que é o prefixo da chave sandbox (auth.ts).
+  const apiKey = `nfk_fx_${randomBytes(24).toString('base64url')}`
   const webhookUrl = options.webhookUrl === undefined ? null : options.webhookUrl
   const { rows } = await db.query<{ id: string }>(
     `insert into nofiscal.fiscal_tenants

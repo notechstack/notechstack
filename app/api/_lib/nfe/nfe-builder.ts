@@ -464,7 +464,8 @@ export function montarNfe(input: NfeInput): NfeMontada {
     // intermediador (venda no site ou na loja da própria empresa).
     ['2', '3', '4', '9'].includes(input.presenca ?? '9') ? leaf('indIntermed', '0') : null,
     leaf('procEmi', '0'),
-    leaf('verProc', txt(input.versaoAplicativo ?? 'no.fiscal 1.0', 20)),
+    // Sem marca (white label, 17/11/2026): o XML chega ao cliente final do parceiro.
+    leaf('verProc', txt(input.versaoAplicativo ?? 'Emissor NF-e 1.0', 20)),
   ])
 
   const emit = el('emit', [

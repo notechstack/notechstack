@@ -187,9 +187,9 @@ describe('API /v1/nfse (servico.municipio_prestacao_ibge)', () => {
   })
   it('aceita 7 dígitos da tabela e grava no payload; ausente, o payload fica como antes', () => {
     const ok = parseNewInvoice(corpo({ municipio_prestacao_ibge: CAMPINAS }))
-    expect(ok.ok && ok.value.payload.servico.municipio_prestacao_ibge).toBe(CAMPINAS)
+    expect(ok.ok && ok.value.servico.municipio_prestacao_ibge).toBe(CAMPINAS)
     const sem = parseNewInvoice(corpo({}))
-    expect(sem.ok && 'municipio_prestacao_ibge' in sem.value.payload.servico).toBe(false)
+    expect(sem.ok && 'municipio_prestacao_ibge' in sem.value.servico).toBe(false)
   })
   it('recusa formato, código fora da tabela e número', () => {
     expect(parseNewInvoice(corpo({ municipio_prestacao_ibge: '35095' }))).toMatchObject({ ok: false, message: expect.stringMatching(/7 dígitos/) })

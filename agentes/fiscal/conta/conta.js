@@ -446,7 +446,7 @@
      Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
      seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
      empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
-  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe'];
+  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe', 'api'];
   var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   var SITUACAO = {
     pronta: ['Pronta', 'ok'],
@@ -510,6 +510,8 @@
     if (aba === 'emitir' && !em.carregado) carregarEmissao();
     // A aba NF-e mora em nfe.js (carregado depois deste arquivo).
     if (aba === 'nfe' && window.contaNfe) window.contaNfe.abrir();
+    // A aba API mora em integracao.js.
+    if (aba === 'api' && window.contaApi) window.contaApi.abrir();
   }
 
   function proximaCobranca(a) {
@@ -526,6 +528,7 @@
     em.carregado = false;
     // O mesmo para a aba NF-e (nfe.js).
     if (window.contaNfe) window.contaNfe.desatualizar();
+    if (window.contaApi) window.contaApi.desatualizar();
     ABAS.forEach(function (a) {
       var p = $('fa-painel-' + a);
       if (x) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'fa-aba-' + a); }

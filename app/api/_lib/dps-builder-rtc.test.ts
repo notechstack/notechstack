@@ -246,8 +246,8 @@ describe('API /v1/nfse', () => {
 
   it('aceita nbs (normalizada), c_ind_op e c_class_trib', () => {
     const r = parseNewInvoice(corpo({ nbs: '1.1502.10.00', c_ind_op: '100301', c_class_trib: '000001' }))
-    expect(r.ok && r.value.payload.servico).toEqual({
-      codigo_servico_nacional: '010101',
+    expect(r.ok && r.value.servico).toEqual({
+      codigo: '010101',
       descricao: 'Sistema',
       nbs: '115021000',
       c_ind_op: '100301',
@@ -257,7 +257,7 @@ describe('API /v1/nfse', () => {
 
   it('sem os campos novos, o payload fica como antes', () => {
     const r = parseNewInvoice(corpo({}))
-    expect(r.ok && r.value.payload.servico).toEqual({ codigo_servico_nacional: '010101', descricao: 'Sistema' })
+    expect(r.ok && r.value.servico).toEqual({ codigo: '010101', descricao: 'Sistema' })
   })
 
   it('recusa NBS inválida e códigos fora do formato', () => {

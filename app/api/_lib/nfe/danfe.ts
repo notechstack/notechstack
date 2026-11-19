@@ -402,7 +402,9 @@ export async function renderDanfe(xmlNfeProc: string, options: DanfeOptions = {}
   if (!/^\d{44}$/.test(d.chave)) throw new Error('chave de acesso ausente ou inválida no XML')
   const pdf = await PDFDocument.create()
   pdf.setTitle(`DANFE ${d.chave}`)
-  pdf.setProducer('no.fiscal')
+  // Sem marca de quem emitiu (white label, 17/11/2026): o PDF vai ao cliente final do parceiro.
+  pdf.setProducer('DANFE')
+  pdf.setCreator('DANFE')
   const f: Fontes = { normal: await pdf.embedFont(StandardFonts.Helvetica), negrito: await pdf.embedFont(StandardFonts.HelveticaBold) }
 
   // Paginação: a primeira folha tem canhoto, destinatário, imposto e adicionais; as seguintes só cabeçalho e itens.

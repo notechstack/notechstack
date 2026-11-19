@@ -99,3 +99,17 @@ describe('DANFE', () => {
     expect(textos).toContain('P120')
   })
 })
+
+// White label (Lucca, 17/11/2026): nada no DANFE nem no XML que chega ao cliente final menciona a nó.
+describe('DANFE sem marca da nó', () => {
+  it('nem no texto desenhado, nem nos metadados, nem na versão do aplicativo', async () => {
+    const { proc } = procDe(notaExemplo())
+    const pdf = await renderDanfe(proc)
+    const marca = /n[óo]\s*\.?\s*fiscal|notechstack|n[óo] tech/i
+    expect(pdfTexts(pdf).join(' ')).not.toMatch(marca)
+    const doc = await PDFDocument.load(pdf)
+    expect([doc.getProducer(), doc.getCreator(), doc.getAuthor(), doc.getTitle()].join(' ')).not.toMatch(marca)
+    // Exceção legal: o responsável técnico (infRespTec) é quem fez o software emissor, a nó (NT 2018.005).
+    expect(proc.replace(/<infRespTec>[\s\S]*?<\/infRespTec>/, '')).not.toMatch(marca)
+  })
+})

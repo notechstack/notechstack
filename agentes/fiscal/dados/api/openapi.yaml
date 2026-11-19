@@ -1,0 +1,628 @@
+openapi: 3.1.0
+info:
+  title: API do nó.fiscal
+  version: '2026-11-18'
+  description: |
+    Emissão de NFS-e Nacional e NF-e modelo 55 para parceiros (escritórios com sistema próprio).
+    Guia completo, webhook e exemplos: README.md, na mesma pasta deste arquivo.
+servers:
+  - url: https://app.notechstack.com.br/api
+security:
+  - chave: []
+tags:
+  - name: Empresas
+  - name: NFS-e
+  - name: NF-e
+
+paths:
+  /v1/empresas:
+    get:
+      tags: [Empresas]
+      summary: Lista as empresas da conta
+      operationId: listarEmpresas
+      responses:
+        '200':
+          description: Empresas, a principal primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [empresas]
+                properties:
+                  empresas: { type: array, items: { $ref: '#/components/schemas/Empresa' } }
+        '401': { $ref: '#/components/responses/Erro' }
+    post:
+      tags: [Empresas]
+      summary: Cadastra uma empresa cliente (plano Escritório)
+      operationId: criarEmpresa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NovaEmpresa' }
+      responses:
+        '200':
+          description: CNPJ já é desta conta (nada muda) ou empresa desativada que voltou
+          content: { application/json: { schema: { $ref: '#/components/schemas/RespostaCadastro' } } }
+        '201':
+          description: Criada (com `aviso` se a retenção ou a procuração foram recusadas)
+          content: { application/json: { schema: { $ref: '#/components/schemas/RespostaCadastro' } } }
+        '403': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+        '503': { $ref: '#/components/responses/Erro' }
+
+  /v1/empresas/{cnpj}:
+    parameters:
+      - { name: cnpj, in: path, required: true, schema: { type: string, pattern: '^\d{14}$' } }
+    get:
+      tags: [Empresas]
+      summary: Situação de uma empresa
+      operationId: lerEmpresa
+      responses:
+        '200':
+          description: Empresa
+          content:
+            application/json:
+              schema: { type: object, required: [empresa], properties: { empresa: { $ref: '#/components/schemas/Empresa' } } }
+        '404': { $ref: '#/components/responses/Erro' }
+    patch:
+      tags: [Empresas]
+      summary: Muda dados fiscais, retenção padrão ou declara a procuração
+      operationId: alterarEmpresa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlteracaoEmpresa' }
+      responses:
+        '200':
+          description: Empresa atualizada
+          content:
+            application/json:
+              schema: { type: object, required: [empresa], properties: { empresa: { $ref: '#/components/schemas/Empresa' } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfse:
+    post:
+      tags: [NFS-e]
+      summary: Pede uma NFS-e (assíncrona, idempotente por external_id e empresa)
+      operationId: criarNfse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NovaNfse' }
+      responses:
+        '202':
+          description: Na fila (ou a nota que já existia com o mesmo external_id)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Nfse'
+                  - type: object
+                    properties: { avisos: { type: array, items: { type: string } } }
+        '400': { $ref: '#/components/responses/Erro' }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+    get:
+      tags: [NFS-e]
+      summary: Busca a NFS-e pelo external_id
+      operationId: buscarNfse
+      parameters:
+        - { name: external_id, in: query, required: true, schema: { type: string } }
+        - { name: cnpj_prestador, in: query, required: false, schema: { type: string, pattern: '^\d{14}$' } }
+      responses:
+        '200': { description: Nota, content: { application/json: { schema: { $ref: '#/components/schemas/Nfse' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfse/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NFS-e]
+      summary: Consulta a NFS-e
+      operationId: lerNfse
+      responses:
+        '200': { description: Nota, content: { application/json: { schema: { $ref: '#/components/schemas/Nfse' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfse/{id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [NFS-e]
+      summary: Pede o cancelamento
+      operationId: cancelarNfse
+      responses:
+        '202': { description: Estado depois do pedido, content: { application/json: { schema: { $ref: '#/components/schemas/Nfse' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfse/{id}/pdf:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NFS-e]
+      summary: DANFSe em PDF
+      operationId: pdfNfse
+      responses:
+        '200': { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfse/{id}/xml:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NFS-e]
+      summary: XML da NFS-e autorizada
+      operationId: xmlNfse
+      responses:
+        '200': { description: XML, content: { application/xml: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+
+  /v1/sandbox/webhook:
+    get:
+      tags: [Sandbox]
+      summary: URL do webhook do sandbox (só com a chave nfk_test_)
+      operationId: lerWebhookSandbox
+      responses:
+        '200':
+          description: Webhook do sandbox
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSandbox' }
+        '403': { $ref: '#/components/responses/Erro' }
+    put:
+      tags: [Sandbox]
+      summary: Grava ou tira a URL do webhook do sandbox; o segredo whsec_test_ volta uma vez só
+      operationId: salvarWebhookSandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                url: { type: [string, 'null'], format: uri, description: 'https público; null tira a URL' }
+                novo_segredo: { type: boolean }
+      responses:
+        '200':
+          description: Webhook do sandbox e, quando gerado agora, o segredo
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/WebhookSandbox'
+                  - type: object
+                    properties: { segredo: { type: [string, 'null'] } }
+        '403': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfe:
+    post:
+      tags: [NF-e]
+      summary: Pede uma NF-e modelo 55 (assíncrona, idempotente por external_id e empresa)
+      operationId: criarNfe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NovaNfe' }
+      responses:
+        '202':
+          description: Na fila, com série e número reservados
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Nfe'
+                  - type: object
+                    properties: { avisos: { type: array, items: { type: string } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+        '422': { $ref: '#/components/responses/Erro' }
+    get:
+      tags: [NF-e]
+      summary: Busca a NF-e pelo external_id
+      operationId: buscarNfe
+      parameters:
+        - { name: external_id, in: query, required: true, schema: { type: string } }
+        - { name: cnpj_emitente, in: query, required: false, schema: { type: string, pattern: '^\d{14}$' } }
+      responses:
+        '200': { description: Nota, content: { application/json: { schema: { $ref: '#/components/schemas/Nfe' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfe/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NF-e]
+      summary: Consulta a NF-e
+      operationId: lerNfe
+      responses:
+        '200': { description: Nota, content: { application/json: { schema: { $ref: '#/components/schemas/Nfe' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfe/{id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [NF-e]
+      summary: Pede o cancelamento (só nota autorizada)
+      operationId: cancelarNfe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [justificativa]
+              additionalProperties: false
+              properties: { justificativa: { type: string, minLength: 15, maxLength: 255 } }
+      responses:
+        '202': { description: cancel_requested, content: { application/json: { schema: { $ref: '#/components/schemas/Nfe' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfe/{id}/danfe:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NF-e]
+      summary: DANFE em PDF
+      operationId: danfeNfe
+      responses:
+        '200': { description: PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+
+  /v1/nfe/{id}/xml:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [NF-e]
+      summary: XML autorizado (nfeProc)
+      operationId: xmlNfe
+      responses:
+        '200': { description: XML, content: { application/xml: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+
+webhooks:
+  eventoDeNota:
+    post:
+      summary: Nota mudou de estado (assinado com HMAC-SHA256)
+      description: |
+        Header `x-nofiscal-signature: sha256=<hex>` = HMAC-SHA256 dos bytes exatos do corpo com o segredo do webhook.
+        Headers `x-nofiscal-evento`, `x-nofiscal-entrega` (mesmo em todos os reenvios) e `x-nofiscal-tentativa`.
+        Responda 2xx em até 10 s. Reenvio depois de 1, 5, 15, 60, 240, 720 e 1440 minutos.
+      parameters:
+        - { name: x-nofiscal-signature, in: header, required: true, schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' } }
+        - { name: x-nofiscal-evento, in: header, required: true, schema: { type: string } }
+        - { name: x-nofiscal-entrega, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: x-nofiscal-tentativa, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - allOf:
+                    - $ref: '#/components/schemas/CabecalhoDoEvento'
+                    - $ref: '#/components/schemas/Nfse'
+                - allOf:
+                    - $ref: '#/components/schemas/CabecalhoDoEvento'
+                    - $ref: '#/components/schemas/Nfe'
+                - $ref: '#/components/schemas/CabecalhoDoEvento'
+      responses:
+        '200': { description: Recebido }
+
+components:
+  securitySchemes:
+    chave:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Chave da conta (nfk_…), gerada no painel, aba API.
+
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Erro:
+      description: Erro
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+
+  schemas:
+    Erro:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_JSON, UNAUTHORIZED, TENANT_INACTIVE, SO_ESCRITORIO, NOT_FOUND, EMPRESA_NAO_ENCONTRADA,
+                     METHOD_NOT_ALLOWED, EMISSAO_BLOQUEADA, EMPRESA_INATIVA, NOT_ISSUED, CNPJ_JA_CADASTRADO,
+                     EMPRESAS_ACIMA_DO_LIMITE, PROCURACAO_RECUSADA, NFE_NAO_CANCELAVEL, VALIDATION_FAILED, UNKNOWN_FIELD,
+                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, INTERNAL, RECEITA_INDISPONIVEL,
+                     SO_SANDBOX, SANDBOX_SOMENTE_LEITURA, SANDBOX_SEM_NFE]
+            message: { type: string }
+        campo: { type: string }
+        bloqueio: { type: string }
+        motivo: { type: string }
+        limite: { type: integer }
+        problemas: { type: array, items: { type: string } }
+
+    Retencao:
+      type: object
+      additionalProperties: false
+      properties:
+        retem_iss: { type: boolean }
+        aliquota_iss: { type: [string, 'null'], description: 'de 2 a 5 (%)' }
+        retem_inss: { type: boolean }
+        inss_percentual: { type: [string, 'null'], description: 'maior que 0 e menor que 100' }
+
+    NovaEmpresa:
+      type: object
+      required: [cnpj, codigo_servico_nacional]
+      additionalProperties: false
+      properties:
+        cnpj: { type: string, pattern: '^\d{14}$' }
+        codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
+        simples_percentual: { type: string, description: 'Obrigatório no Simples (ME/EPP); 0 a 100, até 2 casas' }
+        retencao: { $ref: '#/components/schemas/Retencao' }
+        procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
+
+    AlteracaoEmpresa:
+      type: object
+      additionalProperties: false
+      properties:
+        codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
+        simples_percentual: { type: string }
+        retencao: { $ref: '#/components/schemas/Retencao' }
+        procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
+
+    DeclaracaoProcuracao:
+      type: object
+      additionalProperties: false
+      properties:
+        valida_ate: { type: [string, 'null'], format: date }
+
+    RespostaCadastro:
+      type: object
+      required: [criada, empresa]
+      properties:
+        criada: { type: boolean }
+        reativada: { type: boolean }
+        empresa: { $ref: '#/components/schemas/Empresa' }
+        aviso: { $ref: '#/components/schemas/Erro/properties/error' }
+
+    Empresa:
+      type: object
+      required: [cnpj, razao_social, regime, ambiente, ativa, principal, situacao, bloqueio, autenticacao, dados_fiscais, retencao, nfe]
+      properties:
+        cnpj: { type: string }
+        razao_social: { type: string }
+        regime: { type: string, enum: [simples, mei] }
+        ambiente: { type: string, enum: [producao_restrita, producao] }
+        ativa: { type: boolean }
+        principal: { type: boolean }
+        situacao:
+          type: string
+          enum: [pronta, falta_a1, a1_vencido, procuracao_pendente, procuracao_vencida, a1_do_escritorio_invalido,
+                 falta_dados_fiscais, desativada, assinatura_inativa, bloqueada]
+        bloqueio:
+          type: [object, 'null']
+          properties: { codigo: { type: string }, motivo: { type: string } }
+        autenticacao: { type: string, enum: [certificado_proprio, procuracao] }
+        certificado:
+          type: [object, 'null']
+          properties: { vence_em: { type: string, format: date-time } }
+        procuracao:
+          type: [object, 'null']
+          properties:
+            status: { type: string, enum: [declarada, confirmada, invalida, revogada] }
+            valida_ate: { type: [string, 'null'], format: date }
+            conferida_em: { type: [string, 'null'], format: date-time }
+            ultimo_erro: { type: [string, 'null'] }
+        procurador:
+          type: [object, 'null']
+          properties: { cnpj: { type: string }, razao_social: { type: string } }
+        dados_fiscais:
+          type: object
+          properties:
+            codigo_servico_nacional: { type: [string, 'null'] }
+            simples_percentual: { type: [string, 'null'] }
+        retencao: { $ref: '#/components/schemas/Retencao' }
+        nfe:
+          type: object
+          properties: { bloqueio: { type: [string, 'null'] } }
+
+    NovaNfse:
+      type: object
+      required: [external_id, tomador, valor]
+      additionalProperties: false
+      properties:
+        external_id: { type: string, minLength: 1, maxLength: 100 }
+        cnpj_prestador: { type: string, pattern: '^\d{14}$' }
+        tomador:
+          type: object
+          required: [nome]
+          additionalProperties: false
+          properties:
+            cpf: { type: string, pattern: '^\d{11}$' }
+            cnpj: { type: string, pattern: '^\d{14}$' }
+            nome: { type: string, minLength: 1, maxLength: 150 }
+            email: { type: string, format: email }
+          oneOf:
+            - required: [cpf]
+            - required: [cnpj]
+        servico:
+          type: object
+          additionalProperties: false
+          properties:
+            codigo_servico_nacional: { type: string }
+            descricao: { type: string, minLength: 1, maxLength: 2000 }
+            nbs: { type: string, description: 'NBS, 9 dígitos (aceita com pontos). Ausente = NBS padrão da empresa.' }
+            c_ind_op: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: indicador da operação' }
+            c_class_trib: { type: string, pattern: '^\d{6}$', description: 'IBS/CBS: classificação tributária' }
+            municipio_prestacao_ibge: { type: string, pattern: '^\d{7}$', description: 'IBGE do local da prestação. Ausente = o da empresa.' }
+        valor: { type: [string, number], pattern: '^\d{1,12}(\.\d{1,2})?$', description: 'No sandbox, 1.11, 2.22 e 3.33 provocam erros (README, seção 15).' }
+        informacoes_complementares: { type: string, maxLength: 2000 }
+        retencao:
+          type: object
+          additionalProperties: false
+          properties:
+            retem_iss: { type: boolean }
+            aliquota_iss: { type: [string, number] }
+            retem_inss: { type: boolean }
+            inss: { type: [string, number], description: 'percentual ("11%") ou valor em reais ("165.00")' }
+
+    WebhookSandbox:
+      type: object
+      properties:
+        ambiente: { type: string, enum: [sandbox] }
+        webhook:
+          type: object
+          properties:
+            url: { type: [string, 'null'] }
+            tem_segredo: { type: boolean }
+
+    Nfse:
+      type: object
+      required: [id, external_id, status, cnpj_prestador]
+      properties:
+        ambiente: { type: string, enum: [sandbox], description: 'Só nas notas da chave sandbox (nfk_test_).' }
+        id: { type: string, format: uuid }
+        external_id: { type: string }
+        status: { type: string, enum: [queued, signing, sent, issued, rejected, cancel_requested, cancelled, skipped] }
+        cnpj_prestador: { type: string }
+        numero: { type: [string, 'null'] }
+        numero_dps: { type: [string, 'null'] }
+        chave_acesso: { type: [string, 'null'] }
+        valor: { type: [string, 'null'] }
+        tomador_documento: { type: [string, 'null'] }
+        last_error_code: { type: [string, 'null'] }
+        last_error: { type: [string, 'null'] }
+        origem: { type: string, enum: [api, outra] }
+        criada_em: { type: string, format: date-time }
+        emitida_em: { type: [string, 'null'], format: date-time }
+        cancelada_em: { type: [string, 'null'], format: date-time }
+
+    Endereco:
+      type: object
+      required: [logradouro, bairro, codigo_municipio, uf, cep]
+      additionalProperties: false
+      properties:
+        logradouro: { type: string, maxLength: 60 }
+        numero: { type: string }
+        complemento: { type: [string, 'null'] }
+        bairro: { type: string, maxLength: 60 }
+        codigo_municipio: { type: string, pattern: '^\d{7}$' }
+        uf: { type: string, minLength: 2, maxLength: 2 }
+        cep: { type: string }
+        fone: { type: [string, 'null'] }
+
+    ItemNfe:
+      type: object
+      required: [codigo, descricao, ncm, cfop, unidade, quantidade, valor_unitario, csosn]
+      additionalProperties: false
+      properties:
+        codigo: { type: string }
+        descricao: { type: string, maxLength: 120 }
+        ncm: { type: string, pattern: '^\d{8}$' }
+        cest: { type: [string, 'null'] }
+        cfop: { type: string, pattern: '^\d{4}$' }
+        unidade: { type: string, maxLength: 6 }
+        quantidade: { type: number }
+        valor_unitario: { type: number }
+        origem: { type: string }
+        csosn: { type: string, enum: ['101', '102', '103', '300', '400', '500'] }
+        aliquota_credito_sn: { type: [number, 'null'] }
+        cst_pis_cofins: { type: [string, 'null'], enum: ['07', '08', '09', '49', '99', null] }
+        gtin: { type: [string, 'null'] }
+        frete: { type: [number, 'null'] }
+        seguro: { type: [number, 'null'] }
+        desconto: { type: [number, 'null'] }
+        outros: { type: [number, 'null'] }
+        informacoes: { type: [string, 'null'] }
+
+    NovaNfe:
+      type: object
+      required: [external_id, destinatario, itens]
+      additionalProperties: false
+      properties:
+        external_id: { type: string, minLength: 1, maxLength: 100 }
+        cnpj_emitente: { type: string, pattern: '^\d{14}$' }
+        natureza_operacao: { type: string, maxLength: 60 }
+        consumidor_final: { type: string, enum: ['0', '1'] }
+        presenca: { type: string, enum: ['0', '1', '2', '3', '4', '5', '9'] }
+        modalidade_frete: { type: string, enum: ['0', '1', '2', '3', '4', '9'] }
+        destinatario:
+          type: object
+          required: [documento, nome, endereco]
+          additionalProperties: false
+          properties:
+            documento: { type: string }
+            nome: { type: string, maxLength: 60 }
+            indicador_ie: { type: string, enum: ['1', '2', '9'] }
+            inscricao_estadual: { type: [string, 'null'] }
+            email: { type: [string, 'null'] }
+            endereco: { $ref: '#/components/schemas/Endereco' }
+        itens: { type: array, minItems: 1, maxItems: 990, items: { $ref: '#/components/schemas/ItemNfe' } }
+        pagamentos:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [forma, valor]
+            additionalProperties: false
+            properties:
+              forma: { type: string }
+              valor: { type: number }
+              descricao: { type: [string, 'null'] }
+              indicador: { type: [string, 'null'], enum: ['0', '1', null] }
+        informacoes_complementares: { type: [string, 'null'], maxLength: 2000 }
+
+    Nfe:
+      type: object
+      required: [id, external_id, status, cnpj_emitente, serie, numero]
+      properties:
+        id: { type: string, format: uuid }
+        external_id: { type: string }
+        status: { type: string, enum: [queued, sending, processing, authorized, denied, rejected, cancel_requested, cancelled, voided] }
+        cnpj_emitente: { type: string }
+        serie: { type: integer }
+        numero: { type: integer }
+        chave: { type: [string, 'null'] }
+        protocolo: { type: [string, 'null'] }
+        valor_total: { type: string }
+        destinatario_documento: { type: string }
+        ambiente: { type: string, enum: [homologacao, producao] }
+        last_error_code: { type: [string, 'null'] }
+        last_error: { type: [string, 'null'] }
+        origem: { type: string, enum: [painel, planilha, api] }
+        criada_em: { type: string, format: date-time }
+        autorizada_em: { type: [string, 'null'], format: date-time }
+        cancelada_em: { type: [string, 'null'], format: date-time }
+
+    CabecalhoDoEvento:
+      type: object
+      required: [evento, recurso, entrega_id, enviado_em]
+      properties:
+        evento:
+          type: string
+          enum: [nfse.emitida, nfse.recusada, nfse.cancelada, nfse.cancelamento_recusado,
+                 nfe.autorizada, nfe.rejeitada, nfe.denegada, nfe.cancelada, teste]
+        recurso: { type: string, enum: [nfse, nfe, teste] }
+        entrega_id: { type: string, format: uuid }
+        enviado_em: { type: string, format: date-time }

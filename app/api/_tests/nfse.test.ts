@@ -48,7 +48,7 @@ describe('POST /v1/nfse', () => {
     const res = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: newSale('venda-202') })
     expect(res.status).toBe(202)
     const body = await read(res)
-    expect(body).toEqual({ id: expect.stringMatching(UUID), status: 'queued' })
+    expect(body).toMatchObject({ id: expect.stringMatching(UUID), status: 'queued', external_id: 'venda-202', origem: 'api', avisos: [] })
 
     const { rows } = await db.query<{ tenant_id: string; external_id: string; status: string; payload: unknown }>(
       'select tenant_id, external_id, status, payload from nofiscal.fiscal_invoices where id = $1',
@@ -180,12 +180,14 @@ describe('autenticação e isolamento por tenant', () => {
     // O dono da nota a enxerga.
     const own = await call(`/v1/nfse/${idB}`, { key: b.apiKey })
     expect(own.status).toBe(200)
-    expect(await read(own)).toEqual({
+    expect(await read(own)).toMatchObject({
       id: idB,
       external_id: 'venda-de-b',
       status: 'queued',
       chave_acesso: null,
       last_error_code: null,
+      cnpj_prestador: b.cnpj,
+      numero: null,
     })
   })
 

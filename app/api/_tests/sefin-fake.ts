@@ -1,10 +1,11 @@
 // Dublê de transporte da Sefin Nacional para os testes: recebe as requisições que o cliente
 // real (`sefin-client.ts`) monta, descomprime o XML e responde no formato do OpenAPI capturado
 // pela open-nfse (referência §3). Nenhum teste chama a Sefin.
-import { randomInt } from 'node:crypto'
+import { chaveSimulada as chaveFor, eventoCancelamentoSimulado, nfseSimulada as testNfseXml } from '../_lib/sandbox/sefin-simulada.js'
 import { gunzipBase64, gzipBase64, type HttpRequest, type HttpResponse, type SefinTransport, type TlsCredentials } from '../_lib/sefin-client.js'
 
-export const NFSE_NS = 'http://www.sped.fazenda.gov.br/nfse'
+// Os geradores de chave e de NFS-e moraram aqui até virarem o simulador do sandbox (`_lib/sandbox/sefin-simulada.ts`).
+export { NFSE_NS, chaveSimulada as chaveFor, nfseSimulada as testNfseXml } from '../_lib/sandbox/sefin-simulada.js'
 
 export type FakeRequest = HttpRequest & {
   path: string
@@ -20,33 +21,6 @@ export type FakeScript = {
   evento?: (pedidoXml: string) => HttpResponse | undefined | Promise<HttpResponse | undefined>
   /** Falha de rede em qualquer chamada cujo caminho combine. */
   networkError?: RegExp
-}
-
-const tag = (xml: string, name: string) => new RegExp(`<${name}>([^<]*)</${name}>`).exec(xml)?.[1] ?? ''
-
-export function chaveFor(dpsXml: string, nNFSe: number, ambGer = '2'): string {
-  const cnpj = tag(dpsXml, 'CNPJ')
-  const mun = tag(dpsXml, 'cLocEmi')
-  const aamm = tag(dpsXml, 'dCompet').slice(2, 7).replace('-', '')
-  const random = String(randomInt(0, 1_000_000_000)).padStart(9, '0')
-  return `${mun}${ambGer}2${cnpj}${String(nNFSe).padStart(13, '0')}${aamm}${random}0`
-}
-
-/** NFS-e no formato do exemplo real da open-nfse (`specs/samples`), com a DPS assinada dentro. */
-export function testNfseXml(input: { dpsXml: string; chave: string; nNFSe: number; dhProc?: string }): string {
-  const dps = input.dpsXml.replace(/^<\?xml[^>]*\?>/, '')
-  const valor = tag(dps, 'vServ')
-  return (
-    `<NFSe xmlns="${NFSE_NS}" versao="1.01"><infNFSe Id="NFS${input.chave}">` +
-    `<xLocEmi>São Paulo</xLocEmi><xLocPrestacao>São Paulo</xLocPrestacao><nNFSe>${input.nNFSe}</nNFSe>` +
-    `<cLocIncid>3550308</cLocIncid><xLocIncid>São Paulo</xLocIncid>` +
-    `<xTribNac>Medicina.</xTribNac><verAplic>SefinNacional_1.6.0</verAplic><ambGer>2</ambGer><tpEmis>1</tpEmis>` +
-    `<procEmi>1</procEmi><cStat>100</cStat><dhProc>${input.dhProc ?? '2026-11-03T10:15:00-03:00'}</dhProc><nDFSe>987654</nDFSe>` +
-    `<emit><CNPJ>${tag(dps, 'CNPJ')}</CNPJ><xNome>PRIMECARE SERVICOS MEDICOS LTDA</xNome>` +
-    `<enderNac><xLgr>AVENIDA PAULISTA</xLgr><nro>1000</nro><xBairro>BELA VISTA</xBairro><cMun>3550308</cMun><UF>SP</UF><CEP>01310100</CEP></enderNac>` +
-    `<fone>11999990000</fone><email>financeiro@primecare.test</email></emit>` +
-    `<valores><vLiq>${valor}</vLiq></valores>${dps}</infNFSe></NFSe>`
-  )
 }
 
 const json = (status: number, body: unknown): HttpResponse => ({ status, body: JSON.stringify(body) })
@@ -103,7 +77,7 @@ export function fakeSefin(script: FakeScript = {}): {
     if (request.method === 'POST' && eventoMatch && xml) {
       const custom = await script.evento?.(xml)
       if (custom) return custom
-      const evento = `<evento xmlns="${NFSE_NS}" versao="1.01"><infEvento Id="EVT${eventoMatch[1]}101101001"><nSeqEvento>1</nSeqEvento>${xml}</infEvento></evento>`
+      const evento = eventoCancelamentoSimulado(eventoMatch[1], xml)
       events.set(eventoMatch[1], evento)
       return json(201, { tipoAmbiente: 2, versaoAplicativo: 'SefinNac_Pre_1.6.0', eventoXmlGZipB64: gzipBase64(evento) })
     }
