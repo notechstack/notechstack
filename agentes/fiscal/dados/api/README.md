@@ -318,6 +318,7 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 | `servico.nbs` | string | não | Código NBS (9 dígitos; aceita com pontos, `"1.1502.10.00"`). Ausente = o NBS padrão da empresa. |
 | `servico.c_ind_op` / `servico.c_class_trib` | string | não | Reforma Tributária (IBS/CBS): 6 dígitos cada. |
 | `servico.municipio_prestacao_ibge` | string | não | Código IBGE (7 dígitos) do município onde o serviço foi prestado. Ausente = o da empresa. |
+| `servico.obra` | objeto | nos códigos de obra | Dados da obra, obrigatórios nos 13 códigos de construção civil (07.02.01, 07.02.02, 07.04.01, 07.05.01, 07.05.02, 07.06.01, 07.06.02, 07.07.01, 07.08.01, 07.17.01, 07.19.01, 14.14.03, 14.14.04); sem eles, `422` com `motivo: "OBRA_SEM_DADOS"`. Ou `{ "cno": "12.345.67890/12" }` (CNO ou CEI, 12 dígitos), ou o endereço `{ "cep", "logradouro", "numero", "complemento" (opcional), "bairro" }`. A cidade da obra é a de `municipio_prestacao_ibge`. Ignorado nos outros códigos. |
 | `informacoes_complementares` | string | não | Até 2.000 caracteres (dados bancários, observações). Vai no campo de informações complementares da NFS-e. |
 | `valor` | string | sim | Valor do serviço, positivo, até 2 casas. |
 | `retencao` | objeto | não | Ver abaixo. Ausente = padrão da empresa. |

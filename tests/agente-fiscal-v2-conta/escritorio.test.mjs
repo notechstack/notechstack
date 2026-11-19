@@ -35,6 +35,10 @@ const escritorioDoBanco = {
     ]),
   empresaConfigurar: (u, t, d) => um("select public.fiscal_empresa_configurar($1, $2, $3::jsonb) as r", [u, t, JSON.stringify(d)]),
   empresaAtivar: (u, t, a) => um("select public.fiscal_empresa_ativar($1, $2, $3) as r", [u, t, a]),
+  empresaAtualizarReceita: (u, t, d) =>
+    um("select public.fiscal_empresa_atualizar_receita($1, $2, $3, $4, $5, $6, $7) as r", [
+      u, t, d.cnpj, d.razao_social, d.codigo_municipio_ibge, d.cnae, d.regime,
+    ]),
   relatorio: (u, m, t) => um("select public.fiscal_relatorio($1, $2::date, $3) as r", [u, m, t]),
 };
 
@@ -325,6 +329,90 @@ test("dados fiscais por empresa", async () => {
   const direto = await escritorioDoBanco.empresaConfigurar(e.userId, outra.tenantId, { codigo_servico_nacional: "010701", p_tot_trib_sn: "6" });
   assert.equal(direto.erro, "FORBIDDEN");
   const sem = await conta(e, { acao: "empresa_configurar", codigo_servico_nacional: "010701" });
+  assert.equal(sem.http, 400);
+});
+
+test("atualizar dados da Receita de empresa já cadastrada", async () => {
+  // Caso de 19/11/2026: a empresa cliente mudou de razão social; recadastrar dava CNPJ_JA_CADASTRADO.
+  const e = await escritorio();
+  const { cnpj, tenantId } = await adicionar(e);
+  await conta(e, { acao: "empresa_configurar", tenant_id: tenantId, codigo_servico_nacional: "170201", p_tot_trib_sn: 6 });
+
+  const nova = { razao_social: "NOVA RAZAO SOCIAL LTDA", codigo_municipio_ibge: 3509502, cnae_fiscal: 6911701 };
+  const r = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, { gw: rede({ receita: { [cnpj]: nova } }) });
+  assert.equal(r.http, 200, JSON.stringify(r.body));
+  assert.equal(r.gw.receita().length, 1, "consulta a Receita pelo CNPJ da empresa");
+  assert.ok(r.gw.receita()[0].url.endsWith(`/api/cnpj/v1/${cnpj}`));
+  assert.deepEqual(r.body.atualizada.mudou, ["razao_social", "codigo_municipio_ibge", "cnae"]);
+  assert.equal(r.body.atualizada.antes.razao_social, `CLIENTE ${cnpj} LTDA`);
+  assert.equal(r.body.atualizada.depois.razao_social, "NOVA RAZAO SOCIAL LTDA");
+  const linha = r.body.escritorio.empresas.find((x) => x.tenant_id === tenantId);
+  assert.equal(linha.razao_social, "NOVA RAZAO SOCIAL LTDA", "o painel recebe o nome novo");
+  let t = await tenant(tenantId);
+  assert.equal(t.razao_social, "NOVA RAZAO SOCIAL LTDA");
+  assert.equal(t.cnae, "6911701");
+  assert.equal(t.regime, "simples");
+  assert.equal(t.pct, "6.00", "Simples continua Simples: o percentual fica");
+  assert.equal(t.codigo_servico_nacional, "170201", "dados fiscais não mudam");
+  // O WhatsApp lê o nome da empresa direto de fiscal_tenants (rota-central, resumo): é o mesmo campo.
+
+  // Nada mudou: ok, sem campos.
+  const igual = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, { gw: rede({ receita: { [cnpj]: nova } }) });
+  assert.equal(igual.http, 200);
+  assert.deepEqual(igual.body.atualizada.mudou, []);
+
+  // Virou MEI: regime muda e o percentual do Simples sai (E0710).
+  const rm = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, { gw: rede({ receita: { [cnpj]: { ...nova, opcao_pelo_mei: true } } }) });
+  assert.equal(rm.http, 200, JSON.stringify(rm.body));
+  assert.deepEqual(rm.body.atualizada.mudou, ["regime"]);
+  t = await tenant(tenantId);
+  assert.equal(t.regime, "mei");
+  assert.equal(t.pct, null);
+
+  // Saiu do Simples/MEI: o mesmo aviso do cadastro, e nada gravado.
+  const rf = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, {
+    gw: rede({ receita: { [cnpj]: { razao_social: "OUTRA LTDA", opcao_pelo_mei: null, opcao_pelo_simples: false } } }),
+  });
+  assert.equal(rf.http, 422);
+  assert.equal(rf.body.error_code, "CNPJ_FORA_DO_SIMPLES");
+  // Saiu do Simples em São Paulo (sem emissor nacional para todos): a recusa leva à lista de espera do Presumido.
+  assert.match(rf.body.mensagem, /Lucro Presumido e Real/);
+  assert.equal(rf.body.lista_espera, true);
+  t = await tenant(tenantId);
+  assert.equal(t.razao_social, "NOVA RAZAO SOCIAL LTDA");
+  assert.equal(t.regime, "mei");
+
+  // Inativa e Receita fora do ar: nada muda.
+  const ri = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, { gw: rede({ receita: { [cnpj]: { descricao_situacao_cadastral: "BAIXADA" } } }) });
+  assert.equal(ri.http, 422);
+  assert.equal(ri.body.error_code, "CNPJ_INATIVO");
+  const rc = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: tenantId }, { gw: rede({ receita: { [cnpj]: { http: 503 } } }) });
+  assert.equal(rc.http, 503);
+  assert.equal(rc.body.error_code, "CONSULTA_INDISPONIVEL");
+  assert.equal((await tenant(tenantId)).razao_social, "NOVA RAZAO SOCIAL LTDA");
+
+  // A empresa do próprio escritório (conta-mãe) também atualiza; o CNPJ do fixture não tem DV.
+  const cnpjMae = cnpjValido();
+  await bancos.dono.query("update nofiscal.fiscal_tenants set cnpj = $2 where id = $1", [e.tenantId, cnpjMae]);
+  const rmae = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: e.tenantId }, { gw: rede({ receita: { [cnpjMae]: { razao_social: "ESCRITORIO NOVO LTDA" } } }) });
+  assert.equal(rmae.http, 200, JSON.stringify(rmae.body));
+  assert.equal((await tenant(e.tenantId)).razao_social, "ESCRITORIO NOVO LTDA");
+  assert.equal(rmae.body.empresa.razao_social, "ESCRITORIO NOVO LTDA");
+
+  // Empresa de outra conta: 403 sem consultar a Receita, e o banco também recusa.
+  const outra = await comum({});
+  const ro = await conta(e, { acao: "empresa_atualizar_receita", tenant_id: outra.tenantId });
+  assert.equal(ro.http, 403);
+  assert.equal(ro.body.error_code, "FORBIDDEN");
+  assert.equal(ro.gw.chamadas.length, 0);
+  const dados = { cnpj, razao_social: "X", codigo_municipio_ibge: "3550308", cnae: null, regime: "simples" };
+  assert.equal((await escritorioDoBanco.empresaAtualizarReceita(e.userId, outra.tenantId, dados)).erro, "FORBIDDEN");
+  // CNPJ diferente do da empresa: o banco recusa.
+  assert.equal((await escritorioDoBanco.empresaAtualizarReceita(e.userId, tenantId, { ...dados, cnpj: cnpjValido() })).erro, "FORBIDDEN");
+  assert.equal((await tenant(tenantId)).razao_social, "NOVA RAZAO SOCIAL LTDA");
+
+  // Sem empresa no corpo.
+  const sem = await conta(e, { acao: "empresa_atualizar_receita" });
   assert.equal(sem.http, 400);
 });
 

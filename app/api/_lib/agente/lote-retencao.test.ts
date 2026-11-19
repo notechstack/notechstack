@@ -9,11 +9,11 @@ const SIMPLES: Empresa = {
   cnpj: '12345678000195',
   razao_social: 'Oficina Trilho',
   active: true,
-  codigo_servico_nacional: '070201',
+  codigo_servico_nacional: '071001', // 07.10.01: sem obra (E0370 vale para 07.02.01, testado em obra.test.ts)
   regime: 'simples',
   retencao: { retem_iss: false, aliquota_iss: null, retem_inss: true, inss_percentual: '11.00' },
 }
-const MEI: Empresa = { id: 'e2', cnpj: '11222333000181', razao_social: 'Pintor MEI', active: true, codigo_servico_nacional: '070201', regime: 'mei' }
+const MEI: Empresa = { id: 'e2', cnpj: '11222333000181', razao_social: 'Pintor MEI', active: true, codigo_servico_nacional: '071001', regime: 'mei' }
 const CNPJ_TOMADOR = '11444777000161'
 const CPF = '52998224725'
 const ENDERECO: EnderecoNacional = { cMun: '3550308', cep: '01310100', logradouro: 'AVENIDA PAULISTA', numero: '1000', complemento: null, bairro: 'BELA VISTA' }

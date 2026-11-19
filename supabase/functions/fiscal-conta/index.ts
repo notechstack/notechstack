@@ -94,6 +94,16 @@ Deno.serve(async (request) => {
         await rpc("fiscal_empresa_configurar", { p_user_id: userId, p_tenant_id: tenantId, p_dados: dados }),
       empresaAtivar: async (userId, tenantId, ativa) =>
         await rpc("fiscal_empresa_ativar", { p_user_id: userId, p_tenant_id: tenantId, p_ativa: ativa }),
+      empresaAtualizarReceita: async (userId, tenantId, d) =>
+        await rpc("fiscal_empresa_atualizar_receita", {
+          p_user_id: userId,
+          p_tenant_id: tenantId,
+          p_cnpj: d.cnpj,
+          p_razao_social: d.razao_social,
+          p_codigo_municipio_ibge: d.codigo_municipio_ibge,
+          p_cnae: d.cnae,
+          p_regime: d.regime,
+        }),
       relatorio: async (userId, mes, tenantId) =>
         await rpc("fiscal_relatorio", { p_user_id: userId, p_mes: mes, p_tenant_id: tenantId }),
       municipios: async () => LISTA_MUNICIPIOS,

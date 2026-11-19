@@ -23,7 +23,12 @@ const ENDERECO = { cMun: '3550308', cep: '01310100', logradouro: 'AVENIDA PAULIS
 
 const base = {
   tomador: { cnpj: '11222333000181', nome: 'Clínica Saúde Ltda' },
-  servico: { codigo_servico_nacional: '070201', descricao: 'Manutenção predial - novembro/2026' },
+  // 07.02.01 é de construção civil: a obra é obrigatória (E0370, obra.ts).
+  servico: {
+    codigo_servico_nacional: '070201',
+    descricao: 'Manutenção predial - novembro/2026',
+    obra: { cep: '01310100', logradouro: 'Avenida Paulista', numero: '1000', bairro: 'Bela Vista' },
+  },
   valor: '1500.00',
 }
 const now = new Date('2026-11-16T13:00:00Z')

@@ -222,6 +222,52 @@ test('Minhas empresas: situações e ações por linha', async () => {
   assert.deepEqual(p.rede.de('fiscal-conta:empresa_ativar')[1].corpo, { acao: 'empresa_ativar', tenant_id: EMP_OFF, ativa: true });
 });
 
+test('atualizar dados da Receita de empresa já cadastrada', async () => {
+  // Caso de 19/11/2026: a empresa mudou de razão social na Receita; o painel não deixava corrigir.
+  const renomeada = () => {
+    const lista = empresas();
+    lista[1] = { ...lista[1], razao_social: 'PADARIA NOVA ERA LTDA' };
+    return estadoEscritorio({}, { empresas: lista });
+  };
+  let resposta = () => ({ status: 200, corpo: { ...renomeada(), atualizada: { tenant_id: EMP_PRONTA, mudou: ['razao_social'], antes: { razao_social: 'PADARIA BOA LTDA' }, depois: { razao_social: 'PADARIA NOVA ERA LTDA', regime: 'simples' } } } });
+  const p = await painel({ 'fiscal-conta:empresa_atualizar_receita': (c) => resposta(c) }, '/agentes/fiscal/conta/#empresas');
+
+  // Botão em cada empresa ativa (inclusive a do escritório); a desativada não tem.
+  for (const t of [TENANT, EMP_PRONTA, EMP_VENCENDO, EMP_MEI]) assert.equal(p.texto(botaoDe(p, t, 'receita')), 'Atualizar dados da Receita');
+  assert.equal(botaoDe(p, EMP_OFF, 'receita'), null);
+  assert.equal(botaoDe(p, EMP_PRONTA, 'receita').getAttribute('aria-label'), 'Atualizar dados da Receita: PADARIA BOA LTDA');
+
+  await p.clicar(botaoDe(p, EMP_PRONTA, 'receita'));
+  assert.deepEqual(p.rede.de('fiscal-conta:empresa_atualizar_receita')[0].corpo, { acao: 'empresa_atualizar_receita', tenant_id: EMP_PRONTA });
+  assert.equal(p.texto(linhaDe(p, EMP_PRONTA).querySelector('th')), 'PADARIA NOVA ERA LTDA', 'a linha mostra o nome novo');
+  assert.equal(p.texto('fa-aviso-empresas'), 'Dados atualizados pela Receita Federal: razão social agora é PADARIA NOVA ERA LTDA.');
+  assert.equal(p.visivel('fa-empresa-acao'), false, 'não abre painel: é uma ação só');
+
+  // Já igual à Receita.
+  resposta = () => ({ status: 200, corpo: { ...renomeada(), atualizada: { tenant_id: EMP_PRONTA, mudou: [], antes: {}, depois: {} } } });
+  await p.clicar(botaoDe(p, EMP_PRONTA, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Os dados de PADARIA NOVA ERA LTDA já estão iguais aos da Receita Federal.');
+
+  // MEI que virou Simples: avisa do percentual, com atalho para os dados fiscais.
+  resposta = () => ({ status: 200, corpo: { ...estadoEscritorio(), atualizada: { tenant_id: EMP_MEI, mudou: ['regime'], antes: { regime: 'mei' }, depois: { razao_social: 'JOANA MEI', regime: 'simples' } } } });
+  await p.clicar(botaoDe(p, EMP_MEI, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Dados atualizados pela Receita Federal: regime agora é Simples Nacional. Informe o percentual do Simples nos dados fiscais. Dados fiscais');
+  await p.clicar(p.$('fa-aviso-empresas').querySelector('button[data-acao="fiscal"]'));
+  assert.ok(p.visivel('fa-form-emp-fiscal'));
+  assert.equal(p.texto('fa-empresa-acao-titulo'), 'Dados fiscais de JOANA MEI');
+
+  // Saiu do Simples: o mesmo aviso do cadastro, e a linha não muda.
+  resposta = () => ({ status: 422, corpo: { ok: false, error_code: 'CNPJ_FORA_DO_SIMPLES', mensagem: 'O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples', campo: 'cnpj' } });
+  await p.clicar(botaoDe(p, EMP_VENCENDO, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Não atualizamos OFICINA RAPIDA LTDA. O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples.');
+  assert.equal(p.texto(linhaDe(p, EMP_VENCENDO).querySelector('th')), 'OFICINA RAPIDA LTDA');
+
+  // Receita fora do ar: a mensagem da função.
+  resposta = () => ({ status: 503, corpo: { ok: false, error_code: 'CONSULTA_INDISPONIVEL', mensagem: 'Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.' } });
+  await p.clicar(botaoDe(p, EMP_VENCENDO, 'receita'));
+  assert.equal(p.texto('fa-aviso-empresas'), 'Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.');
+});
+
 test('adicionar empresa e limite da faixa', async () => {
   let resposta = r(409, { ok: false, error_code: 'EMPRESAS_ACIMA_DO_LIMITE', mensagem: 'Seu plano permite até 5 empresas.', limite: 5 });
   const p = await painel({ 'fiscal-conta:empresa_adicionar': (c, ch, m) => resposta(c, ch, m) }, '/agentes/fiscal/conta/#empresas');
@@ -638,4 +684,59 @@ test('retenção: as caixas do Adicionar empresa viram o padrão; no Emitir vêm
   for (const s of ['ISS retido pelo tomador', '2,5% (R$ 37,50)', 'INSS retido', 'R$ 165,00', 'Valor líquido', 'R$ 1.297,50', 'AVENIDA PAULISTA, 1000 · BELA VISTA · CEP 01310-100']) {
     assert.ok(doResumo.includes(s), `"${s}" no resumo`);
   }
+});
+
+test('obra (E0370): o bloco "Dados da obra" aparece só nos códigos de construção civil, vai no pedido e no resumo', async () => {
+  const semRetencao = { retem_iss: false, aliquota_iss: null, retem_inss: false, inss_percentual: null };
+  const contexto = {
+    empresas: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null, regime: 'simples', retencao: semRetencao },
+      { tenant_id: EMP_MEI, razao_social: 'ELISIO MEI', cnpj: '04252011000110', principal: false, codigo_servico_nacional: '070201', bloqueio: null, regime: 'mei', retencao: semRetencao }
+    ],
+    franquia: { limite: 500, no_mes: 3 }
+  };
+  const resumo = {
+    resumo: {
+      empresa: { tenant_id: EMP_MEI, razao_social: 'ELISIO MEI', cnpj: '04252011000110' },
+      tomador: { documento: '11222333000181', tipo: 'cnpj', nome: 'Sakata Seed', email: null },
+      servico: { codigo: '070201', nome: 'Execução de obras', descricao: 'Alvenaria' },
+      obra: 'Rua das Flores, 120 - Centro, CEP 12900-000',
+      valor: '3800.00', valor_texto: 'R$ 3.800,00', retencao: null, endereco_tomador: null
+    },
+    bloqueio: null,
+    avisos: []
+  };
+  let primeira = true;
+  const p = await painel({
+    'app:emissao:contexto': r(200, contexto),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:avulsa_conferir': () => {
+      if (primeira) { primeira = false; return { status: 422, corpo: { error: { code: 'VALIDATION_FAILED', message: 'Dados da obra: endereço da obra sem bairro.' }, campo: 'obra' } }; }
+      return { status: 200, corpo: resumo };
+    }
+  }, '/agentes/fiscal/conta/#emitir');
+
+  await p.clicar('fa-aba-emitir');
+  await p.preencher('fa-av-empresa', TENANT);
+  assert.equal(p.visivel('fa-av-obra'), false, 'código 17.02.01: sem o bloco da obra');
+  await p.preencher('fa-av-empresa', EMP_MEI);
+  assert.ok(p.visivel('fa-av-obra'), 'código 07.02.01: o bloco da obra aparece');
+
+  await p.preencher('fa-av-documento', '11.222.333/0001-81');
+  await p.preencher('fa-av-nome', 'Sakata Seed');
+  await p.preencher('fa-av-valor', '3800');
+  await p.preencher('fa-av-obra-cep', '12900-000');
+  await p.preencher('fa-av-obra-logradouro', 'Rua das Flores');
+  await p.preencher('fa-av-obra-numero', '120');
+  await p.enviar('fa-form-avulsa');
+  assert.equal(p.texto('fa-av-obra-erro'), 'Dados da obra: endereço da obra sem bairro.');
+
+  await p.preencher('fa-av-obra-bairro', 'Centro');
+  await p.enviar('fa-form-avulsa');
+  const corpo = p.rede.de('app:emissao:avulsa_conferir')[1].corpo;
+  assert.deepEqual(
+    [corpo.obra_cep, corpo.obra_logradouro, corpo.obra_numero, corpo.obra_bairro, corpo.obra_complemento, corpo.obra_cno],
+    ['12900-000', 'Rua das Flores', '120', 'Centro', '', '']
+  );
+  assert.ok(p.texto('fa-av-resumo').includes('Rua das Flores, 120 - Centro, CEP 12900-000'), 'a obra no resumo');
 });

@@ -22,8 +22,11 @@
 //   PIS/COFINS/CSLL retidos vão em `tribFed` (vRetIRRF; piscofins CST 01 + tpRetPisCofins 3 + vRetCSLL com a soma).
 // - `informacoes_complementares` do payload vira `serv/infoCompl/xInfComp` (info-complementar.ts), o último filho
 //   de `serv` nos dois leiautes. Sem o campo, a DPS sai igual à de antes, byte a byte.
+// - `servico.obra` (obra.ts) vira `serv/obra`, com o CNO (`cObra`) ou o endereço (`end`). Nos 13 códigos de construção
+//   civil (E0370) ele é obrigatório: sem ele, a DPS nem é montada. Nos demais, é ignorado se vier.
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import { lerMunicipioPrestacao } from './local-prestacao.js'
+import { exigeObra, grupoObra, lerObra, MOTIVO_SEM_OBRA, type Obra } from './obra.js'
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
 import { nbsExiste, resolverRtc, type Rtc } from './rtc/resolver.js'
 import type { SefinTenant } from './sefin.js'
@@ -49,6 +52,8 @@ export type DpsPayload = {
     c_class_trib: string | null
     /** `cLocPrestacao` (local-prestacao.ts): IBGE de 7 dígitos; `null` = município da empresa. */
     municipio_prestacao_ibge: string | null
+    /** `serv/obra` (obra.ts); `null` = sem o grupo. */
+    obra: Obra | null
   }
   valor: string
   /**
@@ -123,6 +128,7 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
       c_ind_op: codigo6(payload.servico.c_ind_op, 'c_ind_op (cIndOp)'),
       c_class_trib: codigo6(payload.servico.c_class_trib, 'c_class_trib (cClassTrib)'),
       municipio_prestacao_ibge: parseMunicipioPrestacao(payload.servico.municipio_prestacao_ibge),
+      obra: parseObra(payload.servico.obra, codigo),
     },
     valor,
     retencao: parseRetencao(payload.retencao, valor),
@@ -134,6 +140,15 @@ function parseMunicipioPrestacao(bruto: unknown): string | null {
   const lido = lerMunicipioPrestacao(bruto)
   if (!lido.ok) throw new DpsInvalidError(`municipio_prestacao_ibge (cLocPrestacao) ${lido.erro}`)
   return lido.ibge
+}
+
+function parseObra(bruto: unknown, codigo: string): Obra | null {
+  const lida = lerObra(bruto)
+  if (!lida.ok) throw new DpsInvalidError(`obra ${lida.erro}`)
+  // E0370: sem o grupo a Sefin recusa; fora desses códigos, o grupo não vai.
+  if (!exigeObra(codigo)) return null
+  if (!lida.obra) throw new DpsInvalidError(MOTIVO_SEM_OBRA)
+  return lida.obra
 }
 
 function parseInfoComplementar(bruto: unknown): string | null {
@@ -460,6 +475,7 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', local ?? ibge)),
         cServ,
+        data.servico.obra ? grupoObra(data.servico.obra) : null,
         infoCompl,
       ]),
       el('valores', [

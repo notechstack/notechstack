@@ -44,6 +44,8 @@ export const ACOES = [
   "empresa_adicionar",
   "empresa_configurar",
   "empresa_ativar",
+  // Reconsulta o CNPJ e atualiza razão social, município, CNAE e regime (empresa que mudou na Receita).
+  "empresa_atualizar_receita",
   "relatorio",
 ] as const;
 export type Acao = typeof ACOES[number];
@@ -127,6 +129,12 @@ export type ArgsEmpresa = {
   ambiente: "producao_restrita" | "producao";
 };
 
+/** Argumentos de public.fiscal_empresa_atualizar_receita (sempre da consulta, nunca do corpo). */
+export type DadosReceita = Pick<ArgsEmpresa, "cnpj" | "razao_social" | "codigo_municipio_ibge" | "cnae" | "regime">;
+
+/** Campos que a atualização pela Receita reescreve, na ordem do aviso do painel. */
+export const CAMPOS_RECEITA = ["razao_social", "regime", "codigo_municipio_ibge", "cnae"] as const;
+
 export type Deps = {
   env: Record<string, string | undefined>;
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -142,6 +150,12 @@ export type Deps = {
   empresaAdicionar?: (userId: string, args: ArgsEmpresa) => Promise<RespostaBanco & { tenant_id?: string; reativada?: boolean }>;
   empresaConfigurar?: (userId: string, tenantId: string, dados: Record<string, unknown>) => Promise<RespostaBanco>;
   empresaAtivar?: (userId: string, tenantId: string, ativa: boolean) => Promise<RespostaBanco>;
+  /** public.fiscal_empresa_atualizar_receita; devolve os dados de antes em `antes`. */
+  empresaAtualizarReceita?: (
+    userId: string,
+    tenantId: string,
+    args: DadosReceita,
+  ) => Promise<RespostaBanco & { antes?: Record<string, unknown> }>;
   /** public.fiscal_relatorio; `mes` no formato AAAA-MM-01. */
   relatorio?: (userId: string, mes: string, tenantId: string | null) => Promise<Record<string, unknown>>;
   /** Lista de municípios do padrão nacional (a mesma de fiscal-cadastro). */
@@ -405,6 +419,7 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
   if (acao === "empresa_adicionar") return await adicionarEmpresa(userId, estado, b, deps, log);
   if (acao === "empresa_configurar") return await configurarEmpresa(userId, estado, b, deps, log);
   if (acao === "empresa_ativar") return await ativarEmpresa(userId, estado, b, deps, log);
+  if (acao === "empresa_atualizar_receita") return await atualizarReceita(userId, estado, b, deps, log);
   if (acao === "relatorio") return await relatorio(userId, b, deps, agora);
 
   if (acao === "configurar") {
@@ -835,6 +850,75 @@ async function ativarEmpresa(
   if (!r.ok) return resultadoDoBanco(r);
   log("info", "fiscal_conta_empresa_ativa", { tenant_id: tenantId, ativa: b.ativa });
   return await estadoAtual(userId, deps);
+}
+
+// Empresa que mudou na Receita (razão social, endereço, CNAE, regime): reconsulta pela mesma consulta do
+// cadastro e grava só esses campos. O CNPJ é o da empresa no banco, nunca o do corpo. Fora do Simples/MEI,
+// inativa ou não encontrada: o mesmo erro do cadastro, e nada muda.
+async function atualizarReceita(
+  userId: string,
+  estado: EstadoBanco,
+  b: Record<string, unknown>,
+  deps: Deps,
+  log: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void,
+): Promise<Resultado> {
+  if (!deps.empresaAtualizarReceita) return erro(400, "ACAO_INVALIDA", "Ação desconhecida.");
+  const tenantId = tenantDoCorpo(b);
+  if (!tenantId) return erro(400, "DADOS_INVALIDOS", "Escolha a empresa.");
+
+  let empresa: Record<string, unknown> | undefined;
+  if (tenantId === String(estado.tenant_id).toLowerCase()) {
+    empresa = estado.empresa;
+  } else {
+    const esc = deps.escritorio ? await deps.escritorio(userId) : null;
+    empresa = esc?.empresas.find((e) => String(e.tenant_id).toLowerCase() === tenantId);
+    if (!empresa) return erro(403, "FORBIDDEN", "Esta empresa não é da sua conta.");
+  }
+  const cnpj = soDigitos(empresa.cnpj);
+  if (!cnpjValido(cnpj)) return erro(422, "CNPJ_INVALIDO", MSG_CNPJ_INVALIDO, { campo: "cnpj" });
+
+  // Presumido/Real: a Receita só diz "fora do Simples"; vale o regime declarado no cadastro, ou o que vier no corpo.
+  const c = await consultarCnpj(cnpj, {
+    apiUrl: deps.env.CNPJ_API_URL,
+    fetch: deps.fetch,
+    regimeConfirmado: deps.regimeConfirmado,
+    regimeDeclarado: lerRegimeNormal(b.regime) ?? lerRegimeNormal(empresa.regime),
+  });
+  const recusa = respostaConsulta(c);
+  if (recusa || !c.ok) {
+    log("info", "fiscal_conta_empresa_receita_recusada", { tenant_id: tenantId, motivo: c.ok ? null : c.motivo });
+    return recusa!;
+  }
+  if (!municipioAtendido(c.dados, deps.municipios ? await deps.municipios() : null)) {
+    return erro(422, "MUNICIPIO_FORA_DO_PADRAO", MSG_FORA_DO_PADRAO, { campo: "cnpj" });
+  }
+
+  const r = await deps.empresaAtualizarReceita(userId, tenantId, {
+    cnpj,
+    razao_social: c.dados.razao_social,
+    codigo_municipio_ibge: c.dados.codigo_municipio_ibge,
+    cnae: c.dados.cnae,
+    regime: c.dados.regime,
+  });
+  if (!r.ok) return resultadoDoBanco(r);
+  const antes = obj(r.antes);
+  const depois: Record<string, unknown> = {
+    razao_social: c.dados.razao_social,
+    regime: c.dados.regime,
+    codigo_municipio_ibge: c.dados.codigo_municipio_ibge,
+    cnae: c.dados.cnae,
+  };
+  const mudou = CAMPOS_RECEITA.filter((k) => (antes[k] ?? null) !== (depois[k] ?? null));
+  log("info", "fiscal_conta_empresa_receita_atualizada", { tenant_id: tenantId, mudou });
+  const atual = await estadoAtual(userId, deps);
+  if (atual.http !== 200) return atual;
+  return {
+    http: 200,
+    body: {
+      ...atual.body,
+      atualizada: { tenant_id: tenantId, mudou, antes: Object.fromEntries(CAMPOS_RECEITA.map((k) => [k, antes[k] ?? null])), depois },
+    },
+  };
 }
 
 const RE_MES = /^\d{4}-(0[1-9]|1[0-2])$/;
