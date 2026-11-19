@@ -13,11 +13,16 @@ export type SefinTenant = {
   razao_social: string
   inscricao_municipal: string | null
   codigo_municipio_ibge: string
-  /** `simples` (ME/EPP, opSimpNac 3) ou `mei` (opSimpNac 2). */
+  /** `simples` (ME/EPP, opSimpNac 3), `mei` (opSimpNac 2), `presumido` ou `real` (não optante, opSimpNac 1). */
   regime: string
   ambiente: Ambiente
   /** `totTrib/pTotTribSN` da DPS (Landing, lote 2b); `numeric` chega do `pg` como texto. */
   p_tot_trib_sn: string | null
+  /**
+   * Presumido e Real: `totTrib/pTotTrib` (Lei 12.741/2012), federal, estadual e municipal. Não optante não pode usar
+   * `indTotTrib` nem `pTotTribSN` (E0713). `numeric` chega do `pg` como texto.
+   */
+  p_tot_trib?: { fed: string | null; est: string | null; mun: string | null } | null
   /** NBS padrão da empresa (`fiscal_tenants.nbs_padrao`): vale quando a nota não informa `servico.nbs`. */
   nbs_padrao?: string | null
 }

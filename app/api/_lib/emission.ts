@@ -18,6 +18,7 @@
 // O limite do plano não entra na seleção (critério 29).
 import type { Db, Queryable } from './db.js'
 import { allocateDpsNumber } from './dps-number.js'
+import { pTotTribDaLinha, tributosConfigurados } from './dps-builder.js'
 import { logEvent } from './log.js'
 import { errorText, MAX_ERROR_LENGTH, redactCertificate } from './redact.js'
 import type {
@@ -79,6 +80,9 @@ type ClaimedRow = {
   regime: string
   ambiente: Ambiente
   p_tot_trib_sn: string | null
+  p_tot_trib_fed: string | null
+  p_tot_trib_est: string | null
+  p_tot_trib_mun: string | null
   nbs_padrao: string | null
 }
 
@@ -158,7 +162,8 @@ async function claimNext(
 ): Promise<(Claimed & { id: string }) | null> {
   const { rows } = await tx.query<ClaimedRow>(
     `select i.id, i.tenant_id, i.external_id, i.status, i.payload, i.dps_serie, i.dps_numero, i.id_dps, i.attempts,
-            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn, t.nbs_padrao
+            t.cnpj, t.razao_social, t.inscricao_municipal, t.codigo_municipio_ibge, t.regime, t.ambiente, t.p_tot_trib_sn, t.nbs_padrao,
+            t.p_tot_trib_fed::text as p_tot_trib_fed, t.p_tot_trib_est::text as p_tot_trib_est, t.p_tot_trib_mun::text as p_tot_trib_mun
        from nofiscal.fiscal_invoices i
        join nofiscal.fiscal_tenants t on t.id = i.tenant_id
        join nofiscal.fiscal_certificados_de_emissao c on c.tenant_id = t.id
@@ -185,6 +190,7 @@ async function claimNext(
     regime: row.regime,
     ambiente: row.ambiente,
     p_tot_trib_sn: row.p_tot_trib_sn,
+    p_tot_trib: pTotTribDaLinha(row),
     nbs_padrao: row.nbs_padrao,
   }
   const lease = minutesFrom(now, CLAIM_LEASE_MINUTES)
@@ -204,7 +210,7 @@ async function claimNext(
         )
         return { id: row.id, plan: 'skip', tenant, invoice: null, attempts: row.attempts }
       }
-      if (row.p_tot_trib_sn === null && row.regime !== 'mei') {
+      if (!tributosConfigurados(tenant)) {
         await tx.query(
           `update nofiscal.fiscal_invoices
               set last_error_code = 'TRIBUTOS_NOT_CONFIGURED', next_attempt_at = $2, updated_at = $3
@@ -339,6 +345,27 @@ async function readCertificate(db: Queryable, tenantId: string): Promise<Certifi
   return row ? { pfxBase64: row.pfx_base64, password: row.password } : null
 }
 
+/** Recusas da Sefin que dizem que o município emissor não aceita este contribuinte no Emissor Nacional (Anexo I). */
+export const CODIGOS_SEM_CONVENIO = new Set(['E0037', 'E0038', 'E0039'])
+
+/** Presumido/Real: grava o que a Sefin disse da cidade da empresa (tabela fiscal_municipios_presumido). */
+async function aprenderMunicipio(db: Queryable, invoiceId: string, situacao: 'aceita' | 'recusada', origem: string, detalhe: string) {
+  try {
+    const { rows } = await db.query<{ ibge: string; situacao: string }>(
+      `select t.codigo_municipio_ibge as ibge,
+              nofiscal.registrar_municipio_presumido(t.codigo_municipio_ibge, $2, $3, $4) as situacao
+         from nofiscal.fiscal_invoices i
+         join nofiscal.fiscal_tenants t on t.id = i.tenant_id
+        where i.id = $1 and t.regime in ('presumido', 'real')`,
+      [invoiceId, situacao, origem, detalhe],
+    )
+    if (rows[0]) logEvent('nofiscal.municipio_presumido', { codigo_ibge: rows[0].ibge, situacao: rows[0].situacao, origem })
+  } catch (error) {
+    // Aprender a cidade não pode derrubar a nota: só registra.
+    logEvent('nofiscal.municipio_presumido_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+  }
+}
+
 function applyEmitir(db: Queryable, now: Date, id: string, result: EmitirResultado, cert: Certificado): Promise<Outcome> {
   if (result.kind === 'authorized') return markIssued(db, now, id, result.chaveAcesso, result.xmlDps, result.xmlNfse, cert)
   // Rejeição de dado: sem nova tentativa (critério 14). O destino do número segue em Unresolved 1.
@@ -377,6 +404,8 @@ async function markIssued(
         and t.modo_autenticacao = 'procuracao' and p.status = 'declarada'`,
     [id, now],
   )
+  // Presumido/Real: a nota autorizada prova que a cidade aceita não optante no Emissor Nacional (cidades "a conferir").
+  await aprenderMunicipio(db, id, 'aceita', 'nota_autorizada', 'nota autorizada')
   logEvent('nofiscal.invoice_issued', { invoice_id: id })
   return 'issued'
 }
@@ -395,6 +424,9 @@ async function markRejected(
       where id = $1 and status = 'sent'`,
     [id, redactCertificate(code, cert, 100), redactCertificate(message, cert, MAX_ERROR_LENGTH), now],
   )
+  // Convênio do município inexistente, inativo ou sem emissor nacional para este contribuinte (E0037/E0038/E0039):
+  // para Presumido/Real, a cidade não aceita o regime, e o emission_block passa a barrar as empresas dela.
+  if (CODIGOS_SEM_CONVENIO.has(code)) await aprenderMunicipio(db, id, 'recusada', 'recusa_sefin', `${code}: ${message}`.slice(0, 500))
   // E0718 ("A assinatura deve ser feita com o certificado digital do emitente"): com procuração, a Sefin não achou
   // a procuração do prestador para o procurador. Fica registrado na procuração para a página e o agente.
   if (code === 'E0718') {

@@ -86,6 +86,24 @@ const TP_EMIT: Record<string, string> = { '1': 'Prestador do serviço', '2': 'To
 const AMB_GER: Record<string, string> = { '1': 'Prefeitura', '2': 'Sefin Nacional' }
 const label = (map: Record<string, string>, code: string | null) => (code ? (map[code] ?? code) : '-')
 
+/** `tpRetPisCofins` (TSTipoRetPISCofins, igual nos XSD v1.01 e NT 009): o que foi retido entre PIS, COFINS e CSLL. */
+export function retencaoPisCofinsCsll(tp: string | null): { pis: boolean; cofins: boolean; csll: boolean } {
+  const tabela: Record<string, [boolean, boolean, boolean]> = {
+    '0': [false, false, false],
+    '1': [true, true, false],
+    '2': [false, false, false],
+    '3': [true, true, true],
+    '4': [true, true, false],
+    '5': [true, false, false],
+    '6': [false, true, false],
+    '7': [false, true, true],
+    '8': [false, false, true],
+    '9': [true, false, true],
+  }
+  const [pis, cofins, csll] = (tp && tabela[tp]) || [false, false, false]
+  return { pis, cofins, csll }
+}
+
 function fmtEndereco(p: Pessoa | null): { endereco: string; municipio: string; ibgeCep: string } {
   const e = p?.endereco
   if (!e) return { endereco: '-', municipio: '-', ibgeCep: '-' }
@@ -397,12 +415,17 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   ])
 
   y = blockTitle(p, y, 'Tributação federal (exceto CBS)')
+  // tribFed da DPS: retenções (IRRF, CP, CSLL) e PIS/COFINS, com a marca de retido do tpRetPisCofins.
+  const fed = d.tribFed
+  const pc = fed?.piscofins ?? null
+  const ret = retencaoPisCofinsCsll(pc?.tpRetPisCofins ?? null)
+  const comRetido = (valor: string | null | undefined, retido: boolean) => (valor ? `${fmtMoney(valor)}${retido ? ' (retido)' : ''}` : '-')
   y = row(p, y, [
-    { label: 'IRRF', value: '-' },
-    { label: 'Contribuição previdenciária', value: '-' },
-    { label: 'CSLL', value: '-' },
-    { label: 'PIS', value: '-' },
-    { label: 'COFINS', value: '-' },
+    { label: 'IRRF retido', value: fed?.vRetIRRF ? fmtMoney(fed.vRetIRRF) : '-' },
+    { label: 'Contribuição previdenciária retida', value: fed?.vRetCP ? fmtMoney(fed.vRetCP) : '-' },
+    { label: 'CSLL retida', value: fed?.vRetCSLL ? fmtMoney(fed.vRetCSLL) : '-' },
+    { label: 'PIS', value: comRetido(pc?.vPis, ret.pis) },
+    { label: 'COFINS', value: comRetido(pc?.vCofins, ret.cofins) },
   ])
 
   y = blockTitle(p, y, 'Tributação IBS / CBS')

@@ -122,3 +122,25 @@ describe('endereço do tomador pela Receita (BrasilAPI)', () => {
     expect(enderecoDaReceita(null)).toBeNull()
   })
 })
+
+describe('retenção federal do Lucro Presumido e Real (19/11/2026)', () => {
+  it('IRRF e PIS/COFINS/CSLL por percentual ou valor; líquido desconta tudo', () => {
+    const r = resolver({ regime: 'presumido', valor: '1000.00', pedido: { irrfTexto: '1,5%', csrfTexto: '46,50', inss: true, inssTexto: '11%' } })
+    expect(r).toEqual({ ok: true, retencao: { inss: { valor: '110.00' }, irrf: { valor: '15.00' }, csrf: { valor: '46.50' } } })
+    if (!r.ok || !r.retencao) throw new Error('esperava retenção')
+    expect(valorLiquido('1000.00', r.retencao)).toBe('828.50')
+    expect(linhasDaRetencao('1000.00', r.retencao)).toEqual([
+      'INSS retido: R$ 110,00',
+      'IRRF retido: R$ 15,00',
+      'PIS/COFINS/CSLL retidos: R$ 46,50',
+      'Valor líquido: R$ 828,50',
+    ])
+  })
+
+  it('Simples e MEI recusam; valores inválidos também', () => {
+    expect(resolver({ regime: 'simples', pedido: { irrfTexto: '1,5%' } })).toEqual({ ok: false, problema: 'RETENCAO_FEDERAL_SO_LUCRO' })
+    expect(resolver({ regime: 'mei', pedido: { csrfTexto: '4,65%' } })).toEqual({ ok: false, problema: 'RETENCAO_MEI' })
+    expect(resolver({ regime: 'real', pedido: { irrfTexto: 'x' } })).toEqual({ ok: false, problema: 'IRRF_INVALIDO' })
+    expect(resolver({ regime: 'real', pedido: { csrfTexto: '1500,00' } })).toEqual({ ok: false, problema: 'CSRF_INVALIDO' })
+  })
+})

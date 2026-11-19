@@ -13,7 +13,7 @@
 //   valor 2.22 → a Sefin fica fora do ar por ~1 min (SEFIN_UNAVAILABLE na fila) e depois a nota sai;
 //   valor 3.33 → a nota sai, mas o cancelamento é recusado.
 import type { Db, Queryable } from '../db.js'
-import { buildDps, DpsInvalidError, formatDhSaoPaulo, opcoesDpsDoAmbiente } from '../dps-builder.js'
+import { buildDps, DpsInvalidError, formatDhSaoPaulo, opcoesDpsDoAmbiente, pTotTribDaLinha, tributosConfigurados } from '../dps-builder.js'
 import { logEvent } from '../log.js'
 import { municipio } from '../local-prestacao.js'
 import type { SefinTenant } from '../sefin.js'
@@ -140,12 +140,14 @@ type EmpresaDaDps = SefinTenant & { razao_social: string }
 
 async function empresaDaDps(db: Queryable, tenantId: string): Promise<EmpresaDaDps> {
   const { rows } = await db.query<EmpresaDaDps>(
-    `select id, cnpj, razao_social, inscricao_municipal, codigo_municipio_ibge, regime, ambiente, p_tot_trib_sn::text as p_tot_trib_sn, nbs_padrao
+    `select id, cnpj, razao_social, inscricao_municipal, codigo_municipio_ibge, regime, ambiente, p_tot_trib_sn::text as p_tot_trib_sn, nbs_padrao,
+            p_tot_trib_fed::text as p_tot_trib_fed, p_tot_trib_est::text as p_tot_trib_est, p_tot_trib_mun::text as p_tot_trib_mun
        from nofiscal.fiscal_tenants where id = $1`,
     [tenantId],
   )
   if (!rows[0]) throw new Error('empresa do sandbox não encontrada')
-  return rows[0]
+  const { p_tot_trib_fed, p_tot_trib_est, p_tot_trib_mun, ...empresa } = rows[0] as EmpresaDaDps & Record<string, string | null>
+  return { ...empresa, p_tot_trib: pTotTribDaLinha({ p_tot_trib_fed, p_tot_trib_est, p_tot_trib_mun }) }
 }
 
 /** A DPS que o worker montaria para esta nota, sem assinatura, em produção restrita. */
@@ -158,7 +160,7 @@ function montarDps(empresa: EmpresaDaDps, numero: number, payload: unknown, agor
       numero,
       payload,
       now: agora,
-      opcoes: opcoesDpsDoAmbiente(empresa),
+      opcoes: opcoesDpsDoAmbiente(empresa, process.env, agora),
     })
     return { ok: true, id: dps.id, xml: dps.xml }
   } catch (error) {
@@ -185,8 +187,8 @@ export async function criarNotaSandbox(db: Db, nova: NovaNotaSandbox): Promise<{
     const dps = montarDps(empresa, numero, nova.payload, nova.agora)
     let roteiro: Roteiro = VALORES_MAGICOS[nova.valor] ?? 'emitir'
     if (!dps.ok) roteiro = 'dps_invalida'
-    // Sem o percentual do Simples, o worker deixa a nota na fila (TRIBUTOS_NOT_CONFIGURED); o sandbox também.
-    if (dps.ok && empresa.p_tot_trib_sn === null && empresa.regime !== 'mei') roteiro = 'tributos'
+    // Sem os percentuais do regime, o worker deixa a nota na fila (TRIBUTOS_NOT_CONFIGURED); o sandbox também.
+    if (!tributosConfigurados(empresa)) roteiro = 'tributos'
     const inserida = await tx.query<{ id: string }>(
       `insert into nofiscal.fiscal_sandbox_invoices
          (dono_tenant_id, tenant_id, external_id, payload, roteiro, avanca_em, dps_numero, id_dps, xml_dps, erro_previsto,

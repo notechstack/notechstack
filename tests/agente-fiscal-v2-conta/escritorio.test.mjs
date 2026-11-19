@@ -214,18 +214,21 @@ test("adicionar empresa", async () => {
   assert.equal(tm.ambiente, "producao");
   assert.equal(tm.regime, "mei");
 
-  // Fora do Simples/MEI: o mesmo texto do cadastro, e nada gravado.
+  // Fora do Simples/MEI numa cidade sem emissor nacional pleno: lista de espera do Presumido, e nada gravado.
   const fora = cnpjValido();
-  const rf = await conta(e, { acao: "empresa_adicionar", cnpj: fora }, { gw: rede({ receita: { [fora]: { opcao_pelo_mei: null, opcao_pelo_simples: false } } }) });
+  const rf = await conta(e, { acao: "empresa_adicionar", cnpj: fora, regime: "presumido" }, { gw: rede({ receita: { [fora]: { opcao_pelo_mei: null, opcao_pelo_simples: false } } }) });
   assert.equal(rf.http, 422);
   assert.equal(rf.body.error_code, "CNPJ_FORA_DO_SIMPLES");
-  assert.equal(rf.body.mensagem, MSG_FORA_DO_SIMPLES);
+  assert.match(rf.body.mensagem, /Lucro Presumido e Real/);
+  assert.equal(rf.body.lista_espera, true);
+  assert.ok(MSG_FORA_DO_SIMPLES.length > 0);
   const cadastro = readFileSync(new URL("../../supabase/functions/fiscal-cadastro/core.ts", import.meta.url), "utf8");
-  for (const msg of [MSG_FORA_DO_SIMPLES, MSG_NAO_ENCONTRADO, MSG_CNPJ_INVALIDO]) {
+  for (const msg of [MSG_NAO_ENCONTRADO, MSG_CNPJ_INVALIDO]) {
     assert.ok(cadastro.includes(msg), `mesmo texto de fiscal-cadastro: ${msg}`);
   }
   const n = (await bancos.dono.query("select count(*)::int n from nofiscal.fiscal_tenants where cnpj = $1", [fora])).rows[0].n;
   assert.equal(n, 0);
+
 
   // Não encontrado e Receita fora do ar.
   const sumido = cnpjValido();
@@ -372,7 +375,9 @@ test("atualizar dados da Receita de empresa já cadastrada", async () => {
   });
   assert.equal(rf.http, 422);
   assert.equal(rf.body.error_code, "CNPJ_FORA_DO_SIMPLES");
-  assert.equal(rf.body.mensagem, MSG_FORA_DO_SIMPLES);
+  // Saiu do Simples em São Paulo (sem emissor nacional para todos): a recusa leva à lista de espera do Presumido.
+  assert.match(rf.body.mensagem, /Lucro Presumido e Real/);
+  assert.equal(rf.body.lista_espera, true);
   t = await tenant(tenantId);
   assert.equal(t.razao_social, "NOVA RAZAO SOCIAL LTDA");
   assert.equal(t.regime, "mei");
@@ -605,4 +610,27 @@ test("relatório do mês", async () => {
   const ro = await conta(e, { acao: "relatorio", mes: r.body.mes, tenant_id: outra.tenantId });
   assert.equal(ro.http, 403);
   assert.equal(ro.body.error_code, "FORBIDDEN");
+});
+
+test("empresa do Lucro Presumido no Rio de Janeiro (19/11/2026)", async () => {
+  const e = await escritorio();
+  // Presumido no Rio de Janeiro (emissor nacional para todos): sem regime, pede a escolha; com regime, entra.
+  const rio = cnpjValido();
+  const gwRio = rede({ receita: { [rio]: { opcao_pelo_mei: null, opcao_pelo_simples: false, codigo_municipio_ibge: 3304557, municipio: "RIO DE JANEIRO", uf: "RJ" } } });
+  const semRegime = await conta(e, { acao: "empresa_adicionar", cnpj: rio }, { gw: gwRio });
+  assert.equal(semRegime.http, 422);
+  assert.equal(semRegime.body.error_code, "REGIME_A_DECLARAR");
+  assert.equal(semRegime.body.dados.codigo_municipio_ibge, "3304557");
+  const comRegime = await conta(e, { acao: "empresa_adicionar", cnpj: rio, regime: "presumido" }, { gw: gwRio });
+  assert.equal(comRegime.http, 200, JSON.stringify(comRegime.body));
+  const tr = (await bancos.dono.query("select id, regime from nofiscal.fiscal_tenants where cnpj = $1", [rio])).rows[0];
+  assert.equal(tr.regime, "presumido");
+  // Dados fiscais do Presumido: pTotTrib, não o percentual do Simples.
+  const semPct = await conta(e, { acao: "empresa_configurar", tenant_id: tr.id, codigo_servico_nacional: "170201", p_tot_trib_sn: "6" }, { gw: gwRio });
+  assert.equal(semPct.http, 422);
+  assert.equal(semPct.body.campo, "p_tot_trib");
+  const comPct = await conta(e, { acao: "empresa_configurar", tenant_id: tr.id, codigo_servico_nacional: "170201", p_tot_trib: { fed: "13,45", mun: "5" } }, { gw: gwRio });
+  assert.equal(comPct.http, 200, JSON.stringify(comPct.body));
+  const pct = (await bancos.dono.query("select p_tot_trib_fed::text f, p_tot_trib_est::text e, p_tot_trib_mun::text m from nofiscal.fiscal_tenants where id = $1", [tr.id])).rows[0];
+  assert.deepEqual(pct, { f: "13.45", e: "0.00", m: "5.00" });
 });

@@ -105,7 +105,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email'], 'tomador.') : null) ??
     (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge', 'obra'], 'servico.') : null) ??
     (isObject(body.servico) && isObject(body.servico.obra) ? unknownField(body.servico.obra, ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro'], 'servico.obra.') : null) ??
-    (isObject(body.retencao) ? unknownField(body.retencao, ['retem_iss', 'aliquota_iss', 'retem_inss', 'inss'], 'retencao.') : null)
+    (isObject(body.retencao) ? unknownField(body.retencao, ['retem_iss', 'aliquota_iss', 'retem_inss', 'inss', 'irrf', 'csrf'], 'retencao.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
   const externalId = text(body.external_id, 1, 100)
@@ -184,6 +184,9 @@ export function parseNewInvoice(body: unknown): ValidationResult {
       aliquotaIss: r.aliquota_iss === undefined ? null : decimalTexto(r.aliquota_iss),
       inss: typeof r.retem_inss === 'boolean' ? r.retem_inss : null,
       inssTexto: r.inss === undefined ? null : decimalTexto(r.inss),
+      // Presumido/Real: IRRF e PIS/COFINS/CSLL retidos (somados), valor ou percentual.
+      irrfTexto: r.irrf === undefined || r.irrf === null ? null : decimalTexto(r.irrf),
+      csrfTexto: r.csrf === undefined || r.csrf === null ? null : decimalTexto(r.csrf),
     }
   }
 

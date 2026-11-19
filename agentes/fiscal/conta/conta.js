@@ -143,7 +143,8 @@
 
     $('fa-fiscal').innerHTML = linhas([
       ['Código de serviço', f.codigo_servico_nacional ? nf.formatarCodigo(f.codigo_servico_nacional) : ''],
-      ['Tributos do Simples', ehMei() ? undefined : f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') + '%' : ''],
+      ['Tributos do Simples', ehMei() || ehNaoOptante() ? undefined : f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') + '%' : ''],
+      ['Tributos aproximados', ehNaoOptante() ? textoTotTrib(f.p_tot_trib) : undefined],
       ['NBS padrão', f.nbs_padrao ? formatarNbs(f.nbs_padrao) : 'Não definida'],
       ['Contador', pro ? (f.contador_email || '') : undefined],
       ['Resumo das notas', pro ? textoResumo(f.resumo) : undefined]
@@ -337,10 +338,30 @@
   /* ---------- dados fiscais ---------- */
   /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
   function ehMei() { return !!(st.estado && st.estado.empresa && st.estado.empresa.regime === 'mei'); }
+  /** Lucro Presumido e Real: pTotTrib federal e municipal no lugar do percentual do Simples (E0713). */
+  function naoOptante(regime) { return regime === 'presumido' || regime === 'real'; }
+  function ehNaoOptante() { return !!(st.estado && st.estado.empresa && naoOptante(st.estado.empresa.regime)); }
+  var PCT_INVALIDO = 'Use um número de 0 a 100, com até 2 casas.';
+  /** Lê os dois percentuais do Presumido (prefixo fa ou fa-emp); null se algum estiver errado (o erro já aparece). */
+  function lerTotTrib(pref) {
+    var fed = nf.percentual($(pref + '-pct-fed').value), mun = nf.percentual($(pref + '-pct-mun').value);
+    nf.erroCampo(pref + '-pct-fed', fed === null ? PCT_INVALIDO : '');
+    nf.erroCampo(pref + '-pct-mun', mun === null ? PCT_INVALIDO : '');
+    return fed === null || mun === null ? null : { fed: fed, est: '0', mun: mun };
+  }
+  function preencherTotTrib(pref, t) {
+    $(pref + '-pct-fed').value = t ? String(t.fed).replace('.', ',') : '';
+    $(pref + '-pct-mun').value = t ? String(t.mun).replace('.', ',') : '';
+  }
+  function textoTotTrib(t) {
+    return t ? 'federais ' + String(t.fed).replace('.', ',') + '%, municipais ' + String(t.mun).replace('.', ',') + '%' : '';
+  }
   function abrirFiscal() {
     var e = st.estado || {}, f = e.fiscal || {};
     $('fa-form-fiscal').hidden = false;
-    $('fa-campo-percentual').hidden = ehMei();
+    $('fa-campo-percentual').hidden = ehMei() || ehNaoOptante();
+    $('fa-campo-tottrib').hidden = !ehNaoOptante();
+    preencherTotTrib('fa', f.p_tot_trib);
     var dia = $('fa-resumo-dia-mes');
     if (dia.options.length === 0) for (var i = 1; i <= 28; i++) { var o = document.createElement('option'); o.value = String(i); o.textContent = String(i); dia.appendChild(o); }
     $('fa-percentual').value = f.p_tot_trib_sn != null ? String(f.p_tot_trib_sn).replace('.', ',') : '';
@@ -358,15 +379,17 @@
     Object.keys(CAMPO_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_FISCAL[k], ''); });
     nf.aviso($('fa-aviso-fiscal'), '');
     var codigo = st.seletor ? st.seletor.valor() : '';
-    var mei = ehMei();
-    var pct = mei ? null : nf.percentual($('fa-percentual').value);
-    var falhou = false;
+    var mei = ehMei(), normal = ehNaoOptante();
+    var pct = mei || normal ? null : nf.percentual($('fa-percentual').value);
+    var tot = normal ? lerTotTrib('fa') : null;
+    var falhou = normal && !tot;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
-    if (!mei && pct === null) { nf.erroCampo('fa-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    if (!mei && !normal && pct === null) { nf.erroCampo('fa-percentual', PCT_INVALIDO); falhou = true; }
     var nbs = lerNbs($('fa-nbs').value);
     if (nbs === null) { nf.erroCampo('fa-nbs', MSG_NBS); falhou = true; }
     var corpo = { acao: 'configurar', codigo_servico_nacional: codigo, nbs_padrao: nbs || null };
-    if (!mei) corpo.p_tot_trib_sn = pct;
+    if (normal) corpo.p_tot_trib = tot;
+    else if (!mei) corpo.p_tot_trib_sn = pct;
     if (st.estado.plano === 'pro') {
       var contador = nf.texto($('fa-contador').value);
       if (contador && !nf.emailValido(contador)) { nf.erroCampo('fa-contador', 'Informe um e-mail válido ou deixe em branco.'); falhou = true; }
@@ -384,7 +407,7 @@
       nf.ocupado(botao, false);
       if (r.ok) {
         if (r.dados && r.dados.tenant_id) st.estado = r.dados;
-        else st.estado.fiscal = { codigo_servico_nacional: codigo, p_tot_trib_sn: pct, nbs_padrao: nbs || null, contador_email: corpo.contador_email || null, resumo: corpo.resumo || null };
+        else st.estado.fiscal = { codigo_servico_nacional: codigo, p_tot_trib_sn: pct, p_tot_trib: tot, nbs_padrao: nbs || null, contador_email: corpo.contador_email || null, resumo: corpo.resumo || null };
         $('fa-form-fiscal').hidden = true;
         desenhar();
         nf.aviso($('fa-aviso'), 'Dados fiscais salvos.', 'ok');
@@ -452,6 +475,7 @@
     pronta: ['Pronta', 'ok'],
     falta_certificado: ['Falta certificado A1', ''],
     falta_dados_fiscais: ['Faltam dados fiscais', ''],
+    municipio_sem_presumido: ['Cidade sem Presumido (lista de espera)', 'erro'],
     certificado_vencido: ['Certificado vencido', 'erro'],
     procuracao_pendente: ['Procuração pendente', ''],
     desativada: ['Desativada', 'off']
@@ -852,7 +876,9 @@
     var cnae = emp.cnae || (emp.principal ? (st.estado.empresa || {}).cnae : null);
     ec.seletor = nf.seletorCodigo(novo, { cnae: cnae, atual: emp.codigo_servico_nacional });
     var mei = emp.regime === 'mei';
-    $('fa-emp-campo-percentual').hidden = mei;
+    $('fa-emp-campo-percentual').hidden = mei || naoOptante(emp.regime);
+    $('fa-emp-campo-tottrib').hidden = !naoOptante(emp.regime);
+    preencherTotTrib('fa-emp', emp.p_tot_trib);
     $('fa-emp-percentual').value = !mei && emp.p_tot_trib_sn != null ? String(emp.p_tot_trib_sn).replace('.', ',') : '';
     $('fa-emp-nbs').value = emp.nbs_padrao ? formatarNbs(emp.nbs_padrao) : '';
     // O padrão de retenção vem da API do painel (a mesma da aba Emitir); até chegar, as caixas ficam desmarcadas.
@@ -872,17 +898,19 @@
     Object.keys(CAMPO_EMP_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_EMP_FISCAL[k], ''); });
     nf.aviso($('fa-aviso-emp-fiscal'), '');
     var codigo = ec.seletor ? ec.seletor.valor() : '';
-    var mei = ac.empresa.regime === 'mei';
-    var pct = mei ? null : nf.percentual($('fa-emp-percentual').value);
-    var falhou = false;
+    var mei = ac.empresa.regime === 'mei', normal = naoOptante(ac.empresa.regime);
+    var pct = mei || normal ? null : nf.percentual($('fa-emp-percentual').value);
+    var tot = normal ? lerTotTrib('fa-emp') : null;
+    var falhou = normal && !tot;
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fa-emp-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
-    if (!mei && pct === null) { nf.erroCampo('fa-emp-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    if (!mei && !normal && pct === null) { nf.erroCampo('fa-emp-percentual', PCT_INVALIDO); falhou = true; }
     var nbs = lerNbs($('fa-emp-nbs').value);
     if (nbs === null) { nf.erroCampo('fa-emp-nbs', MSG_NBS); falhou = true; }
     var erroRet = retEmp.validar();
     if (falhou || erroRet) { if (erroRet && !falhou) $(erroRet).focus(); return; }
     var corpo = { acao: 'empresa_configurar', tenant_id: ac.tenantId, codigo_servico_nacional: codigo, nbs_padrao: nbs || null };
-    if (!mei) corpo.p_tot_trib_sn = pct;
+    if (normal) corpo.p_tot_trib = tot;
+    else if (!mei) corpo.p_tot_trib_sn = pct;
     var botao = $('fa-emp-salvar-fiscal');
     var nome = nomeEmpresa(ac.empresa);
     nf.ocupado(botao, true, 'Salvando…');
@@ -976,7 +1004,18 @@
     $('fa-abrir-adicionar').setAttribute('aria-expanded', abrir ? 'true' : 'false');
     nf.erroCampo('fa-add-cnpj', '');
     nf.aviso($('fa-aviso-adicionar'), '');
+    mostrarRegimeAdd(false);
     if (abrir) { retAdd.preencher(null, false); $('fa-add-cnpj').focus(); }
+  }
+  /** Fora do Simples numa cidade de emissor nacional pleno: fiscal-conta responde REGIME_A_DECLARAR e a pessoa escolhe. */
+  function mostrarRegimeAdd(mostrar) {
+    $('fa-add-regime').hidden = !mostrar;
+    nf.erroCampo('fa-add-regime', '');
+    if (!mostrar) { var r = document.querySelector('input[name="fa-add-regime"]:checked'); if (r) r.checked = false; }
+  }
+  function regimeAdd() {
+    var r = document.querySelector('input[name="fa-add-regime"]:checked');
+    return r ? r.value : '';
   }
   function adicionarEmpresa(ev) {
     ev.preventDefault();
@@ -984,12 +1023,13 @@
     nf.erroCampo('fa-add-cnpj', '');
     nf.aviso($('fa-aviso-adicionar'), '');
     if (!nf.cnpjValido(cnpj)) { nf.erroCampo('fa-add-cnpj', 'CNPJ inválido. Confira os 14 números.'); return; }
+    if (!$('fa-add-regime').hidden && !regimeAdd()) { nf.erroCampo('fa-add-regime', 'Escolha Lucro Presumido ou Lucro Real.'); return; }
     var erroRet = retAdd.validar();
     if (erroRet) { $(erroRet).focus(); return; }
     var retencao = retAdd.marcada() ? retAdd.ler() : null;
     var botao = $('fa-adicionar');
     nf.ocupado(botao, true, 'Consultando a Receita…');
-    nf.funcao('fiscal-conta', { acao: 'empresa_adicionar', cnpj: cnpj }).then(function (r) {
+    nf.funcao('fiscal-conta', { acao: 'empresa_adicionar', cnpj: cnpj, regime: regimeAdd() || undefined }).then(function (r) {
       nf.ocupado(botao, false);
       if (r.ok) {
         var reativada = !!(r.dados.adicionada && r.dados.adicionada.reativada);
@@ -1026,6 +1066,7 @@
         nf.aviso($('fa-aviso-adicionar'), nf.esc(msg) + BOTAO_FAIXA, 'erro');
         return;
       }
+      if (r.codigo === 'REGIME_A_DECLARAR') { mostrarRegimeAdd(true); nf.erroCampo('fa-add-regime', r.mensagem || 'Escolha o regime.'); return; }
       if (r.dados && r.dados.campo === 'cnpj') { nf.erroCampo('fa-add-cnpj', r.mensagem || 'Confira o CNPJ.'); return; }
       nf.aviso($('fa-aviso-adicionar'), nf.esc(r.mensagem || GENERICO), 'erro');
     });

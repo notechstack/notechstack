@@ -750,6 +750,8 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return `a procuração de ${empresa} venceu`
     case 'PROCURADOR_CERT_INVALIDO':
       return `o certificado A1 do escritório, que assina por procuração, não está valendo`
+    case 'MUNICIPIO_SEM_PRESUMIDO':
+      return `a prefeitura de ${empresa} não aceita Lucro Presumido/Real no Emissor Nacional (a Sefin recusou); a empresa está na lista de espera`
     case 'FISCAL_CONFIG_MISSING':
       return `faltam os dados fiscais de ${empresa} (código de serviço e percentual do Simples)`
     case 'TENANT_INACTIVE':
@@ -957,7 +959,9 @@ export function chaveDoPayload(tenantId: string, payload: unknown): string | nul
 
 /**
  * Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). A NF-e
- * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia.
+ * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia. Nota recusada pela Sefin não consome a franquia —
+ * inclusive a do Presumido/Real recusada porque a cidade não aceita o regime (E0037/E0038/E0039; Lucca, 19/11/2026):
+ * ela sai da fila como `rejected`, sem `issued_at`.
  */
 export async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
   const local = partesLocais(agora)

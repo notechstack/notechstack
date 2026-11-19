@@ -179,6 +179,8 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
       return `Sua empresa ainda não tem assinatura. Assine para emitir: ${links.assinatura}`
     case 'SUBSCRIPTION_CANCELLED':
       return `Sua assinatura foi cancelada. Assine de novo para emitir: ${links.assinatura}`
+    case 'MUNICIPIO_SEM_PRESUMIDO':
+      return `A prefeitura da sua cidade ainda não aceita Lucro Presumido/Real pelo Emissor Nacional: a Sefin recusou a nota. Sua empresa entrou na lista de espera, e a Nó avisa quando a cidade abrir. Dúvidas: ${WHATSAPP_COMERCIAL}`
     case 'FISCAL_CONFIG_MISSING':
       return `Falta concluir a configuração fiscal (código de serviço e, no Simples, percentual de tributos) no cadastro: ${links.site}`
     default:

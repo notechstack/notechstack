@@ -227,12 +227,13 @@ describe('grupo IBSCBS (Simples e MEI, opcional em 2026)', () => {
 })
 
 describe('opções pelo ambiente', () => {
-  it('produção restrita usa nt009; produção só com NOFISCAL_DPS_LEIAUTE=nt009; IBSCBS só com NOFISCAL_DPS_IBSCBS=1', () => {
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {})).toEqual({ leiaute: 'v1.01', ibscbs: false })
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, {})).toEqual({ leiaute: 'nt009', ibscbs: false })
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }).leiaute).toBe('nt009')
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: '1' }).ibscbs).toBe(true)
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: 'true' }).ibscbs).toBe(false)
+  it('produção restrita usa nt009; produção só com NOFISCAL_DPS_LEIAUTE=nt009 antes da virada; IBSCBS só com NOFISCAL_DPS_IBSCBS=1', () => {
+    const antes = new Date('2026-11-30T23:59:59-03:00')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, antes)).toEqual({ leiaute: 'v1.01', ibscbs: false })
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, {}, antes)).toEqual({ leiaute: 'nt009', ibscbs: false })
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }, antes).leiaute).toBe('nt009')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: '1' }, antes).ibscbs).toBe(true)
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: 'true' }, antes).ibscbs).toBe(false)
   })
 })
 

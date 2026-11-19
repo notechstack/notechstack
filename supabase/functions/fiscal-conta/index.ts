@@ -62,6 +62,11 @@ Deno.serve(async (request) => {
     const resultado = await processarConta(request.method, body, {
       env,
       fetch: (url, init) => fetch(url, init),
+      situacaoMunicipio: async (ibge) => {
+        const { data, error } = await admin.rpc("fiscal_municipio_presumido", { p_ibge: ibge });
+        if (error) throw error;
+        return typeof data === "string" ? data : null;
+      },
       regimeConfirmado: async (cnpj) => {
         const r = await rpc("fiscal_regime_confirmado", { p_cnpj: cnpj }).catch(() => null);
         return r === "mei" || r === "simples" ? r : null;
