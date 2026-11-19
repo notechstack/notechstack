@@ -446,7 +446,8 @@
      Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
      seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
      empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
-  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe', 'api'];
+  // 'guias' só aparece com o módulo Guias ligado (guias.js mostra o botão quando a API diz que está ligado).
+  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe', 'api', 'guias'];
   var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   var SITUACAO = {
     pronta: ['Pronta', 'ok'],
@@ -490,10 +491,12 @@
     var h = location.hash.replace(/^#/, '');
     if (h === 'assinatura') return 'dados';
     if (h === 'certificado') return 'empresas';
-    return ABAS.indexOf(h) >= 0 ? h : null;
+    return ABAS.indexOf(h) >= 0 && abaDisponivel(h) ? h : null;
   }
+  function abaDisponivel(a) { var b = $('fa-aba-' + a); return !!b && !b.hidden; }
   function mostrarAba(aba, opcoes) {
     opcoes = opcoes || {};
+    if (!abaDisponivel(aba)) aba = 'dados';
     ec.aba = aba;
     ABAS.forEach(function (a) {
       var tab = $('fa-aba-' + a), ativa = a === aba;
@@ -512,7 +515,10 @@
     if (aba === 'nfe' && window.contaNfe) window.contaNfe.abrir();
     // A aba API mora em integracao.js.
     if (aba === 'api' && window.contaApi) window.contaApi.abrir();
+    // A aba Guias mora em guias.js (só com o módulo ligado).
+    if (aba === 'guias' && window.contaGuias) window.contaGuias.abrir();
   }
+  window.contaAbas = { mostrar: mostrarAba, atual: function () { return ec.aba; } };
 
   function proximaCobranca(a) {
     if (!a || a.status === 'cancelada') return 'Sem cobrança';
@@ -535,6 +541,8 @@
       else { p.removeAttribute('role'); p.removeAttribute('aria-labelledby'); }
     });
     $('fa-abas').hidden = !x;
+    // O módulo Guias pergunta à API se está ligado e só então mostra a aba.
+    if (window.contaGuias) window.contaGuias.verificar(!!x);
     $('certificado').hidden = !!x;
     $('fa-secao-fiscal').hidden = !!x;
     $('fa-secao-apagar').hidden = !!x;
@@ -546,6 +554,7 @@
       $('fa-painel-emitir').hidden = true;
       $('fa-painel-relatorios').hidden = true;
       $('fa-painel-nfe').hidden = true;
+      $('fa-painel-guias').hidden = true;
       $('fa-faixas').hidden = true;
       return;
     }
@@ -1460,11 +1469,11 @@
     if (b) mostrarAba(b.getAttribute('data-aba'));
   });
   $('fa-abas').addEventListener('keydown', function (ev) {
-    var i = ABAS.indexOf(ec.aba), n = null;
-    if (ev.key === 'ArrowRight') n = ABAS[(i + 1) % ABAS.length];
-    else if (ev.key === 'ArrowLeft') n = ABAS[(i + ABAS.length - 1) % ABAS.length];
-    else if (ev.key === 'Home') n = ABAS[0];
-    else if (ev.key === 'End') n = ABAS[ABAS.length - 1];
+    var vis = ABAS.filter(abaDisponivel), i = vis.indexOf(ec.aba), n = null;
+    if (ev.key === 'ArrowRight') n = vis[(i + 1) % vis.length];
+    else if (ev.key === 'ArrowLeft') n = vis[(i + vis.length - 1) % vis.length];
+    else if (ev.key === 'Home') n = vis[0];
+    else if (ev.key === 'End') n = vis[vis.length - 1];
     if (n) { ev.preventDefault(); mostrarAba(n, { foco: true }); }
   });
   window.addEventListener('hashchange', function () {

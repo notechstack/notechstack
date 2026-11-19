@@ -85,8 +85,10 @@ test('abas e Meus dados do escritório', async () => {
   const p = await painel();
   assert.ok(p.visivel('fa-abas'));
   assert.equal(p.$('fa-abas').getAttribute('role'), 'tablist');
-  const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')];
-  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios', 'NF-e']);
+  // A aba Guias só aparece com o módulo ligado (conta-guias.test.mjs); sem ele, as abas de sempre.
+  const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')].filter((a) => !a.hidden);
+  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios', 'NF-e', 'API']);
+  assert.equal(p.visivel('fa-aba-guias'), false);
   assert.equal(p.$('fa-aba-dados').getAttribute('aria-selected'), 'true');
   assert.equal(p.$('fa-painel-dados').getAttribute('role'), 'tabpanel');
   assert.ok(p.visivel('fa-painel-dados'));
