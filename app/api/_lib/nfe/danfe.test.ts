@@ -4,7 +4,7 @@ import { pdfTexts } from '../../_tests/pdf-text.js'
 import { makeTestCertificate } from '../../_tests/certs.js'
 import { signXml } from '../xml-signer.js'
 import { modulosCode128C, PADROES, simbolosCode128C, STOP } from './code128.js'
-import { formatarChave, lerNfeProc, renderDanfe } from './danfe.js'
+import { formatarChave, lerNfeProc, renderDanfe, volumesDoQuadro } from './danfe.js'
 import { montarNfe, type NfeInput } from './nfe-builder.js'
 import { notaExemplo } from './nfe-fixtures.js'
 import { nfeProc } from './sefaz-client.js'
@@ -111,5 +111,47 @@ describe('DANFE sem marca da nó', () => {
     expect([doc.getProducer(), doc.getCreator(), doc.getAuthor(), doc.getTitle()].join(' ')).not.toMatch(marca)
     // Exceção legal: o responsável técnico (infRespTec) é quem fez o software emissor, a nó (NT 2018.005).
     expect(proc.replace(/<infRespTec>[\s\S]*?<\/infRespTec>/, '')).not.toMatch(marca)
+  })
+})
+
+describe('DANFE: transportador e volumes', () => {
+  const comTransporte = () => notaExemplo({
+    modalidadeFrete: '0',
+    transportador: { documento: '11.444.777/0001-61', nome: 'Transportadora Exemplo Ltda', inscricaoEstadual: '190123456110', endereco: 'Rua das Cargas, 50', municipio: 'Atibaia', uf: 'SP' },
+    volumes: [{ quantidade: 10, especie: 'CAIXA', marca: 'EXEMPLO', numeracao: '1 a 10', pesoLiquido: 60.4, pesoBruto: 60.4 }],
+  })
+
+  it('lê transporta e vol do XML', () => {
+    const d = lerNfeProc(procDe(comTransporte()).proc)
+    expect(d.transportador).toEqual({ nome: 'Transportadora Exemplo Ltda', documento: '11444777000161', ie: '190123456110', endereco: 'Rua das Cargas, 50', municipio: 'Atibaia', uf: 'SP' })
+    expect(d.volumes).toEqual([{ quantidade: '10', especie: 'CAIXA', marca: 'EXEMPLO', numeracao: '1 a 10', pesoL: '60.400', pesoB: '60.400' }])
+  })
+
+  it('quadro preenchido: nome, frete por conta, CNPJ, endereço, município, IE, quantidade, espécie, marca, numeração e pesos', async () => {
+    const pdf = await renderDanfe(procDe(comTransporte()).proc)
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBe(1)
+    const textos = pdfTexts(pdf)
+    for (const esperado of [
+      'TRANSPORTADOR / VOLUMES TRANSPORTADOS', 'Transportadora Exemplo Ltda', '0 - Por conta do Remetente', '11.444.777/0001-61',
+      'Rua das Cargas, 50', 'Atibaia', '190123456110', '10', 'CAIXA', 'EXEMPLO', '1 a 10', '60,400', 'PESO BRUTO', 'PESO LÍQUIDO',
+    ]) expect(textos).toContain(esperado)
+  })
+
+  it('vários volumes: quantidade e pesos somados, espécies distintas juntas', () => {
+    expect(volumesDoQuadro([
+      { quantidade: '2', especie: 'CAIXA', marca: '', numeracao: '', pesoL: '1.500', pesoB: '2.000' },
+      { quantidade: '3', especie: 'PALETE', marca: '', numeracao: '', pesoL: '', pesoB: '10.250' },
+      { quantidade: '', especie: 'CAIXA', marca: '', numeracao: '', pesoL: '', pesoB: '' },
+    ])).toEqual({ quantidade: '5', especie: 'CAIXA / PALETE', marca: '', numeracao: '', pesoB: '12.25', pesoL: '1.5' })
+  })
+
+  it('a primeira folha ainda cabe o mesmo número de itens com o quadro maior (adicionais não sobrepõem)', async () => {
+    const base = notaExemplo()
+    const itens = Array.from({ length: 30 }, (_, i) => ({ ...base.itens[0], codigo: `P${i + 1}` }))
+    const total = itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0)
+    const pdf = await renderDanfe(procDe({ ...comTransporte(), itens, pagamentos: [{ forma: '15', valor: total }] }).proc)
+    const textos = pdfTexts(pdf)
+    expect(textos).toContain('P30')
+    expect(textos).toContain('DADOS ADICIONAIS')
   })
 })

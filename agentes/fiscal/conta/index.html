@@ -511,13 +511,24 @@
       <section class="nf-cartao" aria-labelledby="fa-nfe-planilha-titulo">
         <p class="nf-passo">Planilha</p>
         <h2 class="nf-h2" id="fa-nfe-planilha-titulo">Emitir NF-e por planilha</h2>
-        <p class="nf-texto">Uma linha por item; as linhas com o mesmo número na coluna <b>nota</b> viram uma NF-e. <a href="/agentes/fiscal/dados/modelo-nfe.csv" download>Baixar o modelo</a>.</p>
+        <p class="nf-texto">Uma linha por item; as linhas com o mesmo número na coluna <b>nota</b> viram uma NF-e. <a href="/agentes/fiscal/dados/modelo-nfe.xlsx" download>Baixar o modelo (.xlsx)</a> ou <a href="/agentes/fiscal/dados/modelo-nfe.csv" download>em .csv</a>.</p>
+        <details class="nf-proc" id="fa-nfe-transporte-ajuda">
+          <summary>Transporte e volumes</summary>
+          <p class="nf-texto">Colunas opcionais, da nota (como o destinatário): preencha numa linha dela; se repetir em outra linha, tem de ser igual. Sem elas, a nota sai como antes.</p>
+          <ul class="nf-lista">
+            <li><b>modalidade_frete</b>: 0 emitente (CIF), 1 destinatário (FOB), 2 terceiros, 3 transporte próprio do remetente, 4 transporte próprio do destinatário, 9 sem frete. Obrigatória quando há transportador.</li>
+            <li><b>Transportador</b>: transportador_cpf_cnpj, transportador_nome, transportador_ie (ou ISENTO), transportador_endereco, transportador_municipio, transportador_uf.</li>
+            <li><b>Volumes</b>: volumes_quantidade, volumes_especie (CAIXA, PALETE…), volumes_marca, volumes_numeracao, peso_liquido e peso_bruto (kg, até 3 casas).</li>
+          </ul>
+          <p class="nf-texto">Saem no XML e no quadro "Transportador / volumes transportados" do DANFE. Peso bruto menor que o líquido não impede a nota, mas aparece como aviso na conferência.</p>
+        </details>
         <form id="fa-form-nfe-planilha" class="nf-form" novalidate>
           <div class="nf-campo nf-campo--largo"><label for="fa-nfe-arquivo">Planilha (.xlsx ou .csv)</label><input id="fa-nfe-arquivo" type="file" accept=".xlsx,.csv"><small class="nf-erro" id="fa-nfe-arquivo-erro" hidden></small></div>
           <div class="nf-acoes nf-campo--largo"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-nfe-ler">Conferir planilha</button></div>
         </form>
         <div id="fa-nfe-resumo" hidden>
           <p class="nf-texto" id="fa-nfe-resumo-texto"></p>
+          <ul class="nf-lista" id="fa-nfe-notas"></ul>
           <ul class="nf-lista" id="fa-nfe-problemas"></ul>
           <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-nfe-emitir">Emitir</button></div>
         </div>
@@ -690,7 +701,7 @@
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=6"></script>
 <script src="/agentes/fiscal/conta/conta.js?v=16"></script>
-<script src="/agentes/fiscal/conta/nfe.js?v=1"></script>
+<script src="/agentes/fiscal/conta/nfe.js?v=2"></script>
 <script src="/agentes/fiscal/conta/integracao.js?v=2"></script>
 <script src="/agentes/fiscal/conta/guias.js?v=2"></script>
 </body>

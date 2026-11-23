@@ -28,3 +28,18 @@ export async function errosXsd(xml: string, pacote: PacoteXsd): Promise<string[]
   })
   return resultado.errors.map((e) => e.message)
 }
+
+// NF-e modelo 55: Pacote de Liberação 010h v1.03 (Portal Nacional da NF-e, pl010h.zip), pasta NFe, como baixado.
+const PASTA_NFE = 'nfe-pl010h-v1.03'
+const ARQUIVOS_NFE = ['leiauteNFe_v4.00.xsd', 'tiposBasico_v4.00.xsd', 'DFeTiposBasicos_v1.00.xsd', 'xmldsig-core-schema_v1.01.xsd']
+
+/** Erros do xmllint para uma <NFe> assinada contra o nfe_v4.00.xsd (vazia = válida). */
+export async function errosXsdNfe(xml: string): Promise<string[]> {
+  const lerNfe = (arquivo: string) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'xsd', PASTA_NFE, arquivo), 'utf8')
+  const resultado = await validateXML({
+    xml: [{ fileName: 'nfe.xml', contents: xml }],
+    schema: [{ fileName: 'nfe_v4.00.xsd', contents: lerNfe('nfe_v4.00.xsd') }],
+    preload: ARQUIVOS_NFE.map((fileName) => ({ fileName, contents: lerNfe(fileName) })),
+  })
+  return resultado.errors.map((e) => e.message)
+}

@@ -24,3 +24,17 @@ test('o botão Conferir na Sefaz chama a conferência, e o formulário da planil
   assert.match(js, /\$\('fa-nfe-conferir'\)\.addEventListener\('click', conferirSefaz\)/);
   assert.match(js, /\$\('fa-form-nfe-planilha'\)\.addEventListener\('submit', lerPlanilha\)/);
 });
+
+test('os modelos da planilha de NF-e linkados na aba existem e trazem as colunas de transporte', () => {
+  const links = [...html.matchAll(/href="\/agentes\/fiscal\/dados\/(modelo-nfe\.(?:xlsx|csv))"/g)].map((m) => m[1]);
+  assert.deepEqual(links.sort(), ['modelo-nfe.csv', 'modelo-nfe.xlsx']);
+  const csv = readFileSync(new URL('../dados/modelo-nfe.csv', raiz), 'utf8');
+  for (const c of ['modalidade_frete', 'transportador_cpf_cnpj', 'volumes_quantidade', 'peso_liquido', 'peso_bruto']) assert.ok(csv.includes(c), c);
+  assert.ok(readFileSync(new URL('../dados/modelo-nfe.xlsx', raiz)).length > 1000);
+});
+
+test('o resumo da planilha mostra o transporte e os avisos de cada nota', () => {
+  assert.match(js, /'Transporte: ' \+ n\.transporte/);
+  assert.match(js, /n\.avisos/);
+  assert.match(html, /<summary>Transporte e volumes<\/summary>/);
+});

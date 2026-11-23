@@ -388,7 +388,12 @@ empresa** (a NF-e não aceita procuração) e o botão **Conferir na Sefaz**. A 
   "natureza_operacao": "Venda de mercadoria",
   "consumidor_final": "1",
   "presenca": "2",
-  "modalidade_frete": "9",
+  "modalidade_frete": "0",
+  "transportador": {
+    "documento": "11444777000161", "nome": "Transportadora Exemplo Ltda", "inscricao_estadual": "190123456110",
+    "endereco": "Rua das Cargas, 50", "municipio": "Atibaia", "uf": "SP"
+  },
+  "volumes": [ { "quantidade": 1, "especie": "CAIXA", "marca": null, "numeracao": null, "peso_liquido": 0.4, "peso_bruto": 0.5 } ],
   "destinatario": {
     "documento": "52998224725",
     "nome": "Maria Souza",
@@ -419,7 +424,9 @@ empresa** (a NF-e não aceita procuração) e o botão **Conferir na Sefaz**. A 
 | `cnpj_emitente` | Empresa ativa da conta. Sem ele, a própria conta. |
 | `consumidor_final` | `"0"` ou `"1"`. Padrão: `1` se o destinatário não é contribuinte. |
 | `presenca` | `0`, `1` presencial, `2` internet, `3` teleatendimento, `4`, `5`, `9` outros. |
-| `modalidade_frete` | `0` emitente, `1` destinatário, `2` terceiros, `3`, `4`, `9` sem frete. |
+| `modalidade_frete` | `0` emitente (CIF), `1` destinatário (FOB), `2` terceiros, `3` próprio remetente, `4` próprio destinatário, `9` sem frete. Obrigatória com `transportador`. |
+| `transportador` | Opcional. `documento` (CNPJ ou CPF), `nome`, `inscricao_estadual` (dígitos ou `ISENTO`), `endereco`, `municipio`, `uf`. |
+| `volumes` | Opcional, lista. `quantidade` (inteiro), `especie`, `marca`, `numeracao`, `peso_liquido` e `peso_bruto` em kg (até 3 casas). |
 | `destinatario.indicador_ie` | `1` contribuinte com IE, `2` isento, `9` não contribuinte (padrão). |
 | `destinatario.endereco.codigo_municipio` | IBGE, 7 dígitos. |
 | `itens` | 1 a 990 itens. `quantidade`, `valor_unitario` e valores em número (ponto decimal). |

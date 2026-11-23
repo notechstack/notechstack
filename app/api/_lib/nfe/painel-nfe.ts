@@ -21,7 +21,7 @@ import type { SessionVerifier } from '../session.js'
 import type { Uf } from './autorizadores.js'
 import { conferenciaDaEmpresa, conferirEmpresaNfe } from './conferencia.js'
 import { renderDanfe } from './danfe.js'
-import type { ResponsavelTecnico } from './nfe-builder.js'
+import { MODALIDADES_FRETE, temTransportador, volumesDaNota, type ResponsavelTecnico } from './nfe-builder.js'
 import type { SefazClient } from './sefaz-client.js'
 import { lerPlanilhaNfe } from './planilha.js'
 import {
@@ -34,6 +34,7 @@ import {
   pedirCartaCorrecao,
   pedirInutilizacao,
   salvarDadosNfe,
+  type PedidoNfe,
 } from './servico.js'
 
 export type PainelNfeDeps = {
@@ -291,6 +292,20 @@ async function baixar(ctx: Ctx, url: URL): Promise<Response> {
   })
 }
 
+/** Uma linha para o resumo da planilha: modalidade, transportador e volumes (null sem nada de transporte). */
+export function resumoDoTransporte(pedido: PedidoNfe): string | null {
+  const t = temTransportador(pedido.transportador) ? pedido.transportador : null
+  const vols = volumesDaNota(pedido)
+  if (!t && !vols.length && (pedido.modalidadeFrete ?? '9') === '9') return null
+  const partes = [MODALIDADES_FRETE[pedido.modalidadeFrete ?? '9'] ?? '']
+  if (t) partes.push(t.nome || t.documento || 'transportador')
+  for (const v of vols) {
+    const peso = [v.pesoLiquido != null ? `líq. ${v.pesoLiquido} kg` : '', v.pesoBruto != null ? `bruto ${v.pesoBruto} kg` : ''].filter(Boolean).join(', ')
+    partes.push([v.quantidade != null ? `${v.quantidade} vol.` : '', v.especie ?? '', peso].filter(Boolean).join(' '))
+  }
+  return partes.filter(Boolean).join(' · ')
+}
+
 async function planilha(ctx: Ctx, request: Request): Promise<Response> {
   const tamanho = Number(request.headers.get('content-length') ?? '0')
   if (tamanho > MAX_BYTES_DO_PAINEL + 64 * 1024) return errorResponse('PLANILHA_RECUSADA', 'A planilha passou de 4 MB. Divida em duas.')
@@ -363,7 +378,15 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
   }
   const franquia = { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) }
   const resumo = {
-    notas: prontas.map((p) => ({ nota: p.nota.nota, cnpj: p.nota.cnpjEmitente, destinatario: p.nota.pedido.destinatario.nome, itens: p.nota.pedido.itens.length, valor: p.valor.toFixed(2) })),
+    notas: prontas.map((p) => ({
+      nota: p.nota.nota,
+      cnpj: p.nota.cnpjEmitente,
+      destinatario: p.nota.pedido.destinatario.nome,
+      itens: p.nota.pedido.itens.length,
+      valor: p.valor.toFixed(2),
+      transporte: resumoDoTransporte(p.nota.pedido),
+      avisos: p.nota.avisos,
+    })),
     problemas,
     franquia,
   }

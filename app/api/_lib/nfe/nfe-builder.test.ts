@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { makeTestCertificate } from '../../_tests/certs.js'
 import { verifySignature } from '../../_tests/verify-signature.js'
+import { errosXsdNfe } from '../../_tests/xsd.js'
 import { signXml } from '../xml-signer.js'
 import { CODIGO_UF, UFS, type Uf } from './autorizadores.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
 import {
+  avisosNfe,
   calcularTotais,
   dataHoraBrasilia,
   digitoChave,
@@ -214,5 +216,90 @@ describe('regras da revisão de 17/11/2026', () => {
     })
     expect(validarNfe(isento('SP', '3550308'))[0]).toMatch(/não aceita contribuinte isento/)
     expect(validarNfe(isento('RJ', '3304557'))).toEqual([])
+  })
+})
+
+describe('transporte e volumes (grupo transp)', () => {
+  const transporte = {
+    modalidadeFrete: '0' as const,
+    transportador: {
+      documento: '11.444.777/0001-61',
+      nome: 'Transportadora Exemplo Ltda',
+      inscricaoEstadual: '190.123.456.110',
+      endereco: 'Rua das Cargas, 50 - Distrito Industrial',
+      municipio: 'Atibaia',
+      uf: 'sp',
+    },
+    volumes: [{ quantidade: 10, especie: 'CAIXA', marca: 'DAVI', numeracao: '1 a 10', pesoLiquido: 60.4, pesoBruto: 60.4 }],
+  }
+  const assinar = (xml: string) => {
+    const cert = makeTestCertificate()
+    return signXml({ xml, signedElement: 'infNFe', keyPem: cert.keyPem, certPem: cert.certPem, profile: 'sha1-c14n' })
+  }
+
+  it('sem os campos novos: só modFrete, como antes', () => {
+    const { xml } = montarNfe(notaExemplo())
+    expect(xml).toContain('<transp><modFrete>9</modFrete></transp>')
+  })
+
+  it('transportador e volumes completos, na ordem do leiaute', () => {
+    const { xml } = montarNfe(notaExemplo(transporte))
+    expect(xml).toContain(
+      '<transp><modFrete>0</modFrete><transporta><CNPJ>11444777000161</CNPJ><xNome>Transportadora Exemplo Ltda</xNome>' +
+        '<IE>190123456110</IE><xEnder>Rua das Cargas, 50 - Distrito Industrial</xEnder><xMun>Atibaia</xMun><UF>SP</UF></transporta>' +
+        '<vol><qVol>10</qVol><esp>CAIXA</esp><marca>DAVI</marca><nVol>1 a 10</nVol><pesoL>60.400</pesoL><pesoB>60.400</pesoB></vol></transp>',
+    )
+  })
+
+  it('transportador pessoa física, IE ISENTO e vários volumes', () => {
+    const { xml } = montarNfe(notaExemplo({
+      modalidadeFrete: '1',
+      transportador: { documento: '529.982.247-25', nome: 'Joao Freteiro', inscricaoEstadual: 'isento' },
+      volumes: [{ quantidade: 2, especie: 'PALETE' }, { quantidade: 0, pesoBruto: 1.5 }, { especie: '  ' }],
+    }))
+    expect(xml).toContain('<transporta><CPF>52998224725</CPF><xNome>Joao Freteiro</xNome><IE>ISENTO</IE></transporta>')
+    expect(xml).toContain('<vol><qVol>2</qVol><esp>PALETE</esp></vol><vol><qVol>0</qVol><pesoB>1.500</pesoB></vol></transp>')
+  })
+
+  it('validação: documento, UF, peso, quantidade, modalidade', () => {
+    const problemas = validarNfe(notaExemplo({
+      modalidadeFrete: undefined,
+      transportador: { documento: '11.444.777/0001-62', uf: 'XX', inscricaoEstadual: '1' },
+      volumes: [{ quantidade: 1.5, pesoLiquido: -1, pesoBruto: 1.2345 }],
+    }))
+    expect(problemas).toEqual([
+      'transportador informado: informe também a modalidade do frete (0 emitente, 1 destinatário, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)',
+      'transportador: CPF ou CNPJ inválido',
+      'transportador: inscrição estadual de 2 a 14 dígitos (ou ISENTO)',
+      'transportador: UF "XX" inválida',
+      'volumes: quantidade de volumes deve ser um número inteiro, zero ou mais',
+      'volumes: peso líquido deve ser zero ou mais, com até 3 casas (kg)',
+      'volumes: peso bruto deve ser zero ou mais, com até 3 casas (kg)',
+    ])
+    expect(validarNfe(notaExemplo({ modalidadeFrete: '7' as never }))).toEqual(['modalidade do frete "7" inválida (0, 1, 2, 3, 4 ou 9)'])
+  })
+
+  it('aviso (não bloqueia): peso bruto menor que o líquido, sem frete com transportador', () => {
+    const nota = notaExemplo({ modalidadeFrete: '9', transportador: { nome: 'Transp' }, volumes: [{ pesoLiquido: 10, pesoBruto: 9.5 }] })
+    expect(validarNfe(nota)).toEqual([])
+    expect(avisosNfe(nota)).toEqual([
+      'volumes: peso bruto (9.5 kg) menor que o peso líquido (10 kg); confira',
+      'transportador sem CPF ou CNPJ',
+      'modalidade "sem frete" (9) com transportador informado; confira a modalidade',
+    ])
+    expect(avisosNfe(notaExemplo(transporte))).toEqual([])
+  })
+
+  it('XSD oficial (PL 010h v1.03): nota sem transporte, com transportador CNPJ e com CPF/ISENTO e vários volumes', async () => {
+    const casos = [
+      notaExemplo({ ambiente: 'producao' }),
+      notaExemplo({ ...transporte, ambiente: 'producao' }),
+      notaExemplo({
+        modalidadeFrete: '4',
+        transportador: { documento: '529.982.247-25', nome: 'Joao Freteiro', inscricaoEstadual: 'ISENTO', uf: 'MG' },
+        volumes: [{ quantidade: 2, especie: 'PALETE', pesoLiquido: 0, pesoBruto: 1234.567 }, { numeracao: 'A1' }],
+      }),
+    ]
+    for (const nota of casos) expect(await errosXsdNfe(assinar(montarNfe(nota).xml))).toEqual([])
   })
 })

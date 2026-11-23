@@ -2,11 +2,13 @@
 // assinatura: a assinatura (rsa-sha1, c14n, Reference "#NFe<chave>") vem depois, em nfe-signer.ts.
 // Escopo desta versão (.design/agente-fiscal-nfe.md): emitente de qualquer UF no Simples Nacional (CRT 1) ou MEI
 // (CRT 4), venda de mercadoria interna ou interestadual, vários itens, destinatário PF/PJ, frete, pagamento. ICMS
-// por CSOSN 101/102/103/300/400/500; PIS/COFINS sem valor (CST 49, 99 ou 07/08/09). Sem ST calculada, sem DIFAL,
+// por CSOSN 101/102/103/300/400/500; PIS/COFINS sem valor (CST 49, 99 ou 07/08/09). Transporte: modalidade do frete,
+// transportador e volumes (grupo transp, sem retenção de ICMS do transporte nem veículo). Sem ST calculada, sem DIFAL,
 // sem exportação. A ordem dos elementos segue o XSD; o teste valida contra ele.
 import { randomInt } from 'node:crypto'
 import { el, leaf } from '../xml.js'
-import { CODIGO_UF, TP_AMB, type AmbienteNfe, type Uf } from './autorizadores.js'
+import { cnpjValido, cpfValido } from '../agente/documentos.js'
+import { CODIGO_UF, TP_AMB, UFS, type AmbienteNfe, type Uf } from './autorizadores.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
 
 export const VERSAO_NFE = '4.00'
@@ -82,6 +84,40 @@ export type Pagamento = {
   indicador?: '0' | '1' | null
 }
 
+export type ModalidadeFrete = '0' | '1' | '2' | '3' | '4' | '9'
+export const MODALIDADES_FRETE: Record<ModalidadeFrete, string> = {
+  '0': 'Por conta do emitente (CIF)',
+  '1': 'Por conta do destinatário (FOB)',
+  '2': 'Por conta de terceiros',
+  '3': 'Transporte próprio do remetente',
+  '4': 'Transporte próprio do destinatário',
+  '9': 'Sem frete',
+}
+
+/** Grupo transporta: todos os campos são opcionais no leiaute; vai ao XML o que estiver preenchido. */
+export type Transportador = {
+  /** CNPJ (14) ou CPF (11). */
+  documento?: string | null
+  nome?: string | null
+  /** Inscrição estadual (só dígitos) ou "ISENTO". */
+  inscricaoEstadual?: string | null
+  /** Endereço completo numa linha (xEnder). */
+  endereco?: string | null
+  municipio?: string | null
+  uf?: Uf | string | null
+}
+
+/** Grupo vol: um por volume transportado (ou um com a soma). */
+export type Volume = {
+  quantidade?: number | null
+  especie?: string | null
+  marca?: string | null
+  numeracao?: string | null
+  /** Em kg, até 3 casas. */
+  pesoLiquido?: number | null
+  pesoBruto?: number | null
+}
+
 export type ResponsavelTecnico = { cnpj: string; contato: string; email: string; fone: string }
 
 export type NfeInput = {
@@ -98,7 +134,9 @@ export type NfeInput = {
   /** 1 presencial, 2 internet, 3 teleatendimento, 9 outros, 0 não se aplica. */
   presenca?: '0' | '1' | '2' | '3' | '4' | '5' | '9'
   /** 0 emitente (CIF), 1 destinatário (FOB), 2 terceiros, 3 próprio remetente, 4 próprio destinatário, 9 sem frete. */
-  modalidadeFrete?: '0' | '1' | '2' | '3' | '4' | '9'
+  modalidadeFrete?: ModalidadeFrete
+  transportador?: Transportador | null
+  volumes?: Volume[] | null
   pagamentos: Pagamento[]
   informacoesComplementares?: string | null
   responsavelTecnico?: ResponsavelTecnico | null
@@ -291,6 +329,7 @@ export function validarNfe(input: NfeInput): string[] {
       p.push(`${n}: desconto maior ou igual ao valor do produto`)
     }
   })
+  validarTransporte(input, p)
   if (input.pagamentos.length === 0) p.push('informe a forma de pagamento')
   for (const pag of input.pagamentos) {
     if (!/^\d{2}$/.test(pag.forma)) p.push(`pagamento: forma "${pag.forma}" inválida`)
@@ -305,6 +344,69 @@ export function validarNfe(input: NfeInput): string[] {
     if (!semPagamento && pago < total) p.push(`pagamento (R$ ${dec2(pago)}) menor que o total da nota (R$ ${dec2(total)})`)
   }
   return p
+}
+
+/** Transportador com algum campo preenchido (o grupo vazio não vai ao XML). */
+export function temTransportador(t: Transportador | null | undefined): t is Transportador {
+  return !!t && [t.documento, t.nome, t.inscricaoEstadual, t.endereco, t.municipio, t.uf].some((v) => !vazio(v))
+}
+/** Volume com algum campo preenchido (zero conta como preenchido nos números). */
+export function temVolume(v: Volume | null | undefined): v is Volume {
+  return !!v && ([v.especie, v.marca, v.numeracao].some((x) => !vazio(x)) || [v.quantidade, v.pesoLiquido, v.pesoBruto].some((x) => x !== null && x !== undefined))
+}
+export const volumesDaNota = (input: Pick<NfeInput, 'volumes'>) => (input.volumes ?? []).filter(temVolume)
+/** Peso em kg com até 3 casas (TDec_1203). */
+const pesoValido = (x: number | null | undefined) =>
+  x === null || x === undefined || (Number.isFinite(x) && x >= 0 && x < 1e12 && Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6)
+
+function validarTransporte(input: NfeInput, p: string[]) {
+  const mod = input.modalidadeFrete
+  if (mod !== undefined && mod !== null && !(mod in MODALIDADES_FRETE)) p.push(`modalidade do frete "${mod}" inválida (0, 1, 2, 3, 4 ou 9)`)
+  const t = input.transportador
+  if (temTransportador(t)) {
+    if (mod === undefined || mod === null) {
+      p.push('transportador informado: informe também a modalidade do frete (0 emitente, 1 destinatário, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)')
+    }
+    const doc = soDigitos(t.documento)
+    if (doc && !(doc.length === 14 ? cnpjValido(doc) : doc.length === 11 && cpfValido(doc))) p.push('transportador: CPF ou CNPJ inválido')
+    const nome = limpo(t.nome)
+    if (nome && nome.length < 2) p.push('transportador: nome com pelo menos 2 letras')
+    const ie = limpo(t.inscricaoEstadual)
+    if (ie && !/^isento$/i.test(ie) && !/^\d{2,14}$/.test(soDigitos(ie))) p.push('transportador: inscrição estadual de 2 a 14 dígitos (ou ISENTO)')
+    if (ie && !doc) p.push('transportador: a inscrição estadual pede o CPF ou CNPJ do transportador')
+    if (!vazio(t.uf) && !UFS.includes(limpo(t.uf).toUpperCase() as Uf)) p.push(`transportador: UF "${limpo(t.uf)}" inválida`)
+  }
+  const vols = volumesDaNota(input)
+  if (vols.length > 5000) p.push('a NF-e aceita no máximo 5.000 volumes')
+  vols.forEach((v, i) => {
+    const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
+    if (v.quantidade !== null && v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 0 && v.quantidade < 1e15)) {
+      p.push(`${n}: quantidade de volumes deve ser um número inteiro, zero ou mais`)
+    }
+    if (!pesoValido(v.pesoLiquido)) p.push(`${n}: peso líquido deve ser zero ou mais, com até 3 casas (kg)`)
+    if (!pesoValido(v.pesoBruto)) p.push(`${n}: peso bruto deve ser zero ou mais, com até 3 casas (kg)`)
+  })
+}
+
+/**
+ * Avisos que não impedem a nota (a Sefaz aceita), mas costumam ser erro de digitação: peso bruto menor que o líquido,
+ * transportador sem nome ou sem documento, modalidade "sem frete" com transportador.
+ */
+export function avisosNfe(input: Pick<NfeInput, 'transportador' | 'volumes' | 'modalidadeFrete'>): string[] {
+  const a: string[] = []
+  volumesDaNota(input).forEach((v, i, vols) => {
+    const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
+    if (v.pesoLiquido != null && v.pesoBruto != null && v.pesoBruto < v.pesoLiquido) {
+      a.push(`${n}: peso bruto (${v.pesoBruto} kg) menor que o peso líquido (${v.pesoLiquido} kg); confira`)
+    }
+  })
+  const t = input.transportador
+  if (temTransportador(t)) {
+    if (vazio(t.nome)) a.push('transportador sem nome (razão social)')
+    if (!soDigitos(t.documento)) a.push('transportador sem CPF ou CNPJ')
+    if (input.modalidadeFrete === '9') a.push('modalidade "sem frete" (9) com transportador informado; confira a modalidade')
+  }
+  return a
 }
 
 function validarEndereco(quem: string, end: Endereco, p: string[], cepObrigatorio: boolean) {
@@ -419,6 +521,36 @@ function detalhe(item: Item, n: number): string {
   )
 }
 
+const peso = (x: number | null | undefined) => (x === null || x === undefined ? null : x.toFixed(3))
+
+function grupoTransp(input: NfeInput, freteCentavos: number): string {
+  const tr = input.transportador
+  let transporta: string | null = null
+  if (temTransportador(tr)) {
+    const doc = soDigitos(tr.documento)
+    const ie = limpo(tr.inscricaoEstadual)
+    transporta = el('transporta', [
+      doc.length === 14 ? leaf('CNPJ', doc) : doc.length === 11 ? leaf('CPF', doc) : null,
+      leaf('xNome', opt(tr.nome, 60)),
+      ie ? leaf('IE', /^isento$/i.test(ie) ? 'ISENTO' : soDigitos(ie)) : null,
+      leaf('xEnder', opt(tr.endereco, 60)),
+      leaf('xMun', opt(tr.municipio, 60)),
+      vazio(tr.uf) ? null : leaf('UF', limpo(tr.uf).toUpperCase()),
+    ])
+  }
+  const vols = volumesDaNota(input).map((v) =>
+    el('vol', [
+      v.quantidade === null || v.quantidade === undefined ? null : leaf('qVol', String(v.quantidade)),
+      leaf('esp', opt(v.especie, 60)),
+      leaf('marca', opt(v.marca, 60)),
+      leaf('nVol', opt(v.numeracao, 60)),
+      leaf('pesoL', peso(v.pesoLiquido)),
+      leaf('pesoB', peso(v.pesoBruto)),
+    ]),
+  )
+  return el('transp', [leaf('modFrete', input.modalidadeFrete ?? (freteCentavos > 0 ? '0' : '9')), transporta, ...vols])
+}
+
 export function montarNfe(input: NfeInput): NfeMontada {
   const problemas = validarNfe(input)
   if (problemas.length) throw new NfeInvalidaError(problemas)
@@ -509,7 +641,7 @@ export function montarNfe(input: NfeInput): NfeMontada {
     leaf('vNF', dec2(t.nota)),
   ]))
 
-  const transp = el('transp', leaf('modFrete', input.modalidadeFrete ?? (t.frete > 0 ? '0' : '9')))
+  const transp = grupoTransp(input, t.frete)
 
   const pago = input.pagamentos.reduce((s, x) => s + centavos(x.valor), 0)
   const pag = el('pag', [

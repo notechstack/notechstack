@@ -11,7 +11,7 @@ import { openTestDb } from '../../_tests/fixtures.js'
 import type { HttpRequest, HttpResponse } from '../sefin-client.js'
 import type { SessionVerifier } from '../session.js'
 import { handlePainelNfe } from './painel-nfe.js'
-import { interpretarPlanilhaNfe, lerNumero } from './planilha.js'
+import { interpretarPlanilhaNfe, lerNumero, lerPlanilhaNfe } from './planilha.js'
 import { lerCsvTexto } from '../agente/lote.js'
 import { criarSefazClient } from './sefaz-client.js'
 import { processarNfes } from './servico.js'
@@ -19,6 +19,7 @@ import { sefazQueAprova } from './nfe-fixtures.js'
 
 const NS = 'http://www.portalfiscal.inf.br/nfe'
 const MODELO = readFileSync(new URL('../../../../agentes/fiscal/dados/modelo-nfe.csv', import.meta.url), 'utf8')
+const MODELO_XLSX = new Uint8Array(readFileSync(new URL('../../../../agentes/fiscal/dados/modelo-nfe.xlsx', import.meta.url)))
 /** CNPJ com dígitos verificadores válidos e base aleatória (o banco local é compartilhado entre testes). */
 function cnpjAleatorio(): string {
   const base = Array.from(randomBytes(8), (b) => String(b % 10)).join('') + '0001'
@@ -38,16 +39,29 @@ const sessions: SessionVerifier = {
 }
 
 describe('planilha de NF-e (pura)', () => {
-  it('o modelo publicado vira 2 notas: a 1 com 2 itens, a 2 interestadual com frete e boleto', () => {
+  it('o modelo publicado vira 3 notas: a 1 com transporte, a 2 com 2 itens, a 3 interestadual com frete e boleto', () => {
     const r = interpretarPlanilhaNfe(lerCsvTexto(MODELO.trimStart()))
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.problemas).toEqual([])
-    expect(r.notas.map((n) => [n.nota, n.linhas, n.pedido.itens.length])).toEqual([
-      ['1', [2, 3], 2],
-      ['2', [4], 1],
+    expect(r.notas.map((n) => [n.nota, n.linhas, n.pedido.itens.length, n.avisos])).toEqual([
+      ['1', [2], 1, []],
+      ['2', [3, 4], 2, []],
+      ['3', [5], 1, []],
     ])
-    const [um, dois] = r.notas
+    const [transporte, um, dois] = r.notas
+    expect(transporte.pedido).toMatchObject({
+      modalidadeFrete: '0',
+      transportador: { documento: '11444777000161', nome: 'Transportadora Exemplo Ltda', inscricaoEstadual: '190.123.456.110', municipio: 'Atibaia', uf: 'SP' },
+      volumes: [{ quantidade: 10, especie: 'CAIXA', marca: 'EXEMPLO', numeracao: '1 a 10', pesoLiquido: 60.4, pesoBruto: 60.4 }],
+      pagamentos: [{ forma: '15', valor: 1163.75 }],
+      destinatario: { indicadorIE: '1', inscricaoEstadual: '110042490114' },
+    })
+    expect(transporte.pedido.itens[0]).toMatchObject({ csosn: '101', aliquotaCreditoSN: 2.56, desconto: 61.25, cfop: '5101' })
+    expect(transporte.pedido.informacoesComplementares).toMatch(/crédito de ICMS no valor de R\$ 31,36/)
+    // Sem as colunas de transporte (notas 2 e 3), o pedido é o de antes: nem a chave da planilha muda.
+    expect(Object.keys(um.pedido)).not.toContain('transportador')
+    expect(Object.keys(dois.pedido)).not.toContain('volumes')
     expect(um.pedido.itens[1]).toMatchObject({ quantidade: 2.5, valorUnitario: 12.345, desconto: 1 })
     expect(um.pedido.pagamentos).toEqual([{ forma: '17', valor: 89.56, descricao: null }])
     expect(um.pedido.destinatario).toMatchObject({ documento: '11222333000181', indicadorIE: '9', endereco: { codigoMunicipio: '3550308', uf: 'SP', cep: '01310100' } })
@@ -62,9 +76,16 @@ describe('planilha de NF-e (pura)', () => {
 
   it('destinatário diferente entre linhas da mesma nota é problema da nota', () => {
     const linhas = lerCsvTexto(MODELO.trimStart())
-    linhas[2][2] = '52998224725'
+    linhas[3][2] = '52998224725'
     const r = interpretarPlanilhaNfe(linhas)
-    expect(r.ok && r.problemas.map((p) => [p.nota, p.mensagem])).toEqual([['1', 'linha 3: "cpf_cnpj_destinatario" diferente da linha 2']])
+    expect(r.ok && r.problemas.map((p) => [p.nota, p.mensagem])).toEqual([['2', 'linha 4: "cpf_cnpj_destinatario" diferente da linha 3']])
+  })
+
+  it('o modelo .xlsx publicado é lido pelo leitor de produção e dá as mesmas notas do .csv', async () => {
+    const xlsx = await lerPlanilhaNfe(MODELO_XLSX, 'xlsx')
+    const csv = interpretarPlanilhaNfe(lerCsvTexto(MODELO.trimStart()))
+    expect(xlsx.ok && xlsx.problemas).toEqual([])
+    expect(xlsx.ok && xlsx.notas).toEqual(csv.ok && csv.notas)
   })
 
   it('números em pt-BR', () => {
@@ -169,27 +190,30 @@ describe('rota do painel', () => {
   it('planilha: ler confere; emitir põe na fila sem duplicar; worker autoriza; DANFE e XML baixam; cancelar entra na fila', async () => {
     const lida = await chamar(esc.mae.ownerUserId, planilha('planilha_ler'))
     expect(lida.status).toBe(200)
-    expect(await lida.json()).toMatchObject({ notas: [{ nota: '1', itens: 2, valor: '89.56' }, { nota: '2', itens: 1, valor: '224.00' }], problemas: [] })
+    expect(await lida.json()).toMatchObject({
+      notas: [{ nota: '1', itens: 1, valor: '1163.75', avisos: [] }, { nota: '2', itens: 2, valor: '89.56' }, { nota: '3', itens: 1, valor: '224.00' }],
+      problemas: [],
+    })
 
     const emitida = await chamar(esc.mae.ownerUserId, planilha('planilha_emitir'))
     expect(emitida.status).toBe(202)
-    expect(await emitida.json()).toMatchObject({ emitindo: 2 })
+    expect(await emitida.json()).toMatchObject({ emitindo: 3 })
     // A mesma planilha de novo não cria notas novas.
     await chamar(esc.mae.ownerUserId, planilha('planilha_emitir'))
-    // Nem com o arquivo regravado (bytes diferentes, mesmo conteúdo), nem com a nota 1 corrigida depois de sair.
+    // Nem com o arquivo regravado (bytes diferentes, mesmo conteúdo), nem com a nota 2 corrigida depois de sair.
     const regravada = new FormData()
     regravada.append('acao', 'planilha_emitir')
     regravada.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente) + String.fromCharCode(10).repeat(2)], 'nfe-copia.csv', { type: 'text/csv' }))
     const r2 = (await (await chamar(esc.mae.ownerUserId, regravada)).json()) as { emitindo: number; problemas: { nota: string; mensagem: string }[] }
     expect(r2.emitindo).toBe(0)
-    expect(r2.problemas.map((p) => p.nota)).toEqual(['1', '2'])
+    expect(r2.problemas.map((p) => p.nota)).toEqual(['1', '2', '3'])
     const corrigida = new FormData()
     corrigida.append('acao', 'planilha_ler')
-    corrigida.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente).replace('19,90;102;;;pix', '18,90;102;;;pix')], 'nfe-corrigida.csv', { type: 'text/csv' }))
+    corrigida.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente).replace('19,90;102;;;;pix', '18,90;102;;;;pix')], 'nfe-corrigida.csv', { type: 'text/csv' }))
     const r3 = (await (await chamar(esc.mae.ownerUserId, corrigida)).json()) as { notas: unknown[]; problemas: { nota: string; mensagem: string }[] }
-    expect(r3.problemas.find((p) => p.nota === '1')?.mensagem).toMatch(/já saiu neste mês \(NF-e nº 501\) com outro conteúdo/)
+    expect(r3.problemas.find((p) => p.nota === '2')?.mensagem).toMatch(/já saiu neste mês \(NF-e nº 502\) com outro conteúdo/)
     const { rows } = await admin.db.query<{ numero: string }>('select numero from nofiscal.fiscal_nfe where tenant_id = $1 order by numero', [esc.empresas[0].id])
-    expect(rows.map((r) => r.numero)).toEqual(['501', '502'])
+    expect(rows.map((r) => r.numero)).toEqual(['501', '502', '503'])
 
     let nProt = 135260000000100
     const transport = async (req: HttpRequest): Promise<HttpResponse> => {
@@ -201,11 +225,16 @@ describe('rota do painel', () => {
     }
     const sefaz = criarSefazClient({ transport })
     const now = () => new Date('2026-11-17T13:00:00Z')
-    expect(await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })).toMatchObject({ autorizadas: 2 })
+    expect(await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })).toMatchObject({ autorizadas: 3 })
 
     const lista = (await (await chamar(esc.mae.ownerUserId, { acao: 'listar' })).json()) as { notas: { nfe_id: string; status: string; numero: number; homologacao: boolean }[] }
-    expect(lista.notas.map((n) => [n.numero, n.status, n.homologacao])).toEqual([[502, 'authorized', true], [501, 'authorized', true]])
-    const id = lista.notas[1].nfe_id
+    expect(lista.notas.map((n) => [n.numero, n.status, n.homologacao]).sort()).toEqual([[501, 'authorized', true], [502, 'authorized', true], [503, 'authorized', true]])
+    const id = lista.notas.find((n) => n.numero === 502)!.nfe_id
+    // A nota 1 do modelo (NF-e 501) sai com transportador e volumes no XML autorizado.
+    const comTransporte = lista.notas.find((n) => n.numero === 501)!.nfe_id
+    const xmlTransporte = await (await chamar(esc.mae.ownerUserId, null, 'GET', `?baixar=xml&nfe_id=${comTransporte}`)).text()
+    expect(xmlTransporte).toContain('<transp><modFrete>0</modFrete><transporta><CNPJ>11444777000161</CNPJ>')
+    expect(xmlTransporte).toContain('<vol><qVol>10</qVol><esp>CAIXA</esp><marca>EXEMPLO</marca><nVol>1 a 10</nVol><pesoL>60.400</pesoL><pesoB>60.400</pesoB></vol>')
 
     const pdf = await chamar(esc.mae.ownerUserId, null, 'GET', `?baixar=danfe&nfe_id=${id}`)
     expect(pdf.headers.get('content-type')).toBe('application/pdf')
@@ -219,9 +248,9 @@ describe('rota do painel', () => {
     await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })
     const final = (await (await chamar(esc.mae.ownerUserId, { acao: 'listar' })).json()) as { notas: { nfe_id: string; status: string }[] }
     expect(final.notas.find((n) => n.nfe_id === id)?.status).toBe('cancelled')
-    // Cancelada, a nota 1 pode sair de novo corrigida na planilha (só nota ativa do mês bloqueia).
+    // Cancelada, a nota 2 pode sair de novo corrigida na planilha (só nota ativa do mês bloqueia).
     const depoisDoCancelamento = (await (await chamar(esc.mae.ownerUserId, corrigida)).json()) as { notas: { nota: string }[]; problemas: { nota: string }[] }
-    expect(depoisDoCancelamento.notas.map((x) => x.nota)).toContain('1')
+    expect(depoisDoCancelamento.notas.map((x) => x.nota)).toContain('2')
   })
 })
 
@@ -285,5 +314,60 @@ describe('planilha depois da conferência das correções', () => {
   it('mesmo dado escrito de outro jeito em outra linha não recusa a nota (CEP com e sem hífen, caixa do nome)', () => {
     const r = interpretarPlanilhaNfe([CAB, linha(base), linha({ ...base, codigo_produto: 'P2', cep: '01310100', nome_destinatario: 'PADARIA LTDA.' })])
     expect(r.ok && r.problemas).toEqual([])
+  })
+})
+
+describe('planilha: transporte e volumes (23/11/2026)', () => {
+  const CAB = ['cnpj_emitente', 'nota', 'cpf_cnpj_destinatario', 'nome_destinatario', 'cep', 'logradouro', 'numero', 'bairro', 'municipio_ibge', 'uf', 'codigo_produto', 'descricao_produto', 'ncm', 'cfop', 'unidade', 'quantidade', 'valor_unitario', 'csosn', 'modalidade_frete', 'transportador_cpf_cnpj', 'transportador_nome', 'transportador_ie', 'transportador_uf', 'volumes_quantidade', 'volumes_especie', 'peso_liquido', 'peso_bruto']
+  const linha = (o: Record<string, unknown>) => CAB.map((c) => (c in o ? o[c] : '')) as (string | number)[]
+  const base = { cnpj_emitente: '12.345.678/0001-95', nota: '1', cpf_cnpj_destinatario: '11.222.333/0001-81', nome_destinatario: 'Padaria Ltda', cep: '01310-100', logradouro: 'Av. Paulista', numero: '1', bairro: 'Bela Vista', municipio_ibge: '3550308', uf: 'SP', codigo_produto: 'P1', descricao_produto: 'Farinha', ncm: '1101.00.10', cfop: '5102', unidade: 'UN', quantidade: '1', valor_unitario: '10,00', csosn: '102' }
+  const transp = { modalidade_frete: 'FOB', transportador_cpf_cnpj: '11444777000161', transportador_nome: 'Transp Ltda', transportador_uf: 'sp', volumes_quantidade: '3', volumes_especie: 'CAIXA', peso_liquido: '12,5', peso_bruto: '13,125' }
+
+  it('campos da nota repetidos iguais passam; numa linha só também; modalidade pelo nome', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, ...transp }), linha({ ...base, ...transp, codigo_produto: 'P2', transportador_cpf_cnpj: '11.444.777/0001-61', peso_bruto: 13.125 })])
+    expect(r.ok && r.problemas).toEqual([])
+    expect(r.ok && r.notas[0].pedido).toMatchObject({
+      modalidadeFrete: '1',
+      transportador: { documento: '11444777000161', nome: 'Transp Ltda', uf: 'SP' },
+      volumes: [{ quantidade: 3, especie: 'CAIXA', pesoLiquido: 12.5, pesoBruto: 13.125 }],
+    })
+    const so = interpretarPlanilhaNfe([CAB, linha({ ...base, codigo_produto: 'P0' }), linha({ ...base, ...transp })])
+    expect(so.ok && so.notas[0].pedido.volumes).toHaveLength(1)
+  })
+
+  it('campos de transporte divergentes entre linhas da mesma nota recusam a nota', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, ...transp }), linha({ ...base, ...transp, codigo_produto: 'P2', transportador_nome: 'Outra Transp', peso_bruto: '14' })])
+    expect(r.ok && r.notas).toEqual([])
+    expect(r.ok && r.problemas.map((p) => p.mensagem)).toEqual([
+      'linha 3: "transportador_nome" diferente da linha 2',
+      'linha 3: "peso_bruto" diferente da linha 2',
+    ])
+  })
+
+  it('valores inválidos: modalidade, documento, quantidade, peso; transportador sem modalidade', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, ...transp, modalidade_frete: 'avião', transportador_cpf_cnpj: '11444777000162', volumes_quantidade: '2,5', peso_liquido: '1,2345' })])
+    expect(r.ok && r.problemas.map((p) => p.mensagem)).toEqual([
+      'CPF ou CNPJ do transportador inválido',
+      'volumes_quantidade (número inteiro) inválido (2,5)',
+      'peso_liquido (kg, até 3 casas) inválido (1,2345)',
+      'modalidade_frete "avião" desconhecida (use 0 emitente/CIF, 1 destinatário/FOB, 2 terceiros, 3 próprio remetente, 4 próprio destinatário ou 9 sem frete)',
+    ])
+    const sem = interpretarPlanilhaNfe([CAB, linha({ ...base, transportador_nome: 'Transp Ltda' })])
+    expect(sem.ok && sem.problemas.map((p) => p.mensagem)).toEqual([
+      'com transportador, preencha modalidade_frete (0 emitente/CIF, 1 destinatário/FOB, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)',
+    ])
+  })
+
+  it('peso bruto menor que o líquido: a nota passa com aviso', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, ...transp, peso_bruto: '10' })])
+    expect(r.ok && r.problemas).toEqual([])
+    expect(r.ok && r.notas[0].avisos).toEqual(['volumes: peso bruto (10 kg) menor que o peso líquido (12.5 kg); confira'])
+  })
+
+  it('só volumes, sem transportador nem modalidade: modFrete segue o frete (9 sem frete)', () => {
+    const r = interpretarPlanilhaNfe([CAB, linha({ ...base, volumes_quantidade: '1', volumes_especie: 'FARDO' })])
+    expect(r.ok && r.problemas).toEqual([])
+    expect(r.ok && r.notas[0].pedido).toMatchObject({ modalidadeFrete: '9', volumes: [{ quantidade: 1, especie: 'FARDO' }] })
+    expect(r.ok && Object.keys(r.notas[0].pedido)).not.toContain('transportador')
   })
 })
