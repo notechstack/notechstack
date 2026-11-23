@@ -12,6 +12,7 @@ import { runEmission, type FinalStatus } from './emission.js'
 import { errorResponse, json } from './http.js'
 import { logEvent } from './log.js'
 import { processarNfes, type ResumoNfe } from './nfe/servico.js'
+import { avisarNfeDoWhatsApp } from './agente/nfe-conversa.js'
 import type { SefazClient } from './nfe/sefaz-client.js'
 import type { ResponsavelTecnico } from './nfe/nfe-builder.js'
 import { enfileirarNfe, enfileirarNfse, entregarWebhooks, type FetchLike, type ResumoWebhooks } from './parceiro/webhook.js'
@@ -88,6 +89,8 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
             await enfileirarNfe(deps.db, nfeId, status).catch((error) =>
               logEvent('nofiscal.webhook_nao_gravado', { nfe_id: nfeId, error_name: error instanceof Error ? error.name : 'unknown' }),
             )
+            // NF-e pedida pelo WhatsApp: o DANFE (ou o motivo da recusa) volta para quem pediu.
+            if (agente) await avisarNfeDoWhatsApp(deps.db, agente.whatsapp, nfeId, status)
           },
         })
       } catch (error) {
