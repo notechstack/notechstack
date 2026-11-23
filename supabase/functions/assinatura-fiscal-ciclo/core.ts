@@ -21,6 +21,12 @@ export type DepsDoCiclo = {
   segredoOk: (segredo: string) => Promise<boolean>;
   /** public.fiscal_cancelamentos_vencidos. */
   vencidas: (limite: number) => Promise<Vencida[]>;
+  /** Módulo Guias (20261119190000): a principal cancelada aqui leva a Guias junto (public.fiscal_guias_cancelar_com_principal). */
+  guiasComPrincipal?: (tenantId: string) => Promise<void>;
+  /** public.fiscal_guias_cancelamentos_pendentes: Guias marcadas para cancelar no Pagar.me (módulo desligado, principal cancelada). */
+  guiasPendentes?: (limite: number) => Promise<{ tenant_id: string; pagarme_subscription_id: string }[]>;
+  /** public.fiscal_guias_cancelamento_pedido. */
+  guiasCancelamentoPedido?: (tenantId: string, subscriptionId: string) => Promise<void>;
   log?: (nivel: Nivel, evento: string, dados?: Record<string, unknown>) => void;
 };
 
@@ -58,6 +64,7 @@ export async function processarCiclo(
       });
       if (res.ok) {
         canceladas += 1;
+        if (deps.guiasComPrincipal) await deps.guiasComPrincipal(v.tenant_id).catch(() => undefined);
         log("info", "assinatura_fiscal_ciclo_cancelou", {
           tenant_id: v.tenant_id,
           subscription_id: v.pagarme_subscription_id,
@@ -80,5 +87,27 @@ export async function processarCiclo(
       });
     }
   }
-  return { http: 200, body: { ok: true, processadas: fila.length, canceladas, falhas } };
+  // Assinaturas Guias a cancelar (módulo desligado ou principal cancelada). 404 = já não existe no Pagar.me.
+  let guias = 0;
+  for (const g of deps.guiasPendentes ? await deps.guiasPendentes(LIMITE_POR_RODADA) : []) {
+    try {
+      const res = await deps.fetch(`${config.apiUrl}/subscriptions/${encodeURIComponent(g.pagarme_subscription_id)}`, {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ cancel_pending_invoices: true }),
+      });
+      if (res.ok || res.status === 404) {
+        guias += 1;
+        await deps.guiasCancelamentoPedido?.(g.tenant_id, g.pagarme_subscription_id);
+        log("info", "assinatura_guias_ciclo_cancelou", { tenant_id: g.tenant_id, subscription_id: g.pagarme_subscription_id });
+      } else {
+        falhas += 1;
+        log("error", "assinatura_guias_ciclo_falhou", { tenant_id: g.tenant_id, subscription_id: g.pagarme_subscription_id, http_status: res.status });
+      }
+    } catch {
+      falhas += 1;
+      log("error", "assinatura_guias_ciclo_falhou", { tenant_id: g.tenant_id, subscription_id: g.pagarme_subscription_id, rede: true });
+    }
+  }
+  return { http: 200, body: { ok: true, processadas: fila.length, canceladas, falhas, ...(deps.guiasPendentes ? { guias_canceladas: guias } : {}) } };
 }

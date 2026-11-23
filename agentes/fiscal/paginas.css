@@ -174,3 +174,17 @@
 /* Aba API (18/11/2026): a chave e o segredo aparecem uma vez, inteiros, e quebram linha no celular. */
 #fa-api-chave-nova,#fa-api-segredo{margin-top:16px;padding:14px 16px;border:1.5px dashed var(--fi-borda);border-radius:14px}
 .nf-codigo-api{font:500 13px/1.5 var(--font-mono,'JetBrains Mono',monospace);word-break:break-all}
+
+/* Módulo Guias (19/11/2026): aba Guias de Minha conta. */
+.nf-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.nf-lista{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px;line-height:1.5}
+.nf-guias-telas{display:flex;flex-wrap:wrap;gap:8px}
+.nf-tabela--guias{min-width:1320px}
+.nf-tabela--guias input,.nf-tabela--guias select{width:100%;min-width:90px;min-height:38px;padding:6px 8px;border:1.5px solid var(--fi-borda);border-radius:10px;background:var(--fi-fundo);color:var(--fi-texto);font:400 13.5px/1.3 var(--font-core,'Sora',sans-serif)}
+.nf-tabela--guias input:focus,.nf-tabela--guias select:focus{outline:none;border-color:var(--fi-texto);box-shadow:0 0 0 3px color-mix(in srgb, var(--fi-acento) 28%, transparent)}
+.nf-tabela--guias .nf-linha-digitavel{min-width:230px;font-family:var(--font-mono,'JetBrains Mono',monospace)}
+.nf-tabela--guias input[type=checkbox]{width:18px;min-width:18px;min-height:18px;accent-color:var(--fi-texto)}
+.nf-status--verde::before{background:var(--no-verde)}
+.nf-status--amarelo::before{background:var(--fi-acento)}
+.nf-status--vermelho::before{background:var(--no-vermelho)}
+.nf-guias-disparo{margin-top:18px}

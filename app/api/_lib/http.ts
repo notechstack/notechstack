@@ -42,6 +42,10 @@ export type ErrorCode =
   | 'SO_SANDBOX'
   | 'SANDBOX_SOMENTE_LEITURA'
   | 'SANDBOX_SEM_NFE'
+  // Módulo Guias (20261119180000_agente_fiscal_guias.sql).
+  | 'GUIAS_DESLIGADO'
+  | 'STORAGE_NAO_CONFIGURADO'
+  | 'GUIAS_BLOQUEADO'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -79,6 +83,9 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   SO_SANDBOX: 403,
   SANDBOX_SOMENTE_LEITURA: 403,
   SANDBOX_SEM_NFE: 501,
+  GUIAS_DESLIGADO: 403,
+  STORAGE_NAO_CONFIGURADO: 503,
+  GUIAS_BLOQUEADO: 409,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }

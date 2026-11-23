@@ -34,6 +34,7 @@ export function emailResend(opcoes: { apiKey: string; from?: string; baseUrl?: s
         body: JSON.stringify({
           from: opcoes.from ?? REMETENTE_PADRAO,
           to: [mensagem.para],
+          ...(mensagem.responderPara ? { reply_to: mensagem.responderPara } : {}),
           subject: mensagem.assunto,
           text: mensagem.texto,
           ...(mensagem.anexos?.length
