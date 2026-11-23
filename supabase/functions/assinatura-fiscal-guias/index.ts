@@ -5,7 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { log } from "../_shared/logger.ts";
 import type { CupomBanco } from "../assinatura-fiscal/core.ts";
-import { autorizadoServico, processarGuias, type ContextoGuias } from "./core.ts";
+import { autorizadoEquipe, papelDoJwt, processarGuias, type ContextoGuias } from "./core.ts";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -22,8 +22,16 @@ Deno.serve(async (request) => {
   };
   try {
     const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
+    const authorization = request.headers.get("Authorization");
+    const projectRef = new URL(supabaseUrl).hostname.split(".")[0] || "";
+    const autorizado = await autorizadoEquipe(authorization, serviceKey, projectRef);
+    if (!autorizado) {
+      // Só o papel e o projeto do JWT, nunca o token.
+      const papel = papelDoJwt(authorization);
+      log("warn", "assinatura_guias_nao_autorizado", { role: papel?.role ?? null, ref: papel?.ref ?? null, formato_jwt: Boolean(papel) });
+    }
     const resultado = await processarGuias(
-      { metodo: request.method, autorizado: await autorizadoServico(request.headers.get("Authorization"), serviceKey), body },
+      { metodo: request.method, autorizado, body },
       {
         env: {
           PAGARME_ASSINATURA_SECRET_KEY: Deno.env.get("PAGARME_ASSINATURA_SECRET_KEY"),
