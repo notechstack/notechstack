@@ -492,6 +492,15 @@ test("trocar faixa do escritório", async () => {
   assert.equal((await conta(e, { acao: "trocar_plano", plano: "escritorio_20" }, { gw: rede({ pagarme: itens }) })).http, 200);
   assert.equal((await tenant(e.tenantId)).plan, "escritorio_20");
 
+  // Conta com NFS-e e NF-e (o item custa a faixa + R$ 197): a troca fica com a nó, sem mexer no preço nem no plano.
+  const comNfe = (method, url) =>
+    method === "GET" && url.endsWith("/items") ? { json: { data: [{ id: "si_ativo", status: "active", pricing_scheme: { price: 79700 + 19700 } }] } } : { json: {} };
+  const duas = await conta(e, { acao: "trocar_plano", plano: "escritorio_50" }, { gw: rede({ pagarme: comNfe }) });
+  assert.equal(duas.http, 409, JSON.stringify(duas.body));
+  assert.equal(duas.body.error_code, "TROCA_COM_MODULO_INDISPONIVEL");
+  assert.equal(duas.gw.chamadas.filter((c) => c.method === "PUT").length, 0, "nenhum preço muda no Pagar.me");
+  assert.equal((await tenant(e.tenantId)).plan, "escritorio_20");
+
   // Entre famílias: recusado sem Pagar.me, nos dois sentidos.
   const fam = await conta(e, { acao: "trocar_plano", plano: "pro" }, { gw: rede({ pagarme: itens }) });
   assert.equal(fam.http, 409);

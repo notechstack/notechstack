@@ -549,11 +549,14 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     }
     const ciclo = cicloDaAssinatura(sub);
     // Escritório: só mensal (o anual já saiu acima); nome e preço do plano no Pagar.me (assinatura-fiscal).
-    // Conta com NFS-e e NF-e paga o segundo tipo de nota no item: a troca de faixa leva essa diferença junto.
+    // Conta com NFS-e e NF-e paga o segundo tipo de nota no item. A página só sabe mostrar o preço da faixa, então a
+    // troca dessas contas fica com a equipe, em vez de cobrar um valor diferente do que a pessoa confirmou.
     const precoAtual = Number(obj(item.pricing_scheme).price);
-    const duasNotas = planoDeEscritorio(estado.plano) && precoAtual === centavosDoCiclo(estado.plano, ciclo, true);
-    const nome = duasNotas ? `${PLANOS_PAGARME[plano].nome} com NFS-e e NF-e` : PLANOS_PAGARME[plano].nome;
-    const preco = centavosDoCiclo(plano, ciclo, duasNotas);
+    if (planoDeEscritorio(estado.plano) && precoAtual === centavosDoCiclo(estado.plano, ciclo, true)) {
+      return erro(409, "TROCA_COM_MODULO_INDISPONIVEL", "Com NFS-e e NF-e no plano, a troca de faixa é feita com a nó. Fale com a gente pelo WhatsApp.");
+    }
+    const nome = PLANOS_PAGARME[plano].nome;
+    const preco = centavosDoCiclo(plano, ciclo);
     const r = await chamar(
       "fiscal_conta_plano_pagarme_falhou",
       "PUT",

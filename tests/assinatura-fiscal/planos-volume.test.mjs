@@ -14,6 +14,7 @@ import {
   lerPlano,
   planoDeEscritorio,
   processarCheckout,
+  processarValidarCupom,
 } from "../../supabase/functions/assinatura-fiscal/core.ts";
 
 const AGORA = new Date("2026-11-23T15:00:00Z");
@@ -141,7 +142,7 @@ test("faixa de 1.000 sem id nos secrets: o checkout cria os planos no Pagar.me e
   assert.deepEqual(criados.map((p) => p.body.name), ["Agente Fiscal Escritório 1.000 documentos", "Agente Fiscal Escritório 1.000 documentos (sem teste)"]);
   assert.equal(criados[0].body.items[0].pricing_scheme.price, 49700);
   assert.equal(criados[0].body.trial_period_days, 7);
-  assert.equal(criados[0].headers["Idempotency-Key"], "nofiscal-plano-escritorio_1000-v1");
+  assert.equal(criados[0].headers["Idempotency-Key"], "nofiscal-plano-escritorio_1000-49700-v1");
   const sub = chamadas(c, "POST", "/subscriptions")[0].body;
   assert.equal(sub.plan_id, "plan_auto_1");
   assert.equal(sub.metadata.plano, "escritorio_1000");
@@ -212,7 +213,7 @@ test("NFS-e + NF-e na faixa antiga: plano próprio, R$ 494, as duas notas gravad
     "Agente Fiscal Escritório 5 com NFS-e e NF-e",
     "Agente Fiscal Escritório 5 com NFS-e e NF-e (sem teste)",
   ]);
-  assert.equal(criados[1].headers["Idempotency-Key"], "nofiscal-plano-escritorio_5_sem_teste_duas_notas-v1");
+  assert.equal(criados[1].headers["Idempotency-Key"], "nofiscal-plano-escritorio_5_sem_teste_duas_notas-49400-v1");
   const sub = chamadas(c, "POST", "/subscriptions")[0].body;
   assert.equal(sub.plan_id, "plan_auto_2", "teste já usado: o plano sem teste");
   assert.equal(sub.metadata.notas, "nfse,nfe");
@@ -234,14 +235,15 @@ test("Guias no checkout: ligado depois do registro, com a franquia da faixa; com
   let d = dubles();
   let r = await processarCheckout({ ...PEDIDO, guias: true }, d.deps);
   assert.equal(r.http, 200, JSON.stringify(r.body));
-  assert.deepEqual(d.c.guias, [[CONTEXTO.tenant_id, 1000, null]]);
+  // Com teste de 7 dias, o Guias começa no fim do teste, junto com a primeira cobrança da principal.
+  assert.deepEqual(d.c.guias, [[CONTEXTO.tenant_id, 1000, null, new Date(AGORA.getTime() + 7 * 24 * 3600 * 1000).toISOString()]]);
   assert.equal(r.body.guias, true);
   assert.equal(chamadas(d.c, "POST", "/subscriptions")[0].body.metadata.guias, true);
 
   d = dubles();
   r = await processarCheckout({ ...PEDIDO, plano: "escritorio_5", notas: ["nfse", "nfe"], guias: true }, d.deps);
   assert.equal(r.http, 200, JSON.stringify(r.body));
-  assert.deepEqual(d.c.guias, [[CONTEXTO.tenant_id, 500, CUPOM_MODULOS_JUNTOS]]);
+  assert.deepEqual(d.c.guias.map((g) => g.slice(0, 3)), [[CONTEXTO.tenant_id, 500, CUPOM_MODULOS_JUNTOS]]);
   assert.equal(d.c.registrar.length, 1, "o Guias só é ligado com a principal registrada");
 });
 
@@ -269,4 +271,47 @@ test("Inicial e Pro: NF-e no pedido é 400; Guias é ignorado; nada de módulo �
   assert.deepEqual(d.c.guias, []);
   assert.deepEqual(d.c.tipos, []);
   assert.equal("notas" in r.body, false);
+});
+
+test("sem teste grátis, o Guias começa (e cobra) já: nada de módulo de graça até a renovação, nem no anual", async () => {
+  for (const extra of [{}, { ciclo: "anual", confirmar_sem_teste: true }]) {
+    const { deps, c } = dubles({ testeLiberado: false });
+    const r = await processarCheckout({ ...PEDIDO, guias: true, ...extra }, deps);
+    assert.equal(r.http, 200, JSON.stringify(r.body));
+    assert.equal(r.body.com_teste, false);
+    assert.deepEqual(c.guias, [[CONTEXTO.tenant_id, 1000, null, null]], JSON.stringify(extra));
+  }
+});
+
+test("cupom dos dois módulos já usado pela conta: o Guias liga sem o desconto, em vez de ficar desligado", async () => {
+  const { deps, c } = dubles();
+  deps.ligarGuias = async (...a) => { c.guias.push(a); return a[2] ? { ok: false, erro: "CUPOM_JA_USADO" } : { ok: true }; };
+  const r = await processarCheckout({ ...PEDIDO, plano: "escritorio_5", notas: ["nfse", "nfe"], guias: true }, deps);
+  assert.equal(r.http, 200, JSON.stringify(r.body));
+  assert.deepEqual(c.guias.map((g) => g[2]), [CUPOM_MODULOS_JUNTOS, null]);
+  assert.equal(r.body.guias, true);
+  assert.equal(r.body.modulos_pendentes, undefined);
+});
+
+test("prévia do cupom com as duas notas: o desconto é sobre o que o Pagar.me cobra (plano + segundo tipo de nota)", async () => {
+  const dez = { ok: true, codigo: "DEZ", descricao: null, tipo: "percentual", valor: 10, cortesia: false, ciclos: 3 };
+  const { deps } = dubles({ cupom: dez });
+  const uma = await processarValidarCupom({ acao: "validar_cupom", codigo: "DEZ", plano: "escritorio_5", ciclo: "mensal" }, deps);
+  assert.equal(uma.body.cupom.valor_centavos, 29700);
+  assert.equal(uma.body.cupom.valor_centavos_com_desconto, 26730);
+  const duas = await processarValidarCupom({ acao: "validar_cupom", codigo: "DEZ", plano: "escritorio_5", ciclo: "mensal", notas: ["nfse", "nfe"] }, deps);
+  assert.equal(duas.body.cupom.valor_centavos, 49400);
+  assert.equal(duas.body.cupom.valor_centavos_com_desconto, 44460);
+});
+
+test("Guias: sem inicio_em vale a próxima cobrança da principal; com ele, o fim do teste ou já", async () => {
+  const { corpoAssinaturaGuias } = await import("../../supabase/functions/assinatura-fiscal-guias/core.ts");
+  const base = {
+    planId: "plan_g", tenantId: CONTEXTO.tenant_id, limite: 500, cupom: null, agora: AGORA,
+    principal: { status: "active", customerId: "cus_1", cardId: "card_1", proximaCobranca: "2027-11-23T15:00:00.000Z" },
+  };
+  assert.equal(corpoAssinaturaGuias(base).start_at, "2027-11-23T15:00:00.000Z", "a nó ligando: próxima cobrança da principal");
+  assert.equal("start_at" in corpoAssinaturaGuias({ ...base, inicioEm: null }), false, "checkout sem teste: começa já");
+  assert.equal(corpoAssinaturaGuias({ ...base, inicioEm: "2026-11-30T15:00:00.000Z" }).start_at, "2026-11-30T15:00:00.000Z", "checkout com teste: fim do teste");
+  assert.equal("start_at" in corpoAssinaturaGuias({ ...base, inicioEm: "2026-11-01T00:00:00.000Z" }), false, "data passada: começa já");
 });

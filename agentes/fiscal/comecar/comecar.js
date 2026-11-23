@@ -326,8 +326,11 @@
       if (caixas[i].value === 'guias') guias = true; else notas.push(caixas[i].value);
     }
     if (!notas.length) { alvo.checked = true; return; }
+    var eramDuas = st.notas.length === 2;
     gravarEscolha(notas, guias);
     mostrarCupom(); // redesenha o plano, o resumo e o texto do cupom com o total novo
+    // O desconto do cupom é calculado sobre o plano com o segundo tipo de nota: mudou isso, confere de novo.
+    if (st.cupom && !st.cupom.cortesia && eramDuas !== (st.notas.length === 2)) { $('fc-cupom-codigo').value = st.cupom.codigo; aplicarCupom(); }
     if (medir) medir.checkoutIniciado(st.plano, valorAtual(), st.cupom && st.cupom.codigo, st.ciclo);
   }
   function etapaDoEstado(e) {
@@ -651,7 +654,7 @@
     if (!/^[A-Z0-9_-]{3,40}$/.test(codigo)) { nf.erroCampo('fc-cupom-codigo', 'Cupom não encontrado. Confira o código.'); return; }
     var botao = $('fc-cupom-aplicar');
     nf.ocupado(botao, true, 'Aplicando…');
-    nf.funcao('assinatura-fiscal', { acao: 'validar_cupom', codigo: codigo, plano: st.plano, ciclo: st.ciclo }).then(function (r) {
+    nf.funcao('assinatura-fiscal', { acao: 'validar_cupom', codigo: codigo, plano: st.plano, ciclo: st.ciclo, notas: st.notas }).then(function (r) {
       if (r.ok && r.dados.cupom) {
         st.cupom = r.dados.cupom;
         nf.aba.gravar(CUPOM_KEY, st.cupom.codigo);

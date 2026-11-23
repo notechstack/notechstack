@@ -166,9 +166,9 @@ Deno.serve(async (request) => {
       },
       // Módulo Guias no checkout: a mesma regra de assinatura-fiscal-guias (segunda assinatura, no cartão da principal),
       // chamada por dentro, sem outra requisição.
-      ligarGuias: async (tenantId, limiteMes, cupom) => {
+      ligarGuias: async (tenantId, limiteMes, cupom, inicioEm) => {
         const r = await processarGuias(
-          { metodo: "POST", autorizado: true, body: { acao: "ligar", tenant_id: tenantId, limite_mes: limiteMes, ...(cupom ? { cupom } : {}) } },
+          { metodo: "POST", autorizado: true, body: { acao: "ligar", tenant_id: tenantId, limite_mes: limiteMes, inicio_em: inicioEm, ...(cupom ? { cupom } : {}) } },
           {
             env: { ...lerEnv(), PAGARME_PLANO_FISCAL_GUIAS_ID: Deno.env.get("PAGARME_PLANO_FISCAL_GUIAS_ID") },
             fetch: (url, init) => fetch(url, init),

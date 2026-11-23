@@ -282,7 +282,8 @@ export async function obterPlano(
     }
     const criado = await deps.fetch(`${apiUrl}/plans`, {
       method: "POST",
-      headers: { ...headers, "Idempotency-Key": `nofiscal-plano-${chave}-v1` },
+      // O preço entra na chave: se a tabela mudar, o plano novo não é confundido com o antigo.
+      headers: { ...headers, "Idempotency-Key": `nofiscal-plano-${chave}-${obj(obj((corpo.items as unknown[])[0]).pricing_scheme).price}-v1` },
       body: JSON.stringify(corpo),
     });
     const json = obj(await criado.json().catch(() => null));
@@ -489,7 +490,7 @@ export type Deps = {
   /** public.fiscal_definir_tipos_nota: grava o que a conta emite (a NF-e do painel só abre com 'nfe' na lista). */
   definirTiposNota?: (tenantId: string, notas: TipoNota[]) => Promise<void>;
   /** Liga o módulo Guias pela mesma regra de assinatura-fiscal-guias (segunda assinatura, no cartão da principal). */
-  ligarGuias?: (tenantId: string, limiteMes: number, cupom: string | null) => Promise<{ ok: boolean; erro?: string }>;
+  ligarGuias?: (tenantId: string, limiteMes: number, cupom: string | null, inicioEm: string | null) => Promise<{ ok: boolean; erro?: string }>;
 };
 
 export type Resultado = { http: number; body: Record<string, unknown> };
@@ -733,8 +734,9 @@ async function avaliarCupom(
   return { ok: true, cupom };
 }
 
-function cupomPublico(cupom: CupomValido, plano: PlanoAssinatura): Record<string, unknown> {
-  const centavos = PLANOS_PAGARME[plano].centavos;
+/** `duasNotas`: o desconto é calculado sobre o que o Pagar.me cobra de fato (o plano com o segundo tipo de nota). */
+function cupomPublico(cupom: CupomValido, plano: PlanoAssinatura, duasNotas = false): Record<string, unknown> {
+  const centavos = centavosDoCiclo(plano, "mensal", duasNotas);
   return {
     codigo: cupom.codigo,
     descricao: cupom.descricao,
@@ -766,7 +768,7 @@ export async function processarValidarCupom(body: unknown, deps: Deps): Promise<
   if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da empresa antes de usar um cupom.");
   const a = await avaliarCupom(deps, contexto.tenant_id, codigo, plano);
   if (!a.ok) return a.resultado;
-  return { http: 200, body: { ok: true, cupom: cupomPublico(a.cupom, plano) } };
+  return { http: 200, body: { ok: true, cupom: cupomPublico(a.cupom, plano, (lerNotas(b.notas, plano) ?? []).length === 2) } };
 }
 
 /** Pedido de cortesia: só plano e aceite; cartão e endereço não entram. */
@@ -877,7 +879,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
     // ou NFS-e + NF-e em qualquer faixa) o plano é achado ou criado no Pagar.me. Tudo antes de reivindicar o teste:
     // sem plano, nada é reivindicado nem cobrado.
     const idDoPlano = async (codigo: CodigoPlanoPagarme) =>
-      (!duasNotas && FAIXAS_COM_ID_FIXO.includes(escritorio) ? config.planIds[codigo] : "") ||
+      (!duasNotas ? config.planIds[codigo] : "") ||
       (await obterPlano(deps, config.apiUrl, headers, codigo, duasNotas, log)) || "";
     planoComTeste = await idDoPlano(codigoPagarmeEscritorio(escritorio, anual ? "anual" : "teste"));
     planoSemTeste = await idDoPlano(codigoPagarmeEscritorio(escritorio, anual ? "anual_sem_teste" : "sem_teste"));
@@ -1043,10 +1045,17 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   let guiasLigado = false;
   if (escritorio && pedido.guias) {
     try {
-      // Quem leva NF-e e Guias paga R$ 297 pelos dois: o desconto de R$ 97 vai no Guias.
-      const r = deps.ligarGuias
-        ? await deps.ligarGuias(contexto.tenant_id, FAIXAS_ESCRITORIO[escritorio].notas, duasNotas ? CUPOM_MODULOS_JUNTOS : null)
-        : { ok: false, erro: "SEM_LIGAR_GUIAS" };
+      // Quem leva NF-e e Guias paga R$ 297 pelos dois: o desconto de R$ 97 vai no Guias. O Guias começa junto com a
+      // cobrança da principal: no fim do teste, ou já (trialEndsAt nulo) para quem assina sem teste.
+      const ligar = (cupomGuias: string | null) => deps.ligarGuias
+        ? deps.ligarGuias(contexto.tenant_id, FAIXAS_ESCRITORIO[escritorio].notas, cupomGuias, trialEndsAt)
+        : Promise.resolve({ ok: false, erro: "SEM_LIGAR_GUIAS" });
+      let r = await ligar(duasNotas ? CUPOM_MODULOS_JUNTOS : null);
+      // O cupom dos dois módulos vale uma vez por conta: quem cancelou e voltou liga o Guias sem ele, em vez de ficar sem.
+      if (!r.ok && duasNotas && /^CUPOM_/.test(r.erro ?? "")) {
+        log("warn", "assinatura_fiscal_guias_sem_desconto", { subscription_id: subId, erro: r.erro });
+        r = await ligar(null);
+      }
       guiasLigado = r.ok;
       if (!r.ok) log("error", "assinatura_fiscal_guias_nao_ligado", { subscription_id: subId, erro: r.erro ?? null });
     } catch {
@@ -1095,7 +1104,7 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       medicao: compra,
       trial_ends_at: trialEndsAt,
       ...(comTeste ? {} : { aviso: MSG_TESTE_JA_USADO }),
-      ...(cupom ? { cupom: cupomPublico(cupom, pedido.plano) } : {}),
+      ...(cupom ? { cupom: cupomPublico(cupom, pedido.plano, duasNotas) } : {}),
       ...(escritorio ? { notas: pedido.notas, guias: guiasLigado } : {}),
       ...(modulosPendentes.length ? { modulos_pendentes: modulosPendentes } : {}),
     },
