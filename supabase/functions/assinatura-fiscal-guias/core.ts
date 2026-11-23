@@ -40,6 +40,43 @@ export function corpoDoPlanoGuias(): Record<string, unknown> {
   };
 }
 
+/** É o plano "nó.fiscal Guias"? Mesmo nome, mensal, ativo, R$ 197,00. */
+function ehPlanoGuias(p: Record<string, unknown>): boolean {
+  const itens = Array.isArray(p.items) ? p.items as Record<string, unknown>[] : [];
+  const preco = obj(obj(itens[0]).pricing_scheme).price;
+  return p.name === PLANO_GUIAS.nome && (p.status === undefined || p.status === "active")
+    && (p.interval === undefined || p.interval === "month") && (preco === undefined || preco === PLANO_GUIAS.centavos);
+}
+
+/** Acha o plano "nó.fiscal Guias" no Pagar.me (GET /plans) ou cria uma vez (POST /plans, Idempotency-Key fixa). */
+export async function obterPlanoGuias(
+  deps: Pick<DepsGuias, "fetch">, apiUrl: string, headers: Record<string, string>,
+  log: (n: Nivel, e: string, d?: Record<string, unknown>) => void = () => {},
+): Promise<string | null> {
+  try {
+    const res = await deps.fetch(`${apiUrl}/plans?name=${encodeURIComponent(PLANO_GUIAS.nome)}&status=active&size=100`, { method: "GET", headers });
+    if (res.ok) {
+      const lista = obj(await res.json().catch(() => null)).data;
+      const achado = Array.isArray(lista) ? (lista as Record<string, unknown>[]).find((p) => ehPlanoGuias(obj(p))) : undefined;
+      const id = achado ? texto(obj(achado).id) : null;
+      if (id) { log("info", "assinatura_guias_plano_achado", { plan_id: id }); return id; }
+    }
+    const criado = await deps.fetch(`${apiUrl}/plans`, {
+      method: "POST",
+      headers: { ...headers, "Idempotency-Key": "nofiscal-plano-guias-v1" },
+      body: JSON.stringify(corpoDoPlanoGuias()),
+    });
+    const corpo = obj(await criado.json().catch(() => null));
+    const id = texto(corpo.id);
+    if (!criado.ok || !id) throw new Error(`HTTP ${criado.status}`);
+    log("info", "assinatura_guias_plano_criado", { plan_id: id });
+    return id;
+  } catch (e) {
+    log("error", "assinatura_guias_plano_falhou", { erro: String(e) });
+    return null;
+  }
+}
+
 export type ContextoGuias = {
   ok: boolean;
   erro?: string;
@@ -157,12 +194,15 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
   if (codigo === false) return erro(422, "CUPOM_INVALIDO", "cupom fora do formato");
 
   const config = lerConfig(deps.env);
-  const planId = deps.env[PLANO_GUIAS.env] || "";
-  if (!config.secretKey || !planId || (config.ambiente === "sandbox" && !config.secretKey.startsWith("sk_test_"))) {
-    log("error", "assinatura_guias_config_ausente", { secret: Boolean(config.secretKey), plano: Boolean(planId) });
-    return erro(500, "CONFIG_AUSENTE", `falta a chave do Pagar.me ou ${PLANO_GUIAS.env}`);
+  if (!config.secretKey || (config.ambiente === "sandbox" && !config.secretKey.startsWith("sk_test_"))) {
+    log("error", "assinatura_guias_config_ausente", { secret: Boolean(config.secretKey) });
+    return erro(500, "CONFIG_AUSENTE", "falta a chave do Pagar.me");
   }
   const headers = { "Content-Type": "application/json", Authorization: `Basic ${btoa(`${config.secretKey}:`)}` };
+  // Sem PAGARME_PLANO_FISCAL_GUIAS_ID, a função acha (ou cria uma vez) o plano "nó.fiscal Guias" com a própria chave
+  // guardada no Supabase: ninguém precisa colar a sk_ num script (Lucca, 23/11/2026).
+  const planId = deps.env[PLANO_GUIAS.env] || await obterPlanoGuias(deps, config.apiUrl, headers, log);
+  if (!planId) return erro(502, "PAGARME_PLANO_FALHOU", "não consegui achar nem criar o plano nó.fiscal Guias no Pagar.me");
 
   const ctx = await deps.contexto(tenantId);
   if (!ctx.ok) return erro(422, ctx.erro || "CONTA_INVALIDA", "a conta não é conta-mãe de Escritório");
