@@ -18,17 +18,20 @@ import { UFS, type Uf } from './autorizadores.js'
 import {
   avisosNfe,
   calcularTotais,
-  centavos,
   soDigitos,
   temTransportador,
   temVolume,
   type Csosn,
   type Item,
-  type ModalidadeFrete,
   type Transportador,
   type Volume,
 } from './nfe-builder.js'
 import type { PedidoNfe } from './servico.js'
+import { FORMAS, lerNumero, modalidade, ratearFrete } from './campos.js'
+
+// Os leitores de campo moram em campos.ts (sem depender do lote, para o WhatsApp importar sem ciclo); reexportados
+// aqui para quem já importava da planilha.
+export { FORMAS, lerNumero, modalidade, ratearFrete }
 
 export const MODELO_DA_PLANILHA_NFE = 'https://www.notechstack.com.br/agentes/fiscal/dados/modelo-nfe.xlsx'
 export const MAX_LINHAS_NFE = 2000
@@ -59,22 +62,6 @@ const CAMPOS_DA_NOTA = [
   'volumes_numeracao', 'peso_liquido', 'peso_bruto',
 ] as const
 
-/** Forma de pagamento: código do leiaute ou o nome que as pessoas escrevem. */
-const FORMAS: Record<string, string> = {
-  dinheiro: '01', cheque: '02', credito: '03', cartaodecredito: '03', debito: '04', cartaodedebito: '04',
-  boleto: '15', pix: '17', transferencia: '18', sempagamento: '90', outros: '99',
-}
-
-/** Modalidade do frete: código do leiaute ou o nome que as pessoas escrevem (normalizado, sem acento e espaço). */
-const MODALIDADES: Record<string, ModalidadeFrete> = {
-  emitente: '0', remetente: '0', cif: '0', porcontadoemitente: '0', porcontadoremetente: '0',
-  destinatario: '1', fob: '1', porcontadodestinatario: '1',
-  terceiros: '2', porcontadeterceiros: '2',
-  proprioremetente: '3', transporteproprioremetente: '3', proprioemitente: '3', transporteproprioemitente: '3',
-  propriodestinatario: '4', transportepropriodestinatario: '4',
-  semfrete: '9', semtransporte: '9', semocorrenciadetransporte: '9',
-}
-
 export type NotaDaPlanilha = {
   cnpjEmitente: string
   nota: string
@@ -90,26 +77,6 @@ export type PlanilhaNfe =
   | { ok: true; notas: NotaDaPlanilha[]; problemas: ProblemaDaPlanilha[] }
   | { ok: false; mensagem: string }
 
-/**
- * Número pt-BR ("1.234,5678", "2,5") ou da célula numérica; até `casas` decimais (também na célula numérica, sem
- * contar o ruído de ponto flutuante).
- */
-export function lerNumero(celula: Celula | undefined, casas: number): number | null {
-  if (typeof celula === 'number') {
-    if (!Number.isFinite(celula)) return null
-    // Compara no espaço do valor (19,99 vem como 19.990000000000002 em escala 1e10 e não pode ser recusado).
-    return Number(celula.toFixed(casas)) === celula ? celula : null
-  }
-  let t = textoDaCelula(celula).replace(/^R\$\s*/i, '').replace(/\s/g, '')
-  if (!t) return null
-  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
-  if (!/^\d+(\.\d+)?$/.test(t)) return null
-  const [, dec = ''] = t.split('.')
-  if (dec.length > casas) return null
-  return Number(t)
-}
-
 /** Código numérico (CEP, NCM, CEST, IBGE): célula numérica do .xlsx perde zeros à esquerda; aqui eles voltam. */
 function codigo(celula: Celula | undefined, tamanho: number): string {
   const d = soDigitos(typeof celula === 'number' && Number.isInteger(celula) ? String(celula) : textoDaCelula(celula))
@@ -117,16 +84,6 @@ function codigo(celula: Celula | undefined, tamanho: number): string {
 }
 
 const valorOpcional = (c: Celula | undefined) => (textoDaCelula(c) ? lerNumero(c, 2) : 0)
-
-/** "0".."4", "9", "CIF", "FOB", "emitente", "sem frete"… → código do leiaute; null se não reconhece. */
-function modalidade(texto: string): ModalidadeFrete | null {
-  const t = texto.trim()
-  if (/^[012349]$/.test(t)) return t as ModalidadeFrete
-  // "0 - Emitente" e "0-CIF": vale o código no começo.
-  const m = /^([012349])\s*[-–:.]/.exec(t)
-  if (m) return m[1] as ModalidadeFrete
-  return MODALIDADES[normalizarCabecalho(t)] ?? null
-}
 
 /**
  * Como dois preenchimentos do mesmo campo da nota são comparados: documento, CEP, município e telefone pelos dígitos;
@@ -143,19 +100,6 @@ function comparavel(c: string, celula: Celula | undefined): string {
   if (c === 'volumes_quantidade') return String(lerNumero(celula, 0) ?? texto)
   if (c === 'modalidade_frete') return modalidade(texto) ?? normalizarCabecalho(texto)
   return normalizarCabecalho(texto) || texto
-}
-
-/** Frete da nota rateado pelos itens, proporcional ao valor, nos mesmos centavos do leiaute (o resto no último). */
-export function ratearFrete(itens: Item[], freteTotal: number): void {
-  const total = centavos(freteTotal)
-  const bases = itens.map((i) => centavos(i.quantidade * i.valorUnitario))
-  const soma = bases.reduce((a, b) => a + b, 0) || 1
-  let usado = 0
-  itens.forEach((item, i) => {
-    const parte = i === itens.length - 1 ? total - usado : Math.floor((total * bases[i]) / soma)
-    usado += parte
-    item.frete = parte / 100
-  })
 }
 
 export async function lerPlanilhaNfe(conteudo: Uint8Array, tipo: TipoDePlanilha): Promise<PlanilhaNfe> {

@@ -178,7 +178,7 @@ export function conferirPedido(empresa: EmpresaNfe, pedido: PedidoNfe, agora: Da
  */
 export async function criarNfe(
   db: Db,
-  p: { tenantId: string; externalId: string; origem: 'painel' | 'planilha' | 'api'; pedido: PedidoNfe; agora: Date },
+  p: { tenantId: string; externalId: string; origem: 'painel' | 'planilha' | 'api' | 'whatsapp'; pedido: PedidoNfe; agora: Date },
 ): Promise<ResultadoCriacao> {
   return db.transaction(async (tx) => {
     const existente = await tx.query<{ id: string; serie: number; numero: string }>(
@@ -702,3 +702,27 @@ export async function historicoNfe(db: Queryable, tenantId: string): Promise<His
   }
   return { destinatarios: [...destinatarios.values()], produtos: [...produtos.values()], transportadores: [...transportadores.values()] }
 }
+
+/** O que o painel e o WhatsApp mostram para cada código de bloqueio da NF-e. */
+export const MOTIVO_DO_BLOQUEIO: Record<string, string> = {
+  TENANT_INACTIVE: 'a empresa está desativada',
+  NFE_REGIME_NAO_SUPORTADO: 'por enquanto a NF-e é só para Simples Nacional e MEI',
+  NFE_SEM_IE: 'falta a inscrição estadual',
+  NFE_SEM_ENDERECO: 'falta o endereço da empresa',
+  NFE_SEM_SERIE: 'falta a série e o próximo número da NF-e',
+  NFE_CERT_MISSING: 'falta o certificado A1 da própria empresa (a NF-e não aceita procuração)',
+  NFE_NAO_CONFERIDA: 'falta a conferência da empresa na Sefaz (clique em Conferir na Sefaz)',
+  NFE_CONFERIR_DE_NOVO: 'o certificado, a IE ou a UF mudaram desde a última conferência; confira de novo na Sefaz',
+  NFE_NAO_CREDENCIADA: 'a empresa não está credenciada para emitir NF-e na Sefaz do estado',
+  NFE_IE_NAO_E_DO_CNPJ: 'a Sefaz não encontra a inscrição estadual neste CNPJ',
+  NFE_IE_NAO_HABILITADA: 'a inscrição estadual não está habilitada na Sefaz',
+  NFE_IE_INVALIDA: 'a Sefaz recusou a inscrição estadual',
+  SEFAZ_INDISPONIVEL: 'a Sefaz não respondeu na última conferência; tente de novo',
+  CERT_SEM_CNPJ: 'o certificado não é um e-CNPJ A1',
+  CERT_EXPIRED: 'o certificado A1 venceu',
+  NO_SUBSCRIPTION: 'a conta não tem assinatura',
+  SUBSCRIPTION_CANCELLED: 'a assinatura foi cancelada',
+  PAYMENT_NOT_APPROVED: 'o pagamento da assinatura não foi aprovado',
+  CERT_DE_OUTRO_CNPJ: 'o certificado A1 é de outro CNPJ; a NF-e precisa do A1 da própria empresa',
+}
+export const motivoDoBloqueio = (codigo: string) => MOTIVO_DO_BLOQUEIO[codigo] ?? codigo

@@ -60,6 +60,7 @@ import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { ehSairDaEscolha, lerEscolhaDeNota, listaDeOpcoes, type Candidata } from './escolher-nota.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 import type { BaixaMidia } from './whatsapp-cloud.js'
+import { tratarNfeConversa } from './nfe-conversa.js'
 import { tratarRespostaDeGuia } from '../guias/respostas.js'
 import type { ArmazemDeGuias } from '../guias/storage.js'
 
@@ -937,6 +938,11 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   if (await tratarComando(ctx, texto)) return
   // "confirmar"/"cancelar" de um lote aguardando, quando ele é mais recente que o pedido avulso aguardando.
   if (await responderAoLote(ctx, texto)) return
+  // NF-e avulsa (nota de produto), conversa guiada sem a IA: "nfe" começa; a resposta a uma NF-e aberta segue aqui.
+  if (await tratarNfeConversa(ctx, texto, pareceNovoPedido)) {
+    if (ctx.pedidoId) await contarMensagens(deps.db, ctx.pedidoId, 1 + ctx.enviadas)
+    return
+  }
   // "nota 123" / "nota Maria": o PDF de uma nota, por código, sem a IA.
   if (await tratarVerNota(ctx, texto)) return
   // "qual é o modelo da planilha?" (conta Escritório): o arquivo .xlsx, por código, sem a IA.
