@@ -180,9 +180,13 @@ export function corpoAssinaturaGuias(a: {
   cupom: CupomValido | null;
   agora: Date;
   geracao?: number;
+  /** Só o checkout manda (23/11/2026): fim do teste da principal, ou null para começar (e cobrar) já. Ausente: a
+      próxima cobrança da principal, como quando a nó liga o módulo de uma conta que já paga. */
+  inicioEm?: string | null;
 }): Record<string, unknown> {
-  const inicio = a.principal.proximaCobranca && Date.parse(a.principal.proximaCobranca) > a.agora.getTime()
-    ? new Date(Date.parse(a.principal.proximaCobranca)).toISOString()
+  const quando = a.inicioEm !== undefined ? a.inicioEm : a.principal.proximaCobranca;
+  const inicio = quando && Date.parse(quando) > a.agora.getTime()
+    ? new Date(Date.parse(quando)).toISOString()
     : null;
   return {
     plan_id: a.planId,
@@ -280,7 +284,13 @@ export async function processarGuias(req: { metodo: string; autorizado: boolean;
   }
 
   const agora = (deps.agora ?? (() => new Date()))();
-  const corpo = corpoAssinaturaGuias({ planId, tenantId, limite, principal, cupom, agora, geracao: reserva.geracao });
+  // `inicio_em` no pedido (só o checkout manda): string ISO = fim do teste da principal; null = começa já. Sem o campo,
+  // vale a próxima cobrança da principal. Sem isso, quem assina sem teste (o anual, sobretudo) usaria o Guias de graça
+  // até a renovação da principal.
+  const inicioEm = Object.prototype.hasOwnProperty.call(b, "inicio_em")
+    ? (typeof b.inicio_em === "string" && !Number.isNaN(Date.parse(b.inicio_em)) ? b.inicio_em : null)
+    : undefined;
+  const corpo = corpoAssinaturaGuias({ planId, tenantId, limite, principal, cupom, agora, geracao: reserva.geracao, inicioEm });
   let subscriptionId: string;
   let criada: Record<string, unknown>;
   try {

@@ -549,6 +549,12 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     }
     const ciclo = cicloDaAssinatura(sub);
     // Escritório: só mensal (o anual já saiu acima); nome e preço do plano no Pagar.me (assinatura-fiscal).
+    // Conta com NFS-e e NF-e paga o segundo tipo de nota no item. A página só sabe mostrar o preço da faixa, então a
+    // troca dessas contas fica com a equipe, em vez de cobrar um valor diferente do que a pessoa confirmou.
+    const precoAtual = Number(obj(item.pricing_scheme).price);
+    if (planoDeEscritorio(estado.plano) && precoAtual === centavosDoCiclo(estado.plano, ciclo, true)) {
+      return erro(409, "TROCA_COM_MODULO_INDISPONIVEL", "Com NFS-e e NF-e no plano, a troca de faixa é feita com a nó. Fale com a gente pelo WhatsApp.");
+    }
     const nome = PLANOS_PAGARME[plano].nome;
     const preco = centavosDoCiclo(plano, ciclo);
     const r = await chamar(
@@ -659,7 +665,7 @@ async function conferirTroca(
       resultado: erro(
         400,
         "DADOS_INVALIDOS",
-        escritorio ? "Escolha uma das faixas: até 5, 20 ou 50 empresas." : "Escolha um dos planos: Inicial ou Pro.",
+        escritorio ? "Escolha uma das faixas de documentos por mês." : "Escolha um dos planos: Inicial ou Pro.",
       ),
     };
   }

@@ -188,3 +188,23 @@
 .nf-status--amarelo::before{background:var(--fi-acento)}
 .nf-status--vermelho::before{background:var(--no-vermelho)}
 .nf-guias-disparo{margin-top:18px}
+
+/* Planos por volume (23/11/2026): caixas "O que você vai emitir?" e o resumo do preço na etapa do pagamento. */
+.nf-modulos{margin-top:14px}
+.nf-modulos .nf-opcao{align-items:center}
+.nf-modulos .nf-opcao input{margin:0}
+.nf-modulo-texto{flex:1;min-width:0;display:grid;gap:2px}
+.nf-modulo-texto small{font-size:13px;line-height:1.4;color:var(--fi-texto-sec)}
+.nf-modulo-preco{flex:none;font-style:normal;font-size:13.5px;font-weight:600;color:var(--fi-texto-sec);white-space:nowrap}
+.nf-opcao:has(input:checked) .nf-modulo-preco{color:var(--fi-texto)}
+.nf-opcao[hidden]{display:none}
+.nf-resumo-preco{grid-column:1/-1;margin-top:14px;padding:14px 16px;border:1.5px solid var(--fi-borda);border-radius:14px;background:var(--fi-branco)}
+.nf-resumo-preco:empty{display:none}
+.nf-resumo-preco ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.nf-resumo-preco li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:14.5px;line-height:1.35;color:var(--fi-texto-sec)}
+.nf-resumo-preco li b{flex:none;font-weight:600;color:var(--fi-texto);white-space:nowrap;font-variant-numeric:tabular-nums}
+.nf-resumo-preco li.is-desconto b{color:var(--fi-ok-texto,var(--fi-texto))}
+.nf-resumo-preco li.is-total{margin-top:4px;padding-top:12px;border-top:1px solid var(--fi-borda);font-size:16px;color:var(--fi-texto)}
+.nf-resumo-preco li.is-total span{font-weight:600}
+.nf-resumo-preco li.is-total b{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.nf-resumo-preco p{margin:10px 0 0;font-size:13px;line-height:1.45;color:var(--fi-texto-sec)}

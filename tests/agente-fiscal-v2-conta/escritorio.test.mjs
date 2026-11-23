@@ -166,7 +166,7 @@ test("estado do escritório e da conta comum", async () => {
   const esc = r.body.escritorio;
   assert.ok(esc, "estado traz `escritorio`");
   assert.equal(esc.escritorio_tenant_id, e.tenantId);
-  assert.equal(esc.max_empresas, 5);
+  assert.equal(esc.max_empresas, 100000, "sem limite de empresas por faixa (23/11/2026)");
   assert.equal(esc.empresas_ativas, 1);
   assert.equal(esc.notas_limite, 500);
   assert.equal(esc.notas_mes, 0);
@@ -257,9 +257,11 @@ test("adicionar empresa", async () => {
   assert.equal(ro2.body.error_code, "CNPJ_JA_CADASTRADO");
   assert.equal(ro2.body.mensagem, "Este CNPJ já está cadastrado no nó.fiscal.");
 
-  // Limite da faixa: 3 ativas + 2 = 5; a sexta é recusada antes da Receita.
+  // A faixa não limita empresas (23/11/2026); o limite que sobra é o pacote da conta (max_empresas_override).
+  // Com pacote de 5: 3 ativas + 2 = 5; a sexta é recusada antes da Receita.
   await adicionar(e);
   await adicionar(e);
+  assert.equal((await um("select public.fiscal_definir_limite_empresas($1, 5) as r", [e.tenantId])).ok, true);
   const cheio = await conta(e, { acao: "empresa_adicionar", cnpj: cnpjValido() });
   assert.equal(cheio.http, 409);
   assert.equal(cheio.body.error_code, "EMPRESAS_ACIMA_DO_LIMITE");
@@ -429,8 +431,9 @@ test("desativar e reativar empresa", async () => {
   const rb = await conta(e, { acao: "empresa_ativar", tenant_id: tenantId, ativa: "sim" });
   assert.equal(rb.http, 400);
 
-  // Com a faixa cheia, reativar é recusado; adicionar o mesmo CNPJ desativado também.
+  // Com o pacote da conta cheio (a faixa não limita empresas), reativar é recusado; adicionar o mesmo CNPJ desativado também.
   for (let i = 0; i < 4; i += 1) await adicionar(e);
+  assert.equal((await um("select public.fiscal_definir_limite_empresas($1, 5) as r", [e.tenantId])).ok, true);
   const cheio = await conta(e, { acao: "empresa_ativar", tenant_id: tenantId, ativa: true });
   assert.equal(cheio.http, 409);
   assert.equal(cheio.body.mensagem, "Seu plano permite até 5 empresas.");
@@ -457,7 +460,7 @@ test("trocar faixa do escritório", async () => {
   const r = await conta(e, { acao: "trocar_plano", plano: "escritorio_20" }, { gw: rede({ pagarme: itens }) });
   assert.equal(r.http, 200, JSON.stringify(r.body));
   assert.equal(r.body.plano, "escritorio_20");
-  assert.equal(r.body.escritorio.max_empresas, 20);
+  assert.equal(r.body.escritorio.max_empresas, 100000);
   const put = r.gw.pagarme().find((c) => c.method === "PUT");
   assert.ok(put.url.endsWith("/items/si_ativo"));
   assert.deepEqual(put.body.pricing_scheme, { scheme_type: "unit", price: 79700 });
@@ -468,16 +471,34 @@ test("trocar faixa do escritório", async () => {
   assert.equal((await tenant(e.tenantId)).monthly_note_limit, 2000);
   assert.equal((await tenant(tenantId)).plan, "escritorio_20");
 
-  // Mais empresas ativas que a faixa de destino: 409 antes do Pagar.me.
+  // A faixa é só o volume de documentos (23/11/2026): descer com 6 empresas ativas passa, e as faixas novas valem.
   for (let i = 0; i < 4; i += 1) await adicionar(e);
+  const nova = await conta(e, { acao: "trocar_plano", plano: "escritorio_1000" }, { gw: rede({ pagarme: itens }) });
+  assert.equal(nova.http, 200, JSON.stringify(nova.body));
+  assert.equal((await tenant(e.tenantId)).plan, "escritorio_1000");
+  assert.equal((await tenant(e.tenantId)).monthly_note_limit, 1000);
   const menor = await conta(e, { acao: "trocar_plano", plano: "escritorio_5" }, { gw: rede({ pagarme: itens }) });
-  assert.equal(menor.http, 409, JSON.stringify(menor.body));
-  assert.equal(menor.body.error_code, "EMPRESAS_ACIMA_DO_LIMITE");
-  assert.equal(menor.body.mensagem, "Você tem 6 empresas ativas, e esta faixa permite até 5. Desative empresas antes de trocar.");
-  assert.equal(menor.gw.chamadas.length, 0);
-  // O banco repete a regra.
-  const direto = await banco.trocarPlano(e.userId, "escritorio_5");
-  assert.equal(direto.erro, "EMPRESAS_ACIMA_DO_LIMITE");
+  assert.equal(menor.http, 200, JSON.stringify(menor.body));
+  assert.equal((await tenant(e.tenantId)).plan, "escritorio_5");
+  assert.equal((await tenant(e.tenantId)).monthly_note_limit, 500);
+  // Com pacote menor que as empresas ativas, a troca para: 409 antes do Pagar.me, e o banco repete a regra.
+  await bancos.dono.query("update nofiscal.fiscal_tenants set max_empresas_override = 5 where id = $1", [e.tenantId]);
+  const barrada = await conta(e, { acao: "trocar_plano", plano: "escritorio_20" }, { gw: rede({ pagarme: itens }) });
+  assert.equal(barrada.http, 409, JSON.stringify(barrada.body));
+  assert.equal(barrada.body.error_code, "EMPRESAS_ACIMA_DO_LIMITE");
+  assert.equal(barrada.gw.chamadas.length, 0);
+  assert.equal((await banco.trocarPlano(e.userId, "escritorio_20")).erro, "EMPRESAS_ACIMA_DO_LIMITE");
+  await bancos.dono.query("update nofiscal.fiscal_tenants set max_empresas_override = null where id = $1", [e.tenantId]);
+  assert.equal((await conta(e, { acao: "trocar_plano", plano: "escritorio_20" }, { gw: rede({ pagarme: itens }) })).http, 200);
+  assert.equal((await tenant(e.tenantId)).plan, "escritorio_20");
+
+  // Conta com NFS-e e NF-e (o item custa a faixa + R$ 197): a troca fica com a nó, sem mexer no preço nem no plano.
+  const comNfe = (method, url) =>
+    method === "GET" && url.endsWith("/items") ? { json: { data: [{ id: "si_ativo", status: "active", pricing_scheme: { price: 79700 + 19700 } }] } } : { json: {} };
+  const duas = await conta(e, { acao: "trocar_plano", plano: "escritorio_50" }, { gw: rede({ pagarme: comNfe }) });
+  assert.equal(duas.http, 409, JSON.stringify(duas.body));
+  assert.equal(duas.body.error_code, "TROCA_COM_MODULO_INDISPONIVEL");
+  assert.equal(duas.gw.chamadas.filter((c) => c.method === "PUT").length, 0, "nenhum preço muda no Pagar.me");
   assert.equal((await tenant(e.tenantId)).plan, "escritorio_20");
 
   // Entre famílias: recusado sem Pagar.me, nos dois sentidos.
@@ -496,16 +517,14 @@ test("trocar faixa do escritório", async () => {
   // Faixa desconhecida.
   const x = await conta(e, { acao: "trocar_plano", plano: "escritorio_100" });
   assert.equal(x.http, 400);
-  assert.equal(x.body.mensagem, "Escolha uma das faixas: até 5, 20 ou 50 empresas.");
+  assert.equal(x.body.mensagem, "Escolha uma das faixas de documentos por mês.");
 });
 
 test("pacote por notas: limite de empresas da conta", async () => {
   const e = await escritorio({ plano: "escritorio_5" });
   for (let i = 0; i < 4; i += 1) await adicionar(e);
-  // Sem pacote: a sexta é barrada antes da Receita.
-  const cheio = await conta(e, { acao: "empresa_adicionar", cnpj: cnpjValido() });
-  assert.equal(cheio.http, 409, JSON.stringify(cheio.body));
-  assert.equal(cheio.body.error_code, "EMPRESAS_ACIMA_DO_LIMITE");
+  // Sem pacote não há limite de empresas (23/11/2026): o painel mostra o "sem limite" do banco.
+  assert.equal((await conta(e, { acao: "estado" })).body.escritorio.max_empresas, 100000);
 
   // A nó aplica o pacote (service_role); o painel passa a mostrar o limite da conta.
   const aplicado = await um("select public.fiscal_definir_limite_empresas($1, $2) as r", [e.tenantId, 8]);
@@ -529,14 +548,12 @@ test("pacote por notas: limite de empresas da conta", async () => {
   assert.equal((await tenant(e.tenantId)).plan, "escritorio_5");
   assert.equal((await tenant(e.tenantId)).monthly_note_limit, 500);
 
-  // Tirar o pacote com 6 ativas na faixa 5: recusado; depois de desativar uma, aceito.
-  assert.equal((await um("select public.fiscal_definir_limite_empresas($1, null) as r", [e.tenantId])).erro,
+  // Pacote menor que as empresas ativas: recusado. Tirar o pacote: aceito mesmo com 6 ativas (a faixa não limita).
+  assert.equal((await um("select public.fiscal_definir_limite_empresas($1, 3) as r", [e.tenantId])).erro,
     "EMPRESAS_ACIMA_DO_LIMITE");
-  const filha = (await conta(e, { acao: "estado" })).body.escritorio.empresas.find((x) => !x.principal);
-  assert.equal((await conta(e, { acao: "empresa_ativar", tenant_id: filha.tenant_id, ativa: false })).http, 200);
   assert.equal((await um("select public.fiscal_definir_limite_empresas($1, null) as r", [e.tenantId])).ok, true);
   const sem = (await conta(e, { acao: "estado" })).body.escritorio;
-  assert.equal(sem.max_empresas, 5);
+  assert.equal(sem.max_empresas, 100000);
   assert.equal(sem.max_empresas_override, null);
 });
 

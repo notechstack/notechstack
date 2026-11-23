@@ -74,6 +74,12 @@ export const motivoDoBloqueio = (codigo: string) => MOTIVO_DO_BLOQUEIO[codigo] ?
 
 type Ctx = { deps: PainelNfeDeps; db: Db; dono: { id: string; plan: string; limite: number }; empresas: { id: string; cnpj: string; razao_social: string; active: boolean }[]; agora: Date }
 
+/** A conta-mãe tem a NF-e entre os tipos de nota (nofiscal.tipos_nota_da_conta, migração 20261123210000). */
+async function contaEmiteNfe(db: Db, donoId: string): Promise<boolean> {
+  const { rows } = await db.query<{ tipos: string[] | null }>('select nofiscal.tipos_nota_da_conta($1) as tipos', [donoId])
+  return (rows[0]?.tipos ?? []).includes('nfe')
+}
+
 export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Promise<Response> {
   try {
     const userId = await deps.sessions.userIdFrom(request)
@@ -81,6 +87,8 @@ export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Pr
     const dono = await donoDoUsuario(deps.db, userId)
     if (!dono) return errorResponse('CONTA_SEM_EMPRESA', 'Não achamos uma empresa nesta conta.')
     if (!planoDeEscritorio(dono.plan)) return errorResponse('SO_ESCRITORIO', 'A NF-e pelo painel é do plano Escritório.')
+    // Planos por módulo (23/11/2026): a conta só emite NF-e com 'nfe' em fiscal_tenants.tipos_nota (o checkout grava).
+    if (!(await contaEmiteNfe(deps.db, dono.id))) return errorResponse('NFE_NAO_CONTRATADA', 'A NF-e não está no seu plano. Para incluir, fale com a nó pelo WhatsApp.')
     const ctx: Ctx = { deps, db: deps.db, dono, empresas: await empresasDoDono(deps.db, dono.id), agora: (deps.now ?? (() => new Date()))() }
 
     if (request.method === 'GET') return baixar(ctx, new URL(request.url))
