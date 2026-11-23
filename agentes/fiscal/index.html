@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=20">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=27">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -53,31 +53,37 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <script src="/agentes/fiscal/fiscal-fluido.js?v=1" defer></script>
 <script src="/agentes/fiscal/medicao.js?v=7" defer></script>
-<script src="/agentes/fiscal/fiscal.js?v=19" defer></script>
+<script src="/agentes/fiscal/precos.js?v=2" defer></script>
+<script src="/agentes/fiscal/fiscal.js?v=21" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {"@type": "Question", "name": "O que é o agente fiscal?", "acceptedAnswer": {"@type": "Answer", "text": "Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele."}},
+    {"@type": "Question", "name": "O que é o agente fiscal?", "acceptedAnswer": {"@type": "Answer", "text": "Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. No plano Escritório, ele também emite NF-e, a nota de produto, e envia as guias de imposto aos clientes do escritório. A ideia é que você só fature: portal, certificado e envio ficam com ele."}},
     {"@type": "Question", "name": "Como o agente emite a nota pra mim?", "acceptedAnswer": {"@type": "Answer", "text": "Você escreve, por exemplo, “nota pra Studio Lima, 350 reais”. O agente procura o cliente na sua base, mostra o resumo do que entendeu e só emite depois do seu “confirmar”. Aí ele monta a DPS no padrão nacional, assina com o seu certificado A1 e transmite à Sefin. Assim que a Sefin autoriza, a NFS-e volta para você no WhatsApp, sem portal nem planilha."}},
     {"@type": "Question", "name": "O agente fala direto com os sistemas do governo?", "acceptedAnswer": {"@type": "Answer", "text": "Sim. Cada nota é transmitida direto à Sefin Nacional, o ambiente oficial da NFS-e de padrão nacional do governo, pela API oficial e assinada com o certificado A1 da sua empresa. Não há portal nem intermediário no caminho: a nota sai com chave de acesso e QR Code, e você e o seu cliente a encontram no portal oficial nfse.gov.br."}},
+    {"@type": "Question", "name": "O agente emite NF-e, a nota de produto?", "acceptedAnswer": {"@type": "Answer", "text": "Sim, no plano Escritório. É a NF-e modelo 55, para MEI e empresas do Simples Nacional que vendem mercadoria, em qualquer estado, em venda para dentro ou para fora do estado. Você preenche a planilha modelo e a envia em Minha conta, na aba NF-e: o agente confere as linhas, mostra o que vai sair e só emite depois da sua confirmação. Cada nota vai direto à Sefaz do estado, assinada com o certificado A1 da própria empresa, e volta com o DANFE em PDF e o XML. Cancelamento e carta de correção saem pelo mesmo painel. Antes da primeira nota, o agente confere a inscrição estadual da empresa na Sefaz e emite uma nota de teste, sem valor fiscal."}},
+    {"@type": "Question", "name": "O que é o módulo Guias?", "acceptedAnswer": {"@type": "Answer", "text": "É o envio das guias de imposto aos clientes do escritório, um módulo do plano Escritório. Você envia os PDFs das guias em Minha conta: DAS, DAS-MEI, DARF, DCTFWeb, boletos de honorários e parcelamentos. O agente lê de quem é cada guia, você confere e dispara. O cliente recebe a guia pelo WhatsApp, com o PDF, e por e-mail, e é lembrado no vencimento. Nada é enviado sem o seu clique em Disparar."}},
     {"@type": "Question", "name": "Preciso criar conta para testar?", "acceptedAnswer": {"@type": "Answer", "text": "Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: os primeiros 7 dias da assinatura são grátis."}},
-    {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "MEI e empresas do Simples Nacional (ME e EPP) que prestam serviço, em qualquer município do Brasil. O MEI emite pelo padrão nacional desde 2023, e a ME e a EPP do Simples também, desde novembro de 2026, mesmo onde a prefeitura tem sistema próprio. O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. A nota é assinada com o certificado digital A1 da empresa; no plano Escritório, a empresa cliente também pode emitir por procuração eletrônica ao escritório."}},
+    {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "MEI e empresas do Simples Nacional (ME e EPP), em qualquer município do Brasil: quem presta serviço emite NFS-e, e quem vende mercadoria emite NF-e, no plano Escritório. Na NFS-e, o MEI emite pelo padrão nacional desde 2023, e a ME e a EPP do Simples também, desde novembro de 2026, mesmo onde a prefeitura tem sistema próprio. O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. A nota é assinada com o certificado digital A1 da empresa; no plano Escritório, a empresa cliente também pode emitir NFS-e por procuração eletrônica ao escritório."}},
     {"@type": "Question", "name": "Sou MEI. Posso usar?", "acceptedAnswer": {"@type": "Answer", "text": "Pode. Desde 2023, o MEI que presta serviço emite a NFS-e pelo padrão nacional, em qualquer município, e é por esse mesmo caminho que o agente emite. No cadastro, o CNPJ já mostra que você é MEI, e você não precisa informar percentual de tributos: a nota do MEI não leva esse campo. Para a emissão automática, você precisa de um certificado digital A1 do CNPJ (e-CNPJ), que se compra em qualquer certificadora."}},
     {"@type": "Question", "name": "Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?", "acceptedAnswer": {"@type": "Answer", "text": "Ainda não. Por enquanto, o agente atende só MEI e empresas do Simples Nacional, e o cadastro confere o regime do CNPJ na Receita Federal logo no primeiro passo. Para o Lucro Presumido, o caminho depende da cidade: só dá para emitir pelo padrão nacional onde a prefeitura já usa o Emissor Nacional para todos os regimes, como Rio de Janeiro e Porto Alegre. Na cidade de São Paulo, esse regime ainda emite pelo sistema da prefeitura. Se quiser ser avisado quando abrirmos, fale com a Nó pelo WhatsApp."}},
     {"@type": "Question", "name": "Não tenho certificado A1. Como consigo um?", "acceptedAnswer": {"@type": "Answer", "text": "O A1 (e-CNPJ) é a identidade digital da sua empresa: um arquivo .pfx ou .p12, protegido por senha, que assina as notas. Vale 1 ano e é comprado à parte, numa certificadora. Para emitir pela API oficial, a Sefin Nacional exige a nota assinada com o certificado da própria empresa, inclusive no MEI. Primeiro, pergunte ao seu contador: muitas vezes ele já tem o A1 da empresa e pode te mandar o arquivo e a senha. Se não tiver, compre um e-CNPJ do tipo A1 numa certificadora credenciada pela ICP-Brasil, como Certisign, Serasa Experian, Valid, Soluti ou Safeweb, faça a validação por videoconferência ou presencial, com os documentos da empresa e do responsável legal, e baixe o arquivo .pfx, guardando a senha que você criou. O A3, em cartão ou token USB, não serve: precisa ser o A1, em arquivo. No plano Escritório, a empresa cliente tem outro caminho: em vez de enviar o A1, ela dá procuração eletrônica ao escritório."}},
-    {"@type": "Question", "name": "Como funciona a procuração eletrônica?", "acceptedAnswer": {"@type": "Answer", "text": "É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só da empresa cliente para o escritório: a Nó nunca assina nota de cliente."}},
+    {"@type": "Question", "name": "Como funciona a procuração eletrônica?", "acceptedAnswer": {"@type": "Answer", "text": "É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas de serviço dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só para a NFS-e e só da empresa cliente para o escritório: a NF-e é sempre assinada com o A1 da própria empresa, e a Nó nunca assina nota de cliente."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
-    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto no Inicial e no Pro e de 25% a 45% no Escritório."}},
-    {"@type": "Question", "name": "Como emito várias notas de uma vez?", "acceptedAnswer": {"@type": "Answer", "text": "No plano Escritório, você manda uma planilha (.xlsx ou .csv) no WhatsApp, com uma linha por nota: quem emite, quem recebe, o valor e a descrição. O agente lê a planilha, mostra o resumo com as notas prontas e as linhas com problema, e só emite depois do seu “confirmar”. Cabem até 1.000 linhas por planilha. No fim, o retorno de cada linha e os PDFs vão para o e-mail do escritório e ficam em Minha conta, em Relatórios."}},
-    {"@type": "Question", "name": "Posso ter várias empresas na mesma conta?", "acceptedAnswer": {"@type": "Answer", "text": "Sim, no plano Escritório: até 5, 20 ou 50 empresas, conforme a faixa. Você adiciona o CNPJ em Minha conta, os dados vêm da Receita Federal, e cada empresa emite com o próprio certificado A1 ou por procuração eletrônica ao escritório. As notas das empresas clientes saem pela planilha, e a nota do próprio escritório também pode ser pedida por mensagem."}},
-    {"@type": "Question", "name": "Tenho mais de 50 empresas ou quero integrar por API. Como faço?", "acceptedAnswer": {"@type": "Answer", "text": "Aí o plano é sob medida. No card do Escritório, escolha “50+” e fale com a Nó pelo WhatsApp: combinamos o volume, o valor e, se você precisar, a integração da emissão com o sistema que você já usa."}},
+    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso."}},
+    {"@type": "Question", "name": "Como funcionam os planos?", "acceptedAnswer": {"@type": "Answer", "text": "O plano é a franquia de documentos por mês. Inicial e Pro são para uma empresa que emite NFS-e. O Escritório atende quantas empresas você quiser e tem cinco faixas, de 500 a 10.000 documentos por mês. No Escritório, você marca o que vai emitir: NFS-e, NF-e e Guias. O primeiro tipo de nota já vem no preço do plano; o outro tipo de nota e o Guias são módulos, somados à mensalidade. Notas e guias usam a mesma franquia, e o preço muda na hora, no card do plano e no cadastro, conforme você marca."}},
+    {"@type": "Question", "name": "Quero emitir só NF-e. Preciso pagar pela NFS-e?", "acceptedAnswer": {"@type": "Answer", "text": "Não. No plano Escritório, marque só NF-e: ela passa a ser o tipo de nota incluído no preço do plano. Se depois você precisar de NFS-e, ela entra como módulo."}},
+    {"@type": "Question", "name": "O que conta como documento?", "acceptedAnswer": {"@type": "Answer", "text": "Cada nota emitida, de serviço ou de produto, e cada guia enviada no mês. A franquia é do escritório inteiro, somando todas as empresas, e renova todo mês."}},
+    {"@type": "Question", "name": "Como emito várias notas de uma vez?", "acceptedAnswer": {"@type": "Answer", "text": "No plano Escritório, por planilha. Para a NFS-e, você manda a planilha (.xlsx ou .csv) no WhatsApp, com uma linha por nota: quem emite, quem recebe, o valor e a descrição. O agente lê a planilha, mostra o resumo com as notas prontas e as linhas com problema, e só emite depois do seu “confirmar”. Cabem até 1.000 linhas por planilha. No fim, o retorno de cada linha e os PDFs vão para o e-mail do escritório e ficam em Minha conta, em Relatórios. Para a NF-e, a planilha modelo é enviada em Minha conta, na aba NF-e, com a mesma conferência antes de emitir."}},
+    {"@type": "Question", "name": "Posso ter várias empresas na mesma conta?", "acceptedAnswer": {"@type": "Answer", "text": "Sim, no plano Escritório, sem limite de empresas: o que muda entre as faixas é a quantidade de documentos por mês. Você adiciona o CNPJ em Minha conta, os dados vêm da Receita Federal, e cada empresa emite com o próprio certificado A1 ou, na NFS-e, por procuração eletrônica ao escritório. As notas das empresas clientes saem pela planilha, e a nota do próprio escritório também pode ser pedida por mensagem."}},
+    {"@type": "Question", "name": "Emito mais de 10 mil documentos por mês ou quero integrar por API. Como faço?", "acceptedAnswer": {"@type": "Answer", "text": "Aí o plano é sob medida. No card do Escritório, escolha “+10 mil” e fale com a Nó pelo WhatsApp: combinamos o volume, o valor e, se você precisar, a integração da emissão com o sistema que você já usa."}},
     {"@type": "Question", "name": "O agente substitui o meu contador?", "acceptedAnswer": {"@type": "Answer", "text": "Não. Ele emite e cancela as notas; o enquadramento, o percentual de tributos do Simples e a apuração continuam com a sua contabilidade. No plano Pro, dá para cadastrar o e-mail do contador para que cada nota chegue lá também, com PDF e XML."}},
     {"@type": "Question", "name": "E se a Sefin estiver fora do ar?", "acceptedAnswer": {"@type": "Answer", "text": "A nota entra numa fila e o agente tenta de novo sozinho, até 5 vezes, com intervalo crescente. Você acompanha pelo WhatsApp: o agente avisa quando a nota é autorizada ou se algo for rejeitado, com o motivo e o que fazer."}},
-    {"@type": "Question", "name": "Como cancelo uma nota?", "acceptedAnswer": {"@type": "Answer", "text": "Pelo mesmo chat: “cancela a nota 142”. O agente pede confirmação e envia o evento oficial de cancelamento à Sefin Nacional. Vale o prazo de cancelamento do seu município; fora dele, o agente explica o caminho."}},
-    {"@type": "Question", "name": "Como sei que a nota é válida?", "acceptedAnswer": {"@type": "Answer", "text": "Toda nota sai autorizada pela Sefin Nacional, com chave de acesso e QR Code no PDF. Você e o seu cliente conferem a nota no site oficial da NFS-e (nfse.gov.br), sem depender da Nó."}}
+    {"@type": "Question", "name": "Como cancelo uma nota?", "acceptedAnswer": {"@type": "Answer", "text": "A NFS-e, pelo mesmo chat: “cancela a nota 142”. O agente pede confirmação e envia o evento oficial de cancelamento à Sefin Nacional. Vale o prazo de cancelamento do seu município; fora dele, o agente explica o caminho. A NF-e é cancelada em Minha conta, na aba NF-e, dentro do prazo da Sefaz do estado; para corrigir um dado sem cancelar, o mesmo painel envia a carta de correção."}},
+    {"@type": "Question", "name": "Como sei que a nota é válida?", "acceptedAnswer": {"@type": "Answer", "text": "Toda NFS-e sai autorizada pela Sefin Nacional, com chave de acesso e QR Code no PDF. Você e o seu cliente conferem a nota no site oficial da NFS-e (nfse.gov.br), sem depender da Nó. A NF-e sai autorizada pela Sefaz do estado, com chave de acesso e protocolo no DANFE, e pode ser conferida no Portal Nacional da NF-e (nfe.fazenda.gov.br)."}}
   ]
 }
 </script>
@@ -232,13 +238,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <p class="fi-fxs-nota">Telas de demonstração, com dados fictícios.</p>
   </section>
 
-  <!-- ── Planos (Lucca, 13/11/2026, v3): três cards, com o preço em evidência e, embaixo, o que cabe (notas e empresas).
-       Mensal ou anual (20% OFF) nos três. Escritório: faixas de 5, 20 e 50 empresas e "50+" (sob medida, pelo WhatsApp).
-       Black Friday: condição de fundador do Escritório (cupons FUNDADOR5/20/50, só no mensal) até 30/11/2026; fora do
-       prazo ou sem JS, preço cheio. A Agência saiu dos cards. Valores: assinatura-fiscal/core.ts. ── -->
+  <!-- ── Planos (Lucca, 23/11/2026, v4): três cards. O plano vende documentos por mês e, no Escritório, o cliente marca o que emite
+       (NFS-e, NF-e e Guias): o primeiro tipo de nota vem no preço, o resto soma. Escritório: empresas
+       ilimitadas, faixas de 500 a 10 mil documentos e "+10 mil" (sob medida, pelo WhatsApp). Mensal ou anual nos três.
+       Black Friday: condição de fundador do Escritório até 30/11/2026; fora do prazo ou sem JS, preço cheio.
+       Tabela e conta: precos.js. ── -->
   <section class="fi-secao fi-planos-sec" id="planos" aria-labelledby="fi-planos-titulo">
     <h2 class="fi-h2" id="fi-planos-titulo">Escolha o seu plano</h2>
-    <p class="fi-sub fi-sub--centro">Todo plano começa com 7 dias grátis.</p>
+    <p class="fi-sub fi-sub--centro">Todo plano começa com 7 dias grátis. No Escritório, você escolhe o volume e marca o que emite.</p>
     <div class="fi-fundador" id="fi-fundador" hidden>
       <span class="fi-fundador-selo">Black Friday</span>
       <p class="fi-fundador-frente"><b>Fundador até 30/11.</b> No Escritório: 1º mês grátis e até 20% OFF no 1º ano. 20 vagas por faixa.</p>
@@ -256,13 +263,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <div class="fi-plano-oferta">
           <span class="fi-off" data-so-anual>20% OFF</span>
           <div class="fi-faixas fi-faixas--fixa"><span>Empresas</span><b>1</b></div>
-          <p class="fi-plano-valor"><s class="fi-preco-de" data-so-anual>R$ 49</s><b data-mensal="R$ 49" data-anual="R$ 39,20">R$ 49</b><span>/mês</span></p>
-          <p class="fi-plano-cabe">20 notas por mês</p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b><span data-mensal="" data-anual=" · R$ 470,40/ano"></span></p>
+          <p class="fi-plano-valor"><s class="fi-preco-de" data-de hidden></s><b data-valor>R$ 49</b><span>/mês</span></p>
+          <p class="fi-plano-conta" data-conta hidden></p>
+          <p class="fi-plano-cabe" data-cabe>20 notas por mês</p>
+          <p class="fi-plano-depois" data-depois><b>7 dias grátis</b></p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="inicial" href="/agentes/fiscal/comecar/?plano=inicial">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
-          <li><a href="#fx-emitir">Emissão pelo WhatsApp</a></li>
+          <li><a href="#fx-emitir">Emissão de NFS-e pelo WhatsApp</a></li>
           <li><a href="#fx-corrigir">Corrigir e cancelar</a></li>
           <li><a href="#fx-cliente">Cliente salvo e 2ª via</a></li>
         </ul>
@@ -276,9 +284,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <div class="fi-plano-oferta">
           <span class="fi-off" data-so-anual>20% OFF</span>
           <div class="fi-faixas fi-faixas--fixa"><span>Empresas</span><b>1</b></div>
-          <p class="fi-plano-valor"><s class="fi-preco-de" data-so-anual>R$ 129</s><b data-mensal="R$ 129" data-anual="R$ 103,20">R$ 129</b><span>/mês</span></p>
-          <p class="fi-plano-cabe">100 notas por mês</p>
-          <p class="fi-plano-depois"><b>7 dias grátis</b><span data-mensal="" data-anual=" · R$ 1.238,40/ano"></span></p>
+          <p class="fi-plano-valor"><s class="fi-preco-de" data-de hidden></s><b data-valor>R$ 129</b><span>/mês</span></p>
+          <p class="fi-plano-conta" data-conta hidden></p>
+          <p class="fi-plano-cabe" data-cabe>100 notas por mês</p>
+          <p class="fi-plano-depois" data-depois><b>7 dias grátis</b></p>
         </div>
         <a class="fi-btn fi-btn--verde" data-plano="pro" href="/agentes/fiscal/comecar/?plano=pro">Testar 7 dias grátis</a>
         <ul class="fi-plano-itens">
@@ -291,27 +300,40 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <span class="fi-plano-ticket" id="fi-esc-ticket" hidden><b>Black Friday</b><span id="fi-esc-ticket-off">17% OFF</span><small>até 30/11</small></span>
         <div class="fi-plano-topo">
           <span class="fi-plano-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01M12 11h.01"/></svg></span>
-          <h3>Escritório<small>Contabilidade e volume</small></h3>
+          <h3>Escritório<small>Empresas ilimitadas</small></h3>
         </div>
         <div class="fi-plano-oferta">
           <span class="fi-off" id="fi-esc-off" data-so-anual>25% OFF</span>
-          <div class="fi-faixas" role="group" aria-label="Quantas empresas">
-            <span>Empresas</span>
-            <button type="button" aria-pressed="true" data-faixa="escritorio_5">5</button>
-            <button type="button" aria-pressed="false" data-faixa="escritorio_20">20</button>
-            <button type="button" aria-pressed="false" data-faixa="escritorio_50">50</button>
-            <button type="button" aria-pressed="false" data-faixa="sob_medida">50+</button>
+          <div class="fi-plano-escolhas">
+          <div class="fi-faixas fi-faixas--volume" role="group" aria-label="Documentos por mês">
+            <span>Documentos por mês</span>
+            <button type="button" aria-pressed="true" data-faixa="escritorio_500">500</button>
+            <button type="button" aria-pressed="false" data-faixa="escritorio_1000">1 mil</button>
+            <button type="button" aria-pressed="false" data-faixa="escritorio_2000">2 mil</button>
+            <button type="button" aria-pressed="false" data-faixa="escritorio_5000">5 mil</button>
+            <button type="button" aria-pressed="false" data-faixa="escritorio_10000">10 mil</button>
+            <button type="button" aria-pressed="false" data-faixa="sob_medida">+10 mil</button>
           </div>
-          <p class="fi-plano-valor"><s class="fi-preco-de" id="fi-esc-de" hidden>R$ 297</s><b id="fi-esc-valor">R$ 297</b><span id="fi-esc-por">/mês</span></p>
-          <p class="fi-plano-cabe" id="fi-esc-cabe">500 notas por mês</p>
-          <p class="fi-plano-depois" id="fi-esc-depois"><b>7 dias grátis</b></p>
+          <fieldset class="fi-modulos" id="fi-esc-modulos">
+            <legend>O que você emite <small>1 tipo de nota já vem no plano</small></legend>
+            <label><input type="checkbox" value="nfse" checked><span>NFS-e</span><small data-tag="nfse"></small></label>
+            <label><input type="checkbox" value="nfe"><span>NF-e</span><small data-tag="nfe">+R$ 197</small></label>
+            <label><input type="checkbox" value="guias"><span>Guias</span><small data-tag="guias">+R$ 197</small></label>
+          </fieldset>
+          </div>
+          <div class="fi-plano-total">
+          <p class="fi-plano-valor"><s class="fi-preco-de" data-de hidden></s><b data-valor>R$ 297</b><span data-por>/mês</span></p>
+          <p class="fi-plano-conta" data-conta hidden></p>
+          <p class="fi-plano-cabe" data-cabe>500 documentos por mês</p>
+          <p class="fi-plano-depois" data-depois><b>7 dias grátis</b></p>
+          </div>
         </div>
-        <a class="fi-btn fi-btn--verde" id="fi-esc-cta" data-plano="escritorio_5" href="/agentes/fiscal/comecar/?tipo=escritorio&amp;plano=escritorio_5">Testar 7 dias grátis</a>
-        <a class="fi-btn fi-btn--verde" id="fi-esc-zap" data-lead="escritorio" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Tenho%20mais%20de%2050%20empresas%20e%20quero%20um%20plano%20sob%20medida%20do%20n%C3%B3.fiscal." target="_blank" rel="noopener noreferrer" hidden>Falar com a Nó</a>
+        <a class="fi-btn fi-btn--verde" id="fi-esc-cta" data-plano="escritorio_500" href="/agentes/fiscal/comecar/?tipo=escritorio&amp;plano=escritorio_500">Testar 7 dias grátis</a>
+        <a class="fi-btn fi-btn--verde" id="fi-esc-zap" data-lead="escritorio" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Emito%20mais%20de%2010%20mil%20documentos%20por%20m%C3%AAs%20e%20quero%20um%20plano%20sob%20medida%20do%20n%C3%B3.fiscal." target="_blank" rel="noopener noreferrer" hidden>Falar com a Nó</a>
         <ul class="fi-plano-itens">
           <li class="fi-plano-base">Tudo do Pro, e mais:</li>
           <li><a href="#fx-planilha">Planilha no WhatsApp</a></li>
-          <li><a href="#fx-empresas">Várias empresas</a></li>
+          <li><a href="#fx-empresas">Empresas ilimitadas</a></li>
           <li><a href="#procuracao">A1 ou procuração</a></li>
         </ul>
       </li>
@@ -340,7 +362,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <div class="fi-faq-lista">
         <details open>
           <summary>O que é o agente fiscal?</summary>
-          <p>Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. A ideia é que você só fature: portal, certificado e envio ficam com ele.</p>
+          <p>Um agente da linha Nó Agentes que emite NFS-e pelo WhatsApp para MEI e empresas do Simples Nacional que prestam serviço. Você escreve para quem é a nota e o valor; ele monta a DPS, assina com o seu certificado A1, transmite à Sefin Nacional e devolve PDF e XML no WhatsApp e no e-mail. No plano Escritório, ele também emite NF-e, a nota de produto, e envia as guias de imposto aos clientes do escritório. A ideia é que você só fature: portal, certificado e envio ficam com ele.</p>
         </details>
         <details>
           <summary>Como o agente emite a nota pra mim?</summary>
@@ -350,13 +372,21 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           <summary>O agente fala direto com os sistemas do governo?</summary>
           <p>Sim. Cada nota é transmitida direto à Sefin Nacional, o ambiente oficial da NFS-e de padrão nacional do governo, pela API oficial e assinada com o certificado A1 da sua empresa. Não há portal nem intermediário no caminho: a nota sai com chave de acesso e QR Code, e você e o seu cliente a encontram no portal oficial nfse.gov.br.</p>
         </details>
+        <details id="nfe">
+          <summary>O agente emite NF-e, a nota de produto?</summary>
+          <p>Sim, no plano Escritório. É a NF-e modelo 55, para MEI e empresas do Simples Nacional que vendem mercadoria, em qualquer estado, em venda para dentro ou para fora do estado. Você preenche a planilha modelo e a envia em Minha conta, na aba NF-e: o agente confere as linhas, mostra o que vai sair e só emite depois da sua confirmação. Cada nota vai direto à Sefaz do estado, assinada com o certificado A1 da própria empresa, e volta com o DANFE em PDF e o XML. Cancelamento e carta de correção saem pelo mesmo painel. Antes da primeira nota, o agente confere a inscrição estadual da empresa na Sefaz e emite uma nota de teste, sem valor fiscal.</p>
+        </details>
+        <details id="guias">
+          <summary>O que é o módulo Guias?</summary>
+          <p>É o envio das guias de imposto aos clientes do escritório, um módulo do plano Escritório. Você envia os PDFs das guias em Minha conta: DAS, DAS-MEI, DARF, DCTFWeb, boletos de honorários e parcelamentos. O agente lê de quem é cada guia, você confere e dispara. O cliente recebe a guia pelo WhatsApp, com o PDF, e por e-mail, e é lembrado no vencimento. Nada é enviado sem o seu clique em Disparar.</p>
+        </details>
         <details>
           <summary>Preciso criar conta para testar?</summary>
           <p>Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: os primeiros 7 dias da assinatura são grátis.</p>
         </details>
         <details>
           <summary>Que empresas podem usar?</summary>
-          <p>MEI e empresas do Simples Nacional (ME e EPP) que prestam serviço, em qualquer município do Brasil. O MEI emite pelo padrão nacional desde 2023, e a ME e a EPP do Simples também, desde novembro de 2026, mesmo onde a prefeitura tem sistema próprio. O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. A nota é assinada com o certificado digital A1 da empresa; no plano Escritório, a empresa cliente também pode emitir por procuração eletrônica ao escritório.</p>
+          <p>MEI e empresas do Simples Nacional (ME e EPP), em qualquer município do Brasil: quem presta serviço emite NFS-e, e quem vende mercadoria emite NF-e, no plano Escritório. Na NFS-e, o MEI emite pelo padrão nacional desde 2023, e a ME e a EPP do Simples também, desde novembro de 2026, mesmo onde a prefeitura tem sistema próprio. O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. A nota é assinada com o certificado digital A1 da empresa; no plano Escritório, a empresa cliente também pode emitir NFS-e por procuração eletrônica ao escritório.</p>
         </details>
         <details>
           <summary>Sou MEI. Posso usar?</summary>
@@ -372,7 +402,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details id="procuracao">
           <summary>Como funciona a procuração eletrônica?</summary>
-          <p>É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só da empresa cliente para o escritório: a Nó nunca assina nota de cliente.</p>
+          <p>É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas de serviço dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só para a NFS-e e só da empresa cliente para o escritório: a NF-e é sempre assinada com o A1 da própria empresa, e a Nó nunca assina nota de cliente.</p>
         </details>
         <details>
           <summary>Como fica o meu certificado digital A1?</summary>
@@ -384,19 +414,31 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Quanto custa?</summary>
-          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Depois, vale a franquia do plano: Inicial, até 20 notas por mês; Pro, até 100; Escritório, de 500 a 5.000, em até 5, 20 ou 50 empresas (acima disso, sob medida). A assinatura é pelo Pagar.me, com aceite dos Termos de uso. Os valores estão na seção de planos: Inicial R$ 49/mês, Pro R$ 129/mês e Escritório R$ 297/mês (até 5 empresas), R$ 797/mês (até 20) ou R$ 1.497/mês (até 50), ou o anual, com 20% de desconto no Inicial e no Pro e de 25% a 45% no Escritório.</p>
+          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso.</p>
+        </details>
+        <details id="como-funcionam-os-planos">
+          <summary>Como funcionam os planos?</summary>
+          <p>O plano é a franquia de documentos por mês. Inicial e Pro são para uma empresa que emite NFS-e. O Escritório atende quantas empresas você quiser e tem cinco faixas, de 500 a 10.000 documentos por mês. No Escritório, você marca o que vai emitir: NFS-e, NF-e e Guias. O primeiro tipo de nota já vem no preço do plano; o outro tipo de nota e o Guias são módulos, somados à mensalidade. Notas e guias usam a mesma franquia, e o preço muda na hora, no card do plano e no cadastro, conforme você marca.</p>
+        </details>
+        <details>
+          <summary>Quero emitir só NF-e. Preciso pagar pela NFS-e?</summary>
+          <p>Não. No plano Escritório, marque só NF-e: ela passa a ser o tipo de nota incluído no preço do plano. Se depois você precisar de NFS-e, ela entra como módulo.</p>
+        </details>
+        <details>
+          <summary>O que conta como documento?</summary>
+          <p>Cada nota emitida, de serviço ou de produto, e cada guia enviada no mês. A franquia é do escritório inteiro, somando todas as empresas, e renova todo mês.</p>
         </details>
         <details>
           <summary>Como emito várias notas de uma vez?</summary>
-          <p>No plano Escritório, você manda uma planilha (.xlsx ou .csv) no WhatsApp, com uma linha por nota: quem emite, quem recebe, o valor e a descrição. O agente lê a planilha, mostra o resumo com as notas prontas e as linhas com problema, e só emite depois do seu “confirmar”. Cabem até 1.000 linhas por planilha. No fim, o retorno de cada linha e os PDFs vão para o e-mail do escritório e ficam em Minha conta, em Relatórios.</p>
+          <p>No plano Escritório, por planilha. Para a NFS-e, você manda a planilha (.xlsx ou .csv) no WhatsApp, com uma linha por nota: quem emite, quem recebe, o valor e a descrição. O agente lê a planilha, mostra o resumo com as notas prontas e as linhas com problema, e só emite depois do seu “confirmar”. Cabem até 1.000 linhas por planilha. No fim, o retorno de cada linha e os PDFs vão para o e-mail do escritório e ficam em Minha conta, em Relatórios. Para a NF-e, a planilha modelo é enviada em Minha conta, na aba NF-e, com a mesma conferência antes de emitir.</p>
         </details>
         <details>
           <summary>Posso ter várias empresas na mesma conta?</summary>
-          <p>Sim, no plano Escritório: até 5, 20 ou 50 empresas, conforme a faixa. Você adiciona o CNPJ em Minha conta, os dados vêm da Receita Federal, e cada empresa emite com o próprio certificado A1 ou por procuração eletrônica ao escritório. As notas das empresas clientes saem pela planilha, e a nota do próprio escritório também pode ser pedida por mensagem.</p>
+          <p>Sim, no plano Escritório, sem limite de empresas: o que muda entre as faixas é a quantidade de documentos por mês. Você adiciona o CNPJ em Minha conta, os dados vêm da Receita Federal, e cada empresa emite com o próprio certificado A1 ou, na NFS-e, por procuração eletrônica ao escritório. As notas das empresas clientes saem pela planilha, e a nota do próprio escritório também pode ser pedida por mensagem.</p>
         </details>
         <details>
-          <summary>Tenho mais de 50 empresas ou quero integrar por API. Como faço?</summary>
-          <p>Aí o plano é sob medida. No card do Escritório, escolha “50+” e fale com a Nó pelo WhatsApp: combinamos o volume, o valor e, se você precisar, a integração da emissão com o sistema que você já usa.</p>
+          <summary>Emito mais de 10 mil documentos por mês ou quero integrar por API. Como faço?</summary>
+          <p>Aí o plano é sob medida. No card do Escritório, escolha “+10 mil” e fale com a Nó pelo WhatsApp: combinamos o volume, o valor e, se você precisar, a integração da emissão com o sistema que você já usa.</p>
         </details>
         <details>
           <summary>O agente substitui o meu contador?</summary>
@@ -408,11 +450,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Como cancelo uma nota?</summary>
-          <p>Pelo mesmo chat: “cancela a nota 142”. O agente pede confirmação e envia o evento oficial de cancelamento à Sefin Nacional. Vale o prazo de cancelamento do seu município; fora dele, o agente explica o caminho.</p>
+          <p>A NFS-e, pelo mesmo chat: “cancela a nota 142”. O agente pede confirmação e envia o evento oficial de cancelamento à Sefin Nacional. Vale o prazo de cancelamento do seu município; fora dele, o agente explica o caminho. A NF-e é cancelada em Minha conta, na aba NF-e, dentro do prazo da Sefaz do estado; para corrigir um dado sem cancelar, o mesmo painel envia a carta de correção.</p>
         </details>
         <details>
           <summary>Como sei que a nota é válida?</summary>
-          <p>Toda nota sai autorizada pela Sefin Nacional, com chave de acesso e QR Code no PDF. Você e o seu cliente conferem a nota no site oficial da NFS-e (nfse.gov.br), sem depender da Nó.</p>
+          <p>Toda NFS-e sai autorizada pela Sefin Nacional, com chave de acesso e QR Code no PDF. Você e o seu cliente conferem a nota no site oficial da NFS-e (nfse.gov.br), sem depender da Nó. A NF-e sai autorizada pela Sefaz do estado, com chave de acesso e protocolo no DANFE, e pode ser conferida no Portal Nacional da NF-e (nfe.fazenda.gov.br).</p>
         </details>
         <details>
           <summary>Que dados vocês guardam?</summary>

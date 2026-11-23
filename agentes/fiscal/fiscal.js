@@ -14,88 +14,117 @@
 
   /* Fundo líquido do bloco do simulador: shader com as cores da marca (âmbar, âmbar claro, osso, vermelho claro).
      Sem WebGL o canvas fica vazio e o degradê do CSS aparece. Com movimento reduzido, só um quadro. */
-  /* Ciclo dos planos: no anual, Inicial e Pro trocam o valor pelo do mês no anual (20% off) e dizem o total do ano, e o ciclo vai
-     no link do cadastro; Escritório e Agência somem pelo CSS. */
+  /* Planos por volume (Lucca, 23/11/2026): cada card tem as caixas "O que você emite" (NFS-e, NF-e e, no Escritório,
+     Guias). O primeiro tipo de nota vem no preço; o resto soma (tabela e conta em precos.js). O Escritório escolhe os
+     documentos por mês (500 a 10 mil; "+10 mil" é sob medida, pelo WhatsApp) e não tem mais limite de empresas.
+     - Anual: desconto da faixa sobre o total, módulos incluídos; mostra o preço do mês no anual e o total do ano.
+     - Black Friday, só no mensal e até 30/11/2026: condição de fundador nas cinco faixas (17% a 20% OFF),
+       sobre o preço do plano; os módulos entram cheios. O cupom vai no link e o cadastro o aplica (?cupom=).
+     A escolha vai no link do cadastro (?notas=nfse,nfe&guias=1). Só em localhost: ?fundador=off mostra o depois. */
+  var P = window.noFiscalPrecos;
   var planos = document.getElementById('fi-planos');
   var cicloBtns = document.querySelectorAll('.fi-ciclo-toggle [data-ciclo]');
-  function mudarCiclo(c) {
-    planos.setAttribute('data-ciclo', c);
-    Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
-    Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano-oferta [data-mensal]'), function (v) { v.textContent = v.getAttribute('data-' + c); });
-    Array.prototype.forEach.call(planos.querySelectorAll('a[data-plano]'), function (a) {
-      var u = new URL(a.getAttribute('href'), location.href);
-      if (c === 'anual') u.searchParams.set('ciclo', 'anual'); else u.searchParams.delete('ciclo');
-      a.setAttribute('href', u.pathname + u.search);
-    });
-    desenharEscritorio();
-  }
-  if (planos) Array.prototype.forEach.call(cicloBtns, function (b) {
-    b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
-  });
-
-  /* Card do Escritório (Lucca, 13/11/2026): faixas de 5, 20 e 50 empresas, mensal ou anual, e "50+" (sob medida).
-     - Anual: 25%, 30% e 45% OFF conforme a faixa (no Inicial e no Pro são 20%): o preço do mês no anual e o total do ano.
-     - Black Friday, só no mensal e até 30/11/2026: condição de fundador, cupons FUNDADOR5/20/50 (1º mês grátis e desconto
-       por 12 cobranças; scripts/pagarme-assinatura/cupons-fundador-escritorio.sql). O selo diz o desconto da faixa
-       (R$ 50 em 297, R$ 150 em 797, R$ 300 em 1.497). O cupom vai no link e o cadastro o aplica (?cupom=).
-     - 50+: sem preço; o botão abre o WhatsApp comercial (Lead).
-     Depois do prazo, ou sem JS, a página mostra só o preço cheio. Só em localhost: ?fundador=off mostra o depois. */
   var FUNDADOR_ATE = Date.parse('2026-12-01T00:00:00-03:00');
-  var FAIXAS = {
-    escritorio_5: { notas: '500', empresas: '5', cheio: 'R$ 297', fundador: 'R$ 247', off: '17% OFF', cupom: 'FUNDADOR5', anual: 'R$ 222,75', ano: 'R$ 2.673', offAnual: '25% OFF' },
-    escritorio_20: { notas: '2.000', empresas: '20', cheio: 'R$ 797', fundador: 'R$ 647', off: '19% OFF', cupom: 'FUNDADOR20', anual: 'R$ 557,90', ano: 'R$ 6.694,80', offAnual: '30% OFF' },
-    escritorio_50: { notas: '5.000', empresas: '50', cheio: 'R$ 1.497', fundador: 'R$ 1.197', off: '20% OFF', cupom: 'FUNDADOR50', anual: 'R$ 823,35', ano: 'R$ 9.880,20', offAnual: '45% OFF' }
-  };
   var SOB_MEDIDA = 'sob_medida';
   var fundador = Date.now() < FUNDADOR_ATE;
   if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
-  var faixaBtns = document.querySelectorAll('[data-faixa]');
-  var faixaAtual = 'escritorio_5';
-  function desenharEscritorio() {
-    var el = function (id) { return document.getElementById(id); };
-    var por = function (id, texto) { var e = el(id); if (e) e.textContent = texto; return e; };
-    var mostrar = function (id, sim) { var e = el(id); if (e) e.hidden = !sim; };
-    var sobMedida = faixaAtual === SOB_MEDIDA;
-    var anual = !!planos && planos.getAttribute('data-ciclo') === 'anual';
-    Array.prototype.forEach.call(faixaBtns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === faixaAtual)); });
-    mostrar('fi-esc-cta', !sobMedida);
-    mostrar('fi-esc-zap', sobMedida);
-    mostrar('fi-esc-por', !sobMedida);
+  var faixaAtual = 'escritorio_500';
+  function cicloAtual() { return planos.getAttribute('data-ciclo') === 'anual' ? 'anual' : 'mensal'; }
+  function lerEscolha(card) {
+    var notas = [], guias = false;
+    Array.prototype.forEach.call(card.querySelectorAll('.fi-modulos input'), function (i) {
+      if (!i.checked) return;
+      if (i.value === 'guias') guias = true; else notas.push(i.value);
+    });
+    return { notas: notas, guias: guias };
+  }
+  function desenharCard(card) {
+    var tipo = card.getAttribute('data-plano');
+    var esc = tipo === 'escritorio';
+    var q = function (s) { return card.querySelector(s); };
+    var por = function (s, texto) { var e = q(s); if (e) e.textContent = texto; return e; };
+    var mostrar = function (s, sim) { var e = q(s); if (e) e.hidden = !sim; };
+    var sobMedida = esc && faixaAtual === SOB_MEDIDA;
+    if (esc) {
+      Array.prototype.forEach.call(card.querySelectorAll('[data-faixa]'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-faixa') === faixaAtual)); });
+      mostrar('#fi-esc-cta', !sobMedida);
+      mostrar('#fi-esc-zap', sobMedida);
+      mostrar('[data-por]', !sobMedida);
+      mostrar('.fi-modulos', !sobMedida);
+    }
     if (sobMedida) {
-      mostrar('fi-esc-de', false); mostrar('fi-esc-ticket', false); mostrar('fi-esc-off', false);
-      por('fi-esc-valor', 'Sob medida');
-      por('fi-esc-cabe', 'Volume combinado');
-      if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = 'Mais de 50 empresas';
+      mostrar('[data-de]', false); mostrar('[data-conta]', false); mostrar('#fi-esc-ticket', false); mostrar('#fi-esc-off', false);
+      por('[data-valor]', 'Sob medida');
+      por('[data-cabe]', 'Volume combinado');
+      por('[data-depois]', 'Mais de 10 mil documentos por mês');
       return;
     }
-    var f = FAIXAS[faixaAtual];
-    var oferta = fundador && !anual; // o cupom de fundador não vale no anual
-    mostrar('fi-esc-off', true); // no mensal o CSS o esconde ([data-so-anual])
-    por('fi-esc-off', f.offAnual);
-    por('fi-esc-de', f.cheio);
-    mostrar('fi-esc-de', anual || oferta);
-    por('fi-esc-valor', anual ? f.anual : oferta ? f.fundador : f.cheio);
-    por('fi-esc-cabe', f.notas + ' notas por mês');
-    if (el('fi-esc-depois')) el('fi-esc-depois').innerHTML = anual ? '<b>7 dias grátis</b> · ' + f.ano + '/ano' : oferta ? '<b>1º mês grátis</b> · preço do 1º ano' : '<b>7 dias grátis</b>';
-    por('fi-esc-ticket-off', f.off);
-    mostrar('fi-esc-ticket', oferta);
-    var cta = por('fi-esc-cta', oferta ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis');
+    var codigo = esc ? faixaAtual : tipo;
+    var e = lerEscolha(card);
+    var anual = cicloAtual() === 'anual';
+    var c = P.calcular(codigo, { notas: e.notas, guias: e.guias, ciclo: cicloAtual(), fundador: fundador });
+    var precoModulo = '+' + P.reais(esc ? P.MODULO : P.SEGUNDA_NOTA_INDIVIDUAL);
+    Array.prototype.forEach.call(card.querySelectorAll('[data-tag]'), function (t) {
+      t.textContent = t.getAttribute('data-tag') === c.incluida ? '' : precoModulo; // o tipo que vem no plano fica sem rótulo
+    });
+    var cheioDoMes = c.cheio + (c.mensal - c.base);
+    por('[data-valor]', P.reais(anual ? c.porMesNoAnual : c.mensal));
+    por('[data-de]', P.reais(anual ? c.mensal : cheioDoMes));
+    mostrar('[data-de]', anual || c.fundador);
+    // A conta: só aparece com módulo marcado, para o preço não mudar sem explicação.
+    var conta = c.modulos.length
+      ? 'Plano ' + P.reais(c.base) + c.modulos.map(function (m) { return ' + ' + m.nome + ' ' + P.reais(m.centavos); }).join('') +
+        (c.economia ? ' − ' + P.reais(c.economia) + ' por levar os dois' : '') + (anual ? ', com ' + c.off + '% OFF no anual' : '')
+      : '';
+    por('[data-conta]', conta);
+    mostrar('[data-conta]', !!conta);
+    por('[data-cabe]', P.milhar(c.notasMes) + (esc ? ' documentos por mês' : ' notas por mês'));
+    var depois = q('[data-depois]');
+    if (depois) depois.innerHTML = anual ? '<b>7 dias grátis</b> · ' + P.reais(c.total) + '/ano' : c.fundador ? '<b>1º mês grátis</b> · preço do 1º ano' : '<b>7 dias grátis</b>';
+    if (esc) {
+      mostrar('#fi-esc-off', true); // no mensal o CSS o esconde ([data-so-anual])
+      por('#fi-esc-off', c.off + '% OFF');
+      por('#fi-esc-ticket-off', Math.round((c.cheio - c.base) * 100 / c.cheio) + '% OFF');
+      mostrar('#fi-esc-ticket', c.fundador);
+    }
+    var cta = q('a[data-plano]');
     if (cta) {
-      cta.setAttribute('data-plano', faixaAtual);
-      cta.setAttribute('href', CADASTRO_URL + '?tipo=escritorio&plano=' + faixaAtual + (anual ? '&ciclo=anual' : oferta ? '&cupom=' + f.cupom : ''));
+      cta.textContent = c.fundador ? 'Testar 1 mês grátis' : 'Testar 7 dias grátis';
+      cta.setAttribute('data-plano', codigo);
+      var notas = c.escolha.notas.join(',');
+      cta.setAttribute('href', CADASTRO_URL + '?' + (esc ? 'tipo=escritorio&' : '') + 'plano=' + codigo +
+        (notas !== 'nfse' ? '&notas=' + notas : '') + (c.escolha.guias ? '&guias=1' : '') +
+        (anual ? '&ciclo=anual' : c.cupom ? '&cupom=' + c.cupom : ''));
     }
   }
-  if (planos) {
+  function desenharPlanos() { Array.prototype.forEach.call(planos.querySelectorAll('.fi-plano'), desenharCard); }
+  function mudarCiclo(c) {
+    planos.setAttribute('data-ciclo', c);
+    Array.prototype.forEach.call(cicloBtns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.ciclo === c)); });
+    desenharPlanos();
+  }
+  if (planos && P) {
+    Array.prototype.forEach.call(cicloBtns, function (b) {
+      b.addEventListener('click', function () { mudarCiclo(b.dataset.ciclo); });
+    });
     planos.setAttribute('data-fundador', fundador ? 'on' : 'off');
     var faixaFundador = document.getElementById('fi-fundador');
     if (faixaFundador) faixaFundador.hidden = !fundador;
-    Array.prototype.forEach.call(faixaBtns, function (b) {
+    Array.prototype.forEach.call(planos.querySelectorAll('[data-faixa]'), function (b) {
       b.addEventListener('click', function () {
         var c = b.getAttribute('data-faixa');
-        if (FAIXAS[c] || c === SOB_MEDIDA) { faixaAtual = c; desenharEscritorio(); }
+        if (P.FAIXAS[c] || c === SOB_MEDIDA) { faixaAtual = c; desenharPlanos(); }
       });
     });
-    desenharEscritorio();
+    planos.addEventListener('change', function (ev) {
+      var i = ev.target;
+      if (!i || !i.closest || !i.closest('.fi-modulos')) return;
+      var card = i.closest('.fi-plano');
+      // Sem nenhum tipo de nota o plano não emite nada: a última caixa de nota não desmarca.
+      if (i.value !== 'guias' && !lerEscolha(card).notas.length) i.checked = true;
+      desenharCard(card);
+    });
+    desenharPlanos();
   }
 
   /* Mockups das funcionalidades: o vídeo só carrega e toca com a seção na tela, e pausa fora dela. Com movimento
