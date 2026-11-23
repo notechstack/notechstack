@@ -283,7 +283,7 @@ describe('transporte e volumes (grupo transp)', () => {
     const nota = notaExemplo({ modalidadeFrete: '9', transportador: { nome: 'Transp' }, volumes: [{ pesoLiquido: 10, pesoBruto: 9.5 }] })
     expect(validarNfe(nota)).toEqual([])
     expect(avisosNfe(nota)).toEqual([
-      'volumes: peso bruto (9.5 kg) menor que o peso líquido (10 kg); confira',
+      'volumes: peso bruto (9,5 kg) menor que o peso líquido (10 kg); confira',
       'transportador sem CPF ou CNPJ',
       'modalidade "sem frete" (9) com transportador informado; confira a modalidade',
     ])

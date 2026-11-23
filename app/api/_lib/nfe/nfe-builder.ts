@@ -392,12 +392,15 @@ function validarTransporte(input: NfeInput, p: string[]) {
  * Avisos que não impedem a nota (a Sefaz aceita), mas costumam ser erro de digitação: peso bruto menor que o líquido,
  * transportador sem nome ou sem documento, modalidade "sem frete" com transportador.
  */
+/** Peso para texto em português: 60,4 kg. */
+export const kg = (x: number) => `${x.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
+
 export function avisosNfe(input: Pick<NfeInput, 'transportador' | 'volumes' | 'modalidadeFrete'>): string[] {
   const a: string[] = []
   volumesDaNota(input).forEach((v, i, vols) => {
     const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
     if (v.pesoLiquido != null && v.pesoBruto != null && v.pesoBruto < v.pesoLiquido) {
-      a.push(`${n}: peso bruto (${v.pesoBruto} kg) menor que o peso líquido (${v.pesoLiquido} kg); confira`)
+      a.push(`${n}: peso bruto (${kg(v.pesoBruto)}) menor que o peso líquido (${kg(v.pesoLiquido)}); confira`)
     }
   })
   const t = input.transportador

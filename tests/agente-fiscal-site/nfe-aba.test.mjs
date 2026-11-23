@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 const raiz = new URL('../../agentes/fiscal/conta/', import.meta.url);
 const js = readFileSync(new URL('nfe.js', raiz), 'utf8');
+const avulsa = readFileSync(new URL('nfe-avulsa.js', raiz), 'utf8');
 const html = readFileSync(new URL('index.html', raiz), 'utf8');
 
 test('nfe.js não declara a mesma função duas vezes', () => {
@@ -37,4 +38,17 @@ test('o resumo da planilha mostra o transporte e os avisos de cada nota', () => 
   assert.match(js, /'Transporte: ' \+ n\.transporte/);
   assert.match(js, /n\.avisos/);
   assert.match(html, /<summary>Transporte e volumes<\/summary>/);
+});
+
+test('nota avulsa: todo id usado por nfe-avulsa.js existe em index.html, e o script está na página', () => {
+  const ids = [...new Set([...avulsa.matchAll(/\$\('([a-z0-9-]+)'\)/g)].map((m) => m[1]))];
+  assert.ok(ids.length > 20);
+  assert.deepEqual(ids.filter((id) => !html.includes(`id="${id}"`)), []);
+  assert.match(html, /<script src="\/agentes\/fiscal\/conta\/nfe-avulsa\.js\?v=\d+"><\/script>/);
+});
+
+test('nota avulsa: confere antes de emitir, e emite com a chave do formulário', () => {
+  assert.match(avulsa, /acao: 'avulsa_conferir'/);
+  assert.match(avulsa, /acao: 'avulsa_emitir', chave: st\.chave/);
+  assert.match(avulsa, /acao: 'historico'/);
 });

@@ -145,6 +145,19 @@ function comparavel(c: string, celula: Celula | undefined): string {
   return normalizarCabecalho(texto) || texto
 }
 
+/** Frete da nota rateado pelos itens, proporcional ao valor, nos mesmos centavos do leiaute (o resto no último). */
+export function ratearFrete(itens: Item[], freteTotal: number): void {
+  const total = centavos(freteTotal)
+  const bases = itens.map((i) => centavos(i.quantidade * i.valorUnitario))
+  const soma = bases.reduce((a, b) => a + b, 0) || 1
+  let usado = 0
+  itens.forEach((item, i) => {
+    const parte = i === itens.length - 1 ? total - usado : Math.floor((total * bases[i]) / soma)
+    usado += parte
+    item.frete = parte / 100
+  })
+}
+
 export async function lerPlanilhaNfe(conteudo: Uint8Array, tipo: TipoDePlanilha): Promise<PlanilhaNfe> {
   const grade = await lerPlanilha(conteudo, tipo)
   // CSV separado por vírgula com "1234,56" sem aspas empurra as colunas: basta ter mais campos que o cabeçalho.
@@ -300,18 +313,7 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
         informacoes: tx('informacoes_item') || null,
       })
     }
-    // Frete da nota rateado pelos itens, proporcional ao valor, nos mesmos centavos do leiaute (o resto no último).
-    if (freteTotal) {
-      const total = centavos(freteTotal)
-      const bases = itens.map((i) => centavos(i.quantidade * i.valorUnitario))
-      const soma = bases.reduce((a, b) => a + b, 0) || 1
-      let usado = 0
-      itens.forEach((item, i) => {
-        const parte = i === itens.length - 1 ? total - usado : Math.floor((total * bases[i]) / soma)
-        usado += parte
-        item.frete = parte / 100
-      })
-    }
+    if (freteTotal) ratearFrete(itens, freteTotal)
     // O pagamento é o vNF calculado como o builder calcula (mesmo arredondamento).
     const vNF = calcularTotais(itens).nota
     const pedido: PedidoNfe = {

@@ -292,7 +292,11 @@
   }
   window.addEventListener('nofiscal:sessao-vencida', invalidar);
   if ($('fa-sair')) $('fa-sair').addEventListener('click', invalidar);
-  window.contaNfe = { abrir: abrir, invalidar: invalidar, desatualizar: function () { st.carregado = false; } };
+  window.contaNfe = {
+    abrir: abrir, invalidar: invalidar, desatualizar: function () { st.carregado = false; },
+    // Nota avulsa emitida (nfe-avulsa.js): franquia e lista de novo, sem refazer o formulário dos dados da empresa.
+    atualizar: function () { carregar({ manterFormulario: true }).then(listar); }
+  };
   // Entrou direto em #nfe: conta.js já mostrou a aba antes deste arquivo carregar.
   if (!$('fa-painel-nfe').hidden) abrir();
 })();
