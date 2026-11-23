@@ -21,8 +21,10 @@ import {
   soDigitos,
   validarNfe,
   type Emitente,
+  type Item,
   type NfeInput,
   type ResponsavelTecnico,
+  type Transportador,
 } from './nfe-builder.js'
 import { pedidoCancelamento, pedidoCartaCorrecao, pedidoInutilizacao, PedidoInvalidoError } from './pedidos.js'
 import { abrirCertificado, type Credencial, type ResultadoAutorizacao, type SefazClient } from './sefaz-client.js'
@@ -654,4 +656,49 @@ export function responsavelTecnicoFromEnv(env: NodeJS.ProcessEnv = process.env):
   const cnpj = env.NFE_RESP_TEC_CNPJ
   if (!cnpj || !env.NFE_RESP_TEC_EMAIL || !env.NFE_RESP_TEC_FONE) return null
   return { cnpj, contato: env.NFE_RESP_TEC_CONTATO ?? 'Suporte', email: env.NFE_RESP_TEC_EMAIL, fone: env.NFE_RESP_TEC_FONE }
+}
+
+// --- histórico da empresa (emissão avulsa) -----------------------------------------------------------------
+
+export type HistoricoNfe = {
+  /** Destinatários das últimas notas, o mais recente primeiro, um por CPF/CNPJ. */
+  destinatarios: PedidoNfe['destinatario'][]
+  /** Produtos das últimas notas, o mais recente primeiro, um por código (o item como saiu, sem quantidade/desconto). */
+  produtos: Omit<Item, 'quantidade' | 'desconto' | 'frete' | 'seguro' | 'outros'>[]
+  /** Transportadores já usados, um por CPF/CNPJ (ou nome, sem documento). */
+  transportadores: Transportador[]
+}
+
+/**
+ * O que a empresa já emitiu (NF-e não rejeitada, das últimas 300): base do formulário avulso do painel e da conversa no
+ * WhatsApp, para não pedir de novo NCM, CFOP e CSOSN de produto que já saiu, nem endereço de cliente conhecido.
+ */
+export async function historicoNfe(db: Queryable, tenantId: string): Promise<HistoricoNfe> {
+  const { rows } = await db.query<{ payload: PedidoNfe | string }>(
+    `select payload from nofiscal.fiscal_nfe
+      where tenant_id = $1 and status not in ('rejected', 'denied', 'voided')
+      order by created_at desc limit 300`,
+    [tenantId],
+  )
+  const destinatarios = new Map<string, HistoricoNfe['destinatarios'][number]>()
+  const produtos = new Map<string, HistoricoNfe['produtos'][number]>()
+  const transportadores = new Map<string, Transportador>()
+  for (const r of rows) {
+    const p = (typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload) as PedidoNfe
+    const doc = soDigitos(p.destinatario?.documento)
+    if (doc && !destinatarios.has(doc)) destinatarios.set(doc, p.destinatario)
+    for (const item of p.itens ?? []) {
+      const k = item.codigo?.trim().toUpperCase()
+      if (!k || produtos.has(k)) continue
+      produtos.set(k, {
+        codigo: item.codigo, descricao: item.descricao, ncm: item.ncm, cest: item.cest ?? null, cfop: item.cfop, unidade: item.unidade,
+        valorUnitario: item.valorUnitario, origem: item.origem, csosn: item.csosn, aliquotaCreditoSN: item.aliquotaCreditoSN ?? null,
+        cstPisCofins: item.cstPisCofins, gtin: item.gtin ?? null, informacoes: item.informacoes ?? null,
+      })
+    }
+    const t = p.transportador
+    const kt = t ? soDigitos(t.documento) || (t.nome ?? '').trim().toUpperCase() : ''
+    if (t && kt && !transportadores.has(kt)) transportadores.set(kt, t)
+  }
+  return { destinatarios: [...destinatarios.values()], produtos: [...produtos.values()], transportadores: [...transportadores.values()] }
 }

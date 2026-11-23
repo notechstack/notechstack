@@ -170,6 +170,13 @@
       : notas.length + (notas.length === 1 ? ' NF-e pronta' : ' NF-e prontas') + ' (R$ ' + reais(total) + ')' +
         (problemas.length ? '; ' + problemas.length + (problemas.length === 1 ? ' problema' : ' problemas') + ' (as notas com problema ficam de fora)' : '') +
         '. Franquia: ' + (f.no_mes || 0) + ' de ' + (f.limite || 0) + ' notas no mês.';
+    // Cada nota pronta: destinatário, valor, transporte (quando houver) e avisos que não impedem a emissão.
+    $('fa-nfe-notas').innerHTML = emitido ? '' : notas.slice(0, 30).map(function (n) {
+      var avisos = n.avisos || [];
+      return '<li>' + nf.esc('Nota ' + n.nota + ': ' + n.destinatario + ', R$ ' + reais(n.valor) + (n.itens > 1 ? ' (' + n.itens + ' itens)' : '')) +
+        (n.transporte ? '<br><small>' + nf.esc('Transporte: ' + n.transporte) + '</small>' : '') +
+        (avisos.length ? '<br><small><b>Confira:</b> ' + nf.esc(avisos.join('; ')) + '</small>' : '') + '</li>';
+    }).join('') + (!emitido && notas.length > 30 ? '<li>e mais ' + (notas.length - 30) + '</li>' : '');
     $('fa-nfe-problemas').innerHTML = problemas.slice(0, 30).map(function (p) {
       return '<li>' + nf.esc((p.linha ? 'Linha ' + p.linha + (p.nota ? ' (nota ' + p.nota + ')' : '') + ': ' : '') + p.mensagem) + '</li>';
     }).join('') + (problemas.length > 30 ? '<li>e mais ' + (problemas.length - 30) + '</li>' : '');
@@ -285,7 +292,11 @@
   }
   window.addEventListener('nofiscal:sessao-vencida', invalidar);
   if ($('fa-sair')) $('fa-sair').addEventListener('click', invalidar);
-  window.contaNfe = { abrir: abrir, invalidar: invalidar, desatualizar: function () { st.carregado = false; } };
+  window.contaNfe = {
+    abrir: abrir, invalidar: invalidar, desatualizar: function () { st.carregado = false; },
+    // Nota avulsa emitida (nfe-avulsa.js): franquia e lista de novo, sem refazer o formulário dos dados da empresa.
+    atualizar: function () { carregar({ manterFormulario: true }).then(listar); }
+  };
   // Entrou direto em #nfe: conta.js já mostrou a aba antes deste arquivo carregar.
   if (!$('fa-painel-nfe').hidden) abrir();
 })();

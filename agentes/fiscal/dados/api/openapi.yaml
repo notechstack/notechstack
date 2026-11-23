@@ -578,6 +578,29 @@ components:
         consumidor_final: { type: string, enum: ['0', '1'] }
         presenca: { type: string, enum: ['0', '1', '2', '3', '4', '5', '9'] }
         modalidade_frete: { type: string, enum: ['0', '1', '2', '3', '4', '9'] }
+        transportador:
+          type: [object, 'null']
+          additionalProperties: false
+          properties:
+            documento: { type: [string, 'null'], description: 'CNPJ (14) ou CPF (11)' }
+            nome: { type: [string, 'null'], maxLength: 60 }
+            inscricao_estadual: { type: [string, 'null'], description: 'Só dígitos ou ISENTO' }
+            endereco: { type: [string, 'null'], maxLength: 60 }
+            municipio: { type: [string, 'null'], maxLength: 60 }
+            uf: { type: [string, 'null'] }
+        volumes:
+          type: [array, 'null']
+          maxItems: 5000
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              quantidade: { type: [integer, 'null'], minimum: 0 }
+              especie: { type: [string, 'null'], maxLength: 60 }
+              marca: { type: [string, 'null'], maxLength: 60 }
+              numeracao: { type: [string, 'null'], maxLength: 60 }
+              peso_liquido: { type: [number, 'null'], minimum: 0, description: 'kg, até 3 casas' }
+              peso_bruto: { type: [number, 'null'], minimum: 0, description: 'kg, até 3 casas' }
         destinatario:
           type: object
           required: [documento, nome, endereco]
