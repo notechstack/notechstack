@@ -14,11 +14,11 @@ const falsa = `http://localhost:${PORTA_FALSA}`;
 
 // Cupons de fundador que existem hoje (scripts/pagarme-assinatura/cupons-fundador-escritorio.sql), nas faixas de volume.
 const CUPONS = {
-  FUNDADOR5: { plano: 'escritorio_500', cheio: 29700, com: 24700 },
+  FUNDADOR5: { plano: 'escritorio_5', cheio: 29700, com: 24700 },
   FUNDADOR1000: { plano: 'escritorio_1000', cheio: 49700, com: 39700 },     // novo: ainda não existe no banco
   FUNDADOR10000: { plano: 'escritorio_10000', cheio: 249700, com: 199700 }, // novo: ainda não existe no banco
-  FUNDADOR20: { plano: 'escritorio_2000', cheio: 79700, com: 64700 },
-  FUNDADOR50: { plano: 'escritorio_5000', cheio: 149700, com: 119700 }
+  FUNDADOR20: { plano: 'escritorio_20', cheio: 79700, com: 64700 },
+  FUNDADOR50: { plano: 'escritorio_50', cheio: 149700, com: 119700 }
 };
 
 const conta = { criada: false, plano: 'inicial', etapa: 'pagamento' };

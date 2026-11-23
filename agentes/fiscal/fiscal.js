@@ -28,7 +28,7 @@
   var SOB_MEDIDA = 'sob_medida';
   var fundador = Date.now() < FUNDADOR_ATE;
   if (isLocal && new URLSearchParams(location.search).get('fundador') === 'off') fundador = false;
-  var faixaAtual = 'escritorio_500';
+  var faixaAtual = 'escritorio_5';
   function cicloAtual() { return planos.getAttribute('data-ciclo') === 'anual' ? 'anual' : 'mensal'; }
   function lerEscolha(card) {
     var notas = [], guias = false;
@@ -63,19 +63,24 @@
     var e = lerEscolha(card);
     var anual = cicloAtual() === 'anual';
     var c = P.calcular(codigo, { notas: e.notas, guias: e.guias, ciclo: cicloAtual(), fundador: fundador });
-    var precoModulo = '+' + P.reais(esc ? P.MODULO : P.SEGUNDA_NOTA_INDIVIDUAL);
+    var precoModulo = '+' + P.reais(P.MODULO);
     Array.prototype.forEach.call(card.querySelectorAll('[data-tag]'), function (t) {
       t.textContent = t.getAttribute('data-tag') === c.incluida ? '' : precoModulo; // o tipo que vem no plano fica sem rótulo
     });
     var cheioDoMes = c.cheio + (c.mensal - c.base);
     por('[data-valor]', P.reais(anual ? c.porMesNoAnual : c.mensal));
-    por('[data-de]', P.reais(anual ? c.mensal : cheioDoMes));
+    por('[data-de]', P.reais(anual ? c.planoComNota : cheioDoMes));
     mostrar('[data-de]', anual || c.fundador);
     // A conta: só aparece com módulo marcado, para o preço não mudar sem explicação.
-    var conta = c.modulos.length
-      ? 'Plano ' + P.reais(c.base) + c.modulos.map(function (m) { return ' + ' + m.nome + ' ' + P.reais(m.centavos); }).join('') +
-        (c.economia ? ' − ' + P.reais(c.economia) + ' por levar os dois' : '') + (anual ? ', com ' + c.off + '% OFF no anual' : '')
-      : '';
+    // No anual o Guias fica fora do ano: é outra assinatura, mensal, e aparece à parte.
+    var conta = '';
+    if (c.modulos.length && !anual) {
+      conta = 'Plano ' + P.reais(c.base) + c.modulos.map(function (m) { return ' + ' + m.nome + ' ' + P.reais(m.centavos); }).join('') +
+        (c.economia ? ' − ' + P.reais(c.economia) + ' por levar os dois' : '');
+    } else if (c.modulos.length) {
+      conta = (c.escolha.notas.length === 2 ? 'Plano ' + P.reais(c.base) + ' + NF-e ' + P.reais(P.MODULO) + ', com ' + c.off + '% OFF no anual. ' : '') +
+        (c.guiasAParte ? 'Guias: + ' + P.reais(c.guiasAParte) + '/mês, cobrado à parte.' : '');
+    }
     por('[data-conta]', conta);
     mostrar('[data-conta]', !!conta);
     por('[data-cabe]', P.milhar(c.notasMes) + (esc ? ' documentos por mês' : ' notas por mês'));

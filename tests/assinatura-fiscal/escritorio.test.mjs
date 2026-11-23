@@ -108,12 +108,12 @@ test("planos do Escritório no Pagar.me: 9 códigos, mensais, NOFISCAL, teste de
   assert.equal(corpoDoPlano("inicial_sem_teste").name, "Agente Fiscal Inicial (sem teste)");
 });
 
-test("configuração pública: as 3 faixas com preço, empresas e notas; escritorio_disponivel só com os 9 planos", () => {
+test("configuração pública: as faixas antigas com preço e notas, empresas sem limite; escritorio_disponivel só com os 9 planos", () => {
   const c = configuracaoPublica(ENV);
   assert.equal(c.escritorio_disponivel, true);
-  assert.deepEqual(c.planos.escritorio_5, { valor_centavos: 29700, anual_centavos: 267300, empresas: 5, notas: 500 });
-  assert.deepEqual(c.planos.escritorio_20, { valor_centavos: 79700, anual_centavos: 669480, empresas: 20, notas: 2000 });
-  assert.deepEqual(c.planos.escritorio_50, { valor_centavos: 149700, anual_centavos: 988020, empresas: 50, notas: 5000 });
+  assert.deepEqual(c.planos.escritorio_5, { valor_centavos: 29700, anual_centavos: 267300, empresas: 100000, notas: 500 });
+  assert.deepEqual(c.planos.escritorio_20, { valor_centavos: 79700, anual_centavos: 669480, empresas: 100000, notas: 2000 });
+  assert.deepEqual(c.planos.escritorio_50, { valor_centavos: 149700, anual_centavos: 988020, empresas: 100000, notas: 5000 });
   assert.equal(configuracaoPublica({ ...ENV, PAGARME_PLANO_FISCAL_ESCRITORIO_50_TESTE30_ID: "" }).escritorio_disponivel, false);
   assert.doesNotMatch(JSON.stringify(c), /plan_|sk_test|sal/);
 });

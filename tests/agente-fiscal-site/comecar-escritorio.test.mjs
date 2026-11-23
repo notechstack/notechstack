@@ -10,9 +10,11 @@ const CHECKOUT = {
   ok: true, venda_aberta: true, anual_disponivel: true, escritorio_disponivel: true, public_key: 'pk_test_abc', aceite_texto: ACEITE,
   planos: {
     inicial: { valor_centavos: 4900, anual_centavos: 47040 }, pro: { valor_centavos: 12900, anual_centavos: 123840 },
-    escritorio_5: { valor_centavos: 29700, empresas: 5, notas: 500 },
-    escritorio_20: { valor_centavos: 79700, empresas: 20, notas: 2000 },
-    escritorio_50: { valor_centavos: 149700, empresas: 50, notas: 5000 }
+    escritorio_5: { valor_centavos: 29700, empresas: 100000, notas: 500 },
+    escritorio_1000: { valor_centavos: 49700, empresas: 100000, notas: 1000 },
+    escritorio_20: { valor_centavos: 79700, empresas: 100000, notas: 2000 },
+    escritorio_50: { valor_centavos: 149700, empresas: 100000, notas: 5000 },
+    escritorio_10000: { valor_centavos: 249700, empresas: 100000, notas: 10000 }
   }
 };
 const FUNDADOR5 = {
@@ -35,7 +37,7 @@ test('escritório: etapa 1, faixa, cupom de fundador e checkout mensal', async (
   // este teste do mensal abre sem ele.
   const p = await abrir('/agentes/fiscal/comecar/?tipo=escritorio&plano=escritorio_20', { rede });
   assert.equal(p.etapa(), 1);
-  assert.equal(p.texto('fc-plano'), 'Plano Escritório até 20 empresas · R$ 797/mês · 7 dias grátis');
+  assert.equal(p.texto('fc-plano'), 'Plano Escritório 2.000 · R$ 797/mês · 7 dias grátis');
   assert.equal(p.texto('fc-titulo-1'), 'Dados do escritório');
   assert.equal(p.passo(), '1 de 7 · Seu escritório');
   const rotulos = p.rotulos('fc-etapa-1');
@@ -56,7 +58,7 @@ test('escritório: etapa 1, faixa, cupom de fundador e checkout mensal', async (
   assert.ok(p.visivel('fc-faixas'));
   assert.ok(!p.visivel('fc-texto-anual'));
   assert.equal(p.document.querySelector('input[name="fc-faixa"]:checked').value, 'escritorio_20');
-  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Escritório até 20 empresas · R$ 797/mês · 7 dias grátis');
+  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Escritório 2.000 · R$ 797/mês · 7 dias grátis');
 
   // Cupom de fundador na faixa errada: recusado; trocando para a faixa de 5, vale.
   await p.clicar('fc-cupom-abrir');
@@ -70,7 +72,7 @@ test('escritório: etapa 1, faixa, cupom de fundador e checkout mensal', async (
   // A troca reaplica o cupom digitado só quando já havia um aplicado; aqui aplica de novo.
   await p.clicar('fc-cupom-aplicar');
   assert.equal(p.texto('fc-cupom-resumo'), 'Cupom FUNDADOR5 aplicado: 1º mês grátis, depois R$ 247/mês no 1º ano.');
-  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Escritório até 5 empresas · 1º mês grátis, depois R$ 247/mês no 1º ano com o cupom FUNDADOR5');
+  assert.equal(p.texto('fc-plano-pagamento'), 'Plano Escritório 500 · 1º mês grátis, depois R$ 247/mês no 1º ano com o cupom FUNDADOR5');
   assert.equal(p.texto('fc-pagar'), 'Começar 30 dias grátis');
   assert.match(p.texto('fc-texto-cobranca'), /depois dos 30 dias/);
   const validacoes = rede.de('POST assinatura-fiscal').filter((v) => v.corpo.acao === 'validar_cupom');
@@ -104,7 +106,7 @@ test('escritório: retomada pelo plano da conta, pela aba, e Inicial/Pro sem mud
   const conta = superficie({ 'fiscal-conta:estado': () => ({ status: 200, corpo: estado({ plano: 'escritorio_50', onboarding_etapa: 'ativacao' }) }) });
   const r = await abrir('/agentes/fiscal/comecar/', { rede: conta, local: { 'nofiscal.sessao': sessaoValida() } });
   assert.equal(r.etapa(), 7);
-  assert.equal(r.texto('fc-plano'), 'Plano Escritório até 50 empresas · R$ 1.497/mês · 7 dias grátis');
+  assert.equal(r.texto('fc-plano'), 'Plano Escritório 5.000 · R$ 1.497/mês · 7 dias grátis');
   assert.ok(r.visivel('fc-escritorio-depois'));
   const minhaConta = [...r.document.querySelectorAll('#fc-etapa-7 a')].find((a) => a.textContent.trim() === 'Minha conta');
   assert.equal(minhaConta.getAttribute('href'), '/agentes/fiscal/conta/#empresas', 'escritório abre direto em Minhas empresas');
@@ -112,7 +114,7 @@ test('escritório: retomada pelo plano da conta, pela aba, e Inicial/Pro sem mud
 
   const aba = await abrir('/agentes/fiscal/comecar/', { aba: { 'nofiscal.tipo': 'escritorio', 'nofiscal.faixa': 'escritorio_20' } });
   assert.equal(aba.texto('fc-titulo-1'), 'Dados do escritório');
-  assert.equal(aba.texto('fc-plano'), 'Plano Escritório até 20 empresas · R$ 797/mês · 7 dias grátis');
+  assert.equal(aba.texto('fc-plano'), 'Plano Escritório 2.000 · R$ 797/mês · 7 dias grátis');
 
   const pro = await abrir('/agentes/fiscal/comecar/?plano=pro', { aba: { 'nofiscal.tipo': 'escritorio' } });
   assert.equal(pro.texto('fc-titulo-1'), 'Os dados da sua empresa');

@@ -502,9 +502,12 @@
   /* ---------- conta Escritório (painel de /conta/) ---------- */
   /* Faixas do Escritório (fiscal-conta/core.ts, FAIXAS_ESCRITORIO): empresas, notas por mês e preço mensal. */
   var FAIXAS = {
-    escritorio_5: { nome: 'Até 5 empresas', empresas: 5, notas: 500, centavos: 29700 },
-    escritorio_20: { nome: 'Até 20 empresas', empresas: 20, notas: 2000, centavos: 79700 },
-    escritorio_50: { nome: 'Até 50 empresas', empresas: 50, notas: 5000, centavos: 149700 }
+    // Faixas por volume (23/11/2026): documentos por mês, empresas sem limite (100000 = o "sem limite" do banco).
+    escritorio_5: { nome: '500 documentos', empresas: 100000, notas: 500, centavos: 29700 },
+    escritorio_1000: { nome: '1.000 documentos', empresas: 100000, notas: 1000, centavos: 49700 },
+    escritorio_20: { nome: '2.000 documentos', empresas: 100000, notas: 2000, centavos: 79700 },
+    escritorio_50: { nome: '5.000 documentos', empresas: 100000, notas: 5000, centavos: 149700 },
+    escritorio_10000: { nome: '10.000 documentos', empresas: 100000, notas: 10000, centavos: 249700 }
   };
   /* Nome do arquivo no Content-Disposition (filename="…"), ou null. */
   function nomeDoAnexo(cabecalho) {

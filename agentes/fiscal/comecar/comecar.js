@@ -43,7 +43,7 @@
   };
 
   /* Modo escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Cadastro do escritório"): o card Escritório
-     da LP abre /comecar/?tipo=escritorio&plano=escritorio_500. A empresa do próprio escritório faz as mesmas 7 etapas; a
+     da LP abre /comecar/?tipo=escritorio&plano=escritorio_5. A empresa do próprio escritório faz as mesmas 7 etapas; a
      etapa 1 fala do escritório e a 3 mostra as faixas (mensal ou anual, pelo `ciclo` da URL, desde 13/11/2026). O tipo e a faixa ficam na
      aba (sessionStorage) para sobreviver ao vai-e-volta do código de e-mail; o plano gravado na conta também liga o modo. */
   var TIPO_KEY = 'nofiscal.tipo';
@@ -63,7 +63,7 @@
   }
   function faixaInicial() {
     var p = new URLSearchParams(location.search).get('plano');
-    p = P.faixa(p) || P.faixa(nf.aba.ler(FAIXA_KEY)) || 'escritorio_500';
+    p = P.faixa(p) || P.faixa(nf.aba.ler(FAIXA_KEY)) || 'escritorio_5';
     nf.aba.gravar(FAIXA_KEY, p);
     return p;
   }
@@ -285,7 +285,7 @@
       var v = caixas[i].value;
       caixas[i].checked = v === 'guias' ? c.escolha.guias : c.escolha.notas.indexOf(v) >= 0;
       var tag = document.querySelector('[data-modulo-preco="' + v + '"]');
-      if (tag) tag.textContent = v === c.incluida ? '' : '+' + nf.reais(st.escritorio ? P.MODULO : P.SEGUNDA_NOTA_INDIVIDUAL) + '/mês';
+      if (tag) tag.textContent = v === c.incluida ? '' : '+' + nf.reais(P.MODULO) + '/mês';
     }
     var caixa = $('fc-resumo-preco');
     if (!caixa) return;
@@ -294,12 +294,13 @@
     var esc = st.escritorio && ehFaixa(st.plano);
     linha('Plano ' + (esc ? nomeFaixa(st.plano) : nf.nomePlano(st.plano)) + ' · ' + P.milhar(c.notasMes) + (esc ? ' documentos/mês' : ' notas/mês'), nf.reais(c.base));
     linha(P.NOMES[c.incluida], 'incluída');
-    c.modulos.forEach(function (m) { linha(m.nome, '+ ' + nf.reais(m.centavos)); });
-    if (c.economia) linha('NF-e e Guias juntos', '− ' + nf.reais(c.economia), 'is-desconto');
+    // No anual o Guias é outra assinatura, mensal: fica fora do total do ano e entra à parte, depois do total.
+    c.modulos.forEach(function (m) { if (!(anual() && m.tipo === 'guias')) linha(m.nome, '+ ' + nf.reais(m.centavos)); });
+    if (c.economia && !anual()) linha('NF-e e Guias juntos', '− ' + nf.reais(c.economia), 'is-desconto');
     var cup = st.cupom, total;
     if (anual()) {
-      linha('12 meses', nf.reais(c.mensal * 12));
-      linha('Desconto do anual (' + c.off + '%)', '− ' + nf.reais(c.mensal * 12 - c.total), 'is-desconto');
+      linha('12 meses', nf.reais(c.planoComNota * 12));
+      linha('Desconto do anual (' + c.off + '%)', '− ' + nf.reais(c.planoComNota * 12 - c.total), 'is-desconto');
       total = nf.reais(c.total) + '/ano';
     } else if (cup && cup.cortesia) {
       linha('Cupom ' + cup.codigo, 'cortesia', 'is-desconto');
@@ -309,6 +310,7 @@
       total = nf.reais(c.total - descontoDoCupom()) + '/mês';
     }
     linhas.push('<li class="is-total"><span>Total</span><b>' + nf.esc(total) + '</b></li>');
+    if (c.guiasAParte) linhas.push('<li><span>Guias, cobrado por mês em outra fatura</span><b>+ ' + nf.esc(nf.reais(c.guiasAParte)) + '/mês</b></li>');
     var hoje = cup && cup.cortesia ? 'Sem cobrança com este cupom.'
       : 'Hoje você não paga nada: a primeira cobrança é depois dos ' + diasDeTeste() + ' dias grátis.';
     caixa.innerHTML = '<ul>' + linhas.join('') + '</ul><p>' + nf.esc(hoje) + '</p>';
@@ -694,6 +696,14 @@
       if (concluiu) botao.disabled = true;
     });
   }
+  /* A assinatura saiu, mas um módulo não ligou (o servidor devolve `modulos_pendentes`): avisa, sem travar o cadastro. */
+  function avisarModulosPendentes(pendentes) {
+    var aviso = $('fc-aviso-4');
+    if (!aviso || !pendentes || !pendentes.length) return;
+    var nomes = pendentes.map(function (m) { return P.NOMES[m] || m; }).join(' e ');
+    nf.aviso(aviso, 'Assinatura feita. ' + nf.esc(nomes) + ' ainda não ' + (pendentes.length > 1 ? 'foram ligados' : 'foi ligado') +
+      ' na sua conta: a nó liga para você e avisa pelo WhatsApp. Pode seguir com o cadastro.', 'info');
+  }
   function lerCartao() {
     return {
       numero: $('fc-cc-numero').value, nome: $('fc-cc-nome').value, validade: $('fc-cc-validade').value, cvv: $('fc-cc-cvv').value,
@@ -747,6 +757,7 @@
             return;
           }
           irPara(4);
+          avisarModulosPendentes(r.dados.modulos_pendentes);
           return;
         }
         if (r.status === 401) return;

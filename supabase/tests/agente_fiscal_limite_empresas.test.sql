@@ -74,20 +74,20 @@ select ok(not has_function_privilege('service_role', 'nofiscal.max_empresas_da_c
   'edge function não chama o limite direto');
 
 -- ---------------------------------------------------------------------------------------
--- Sem override, nada muda.
-select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000001'), 20, 'faixa 20 sem pacote: 20 empresas');
-select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 5, 'faixa 5 sem pacote: 5 empresas');
+-- Sem override, a faixa não limita empresas (planos por volume, 23/11/2026): 100000 é o "sem limite".
+select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000001'), 100000, 'faixa 20 sem pacote: sem limite de empresas');
+select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 100000, 'faixa 5 sem pacote: sem limite de empresas');
 select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000003'), 1, 'conta Pro: 1 empresa');
-select is((public.fiscal_escritorio_estado('f5000000-0000-4000-8000-000000000001') ->> 'max_empresas')::int, 20,
-  'painel mostra 20 sem pacote');
+select is((public.fiscal_escritorio_estado('f5000000-0000-4000-8000-000000000001') ->> 'max_empresas')::int, 100000,
+  'painel mostra o sem limite sem pacote');
 select ok((public.fiscal_escritorio_estado('f5000000-0000-4000-8000-000000000001') -> 'max_empresas_override') = 'null'::jsonb,
   'painel sem override');
 
--- Conta-mãe + 19 = 20 ativas; a 21ª é barrada na faixa.
+-- Conta-mãe + 19 = 20 ativas; sem pacote a 21ª entra (antes a faixa 20 barrava).
 select pg_temp.add_a(n) from generate_series(1, 19) n;
 select is(pg_temp.ativas_a(), 20::bigint, 'vinte ativas na faixa 20');
-select is(pg_temp.add_a(20) ->> 'erro', 'EMPRESAS_ACIMA_DO_LIMITE', 'sem pacote, a 21ª é barrada');
-select is((pg_temp.add_a(20) ->> 'limite')::int, 20, 'limite informado é o da faixa');
+select is(pg_temp.add_a(20) ->> 'ok', 'true', 'sem pacote, a 21ª entra');
+select is(pg_temp.ativas_a(), 21::bigint, 'vinte e uma ativas na faixa 20');
 
 -- ---------------------------------------------------------------------------------------
 -- Aplicar o pacote: recusas.
@@ -117,27 +117,27 @@ select is((public.fiscal_escritorio_estado('f5000000-0000-4000-8000-000000000001
   'painel sabe do pacote');
 select is((public.fiscal_escritorio_estado('f5000000-0000-4000-8000-000000000001') ->> 'notas_limite')::int, 2000,
   'franquia de notas continua a da faixa 20');
-select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 5, 'outra conta não muda');
+select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 100000, 'outra conta não muda');
 
-select is(pg_temp.add_a(20) ->> 'ok', 'true', 'com pacote, a 21ª entra');
+select is(pg_temp.add_a(200) ->> 'ok', 'true', 'com pacote, mais uma entra');
 select is((select monthly_note_limit from nofiscal.fiscal_tenants where cnpj = '70000000000020'), 2000,
   'empresa nova com a franquia da faixa');
-select pg_temp.add_a(n) from generate_series(21, 199) n;
+select pg_temp.add_a(n) from generate_series(21, 198) n;
 select is(pg_temp.ativas_a(), 200::bigint, 'duzentas ativas');
-select is(pg_temp.add_a(200) ->> 'erro', 'EMPRESAS_ACIMA_DO_LIMITE', 'a 201ª é barrada');
-select is((pg_temp.add_a(200) ->> 'limite')::int, 200, 'limite informado é o do pacote');
+select is(pg_temp.add_a(199) ->> 'erro', 'EMPRESAS_ACIMA_DO_LIMITE', 'a 201ª é barrada');
+select is((pg_temp.add_a(199) ->> 'limite')::int, 200, 'limite informado é o do pacote');
 
 -- Reativar respeita o pacote.
 select is(public.fiscal_empresa_ativar('f5000000-0000-4000-8000-000000000001',
   (select id from nofiscal.fiscal_tenants where cnpj = '70000000000001'), false) ->> 'ok', 'true', 'desativa uma');
-select is(pg_temp.add_a(200) ->> 'ok', 'true', 'vaga liberada vira a 200ª');
+select is(pg_temp.add_a(199) ->> 'ok', 'true', 'vaga liberada vira a 200ª');
 select is(public.fiscal_empresa_ativar('f5000000-0000-4000-8000-000000000001',
   (select id from nofiscal.fiscal_tenants where cnpj = '70000000000001'), true) ->> 'erro', 'EMPRESAS_ACIMA_DO_LIMITE',
   'reativar a 201ª é barrado');
 
--- Tirar o pacote com 200 ativas: recusado (voltaria a 20).
-select is(public.fiscal_definir_limite_empresas('f7000000-0000-4000-8000-000000000001', null) ->> 'erro',
-  'EMPRESAS_ACIMA_DO_LIMITE', 'não tira o pacote com mais empresas que a faixa');
+-- Diminuir o pacote para menos que as 200 ativas: recusado. (Tirar o pacote é sempre aceito: a faixa não limita.)
+select is(public.fiscal_definir_limite_empresas('f7000000-0000-4000-8000-000000000001', 150) ->> 'erro',
+  'EMPRESAS_ACIMA_DO_LIMITE', 'não diminui o pacote para menos que as ativas');
 
 -- ---------------------------------------------------------------------------------------
 -- Troca de faixa: o override fica até ser zerado; a franquia de notas segue a faixa.
@@ -156,25 +156,25 @@ select is((select max_empresas_override from nofiscal.fiscal_tenants where id = 
 select is((select monthly_note_limit from nofiscal.fiscal_tenants where cnpj = '70000000000100'), 500,
   'franquia das empresas vira a da faixa 5');
 
--- Sem pacote, a troca para uma faixa menor que as ativas continua barrada (conta B: 1 ativa + 5 = 6 > 5 não cabe).
+-- Sem pacote, a faixa é só o volume de documentos: a conta B (1 ativa + 5 = 6) desce para a faixa de 500.
 select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_20') ->> 'ok', 'true',
   'B sobe para a faixa 20');
 select public.fiscal_empresa_adicionar('f5000000-0000-4000-8000-000000000002', '71' || lpad(n::text, 12, '0'),
   'B ' || n, '3550308', null, 'simples', encode(sha256(convert_to('lim-b-' || n, 'UTF8')), 'hex'), 'producao')
   from generate_series(1, 5) n;
-select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_5') ->> 'erro',
-  'EMPRESAS_ACIMA_DO_LIMITE', 'B sem pacote não desce com 6 ativas');
+select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_5') ->> 'ok',
+  'true', 'B sem pacote desce com 6 ativas');
 
 -- Zerar o pacote quando as ativas cabem na faixa.
 select is(public.fiscal_definir_limite_empresas('f7000000-0000-4000-8000-000000000002', 10) ->> 'ok', 'true',
   'B recebe pacote de 10');
-select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_5') ->> 'ok', 'true',
-  'com pacote, B desce com 6 ativas');
+select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_1000') ->> 'ok', 'true',
+  'com pacote, B vai para a faixa nova de 1.000 documentos');
 select is(public.fiscal_trocar_plano('f5000000-0000-4000-8000-000000000002', 'escritorio_20') ->> 'ok', 'true',
   'B volta para a faixa 20');
 select is(public.fiscal_definir_limite_empresas('f7000000-0000-4000-8000-000000000002', null) ->> 'ok', 'true',
   'pacote de B zerado');
-select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 20, 'B volta ao limite da faixa');
+select is(nofiscal.max_empresas_da_conta('f7000000-0000-4000-8000-000000000002'), 100000, 'B volta a não ter limite de empresas');
 
 select * from finish();
 rollback;

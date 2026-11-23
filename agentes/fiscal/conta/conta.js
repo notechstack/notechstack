@@ -563,7 +563,7 @@
       return;
     }
     var e = st.estado, a = e.assinatura, emp = e.empresa || {};
-    var faixa = nf.FAIXAS[x.plano] || { nome: 'Até ' + x.max_empresas + ' empresas', centavos: null };
+    var faixa = nf.FAIXAS[x.plano] || { nome: x.notas_limite + ' documentos', centavos: null };
     // A configuração que falta ao escritório é só pagamento e ativação; A1 e dados fiscais são por empresa.
     $('fa-retomar').hidden = !(e.onboarding_etapa === 'pagamento' || e.onboarding_etapa === 'ativacao');
 
@@ -578,7 +578,7 @@
     $('fa-plano-notas').textContent = faixa.nome + (faixa.centavos ? ' · ' + nf.reais(faixa.centavos) + '/mês' : '');
     var excedente = Number(x.notas_mes) - Number(x.notas_limite);
     $('fa-plano-uso').innerHTML = linhas([
-      ['Empresas ativas', x.empresas_ativas + ' de ' + x.max_empresas],
+      ['Empresas ativas', semLimiteDeEmpresas(x) ? String(x.empresas_ativas) : x.empresas_ativas + ' de ' + x.max_empresas],
       ['Notas do mês', x.notas_mes + ' de ' + x.notas_limite + (excedente > 0 ? ' (' + excedente + ' acima da franquia)' : '')],
       ['Próxima cobrança', proximaCobranca(a)]
     ]);
@@ -592,13 +592,16 @@
     mostrarAba(ec.aba || abaDoHash() || 'dados', { hash: false });
   }
 
+  /* Sem limite de empresas (23/11/2026): o banco devolve 100000 quando a conta não tem pacote (max_empresas_override). */
+  function semLimiteDeEmpresas(x) { return !x.max_empresas_override && Number(x.max_empresas) >= 100000; }
+
   /* ---------- trocar faixa ---------- */
   function desenharFaixas(x) {
     $('fa-faixas-lista').innerHTML = Object.keys(nf.FAIXAS).map(function (c) {
       var f = nf.FAIXAS[c], atual = c === x.plano, pequena = Number(x.empresas_ativas) > (Number(x.max_empresas_override) || f.empresas);
       return '<button type="button" class="nf-faixa' + (atual ? ' nf-faixa--atual' : '') + '" data-faixa="' + c + '"' +
         (atual ? ' disabled aria-current="true"' : '') + '><b>' + nf.esc(f.nome) + '</b><span>' + nf.esc(nf.reais(f.centavos)) +
-        '/mês · ' + f.notas + ' notas por mês</span>' +
+        '/mês · empresas ilimitadas</span>' +
         (atual ? '<small>Faixa atual</small>' : pequena ? '<small>Você tem ' + x.empresas_ativas + ' empresas ativas</small>' : '') + '</button>';
     }).join('');
     $('fa-confirmar-faixa').hidden = true;
@@ -780,8 +783,9 @@
   }
   function desenharEmpresas(x) {
     var f = nf.FAIXAS[x.plano];
-    $('fa-empresas-resumo').textContent = x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' +
-      (x.max_empresas_override ? ' no seu pacote' : f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
+    $('fa-empresas-resumo').textContent = (semLimiteDeEmpresas(x)
+      ? x.empresas_ativas + (Number(x.empresas_ativas) === 1 ? ' empresa ativa' : ' empresas ativas') + ', sem limite de empresas no seu plano'
+      : x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' + (x.max_empresas_override ? ' no seu pacote' : f ? ' na faixa ' + f.nome : '')) + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
     var a = st.estado.assinatura, motivo = '';
     if (!a) motivo = 'Sem assinatura ativa: nenhuma empresa emite.';
     else if (a.status === 'recusada') motivo = 'Pagamento recusado: nenhuma empresa emite até o cartão ser trocado em Meus dados.';

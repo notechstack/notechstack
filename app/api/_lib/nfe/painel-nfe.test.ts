@@ -88,6 +88,8 @@ describe('rota do painel', () => {
     servico = openRoleDb('nofiscal_service')
     esc = await createEscritorio(admin.db, { empresas: [{ razaoSocial: 'Comercio Cliente Ltda' }] })
     outro = await createEscritorio(admin.db, {})
+    // Planos por módulo (23/11/2026): a NF-e só abre para a conta que a tem entre os tipos de nota.
+    await admin.db.query(`update nofiscal.fiscal_tenants set tipos_nota = array['nfse','nfe'] where id = any($1::uuid[])`, [[esc.mae.tenant.id, outro.mae.tenant.id]])
     // A empresa cliente: CNPJ do modelo, em Bragança Paulista, com A1 do próprio CNPJ.
     const empresa = esc.empresas[0]
     cnpjEmitente = cnpjAleatorio()
@@ -126,6 +128,16 @@ describe('rota do painel', () => {
     f.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente)], 'nfe.csv', { type: 'text/csv' }))
     return f
   }
+
+  it('conta sem a NF-e entre os tipos de nota: 403 NFE_NAO_CONTRATADA, e volta a abrir quando a NF-e entra', async () => {
+    await admin.db.query(`update nofiscal.fiscal_tenants set tipos_nota = array['nfse'] where id = $1`, [outro.mae.tenant.id])
+    const fechada = await chamar(outro.mae.ownerUserId, { acao: 'contexto' })
+    expect(fechada.status).toBe(403)
+    expect(((await fechada.json()) as { error: { code: string } }).error.code).toBe('NFE_NAO_CONTRATADA')
+    // Só NF-e (sem NFS-e) também abre: o que vale é a NF-e estar na lista.
+    await admin.db.query(`update nofiscal.fiscal_tenants set tipos_nota = array['nfe'] where id = $1`, [outro.mae.tenant.id])
+    expect((await chamar(outro.mae.ownerUserId, { acao: 'contexto' })).status).toBe(200)
+  })
 
   it('sem login 401; conta de outro escritório não vê a empresa', async () => {
     expect((await chamar(null, { acao: 'contexto' })).status).toBe(401)

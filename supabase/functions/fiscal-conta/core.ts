@@ -549,8 +549,11 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     }
     const ciclo = cicloDaAssinatura(sub);
     // Escritório: só mensal (o anual já saiu acima); nome e preço do plano no Pagar.me (assinatura-fiscal).
-    const nome = PLANOS_PAGARME[plano].nome;
-    const preco = centavosDoCiclo(plano, ciclo);
+    // Conta com NFS-e e NF-e paga o segundo tipo de nota no item: a troca de faixa leva essa diferença junto.
+    const precoAtual = Number(obj(item.pricing_scheme).price);
+    const duasNotas = planoDeEscritorio(estado.plano) && precoAtual === centavosDoCiclo(estado.plano, ciclo, true);
+    const nome = duasNotas ? `${PLANOS_PAGARME[plano].nome} com NFS-e e NF-e` : PLANOS_PAGARME[plano].nome;
+    const preco = centavosDoCiclo(plano, ciclo, duasNotas);
     const r = await chamar(
       "fiscal_conta_plano_pagarme_falhou",
       "PUT",
@@ -659,7 +662,7 @@ async function conferirTroca(
       resultado: erro(
         400,
         "DADOS_INVALIDOS",
-        escritorio ? "Escolha uma das faixas: até 5, 20 ou 50 empresas." : "Escolha um dos planos: Inicial ou Pro.",
+        escritorio ? "Escolha uma das faixas de documentos por mês." : "Escolha um dos planos: Inicial ou Pro.",
       ),
     };
   }

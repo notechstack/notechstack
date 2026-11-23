@@ -9,8 +9,9 @@ import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
 import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, municipioAtendido, type Regime, soDigitos } from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
-export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
-const FAIXAS_ESCRITORIO = ["escritorio_5", "escritorio_20", "escritorio_50"];
+export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50" | "escritorio_1000" | "escritorio_10000";
+// Faixas por volume (23/11/2026): 500, 1.000, 2.000, 5.000 e 10.000 documentos (assinatura-fiscal/core.ts).
+const FAIXAS_ESCRITORIO = ["escritorio_5", "escritorio_1000", "escritorio_20", "escritorio_50", "escritorio_10000"];
 
 export type ArgsCriar = {
   user_id: string;

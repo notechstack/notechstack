@@ -24,6 +24,7 @@ export type ErrorCode =
   // Emissão pelo painel "Minha conta" (painel-emissao.ts).
   | 'CONTA_SEM_EMPRESA'
   | 'SO_ESCRITORIO'
+  | 'NFE_NAO_CONTRATADA'
   | 'EMISSAO_BLOQUEADA'
   | 'PLANILHA_RECUSADA'
   | 'LOTE_FECHADO'
@@ -67,6 +68,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDADE_PASSADA: 422,
   CONTA_SEM_EMPRESA: 404,
   SO_ESCRITORIO: 403,
+  NFE_NAO_CONTRATADA: 403,
   EMISSAO_BLOQUEADA: 409,
   PLANILHA_RECUSADA: 422,
   LOTE_FECHADO: 409,
