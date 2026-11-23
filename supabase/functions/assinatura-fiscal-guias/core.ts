@@ -122,6 +122,31 @@ async function digest(value: string): Promise<Uint8Array> {
 }
 
 /** `Authorization: Bearer <service role>` em tempo constante. Sem chave configurada, nega. */
+/** Papel e projeto de um JWT do Supabase (só o payload; a assinatura quem confere é o gateway, verify_jwt = true). */
+export function papelDoJwt(authorization: string | null): { role: string | null; ref: string | null } | null {
+  const m = /^Bearer\s+([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\s*$/.exec(authorization || "");
+  if (!m) return null;
+  try {
+    const b64 = m[2].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(m[2].length / 4) * 4, "=");
+    const p = JSON.parse(atob(b64));
+    return { role: typeof p.role === "string" ? p.role : null, ref: typeof p.ref === "string" ? p.ref : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Equipe da nó: a service role exata do ambiente, ou um JWT com role service_role deste projeto. O segundo caso só é
+ * seguro porque a função roda com verify_jwt = true (supabase/config.toml): o gateway recusa JWT sem a assinatura do
+ * projeto antes de chegar aqui. Motivo (23/11/2026): a service_role da aba Legacy do painel não bateu byte a byte com
+ * SUPABASE_SERVICE_ROLE_KEY do runtime e a chamada voltou 401.
+ */
+export async function autorizadoEquipe(authorization: string | null, chave: string | undefined, projectRef: string): Promise<boolean> {
+  if (await autorizadoServico(authorization, chave)) return true;
+  const papel = papelDoJwt(authorization);
+  return Boolean(projectRef) && papel?.role === "service_role" && papel.ref === projectRef;
+}
+
 export async function autorizadoServico(authorization: string | null, chave: string | undefined): Promise<boolean> {
   if (!chave) return false;
   const [x, y] = await Promise.all([digest(authorization || ""), digest(`Bearer ${chave}`)]);
