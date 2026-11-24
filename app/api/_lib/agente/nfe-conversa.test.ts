@@ -174,6 +174,11 @@ describe('conversa no WhatsApp (banco local)', () => {
     expect(resumo).toContain('Transportadora: Transportadora Exemplo Ltda · 11.444.777/0001-61')
     expect(resumo).toContain('Volumes: 10 CAIXAS · líquido 60,4 kg · bruto 60,4 kg')
     expect(resumo).toContain('CSOSN 101 (crédito 2,56%)')
+    // O crédito e a frase calculada aparecem antes de confirmar (500 × 2,45 × 2,56% = 31,36).
+    expect(resumo).toContain('Crédito de ICMS do Simples: R$ 31,36 (alíquota de 2,56%)')
+    expect(resumo).toContain(
+      'Informações: Permite o aproveitamento do crédito de ICMS no valor de R$ 31,36, correspondente à alíquota de 2,56%, nos termos do art. 23 da LC 123/2006. Documento emitido por ME ou EPP optante pelo Simples Nacional.',
+    )
     expect(resumo.endsWith(TEXTOS_NFE.pergunta)).toBe(true)
 
     expect(await a.diz('confirmar')).toBe('NF-e nº 10 (série 1) enviada à Sefaz. Quando for autorizada, mando o DANFE aqui.')

@@ -11,6 +11,7 @@ import { openTestDb } from '../../_tests/fixtures.js'
 import type { HttpRequest, HttpResponse } from '../sefin-client.js'
 import type { SessionVerifier } from '../session.js'
 import { handlePainelNfe } from './painel-nfe.js'
+import { informacoesComplementaresDaNota } from './nfe-builder.js'
 import { interpretarPlanilhaNfe, lerNumero, lerPlanilhaNfe } from './planilha.js'
 import { lerCsvTexto } from '../agente/lote.js'
 import { criarSefazClient } from './sefaz-client.js'
@@ -58,7 +59,11 @@ describe('planilha de NF-e (pura)', () => {
       destinatario: { indicadorIE: '1', inscricaoEstadual: '110042490114' },
     })
     expect(transporte.pedido.itens[0]).toMatchObject({ csosn: '101', aliquotaCreditoSN: 2.56, desconto: 61.25, cfop: '5101' })
-    expect(transporte.pedido.informacoesComplementares).toMatch(/crédito de ICMS no valor de R\$ 31,36/)
+    // A coluna informacoes do modelo não traz mais a frase do crédito: ela sai do builder, com o valor calculado (500 × 2,45 × 2,56%).
+    expect(transporte.pedido.informacoesComplementares).not.toMatch(/aproveitamento do crédito/)
+    expect(informacoesComplementaresDaNota(transporte.pedido.informacoesComplementares, transporte.pedido.itens)).toMatch(
+      /^Permite o aproveitamento do crédito de ICMS no valor de R\$ 31,36, correspondente à alíquota de 2,56%, nos termos do art\. 23 da LC 123\/2006\. Documento emitido/,
+    )
     // Sem as colunas de transporte (notas 2 e 3), o pedido é o de antes: nem a chave da planilha muda.
     expect(Object.keys(um.pedido)).not.toContain('transportador')
     expect(Object.keys(dois.pedido)).not.toContain('volumes')
@@ -191,7 +196,12 @@ describe('rota do painel', () => {
     const lida = await chamar(esc.mae.ownerUserId, planilha('planilha_ler'))
     expect(lida.status).toBe(200)
     expect(await lida.json()).toMatchObject({
-      notas: [{ nota: '1', itens: 1, valor: '1163.75', avisos: [] }, { nota: '2', itens: 2, valor: '89.56' }, { nota: '3', itens: 1, valor: '224.00' }],
+      // Nota 1 (CSOSN 101): o resumo mostra o crédito antes de emitir; as outras (102) não têm.
+      notas: [
+        { nota: '1', itens: 1, valor: '1163.75', avisos: [], credito_icms_sn: 'R$ 31,36 (alíquota de 2,56%)' },
+        { nota: '2', itens: 2, valor: '89.56', credito_icms_sn: null },
+        { nota: '3', itens: 1, valor: '224.00', credito_icms_sn: null },
+      ],
       problemas: [],
     })
 
@@ -234,6 +244,10 @@ describe('rota do painel', () => {
     const comTransporte = lista.notas.find((n) => n.numero === 501)!.nfe_id
     const xmlTransporte = await (await chamar(esc.mae.ownerUserId, null, 'GET', `?baixar=xml&nfe_id=${comTransporte}`)).text()
     expect(xmlTransporte).toContain('<transp><modFrete>0</modFrete><transporta><CNPJ>11444777000161</CNPJ>')
+    // A frase do crédito sai calculada no XML autorizado, sem estar na coluna informacoes da planilha.
+    expect(xmlTransporte).toContain(
+      '<infCpl>Permite o aproveitamento do crédito de ICMS no valor de R$ 31,36, correspondente à alíquota de 2,56%, nos termos do art. 23 da LC 123/2006. Documento emitido por ME ou EPP',
+    )
     expect(xmlTransporte).toContain('<vol><qVol>10</qVol><esp>CAIXA</esp><marca>EXEMPLO</marca><nVol>1 a 10</nVol><pesoL>60.400</pesoL><pesoB>60.400</pesoB></vol>')
 
     const pdf = await chamar(esc.mae.ownerUserId, null, 'GET', `?baixar=danfe&nfe_id=${id}`)
@@ -329,6 +343,10 @@ describe('NF-e avulsa do painel (23/11/2026)', () => {
     expect(c.corpo.resumo).toMatchObject({ pagamento: 'Boleto', destinatario: { municipio_ibge: '3509502', uf: 'SP' } })
     expect(c.corpo.resumo.totais.nota).toMatch(/1\.188,75/)
     expect(c.corpo.resumo.transporte).toMatch(/Por conta do emitente/)
+    expect(c.corpo.resumo.credito_icms_sn).toBe('R$ 31,36 (alíquota de 2,56%)')
+    expect(c.corpo.resumo.informacoes_complementares).toBe(
+      'Permite o aproveitamento do crédito de ICMS no valor de R$ 31,36, correspondente à alíquota de 2,56%, nos termos do art. 23 da LC 123/2006. Documento emitido por ME ou EPP optante pelo Simples Nacional.',
+    )
 
     const e1 = await chamar({ acao: 'avulsa_emitir', tenant_id: tenant, nota: nota(), forma_pagamento: '15', frete: '25,00', chave: CHAVE })
     expect(e1.status).toBe(202)

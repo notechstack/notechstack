@@ -24,7 +24,17 @@ import type { SessionVerifier } from '../session.js'
 import type { Uf } from './autorizadores.js'
 import { conferenciaDaEmpresa, conferirEmpresaNfe } from './conferencia.js'
 import { renderDanfe } from './danfe.js'
-import { avisosNfe, calcularTotais, kg, MODALIDADES_FRETE, temTransportador, volumesDaNota, type ResponsavelTecnico } from './nfe-builder.js'
+import {
+  avisosNfe,
+  calcularTotais,
+  informacoesComplementaresDaNota,
+  kg,
+  MODALIDADES_FRETE,
+  resumoCreditoSn,
+  temTransportador,
+  volumesDaNota,
+  type ResponsavelTecnico,
+} from './nfe-builder.js'
 import type { SefazClient } from './sefaz-client.js'
 import { lerPlanilhaNfe, ratearFrete } from './planilha.js'
 import { lerPedidoNfe } from '../parceiro/nfe-api.js'
@@ -252,7 +262,9 @@ async function avulsa(ctx: Ctx, b: Record<string, unknown>, emitir: boolean): Pr
       totais: { produtos: reais(t.produtos), desconto: reais(t.desconto), frete: reais(t.frete), nota: reais(t.nota) },
       transporte: resumoDoTransporte(pedido),
       pagamento: FORMAS_DO_PAINEL[forma],
-      informacoes_complementares: pedido.informacoesComplementares ?? null,
+      // Crédito do Simples (CSOSN 101) e o texto como vai à nota, já com a frase do crédito calculada.
+      credito_icms_sn: resumoCreditoSn(pedido.itens),
+      informacoes_complementares: informacoesComplementaresDaNota(pedido.informacoesComplementares, pedido.itens),
       homologacao: dados?.ambiente !== 'producao',
     },
     problemas,
@@ -486,6 +498,7 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       itens: p.nota.pedido.itens.length,
       valor: p.valor.toFixed(2),
       transporte: resumoDoTransporte(p.nota.pedido),
+      credito_icms_sn: resumoCreditoSn(p.nota.pedido.itens),
       avisos: p.nota.avisos,
     })),
     problemas,

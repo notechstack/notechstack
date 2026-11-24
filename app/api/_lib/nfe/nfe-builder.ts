@@ -461,11 +461,92 @@ function endereco(tag: string, end: Endereco): string {
   ])
 }
 
+/** vCredICMSSN do item (centavos): alíquota do crédito sobre o valor do produto, arredondado no item. */
+const creditoDoItem = (item: Item) => centavos((valorProduto(item) / 100) * (Number(item.aliquotaCreditoSN) / 100))
+
+// --- crédito do Simples (CSOSN 101) nas informações complementares ---------------------------------------------
+// Art. 23 da LC 123/2006 e art. 59 da Resolução CGSN 140/2018: com CSOSN 101, o documento traz a frase do crédito com
+// o valor e a alíquota. O valor é a SOMA dos vCredICMSSN dos itens (o que o destinatário escritura), não a alíquota
+// sobre o total: na NF-e 4081 da POLI BOX, 8 itens a 2,84% somam R$ 33,47, e 2,84% de R$ 1.178,75 daria R$ 33,48.
+// Decisão (24/11/2026): itens com alíquotas diferentes levam o total e as alíquotas em ordem crescente, "às alíquotas de
+// 2,56% e 3,95%"; não se quebra o crédito por alíquota (a lei pede o valor do crédito e a alíquota aplicada).
+
+export type CreditoSn = { centavos: number; aliquotas: number[] }
+
+/** Crédito do Simples da nota (null sem item com CSOSN 101). */
+export function creditoIcmsSn(itens: Item[]): CreditoSn | null {
+  const com = itens.filter((i) => i.csosn === '101' && Number(i.aliquotaCreditoSN) > 0)
+  if (com.length === 0) return null
+  const aliquotas = [...new Set(com.map((i) => Number(i.aliquotaCreditoSN)))].sort((a, b) => a - b)
+  return { centavos: com.reduce((s, i) => s + creditoDoItem(i), 0), aliquotas }
+}
+
+const reaisBr = (cents: number) =>
+  (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const percentualBr = (x: number) => `${decN(x, 2, 4).replace('.', ',')}%`
+const listaBr = (xs: string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`)
+
+/** "Permite o aproveitamento do crédito de ICMS no valor de R$ X, correspondente à alíquota de Y%" (sem o fim). */
+function nucleoDaFrase(c: CreditoSn): string {
+  const aliq = listaBr(c.aliquotas.map(percentualBr))
+  return `Permite o aproveitamento do crédito de ICMS no valor de R$ ${reaisBr(c.centavos)}, correspondente ${c.aliquotas.length > 1 ? 'às alíquotas' : 'à alíquota'} de ${aliq}`
+}
+
+/** Para os resumos antes de emitir: "R$ 33,47 (alíquota de 2,84%)"; null sem item com CSOSN 101. */
+export function resumoCreditoSn(itens: Item[]): string | null {
+  const c = creditoIcmsSn(itens)
+  if (!c) return null
+  return `R$ ${reaisBr(c.centavos)} (${c.aliquotas.length > 1 ? 'alíquotas de' : 'alíquota de'} ${listaBr(c.aliquotas.map(percentualBr))})`
+}
+
+/** A frase completa, como vai quando o texto do usuário não a traz. */
+export function fraseCreditoSn(c: CreditoSn): string {
+  return `${nucleoDaFrase(c)}, nos termos do art. 23 da LC 123/2006.`
+}
+
+// A frase como o usuário costuma escrever (com ou sem acento, maiúsculas, "R$0,00", "à/a/às alíquota(s)"): o valor e as
+// alíquotas que vierem são trocados pelos calculados; o resto do texto fica como está.
+const FRASE_CREDITO =
+  /permite\s+o\s+aproveitamento\s+do\s+cr[eé]dito\s+de\s+icms\s+no\s+valor\s+de\s+r\$\s*[\d.,]*\s*,?\s*correspondente\s+(?:[aà]s?\s+)?al[ií]quotas?\s+de\s+[\d.,]*\s*%(?:\s*(?:,|e)\s*[\d.,]+\s*%)*/giu
+
+/** A frase com o fim "nos termos do art. 23 da LC 123/2006" (para tirá-la inteira quando vai para o início). */
+const FRASE_CREDITO_INTEIRA = new RegExp(
+  String.raw`${FRASE_CREDITO.source}(?:\s*,?\s*nos\s+termos\s+do\s+art\.?\s*23[^.]*(?:\.\d+[^.]*)*)?\.?`,
+  'giu',
+)
+
+const LIMITE_INF_CPL = 5000
+/** Mesmo saneamento do txt() da montagem, sem cortar: o limite é aplicado aqui, protegendo a frase. */
+const sanear = (s: string) => latin1(s).replace(/\s+/g, ' ').trim()
+
+/**
+ * Informações complementares que vão ao XML (infCpl). Sem item com CSOSN 101, o texto do usuário como está. Com 101:
+ * se o texto já traz a frase do crédito, o valor e a alíquota são trocados pelos calculados; se não traz, a frase vai
+ * no início, antes do texto do usuário. A frase nunca é cortada pelo limite de 5.000 caracteres: corta-se o texto do usuário.
+ */
+export function informacoesComplementaresDaNota(texto: string | null | undefined, itens: Item[]): string | null {
+  const usuario = sanear(texto ?? '')
+  const credito = creditoIcmsSn(itens)
+  if (!credito) return usuario ? usuario.slice(0, LIMITE_INF_CPL) : null
+  const nucleo = nucleoDaFrase(credito)
+  let achou = false
+  const trocado = usuario.replace(FRASE_CREDITO, (m) => {
+    achou = true
+    return m === m.toUpperCase() ? nucleo.toUpperCase() : nucleo
+  })
+  if (achou && sanear(trocado).length <= LIMITE_INF_CPL) return sanear(trocado)
+  // Sem a frase (ou com ela e o texto passando do limite): a frase completa no início e o resto do texto depois.
+  const frase = sanear(fraseCreditoSn(credito))
+  const resto = sanear(usuario.replace(FRASE_CREDITO_INTEIRA, '').replace(/^[\s.,;:-]+/, '').replace(/\s+([.,;])/g, '$1'))
+  if (!resto) return frase
+  return `${frase} ${resto}`.slice(0, LIMITE_INF_CPL).trim()
+}
+
 function icms(item: Item): string {
   const orig = item.origem ?? '0'
   switch (item.csosn) {
     case '101': {
-      const credito = centavos((valorProduto(item) / 100) * (Number(item.aliquotaCreditoSN) / 100))
+      const credito = creditoDoItem(item)
       return el('ICMS', el('ICMSSN101', [
         leaf('orig', orig),
         leaf('CSOSN', '101'),
@@ -659,9 +740,8 @@ export function montarNfe(input: NfeInput): NfeMontada {
     pago > t.nota && input.pagamentos.every((x) => x.forma !== '90') ? leaf('vTroco', dec2(pago - t.nota)) : null,
   ])
 
-  const infAdic = input.informacoesComplementares?.trim()
-    ? el('infAdic', leaf('infCpl', txt(input.informacoesComplementares, 5000)))
-    : null
+  const infCpl = informacoesComplementaresDaNota(input.informacoesComplementares, input.itens)
+  const infAdic = infCpl ? el('infAdic', leaf('infCpl', txt(infCpl, LIMITE_INF_CPL))) : null
 
   const rt = input.responsavelTecnico
   const infRespTec = rt
