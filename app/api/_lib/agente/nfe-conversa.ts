@@ -16,8 +16,10 @@ import { MUNICIPIOS_IBGE } from '../nfe/municipios-ibge.js'
 import {
   avisosNfe,
   calcularTotais,
+  informacoesComplementaresDaNota,
   kg,
   MODALIDADES_FRETE,
+  resumoCreditoSn,
   soDigitos,
   type Csosn,
   type Item,
@@ -651,6 +653,9 @@ async function mostrarResumo(ctx: Contexto, id: string, estado: EstadoNfe): Prom
   const t = calcularTotais(pedido.itens)
   const d = pedido.destinatario
   const vol = pedido.volumes?.[0]
+  // Com CSOSN 101, o crédito e o texto como vão à nota (a frase do art. 23 da LC 123/2006 sai calculada).
+  const credito = resumoCreditoSn(pedido.itens)
+  const info = informacoesComplementaresDaNota(pedido.informacoesComplementares, pedido.itens)
   const linhas = [
     `*Resumo da NF-e*${dados?.ambiente !== 'producao' ? ' (homologação, sem valor fiscal)' : ''}`,
     `Emitente: ${estado.empresa!.razao_social} (CNPJ ${formatarDocumento(estado.empresa!.cnpj)})`,
@@ -666,7 +671,8 @@ async function mostrarResumo(ctx: Contexto, id: string, estado: EstadoNfe): Prom
     ...(vol
       ? [`Volumes: ${[vol.quantidade != null ? `${vol.quantidade} ${vol.especie ?? ''}`.trim() : vol.especie, vol.marca && `marca ${vol.marca}`, vol.numeracao && `nº ${vol.numeracao}`, vol.pesoLiquido != null && `líquido ${kg(vol.pesoLiquido)}`, vol.pesoBruto != null && `bruto ${kg(vol.pesoBruto)}`].filter(Boolean).join(' · ')}`]
       : []),
-    ...(pedido.informacoesComplementares ? [`Informações: ${pedido.informacoesComplementares}`] : []),
+    ...(credito ? [`Crédito de ICMS do Simples: ${credito}`] : []),
+    ...(info ? [`Informações: ${info}`] : []),
   ]
   const avisos = avisosNfe(pedido)
   if (problemas.length) {

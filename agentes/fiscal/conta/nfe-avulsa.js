@@ -240,6 +240,7 @@
       ['Total da nota', t.nota],
       ['Pagamento', s.pagamento],
       ['Transporte', s.transporte || ''],
+      ['Crédito de ICMS (Simples)', s.credito_icms_sn || ''],
       ['Informações complementares', s.informacoes_complementares || '']
     ]);
     $('fa-nfa-itens-resumo').innerHTML = (s.itens || []).map(function (i) {
