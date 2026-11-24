@@ -12,6 +12,7 @@ import { logEvent } from '../log.js'
 import { saiuComRetentativa } from './canais.js'
 import { responder, semAcento, type Contexto } from './conversa.js'
 import { formatarDocumento, formatarReais } from './documentos.js'
+import { blocos, topicos } from './formato.js'
 import { registrarEntrega } from './entregas.js'
 import { planoDeEscritorio } from './planos.js'
 import { dataBr, limitesDoMes, partesLocais } from './tempo.js'
@@ -157,11 +158,17 @@ async function porNumero(ctx: Contexto, escopo: Escopo, pedido: { numero: string
   const exemplo = rows[0]
   await responder(
     ctx,
-    [
-      `Achei a nota nº ${pedido.numero} em mais de uma empresa:`,
-      ...rows.slice(0, MAX_NA_LISTA).map((r) => `- ${r.razao_social} (CNPJ ${formatarDocumento(r.cnpj)}) · ${r.nome ?? 'tomador'} · ${r.valor ? formatarReais(r.valor) : '-'} · ${dataBr(r.issued_at)}`),
+    blocos(
+      [
+        `Achei a nota nº ${pedido.numero} em mais de uma empresa:`,
+        topicos(
+          rows
+            .slice(0, MAX_NA_LISTA)
+            .map((r) => `${r.razao_social} (CNPJ ${formatarDocumento(r.cnpj)}) · ${r.nome ?? 'tomador'} · ${r.valor ? formatarReais(r.valor) : '-'} · ${dataBr(r.issued_at)}`),
+        ),
+      ],
       `Me mande o número com o CNPJ ou o nome da empresa, por exemplo: nota ${pedido.numero} ${formatarDocumento(exemplo.cnpj)}`,
-    ].join('\n'),
+    ),
   )
   return true
 }
@@ -197,13 +204,16 @@ async function porNome(ctx: Contexto, escopo: Escopo, nome: string): Promise<boo
   if (achadas.length > MAX_NA_LISTA) {
     await responder(
       ctx,
-      `Achei ${achadas.length} notas para ${nome} nos últimos 2 meses. Escreva mais do nome do cliente, ou mande *nota* e o número da nota.`,
+      blocos(`Achei ${achadas.length} notas para ${nome} nos últimos 2 meses.`, 'Escreva mais do nome do cliente, ou mande *nota* e o número da nota.'),
     )
     return true
   }
   await responder(
     ctx,
-    [`Achei ${achadas.length} notas para ${nome} nos últimos 2 meses:`, ...achadas.map((n) => `- ${linhaDaLista(n, escopo.escritorio)}`), 'Me mande *nota* e o número para receber o PDF, por exemplo: nota ' + achadas[0].numero].join('\n'),
+    blocos(
+      [`Achei ${achadas.length} notas para ${nome} nos últimos 2 meses:`, topicos(achadas.map((n) => linhaDaLista(n, escopo.escritorio)))],
+      'Me mande *nota* e o número para receber o PDF, por exemplo: nota ' + achadas[0].numero,
+    ),
   )
   return true
 }
@@ -269,12 +279,19 @@ async function tratarVerNfe(ctx: Contexto, pedido: PedidoDeNfe): Promise<boolean
   }
   await responder(
     ctx,
-    [
-      `Achei ${achadas.length} NF-e:`,
-      ...achadas.slice(0, MAX_NA_LISTA).map((r) => `- nº ${r.numero} (série ${r.serie}) · ${dataBr(r.authorized_at)} · ${r.destinatario_nome} · ${formatarReais(r.valor_total)}${escopo.escritorio ? ` · ${r.razao_social}` : ''}`),
-      ...(achadas.length > MAX_NA_LISTA ? [`e mais ${achadas.length - MAX_NA_LISTA}.`] : []),
+    blocos(
+      [
+        `Achei ${achadas.length} NF-e:`,
+        topicos([
+          ...achadas
+            .slice(0, MAX_NA_LISTA)
+            .map((r) => `nº ${r.numero} (série ${r.serie}) · ${dataBr(r.authorized_at)} · ${r.destinatario_nome} · ${formatarReais(r.valor_total)}${escopo.escritorio ? ` · ${r.razao_social}` : ''}`),
+          ...(achadas.length > MAX_NA_LISTA ? [`e mais ${achadas.length - MAX_NA_LISTA}.`] : []),
+        ]),
+      ],
       'O DANFE de cada uma também fica em Minha conta → NF-e.',
-    ].join(QUEBRA),
+    ),
+
   )
   return true
 }

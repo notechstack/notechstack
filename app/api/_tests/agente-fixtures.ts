@@ -6,6 +6,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import pg from 'pg'
 import type { AnexoEmail, EnviaEmail, EnviaWhatsApp, MensagemEmail } from '../_lib/agente/canais.js'
 import { TEXTOS, type MensagemRecebida } from '../_lib/agente/conversa.js'
+import { conferirFormato } from './formato-registro.js'
 import type { Interprete, Parsed } from '../_lib/agente/interprete.js'
 import type { Links } from '../_lib/agente/links.js'
 import type { BaixaMidia } from '../_lib/agente/whatsapp-cloud.js'
@@ -170,9 +171,11 @@ export function canaisDouble(): {
     },
     whatsapp: {
       async enviarTexto(para, texto) {
+        conferirFormato(texto)
         whatsapps.push({ para, texto })
       },
       async enviarDocumento(para, anexo, legenda) {
+        conferirFormato(legenda)
         whatsapps.push({ para, texto: legenda, anexo })
       },
       async enviarModelo(para, nome, parametros) {

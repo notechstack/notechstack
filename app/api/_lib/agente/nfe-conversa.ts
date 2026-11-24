@@ -33,6 +33,7 @@ import type { EnviaWhatsApp } from './canais.js'
 import { ehConfirmarEmissao, ehDesistir, responder, semAcento, VALIDADE_DO_PEDIDO_MS, type Contexto } from './conversa.js'
 import { documentoNoTexto, formatarDocumento, formatarReais } from './documentos.js'
 import { empresasDaResposta, empresasParaEscolher, perguntaDoEmitente, type EmpresaDaConta } from './emitente.js'
+import { blocos, campo, mensagem, topicos } from './formato.js'
 import { planoDeEscritorio } from './planos.js'
 
 const QUEBRA = '\n'
@@ -87,26 +88,30 @@ export const TEXTOS_NFE = {
   semPlano: 'A NF-e pelo WhatsApp é do plano Escritório com NF-e. Para incluir, fale com a nó por aqui mesmo.',
   descartada: 'Ok, deixei essa NF-e de lado. Quando quiser outra, é só mandar *nfe*.',
   pagamento: 'Qual a forma de pagamento? *pix*, *boleto*, *dinheiro*, *credito*, *debito*, *transferencia*, *sem pagamento* ou *outros: descrição*.',
-  transporte: [
-    'Tem frete, transportadora ou volumes? Responda *não*, ou mande o que tiver, separado por ponto e vírgula. Exemplos:',
-    'frete 25,00; por conta do emitente; transportadora 11.444.777/0001-61; 10 caixas; peso 60,4',
-    'Também vale: *fob*, *cif*, *terceiros*, *sem frete*, *marca X*, *numeração 1 a 10*, *peso liquido 60*, *peso bruto 61*.',
-  ].join(QUEBRA),
+  transporte: mensagem({
+    titulo: 'Transporte',
+    blocos: [
+      [
+        'Tem frete, transportadora ou volumes? Responda *não*, ou mande o que tiver, separado por ponto e vírgula. Exemplos:',
+        'frete 25,00; por conta do emitente; transportadora 11.444.777/0001-61; 10 caixas; peso 60,4',
+      ],
+      'Também vale: *fob*, *cif*, *terceiros*, *sem frete*, *marca X*, *numeração 1 a 10*, *peso liquido 60*, *peso bruto 61*.',
+    ],
+  }),
   modalidade: 'Por conta de quem é o frete? *emitente* (CIF), *destinatario* (FOB), *terceiros*, *proprio remetente* ou *proprio destinatario*.',
   info: 'Quer informações complementares na nota (por exemplo, a frase do Simples ou o crédito de ICMS)? Mande o texto, ou *não*.',
-  endereco:
-    'Mande o endereço do cliente numa mensagem, separado por vírgula: rua, número, bairro, CEP, cidade/UF.' +
-    QUEBRA +
+  endereco: blocos(
+    'Mande o endereço do cliente numa mensagem, separado por vírgula: rua, número, bairro, CEP, cidade/UF.',
     'Exemplo: Rua das Flores, 100, Centro, 12900-000, Bragança Paulista/SP',
+  ),
   ie: 'O cliente tem inscrição estadual? Mande o número, *isento*, ou *não* (não contribuinte).',
-  produtoNovo:
-    'Mande o produto novo numa mensagem, separado por ponto e vírgula, nesta ordem:' +
-    QUEBRA +
-    'código; descrição; NCM; CFOP; CSOSN; unidade; quantidade; preço unitário' +
-    QUEBRA +
-    'No CSOSN 101, ponha no fim a alíquota do crédito. Exemplo:' +
-    QUEBRA +
-    'EMB-50; Caixa 50x40x30; 4819.10.00; 5101; 101; UN; 200; 3,10; 2,56',
+  produtoNovo: mensagem({
+    titulo: 'Produto novo',
+    blocos: [
+      ['Mande o produto novo numa mensagem, separado por ponto e vírgula, nesta ordem:', 'código; descrição; NCM; CFOP; CSOSN; unidade; quantidade; preço unitário'],
+      ['No CSOSN 101, ponha no fim a alíquota do crédito. Exemplo:', 'EMB-50; Caixa 50x40x30; 4819.10.00; 5101; 101; UN; 200; 3,10; 2,56'],
+    ],
+  }),
   corrigir: 'O que muda? *cliente*, *produtos*, *pagamento*, *transporte* ou *informações*.',
   pergunta: 'Posso emitir? Responda *confirmar* para emitir, *corrigir* para mudar algo ou *descartar*.',
 }
@@ -242,7 +247,7 @@ async function responderPasso(ctx: Contexto, id: string, estado: EstadoNfe, text
     }
     case 'endereco': {
       const lido = lerEndereco(texto)
-      if ('erro' in lido) return void (await responder(ctx, `${lido.erro}${QUEBRA}${TEXTOS_NFE.endereco}`))
+      if ('erro' in lido) return void (await responder(ctx, blocos(lido.erro, TEXTOS_NFE.endereco)))
       const r = { ...estado.rascunho!, endereco: lido.endereco }
       if (r.documento.length === 11) return fecharDestinatario(ctx, id, estado, { documento: r.documento, nome: r.nome!, indicadorIE: '9', endereco: lido.endereco })
       await salvar(ctx, id, { ...estado, rascunho: r, passo: 'ie' })
@@ -325,11 +330,13 @@ async function escolherEmpresa(ctx: Contexto, id: string, estado: EstadoNfe, e: 
   await salvar(ctx, id, novo, e.id)
   await responder(
     ctx,
-    [
-      `NF-e pela ${e.razao_social}. Para quem é? Mande o CPF ou CNPJ do cliente${clientes.length ? ', ou o número de um cliente recente:' : '.'}`,
-      ...clientes.map((d, i) => `${i + 1}. ${d.nome} · ${formatarDocumento(soDigitos(d.documento))}`),
+    blocos(
+      [
+        `NF-e pela ${e.razao_social}. Para quem é? Mande o CPF ou CNPJ do cliente${clientes.length ? ', ou o número de um cliente recente:' : '.'}`,
+        ...clientes.map((d, i) => `${i + 1}. ${d.nome} · ${formatarDocumento(soDigitos(d.documento))}`),
+      ],
       'Para desistir, *descartar*.',
-    ].join(QUEBRA),
+    ),
   )
 }
 
@@ -360,7 +367,7 @@ async function escolherDestinatario(ctx: Contexto, id: string, estado: EstadoNfe
     if (nome && end && uf) {
       const endereco = { logradouro: end.logradouro, numero: end.numero || 'S/N', complemento: end.complemento ?? null, bairro: end.bairro, codigoMunicipio: end.cMun, uf: uf as Destinatario['endereco']['uf'], cep: end.cep }
       await salvar(ctx, id, { ...estado, rascunho: { documento: doc, nome: nome.slice(0, 60), endereco }, passo: 'ie', opcoes: undefined })
-      await responder(ctx, [`Achei na Receita: ${nome}, ${endereco.logradouro}, ${endereco.numero}, ${endereco.bairro}, ${MUNICIPIOS_IBGE[end.cMun]}/${uf}.`, TEXTOS_NFE.ie].join(QUEBRA))
+      await responder(ctx, blocos(`Achei na Receita: ${nome}, ${endereco.logradouro}, ${endereco.numero}, ${endereco.bairro}, ${MUNICIPIOS_IBGE[end.cMun]}/${uf}.`, TEXTOS_NFE.ie))
       return
     }
   }
@@ -407,16 +414,16 @@ async function fecharDestinatario(ctx: Contexto, id: string, estado: EstadoNfe, 
 
 async function textoDosProdutos(ctx: Contexto, estado: EstadoNfe): Promise<string> {
   const produtos = (await historico(ctx, estado)).produtos.slice(0, MAX_PRODUTOS_NA_LISTA)
-  return [
+  return blocos(
     `Cliente: ${estado.destinatario!.nome}. Agora os produtos.`,
     ...(produtos.length
       ? [
           'Mande um produto por linha: o número da lista (ou o código) e a quantidade. Preço diferente ou desconto: *1 500 preco 2,40 desconto 61,25*.',
-          ...produtos.map((p, i) => `${i + 1}. ${p.codigo} · ${p.descricao} · ${formatarReais(p.valorUnitario)}/${p.unidade} · NCM ${p.ncm} · CFOP ${p.cfop} · CSOSN ${p.csosn}`),
+          produtos.map((p, i) => `${i + 1}. ${p.codigo} · ${p.descricao} · ${formatarReais(p.valorUnitario)}/${p.unidade} · NCM ${p.ncm} · CFOP ${p.cfop} · CSOSN ${p.csosn}`),
           'Produto que nunca saiu por esta empresa: mande *novo*.',
         ]
       : ['Esta empresa ainda não emitiu NF-e, então não tenho produtos salvos. Mande *novo* para escrever o primeiro.']),
-  ].join(QUEBRA)
+  )
 }
 
 /** Uma linha de item: "<n|código> <quantidade> [preco X] [desconto Y]". */
@@ -451,7 +458,7 @@ async function receberItens(ctx: Contexto, id: string, estado: EstadoNfe, texto:
     return
   }
   if (/^(pronto|so isso|e isso|fim|acabou|terminei|ok)$/.test(t)) {
-    if (!estado.itens.length) return void (await responder(ctx, 'Ainda não anotei nenhum produto. ' + (await textoDosProdutos(ctx, estado))))
+    if (!estado.itens.length) return void (await responder(ctx, blocos('Ainda não anotei nenhum produto.', await textoDosProdutos(ctx, estado))))
     return depoisDosItens(ctx, id, estado)
   }
   const produtos = (await historico(ctx, estado)).produtos
@@ -463,11 +470,11 @@ async function receberItens(ctx: Contexto, id: string, estado: EstadoNfe, texto:
   }
   const itens = [...estado.itens, ...novos]
   await salvar(ctx, id, { ...estado, itens })
-  await responder(ctx, [`Anotei:`, ...itens.map(linhaDoItem), 'Mais algum? Mande outro produto, *novo*, ou *pronto*.'].join(QUEBRA))
+  await responder(ctx, blocos(['Anotei:', topicos(itens.map(linhaDoItem))], 'Mais algum? Mande outro produto, *novo*, ou *pronto*.'))
 }
 
 const linhaDoItem = (i: Item) =>
-  `- ${i.codigo} · ${i.descricao} · ${String(i.quantidade).replace('.', ',')} ${i.unidade} × ${formatarReais(i.valorUnitario)}${i.desconto ? ` (desconto ${formatarReais(i.desconto)})` : ''}`
+  `${i.codigo} · ${i.descricao} · ${String(i.quantidade).replace('.', ',')} ${i.unidade} × ${formatarReais(i.valorUnitario)}${i.desconto ? ` (desconto ${formatarReais(i.desconto)})` : ''}`
 
 const CSOSNS = ['101', '102', '103', '300', '400', '500']
 
@@ -498,10 +505,13 @@ export function lerProdutoNovo(texto: string): { item: Item } | { erro: string }
 
 async function receberProdutoNovo(ctx: Contexto, id: string, estado: EstadoNfe, texto: string): Promise<void> {
   const lido = lerProdutoNovo(texto)
-  if ('erro' in lido) return void (await responder(ctx, `${lido.erro}${QUEBRA}${TEXTOS_NFE.produtoNovo}`))
+  if ('erro' in lido) return void (await responder(ctx, blocos(lido.erro, TEXTOS_NFE.produtoNovo)))
   const itens = [...estado.itens, lido.item]
   await salvar(ctx, id, { ...estado, itens, passo: 'itens' })
-  await responder(ctx, ['Anotei (origem nacional; para outra origem, use o painel):', ...itens.map(linhaDoItem), 'Mais algum? Mande outro produto, *novo*, ou *pronto*.'].join(QUEBRA))
+  await responder(
+    ctx,
+    blocos(['Anotei (origem nacional; para outra origem, use o painel):', topicos(itens.map(linhaDoItem))], 'Mais algum? Mande outro produto, *novo*, ou *pronto*.'),
+  )
 }
 
 const primeiroDigitoDoCfop = (estado: EstadoNfe) => (estado.empresa?.uf && estado.destinatario && estado.empresa.uf !== estado.destinatario.endereco.uf ? '6' : '5')
@@ -587,7 +597,7 @@ async function receberTransporte(ctx: Contexto, id: string, estado: EstadoNfe, t
   }
   const hist = await historico(ctx, estado)
   const lido = lerTransporte(texto, hist.transportadores)
-  if ('erro' in lido) return void (await responder(ctx, `${lido.erro}${QUEBRA}${TEXTOS_NFE.transporte}`))
+  if ('erro' in lido) return void (await responder(ctx, blocos(lido.erro, TEXTOS_NFE.transporte)))
   let transportador = lido.transportador as Transportador | undefined
   // Transportadora nova pelo CNPJ: nome, município e UF da Receita (o resto fica em branco no XML, que é opcional).
   if (transportador && !transportador.nome && soDigitos(transportador.documento).length === 14 && ctx.deps.consultaCnpj) {
@@ -656,32 +666,45 @@ async function mostrarResumo(ctx: Contexto, id: string, estado: EstadoNfe): Prom
   // Com CSOSN 101, o crédito e o texto como vão à nota (a frase do art. 23 da LC 123/2006 sai calculada).
   const credito = resumoCreditoSn(pedido.itens)
   const info = informacoesComplementaresDaNota(pedido.informacoesComplementares, pedido.itens)
-  const linhas = [
+  // Blocos do resumo: quem, os produtos, os valores e o transporte, e o que vai escrito na nota.
+  const resumo = [
     `*Resumo da NF-e*${dados?.ambiente !== 'producao' ? ' (homologação, sem valor fiscal)' : ''}`,
-    `Emitente: ${estado.empresa!.razao_social} (CNPJ ${formatarDocumento(estado.empresa!.cnpj)})`,
-    `Cliente: ${d.nome} · ${formatarDocumento(soDigitos(d.documento))}${d.inscricaoEstadual ? ` · IE ${d.inscricaoEstadual}` : d.indicadorIE === '2' ? ' · isento' : ''}`,
-    `${d.endereco.logradouro}, ${d.endereco.numero}, ${d.endereco.bairro}, ${MUNICIPIOS_IBGE[d.endereco.codigoMunicipio] ?? d.endereco.codigoMunicipio}/${d.endereco.uf}`,
-    'Produtos:',
-    ...pedido.itens.map((i) => `${linhaDoItem(i)} · NCM ${i.ncm} · CFOP ${i.cfop} · CSOSN ${i.csosn}${i.csosn === '101' ? ` (crédito ${String(i.aliquotaCreditoSN).replace('.', ',')}%)` : ''}`),
-    ...(t.desconto ? [`Desconto: ${formatarReais(t.desconto / 100)}`] : []),
-    ...(t.frete ? [`Frete: ${formatarReais(t.frete / 100)}`] : []),
-    `*Total: ${formatarReais(t.nota / 100)}* · ${NOME_DA_FORMA[pedido.pagamentos[0].forma] ?? pedido.pagamentos[0].forma}`,
-    ...(pedido.modalidadeFrete ? [`Frete por conta: ${MODALIDADES_FRETE[pedido.modalidadeFrete]}`] : []),
-    ...(pedido.transportador ? [`Transportadora: ${pedido.transportador.nome ?? ''}${pedido.transportador.documento ? ' · ' + formatarDocumento(soDigitos(pedido.transportador.documento)) : ''}`] : []),
-    ...(vol
-      ? [`Volumes: ${[vol.quantidade != null ? `${vol.quantidade} ${vol.especie ?? ''}`.trim() : vol.especie, vol.marca && `marca ${vol.marca}`, vol.numeracao && `nº ${vol.numeracao}`, vol.pesoLiquido != null && `líquido ${kg(vol.pesoLiquido)}`, vol.pesoBruto != null && `bruto ${kg(vol.pesoBruto)}`].filter(Boolean).join(' · ')}`]
-      : []),
-    ...(credito ? [`Crédito de ICMS do Simples: ${credito}`] : []),
-    ...(info ? [`Informações: ${info}`] : []),
+    [
+      campo('Emitente', `${estado.empresa!.razao_social} (CNPJ ${formatarDocumento(estado.empresa!.cnpj)})`),
+      campo('Cliente', `${d.nome} · ${formatarDocumento(soDigitos(d.documento))}${d.inscricaoEstadual ? ` · IE ${d.inscricaoEstadual}` : d.indicadorIE === '2' ? ' · isento' : ''}`),
+      `${d.endereco.logradouro}, ${d.endereco.numero}, ${d.endereco.bairro}, ${MUNICIPIOS_IBGE[d.endereco.codigoMunicipio] ?? d.endereco.codigoMunicipio}/${d.endereco.uf}`,
+    ],
+    [
+      '*Produtos:*',
+      topicos(pedido.itens.map((i) => `${linhaDoItem(i)} · NCM ${i.ncm} · CFOP ${i.cfop} · CSOSN ${i.csosn}${i.csosn === '101' ? ` (crédito ${String(i.aliquotaCreditoSN).replace('.', ',')}%)` : ''}`)),
+    ],
+    [
+      t.desconto ? campo('Desconto', formatarReais(t.desconto / 100)) : null,
+      t.frete ? campo('Frete', formatarReais(t.frete / 100)) : null,
+      `*Total: ${formatarReais(t.nota / 100)}* · ${NOME_DA_FORMA[pedido.pagamentos[0].forma] ?? pedido.pagamentos[0].forma}`,
+      pedido.modalidadeFrete ? campo('Frete por conta', MODALIDADES_FRETE[pedido.modalidadeFrete]) : null,
+      pedido.transportador
+        ? campo('Transportadora', `${pedido.transportador.nome ?? ''}${pedido.transportador.documento ? ' · ' + formatarDocumento(soDigitos(pedido.transportador.documento)) : ''}`)
+        : null,
+      vol
+        ? campo(
+            'Volumes',
+            [vol.quantidade != null ? `${vol.quantidade} ${vol.especie ?? ''}`.trim() : vol.especie, vol.marca && `marca ${vol.marca}`, vol.numeracao && `nº ${vol.numeracao}`, vol.pesoLiquido != null && `líquido ${kg(vol.pesoLiquido)}`, vol.pesoBruto != null && `bruto ${kg(vol.pesoBruto)}`]
+              .filter(Boolean)
+              .join(' · '),
+          )
+        : null,
+    ],
+    [credito ? campo('Crédito de ICMS do Simples', credito) : null, info ? campo('Informações', info) : null],
   ]
   const avisos = avisosNfe(pedido)
   if (problemas.length) {
     await salvar(ctx, id, { ...estado, passo: 'corrigir' })
-    await responder(ctx, [...linhas, '', '*Não dá para emitir assim:*', ...problemas.map((p) => `- ${p}`), '', TEXTOS_NFE.corrigir].join(QUEBRA))
+    await responder(ctx, blocos(...resumo, ['*Não dá para emitir assim:*', topicos(problemas)], TEXTOS_NFE.corrigir))
     return
   }
   await salvar(ctx, id, { ...estado, passo: 'confirmar' })
-  await responder(ctx, [...linhas, ...(avisos.length ? ['', ...avisos.map((a) => `Confira: ${a}`)] : []), '', TEXTOS_NFE.pergunta].join(QUEBRA))
+  await responder(ctx, blocos(...resumo, avisos.map((a) => `Confira: ${a}`), TEXTOS_NFE.pergunta))
 }
 
 async function corrigir(ctx: Contexto, id: string, estado: EstadoNfe, texto: string): Promise<void> {
@@ -690,12 +713,12 @@ async function corrigir(ctx: Contexto, id: string, estado: EstadoNfe, texto: str
     const hist = await historico(ctx, estado)
     const clientes = hist.destinatarios.slice(0, MAX_CLIENTES_NA_LISTA)
     await salvar(ctx, id, { ...estado, passo: 'destinatario', opcoes: clientes.map((d) => d.documento) })
-    await responder(ctx, ['Mande o CPF/CNPJ do cliente, ou o número:', ...clientes.map((d, i) => `${i + 1}. ${d.nome} · ${formatarDocumento(soDigitos(d.documento))}`)].join(QUEBRA))
+    await responder(ctx, blocos(['Mande o CPF/CNPJ do cliente, ou o número:', ...clientes.map((d, i) => `${i + 1}. ${d.nome} · ${formatarDocumento(soDigitos(d.documento))}`)]))
     return
   }
   if (/^(produto|itens|item)/.test(t)) {
     await salvar(ctx, id, { ...estado, itens: [], passo: 'itens' })
-    await responder(ctx, 'Apaguei os produtos desta nota. ' + (await textoDosProdutos(ctx, estado)))
+    await responder(ctx, blocos('Apaguei os produtos desta nota.', await textoDosProdutos(ctx, estado)))
     return
   }
   if (/^(pagamento|forma)/.test(t)) {
@@ -723,7 +746,8 @@ async function emitir(ctx: Contexto, id: string, estado: EstadoNfe): Promise<voi
   if (!r.ok) {
     const motivo = r.codigo === 'BLOQUEADA' ? `${estado.empresa!.razao_social} não emite NF-e agora: ${motivoDoBloqueio(r.bloqueio)}.` : r.problemas.join(' ')
     await salvar(ctx, id, { ...estado, passo: 'corrigir' })
-    await responder(ctx, `Não deu para emitir: ${motivo}${QUEBRA}${TEXTOS_NFE.corrigir}`)
+    await responder(ctx, blocos(`Não deu para emitir: ${motivo}`, TEXTOS_NFE.corrigir))
+
     return
   }
   await encerrar(ctx, id, 'confirmed', { ...estado, nfe_id: r.nfeId })
@@ -763,7 +787,11 @@ export async function avisarNfeDoWhatsApp(
       const motivo = n.last_error ? `${n.last_error_code ? n.last_error_code + ' ' : ''}${n.last_error}` : 'sem motivo informado'
       await whatsapp.enviarTexto(
         n.phone_e164,
-        `A Sefaz ${status === 'denied' ? 'denegou' : 'rejeitou'} a NF-e ${n.numero} (série ${n.serie}) para ${n.destinatario_nome}: ${motivo}. Corrija e mande *nfe* de novo; o número pode ser inutilizado em Minha conta → NF-e.`,
+        blocos(
+          `A Sefaz ${status === 'denied' ? 'denegou' : 'rejeitou'} a NF-e ${n.numero} (série ${n.serie}) para ${n.destinatario_nome}: ${motivo}.`,
+          'Corrija e mande *nfe* de novo; o número pode ser inutilizado em Minha conta → NF-e.',
+        ),
+
       )
     }
     logEvent('agente.nfe_avisada', { nfe_id: nfeId, status })

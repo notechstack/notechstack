@@ -124,7 +124,7 @@ describe('intérprete por Claude', () => {
       ai_input_tokens: 321,
       ai_output_tokens: 45,
     })
-    expect(canais.whatsapps.filter((m) => !ehPerguntaDeInfo(m.texto)).at(-1)?.texto).toContain('Resumo da nota:')
+    expect(canais.whatsapps.filter((m) => !ehPerguntaDeInfo(m.texto)).at(-1)?.texto).toContain('*Resumo da nota*')
 
     // Sem a chave: o intérprete da v1, que não chama a IA.
     const chamadasAntes = ia.chamadas.length

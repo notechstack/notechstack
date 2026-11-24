@@ -412,12 +412,12 @@ describe('códigos de problema por linha', () => {
     const itens = validarLinhas(linhas, contexto())
     const texto = textoDoResumoDoLote({ arquivo: 'novembro.xlsx', itens, empresas: [ESCRITORIO, CLIENTE], franquia: { limite: 500, noMes: 498 } })
     expect(texto).toContain('Li a planilha novembro.xlsx: 21 linhas.')
-    expect(texto).toContain('Prontas para emitir: 4, total R$ 1.600,50.')
-    expect(texto).toContain('Empresas: Escritório Toledo (3 notas), Padaria Cliente (1 nota).')
-    expect(texto).toContain('Com problema (ficam de fora): 17 linhas.')
-    expect(texto).toContain('- Linha 6: CPF ou CNPJ do tomador inválido')
-    expect(texto.match(/^- Linha /gm)).toHaveLength(15)
-    expect(texto).toContain('- e mais 2 linhas com problema.')
+    expect(texto).toContain('*Prontas para emitir:* 4, total R$ 1.600,50.')
+    expect(texto).toContain('*Empresas:* Escritório Toledo (3 notas), Padaria Cliente (1 nota).')
+    expect(texto).toContain('*Com problema (ficam de fora):* 17 linhas.')
+    expect(texto).toContain('• Linha 6: CPF ou CNPJ do tomador inválido')
+    expect(texto.match(/^• Linha /gm)).toHaveLength(15)
+    expect(texto).toContain('• e mais 2 linhas com problema.')
     expect(texto).toContain('o mês chega a 502 notas, 2 acima das 500 do seu plano. As notas saem normalmente.')
     expect(texto.split('\n').at(-1)).toBe('Responda *confirmar* para emitir as 4 notas prontas, ou *cancelar* para descartar. Vale por 24 horas.')
   })
@@ -428,7 +428,7 @@ describe('códigos de problema por linha', () => {
       contexto({ bloqueios: new Map([['e2', 'CERT_EXPIRED']]) }),
     )
     const texto = textoDoResumoDoLote({ arquivo: null, itens, empresas: [ESCRITORIO, CLIENTE], franquia: null })
-    expect(texto).toContain('- Linha 2: o certificado A1 de Padaria Cliente venceu')
+    expect(texto).toContain('• Linha 2: o certificado A1 de Padaria Cliente venceu')
     expect(texto).toContain('Nenhuma linha está pronta para emitir.')
     expect(texto).not.toContain('*confirmar*')
   })
@@ -487,10 +487,11 @@ describe('retorno do lote', () => {
     const c = contagemDoRetorno([...itens, { ...itens[0], linha: 7, status: 'queued', invoice_id: 'i9' }])
     expect(avisoDoRetorno(lote, c, { email: 'sandra@escritorio.test', pdfsNoEmail: true }, relatorios)).toBe(
       [
+        '*Planilha concluída*',
         'Planilha de 05/11/2026: 1 nota emitida (R$ 1.500,00), 1 recusada, 1 ainda na fila e 3 linhas não emitidas.',
         `O retorno (CSV) e os PDFs foram para sandra@escritorio.test. Tudo também em Minha conta → Relatórios: ${relatorios}`,
         'Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
-      ].join('\n'),
+      ].join('\n\n'),
     )
     // .zip acima do limite do e-mail: o aviso manda os PDFs para Relatórios.
     expect(avisoDoRetorno(lote, c, { email: 'sandra@escritorio.test', pdfsNoEmail: false }, relatorios)).toContain(

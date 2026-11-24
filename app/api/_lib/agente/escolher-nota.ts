@@ -6,6 +6,7 @@
 // opção, a linha colada, a empresa, o cliente, o valor, o nº da nota ou a data, sozinhos ou juntos. Só resolve quando
 // sobra uma; sobrando mais, a lista volta só com as que restaram.
 import { formatarReais } from './documentos.js'
+import { blocos } from './formato.js'
 import { dataBr } from './tempo.js'
 
 /** `empresa` = a razão social de quem emitiu, só na conta Escritório com mais de uma empresa (a numeração é por empresa). */
@@ -24,7 +25,8 @@ export const COMO_RESPONDER =
 
 /** A lista numerada, com o cabeçalho e o jeito de responder no fim. */
 export const listaDeOpcoes = (cabecalho: string, candidatas: Candidata[]) =>
-  [cabecalho, ...candidatas.map((c, i) => linhaDaOpcao(c, i + 1)), COMO_RESPONDER].join('\n')
+  blocos([cabecalho, ...candidatas.map((c, i) => linhaDaOpcao(c, i + 1))], COMO_RESPONDER)
+
 
 /** "sair", "cancelar pedido": larga a escolha sem cancelar nada. */
 export const ehSairDaEscolha = (texto: string) =>

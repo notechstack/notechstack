@@ -123,10 +123,10 @@ describe('lote por planilha (conta Escritório)', () => {
     // Resumo: 2 prontas, 3 com problema (bloqueio da empresa, documento, linha repetida).
     const resumo = await a.planilha(e.mae.ownerPhone, `\uFEFF${csv}\r\n`)
     expect(resumo).toContain('Li a planilha novembro.csv: 5 linhas.')
-    expect(resumo).toContain('Prontas para emitir: 2, total R$ 1.150,00.')
-    expect(resumo).toContain('- Linha 4: Oficina Sem Certificado ainda não tem certificado A1')
-    expect(resumo).toContain('- Linha 5: CPF ou CNPJ do tomador inválido')
-    expect(resumo).toContain('- Linha 6: igual à linha 2 (mesmo prestador, tomador, valor e código de serviço)')
+    expect(resumo).toContain('*Prontas para emitir:* 2, total R$ 1.150,00.')
+    expect(resumo).toContain('• Linha 4: Oficina Sem Certificado ainda não tem certificado A1')
+    expect(resumo).toContain('• Linha 5: CPF ou CNPJ do tomador inválido')
+    expect(resumo).toContain('• Linha 6: igual à linha 2 (mesmo prestador, tomador, valor e código de serviço)')
     expect(resumo).toContain('Responda *confirmar* para emitir as 2 notas prontas')
 
     const [lote] = await lotesDo(e.mae.tenant.id)
@@ -214,10 +214,11 @@ describe('lote por planilha (conta Escritório)', () => {
     expect(depois[0].para).toBe(e.mae.ownerPhone)
     expect(depois[0].texto).toBe(
       [
+        '*Planilha concluída*',
         `Planilha de ${dataBr(fechado.created_at)}: 2 notas emitidas (R$ 1.150,00) e 3 linhas não emitidas.`,
         `O retorno (CSV) e os PDFs foram para ${e.mae.ownerEmail}. Tudo também em Minha conta → Relatórios: ${LINKS_DE_TESTE.conta}#relatorios`,
         'Para ver uma nota aqui, escreva *nota* e o número ou o nome do cliente (ex.: nota 123, nota Maria Silva).',
-      ].join('\n'),
+      ].join('\n\n'),
     )
     const emailDoRetorno = a.canais.emails.filter((m) => m.assunto.startsWith('Retorno da planilha'))
     expect(emailDoRetorno).toHaveLength(1)
@@ -244,8 +245,8 @@ describe('lote por planilha (conta Escritório)', () => {
     // A mesma planilha depois do lote concluído passa (o hash só barra lote aguardando); as linhas que já viraram
     // nota ficam de fora por JA_EMITIDA_NO_MES.
     const deNovo = await a.planilha(e.mae.ownerPhone, `\uFEFF${csv}\r\n`)
-    expect(deNovo).toContain('- Linha 2: já há nota igual neste mês')
-    expect(deNovo).toContain('- Linha 3: já há nota igual neste mês')
+    expect(deNovo).toContain('• Linha 2: já há nota igual neste mês')
+    expect(deNovo).toContain('• Linha 3: já há nota igual neste mês')
     expect(deNovo).toContain('Nenhuma linha está pronta para emitir.')
     expect((await lotesDo(e.mae.tenant.id)).map((l) => l.status)).toEqual(['concluido', 'descartado'])
   })
@@ -285,14 +286,14 @@ describe('lote por planilha (conta Escritório)', () => {
     // Uma empresa só: cnpj_prestador pode faltar.
     const csv = `cpf_cnpj_tomador,nome_tomador,valor\n${CPF},Maria,"77,00"\n${CNPJ_TOMADOR},Padaria,"20,00"\n`
     const resumo = await a.planilha(e.mae.ownerPhone, csv)
-    expect(resumo).toContain('- Linha 2: já há nota igual neste mês (mesmo prestador, tomador, valor e código de serviço)')
+    expect(resumo).toContain('• Linha 2: já há nota igual neste mês (mesmo prestador, tomador, valor e código de serviço)')
     expect(resumo).toContain('Responda *confirmar* para emitir a nota pronta')
 
     expect(await a.texto(e.mae.ownerPhone, 'cancelar')).toBe(TEXTOS_DO_LOTE.descartado)
     expect((await lotesDo(e.mae.tenant.id)).map((l) => l.status)).toEqual(['descartado'])
 
     // Descartado não segura o hash: a mesma planilha volta, e passadas 24 h sem confirmar ela expira.
-    expect(await a.planilha(e.mae.ownerPhone, csv)).toContain('Prontas para emitir: 1')
+    expect(await a.planilha(e.mae.ownerPhone, csv)).toContain('*Prontas para emitir:* 1')
     agora = new Date(agora.getTime() + 24 * 3600_000 + 60_000)
     expect(await a.texto(e.mae.ownerPhone, 'confirmar')).toBe(TEXTOS_DO_LOTE.expirou)
     expect((await lotesDo(e.mae.tenant.id)).map((l) => l.status)).toEqual(['descartado', 'expirado'])
@@ -306,7 +307,7 @@ describe('lote por planilha (conta Escritório)', () => {
     await criarModelo(admin.db, e.mae.tenant.id, { nome: 'Prontia', documento: CNPJ_TOMADOR, nomeTomador: 'Prontia Saúde', descricao: 'Consultoria' })
     const a = agente(() => new Date())
     await a.planilha(e.mae.ownerPhone, `cpf_cnpj_tomador;nome_tomador;valor\n${CPF};Maria;30\n`)
-    expect(await a.texto(e.mae.ownerPhone, PEDIDO)).toContain('Resumo da nota:')
+    expect(await a.texto(e.mae.ownerPhone, PEDIDO)).toContain('*Resumo da nota*')
     expect(await a.texto(e.mae.ownerPhone, 'confirmar')).toBe(TEXTOS.emitindo)
     expect((await lotesDo(e.mae.tenant.id))[0].status).toBe('aguardando_confirmacao')
     // Agora o mais recente aguardando é o lote.
@@ -339,7 +340,7 @@ describe('lote por planilha: correções da revisão', () => {
     escritorios.push(e)
     const outro = await telefoneAutorizado(e.mae.tenant.id)
     const a = agente(() => new Date())
-    expect(await a.planilha(e.mae.ownerPhone, `cpf_cnpj_tomador;nome_tomador;valor\n${CPF};Maria;30\n`)).toContain('Prontas para emitir: 1')
+    expect(await a.planilha(e.mae.ownerPhone, `cpf_cnpj_tomador;nome_tomador;valor\n${CPF};Maria;30\n`)).toContain('*Prontas para emitir:* 1')
 
     // O outro telefone da conta não confirma nem descarta a planilha do dono.
     expect(await a.texto(outro, 'confirmar')).toBe(TEXTOS.semPedido)
@@ -347,7 +348,7 @@ describe('lote por planilha: correções da revisão', () => {
     expect((await lotesDo(e.mae.tenant.id)).map((l) => l.status)).toEqual(['aguardando_confirmacao'])
 
     // Com a própria planilha, cada um confirma a sua.
-    expect(await a.planilha(outro, `cpf_cnpj_tomador;nome_tomador;valor\n${CNPJ_TOMADOR};Padaria;45\n`)).toContain('Prontas para emitir: 1')
+    expect(await a.planilha(outro, `cpf_cnpj_tomador;nome_tomador;valor\n${CNPJ_TOMADOR};Padaria;45\n`)).toContain('*Prontas para emitir:* 1')
     expect(await a.texto(e.mae.ownerPhone, 'confirmar')).toContain('Confirmado. Emitindo 1 nota')
     const [doDono, doOutro] = await lotesDo(e.mae.tenant.id)
     expect([doDono.status, doOutro.status]).toEqual(['emitindo', 'aguardando_confirmacao'])

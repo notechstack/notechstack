@@ -151,8 +151,8 @@ describe('ver uma nota pelo WhatsApp', () => {
     const linhas = lista.texto.split('\n')
     expect(linhas[0]).toBe('Achei 2 notas para Maria nos últimos 2 meses:')
     expect(linhas.slice(1, 3).sort()).toEqual([
-      expect.stringMatching(/^- nº 1 · \d{2}\/\d{2}\/\d{4} · Maria Silva · R\$ 100,00$/),
-      expect.stringMatching(/^- nº 2 · \d{2}\/\d{2}\/\d{4} · Maria Souza · R\$ 50,00$/),
+      expect.stringMatching(/^• nº 1 · \d{2}\/\d{2}\/\d{4} · Maria Silva · R\$ 100,00$/),
+      expect.stringMatching(/^• nº 2 · \d{2}\/\d{2}\/\d{4} · Maria Souza · R\$ 50,00$/),
     ])
     expect(linhas.at(-1)).toMatch(/^Me mande \*nota\* e o número para receber o PDF/)
     // Nome sem nota: segue para os pedidos ("nota Zélia" = pedido para a Zélia), sem PDF.
@@ -183,7 +183,7 @@ describe('ver uma nota pelo WhatsApp', () => {
     const [ambigua] = await a.texto(e.mae.ownerPhone, 'nota 1')
     expect(ambigua.anexo).toBeUndefined()
     expect(ambigua.texto).toContain('Achei a nota nº 1 em mais de uma empresa:')
-    expect(ambigua.texto).toContain(`- Padaria Cliente Ltda (CNPJ ${formatarDocumento(cliente.cnpj)}) · Freguês da Padaria · R$ 45,00`)
+    expect(ambigua.texto).toContain(`• Padaria Cliente Ltda (CNPJ ${formatarDocumento(cliente.cnpj)}) · Freguês da Padaria · R$ 45,00`)
     expect(ambigua.texto).toContain('Honorários Cliente A · R$ 300,00')
     expect(ambigua.texto).not.toContain('Cliente de Outra Conta')
     expect(ambigua.texto).toMatch(/Me mande o número com o CNPJ ou o nome da empresa, por exemplo: nota 1 \d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/)

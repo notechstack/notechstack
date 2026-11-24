@@ -132,9 +132,9 @@ describe('planilha: coluna codigo_servico', () => {
     expect(motivoDoProblema('CODIGO_SERVICO_INVALIDO')).toContain('04.03.01')
 
     const resumo = textoDoResumoDoLote({ arquivo: 'clinica.csv', itens, empresas: [ESCRITORIO], franquia: null })
-    expect(resumo).toContain('Códigos de serviço: 04.08.02 (2 notas), 04.10.01 (2 notas), 04.16.01 (1 nota).')
-    expect(resumo).toContain('- Linha 8: o codigo_servico não está na lista nacional de serviços: confira o código')
-    expect(resumo).toContain('- Linha 9: codigo_servico inválido')
+    expect(resumo).toContain('*Códigos de serviço:* 04.08.02 (2 notas), 04.10.01 (2 notas), 04.16.01 (1 nota).')
+    expect(resumo).toContain('• Linha 8: o codigo_servico não está na lista nacional de serviços: confira o código')
+    expect(resumo).toContain('• Linha 9: codigo_servico inválido')
   })
 
   it('sem a lista nacional (site fora do ar), vale o formato; nota igual no mês conta o código', () => {
@@ -218,9 +218,9 @@ describe('planilha com codigo_servico, de ponta a ponta', () => {
     midia.guardar('m1', csv)
     await processarMensagem(deps, mensagemDePlanilha(e.mae.ownerPhone, 'clinica.csv', 'text/csv', 'm1'))
     const resumo = canais.whatsapps.at(-1)?.texto ?? ''
-    expect(resumo).toContain('Prontas para emitir: 4')
+    expect(resumo).toContain('*Prontas para emitir:* 4')
     expect(resumo).toContain('Códigos de serviço:')
-    expect(resumo).toContain('- Linha 6: o codigo_servico não está na lista nacional de serviços')
+    expect(resumo).toContain('• Linha 6: o codigo_servico não está na lista nacional de serviços')
 
     await processarMensagem(deps, mensagemDeTexto(e.mae.ownerPhone, 'confirmar'))
     expect(canais.whatsapps.at(-1)?.texto).toContain('Emitindo 4 notas')
@@ -265,7 +265,7 @@ describe('WhatsApp: código ou serviço no pedido', () => {
       'nota pra Clínica, 150': { tomador: 'Clínica', valor: '150.00', intencao: 'emitir' },
     })
     await c.enviar(s.ownerPhone, 'nota pra Clínica, 200, serviço de fisioterapia')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.08.02 Fisioterapia\n')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.08.02 Fisioterapia\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     const resposta = c.ultimaPara(s.ownerPhone)
     expect(resposta).toContain(TEXTOS.emitindo)
@@ -276,7 +276,7 @@ describe('WhatsApp: código ou serviço no pedido', () => {
 
     // A próxima nota para a Clínica, sem citar serviço, repete o código.
     await c.enviar(s.ownerPhone, 'nota pra Clínica, 150')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.08.02 Fisioterapia\n')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.08.02 Fisioterapia\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.emitindo)
   })
@@ -290,7 +290,7 @@ describe('WhatsApp: código ou serviço no pedido', () => {
     expect(c.ultimaPara(s.ownerPhone)).toContain('É a primeira nota para Maria')
     await c.enviar(s.ownerPhone, `${CPF} maria@paciente.test`)
     await c.enviar(s.ownerPhone, 'Plano alimentar')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.10.01 Nutrição\nDescrição na nota: Plano alimentar')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.10.01 Nutrição\n*Descrição na nota:* Plano alimentar')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await codigosDasNotas(s.tenant.id)).toEqual([{ codigo: '041001', documento: CPF }])
     // O pedido guarda o código: ao salvar o cliente (salvarModelo), é ele que vai para o modelo.
@@ -312,15 +312,15 @@ describe('WhatsApp: código ou serviço no pedido', () => {
     await c.enviar(s.ownerPhone, 'nota pra Clínica, 200, serviço de limpeza')
     const ambiguo = c.ultimaPara(s.ownerPhone)
     expect(ambiguo).toContain('Achei mais de um serviço para "limpeza":')
-    expect(ambiguo).toContain('- 07.10.01 ')
+    expect(ambiguo).toContain('• 07.10.01 ')
     expect(await pedidosDo(admin.db, s.tenant.id)).toEqual([])
 
     await c.enviar(s.ownerPhone, 'nota pra Clínica, 200')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.16.01 Psicologia\n')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.16.01 Psicologia\n')
     await c.enviar(s.ownerPhone, 'corrigir')
     expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.oQueMuda)
     await c.enviar(s.ownerPhone, 'código 04.08.02')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.08.02 Fisioterapia\n')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.08.02 Fisioterapia\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await codigosDasNotas(s.tenant.id)).toEqual([{ codigo: '040802', documento: CNPJ_TOMADOR }])
   })
@@ -331,7 +331,7 @@ describe('WhatsApp: código ou serviço no pedido', () => {
     // A IA leu "consultoria" como serviço; a mensagem não pede serviço nem código: fica o código do cliente.
     const c = conversa({ 'nota pra Clínica, 200, consultoria de outubro': { tomador: 'Clínica', valor: '200.00', descricao: 'Consultoria de outubro', servico: 'consultoria', intencao: 'emitir' } })
     await c.enviar(s.ownerPhone, 'nota pra Clínica, 200, consultoria de outubro')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Serviço: 04.16.01 Psicologia\nDescrição na nota: Consultoria de outubro')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Serviço:* 04.16.01 Psicologia\n*Descrição na nota:* Consultoria de outubro')
   })
 
   it('serviço ambíguo: fica o código que a empresa já usa; lista fora do ar: o código vale pelo formato', async () => {

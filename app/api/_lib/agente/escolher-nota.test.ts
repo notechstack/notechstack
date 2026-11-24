@@ -21,7 +21,9 @@ describe('a lista de notas', () => {
     expect(linhaDaOpcao(DA_4_ESTACOES, 1)).toBe('1) nº 2 de 4 ESTACOES BRAGANCA LTDA para CONTABILIDADE BRAGANTINA LTDA · R$ 1,00 · 16/11/2026')
     expect(linhaDaOpcao({ ...NUMERO_1, empresa: null }, 3)).toBe('3) nº 1 · Soares de Campos Holding Ltda · R$ 250,00 · 14/11/2026')
     const lista = listaDeOpcoes('Achei mais de uma nota. Qual delas você quer cancelar?', LISTA).split('\n')
-    expect(lista).toHaveLength(5)
+    expect(lista).toHaveLength(6)
+    expect(lista.at(-2)).toBe('')
+
     expect(lista.at(-1)).toContain('número da opção')
     expect(lista.at(-1)).toContain('*sair*')
   })

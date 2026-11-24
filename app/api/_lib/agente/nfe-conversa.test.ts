@@ -170,14 +170,14 @@ describe('conversa no WhatsApp (banco local)', () => {
     expect(await a.diz('por conta do emitente; transportadora 11.444.777/0001-61; 10 caixas; peso 60,4')).toBe(TEXTOS_NFE.info)
     const resumo = await a.diz('Documento emitido por ME ou EPP optante pelo Simples Nacional.')
     expect(resumo).toContain('*Total: R$ 1.163,75* · boleto')
-    expect(resumo).toContain('Frete por conta: Por conta do emitente (CIF)')
-    expect(resumo).toContain('Transportadora: Transportadora Exemplo Ltda · 11.444.777/0001-61')
-    expect(resumo).toContain('Volumes: 10 CAIXAS · líquido 60,4 kg · bruto 60,4 kg')
+    expect(resumo).toContain('*Frete por conta:* Por conta do emitente (CIF)')
+    expect(resumo).toContain('*Transportadora:* Transportadora Exemplo Ltda · 11.444.777/0001-61')
+    expect(resumo).toContain('*Volumes:* 10 CAIXAS · líquido 60,4 kg · bruto 60,4 kg')
     expect(resumo).toContain('CSOSN 101 (crédito 2,56%)')
     // O crédito e a frase calculada aparecem antes de confirmar (500 × 2,45 × 2,56% = 31,36).
-    expect(resumo).toContain('Crédito de ICMS do Simples: R$ 31,36 (alíquota de 2,56%)')
+    expect(resumo).toContain('*Crédito de ICMS do Simples:* R$ 31,36 (alíquota de 2,56%)')
     expect(resumo).toContain(
-      'Informações: Permite o aproveitamento do crédito de ICMS no valor de R$ 31,36, correspondente à alíquota de 2,56%, nos termos do art. 23 da LC 123/2006. Documento emitido por ME ou EPP optante pelo Simples Nacional.',
+      '*Informações:* Permite o aproveitamento do crédito de ICMS no valor de R$ 31,36, correspondente à alíquota de 2,56%, nos termos do art. 23 da LC 123/2006. Documento emitido por ME ou EPP optante pelo Simples Nacional.',
     )
     expect(resumo.endsWith(TEXTOS_NFE.pergunta)).toBe(true)
 
@@ -229,7 +229,7 @@ describe('conversa no WhatsApp (banco local)', () => {
     expect(await a.diz('pix')).toBe(TEXTOS_NFE.transporte)
     expect(await a.diz('não')).toBe(TEXTOS_NFE.info)
     const resumo = await a.diz('não')
-    expect(resumo).toContain('Cliente: Maria Exemplo da Silva · 529.982.247-25')
+    expect(resumo).toContain('*Cliente:* Maria Exemplo da Silva · 529.982.247-25')
     expect(resumo).toContain('Rua da Bahia, 500, Centro, Belo Horizonte/MG')
     expect(resumo).toContain('CFOP 6101')
     expect(await a.diz('corrigir')).toBe(TEXTOS_NFE.corrigir)
