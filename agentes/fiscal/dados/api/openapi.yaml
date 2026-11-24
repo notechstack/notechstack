@@ -463,6 +463,18 @@ components:
             cnpj: { type: string, pattern: '^\d{14}$' }
             nome: { type: string, minLength: 1, maxLength: 150 }
             email: { type: string, format: email }
+            endereco:
+              type: object
+              additionalProperties: false
+              description: 'Endereço do tomador; prevalece sobre o da Receita. Tomador CNPJ sem ele: o endereço da Receita. Tomador CPF: só com ele.'
+              required: [cep, logradouro, bairro, municipio_ibge]
+              properties:
+                cep: { type: string, description: '8 dígitos, com ou sem traço.' }
+                logradouro: { type: string, maxLength: 255 }
+                numero: { type: string, maxLength: 60, description: 'Vazio ou ausente = S/N.' }
+                complemento: { type: string, maxLength: 156 }
+                bairro: { type: string, maxLength: 60 }
+                municipio_ibge: { type: string, description: 'Código IBGE de 7 dígitos ou "Cidade/UF".' }
           oneOf:
             - required: [cpf]
             - required: [cnpj]

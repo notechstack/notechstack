@@ -25,11 +25,26 @@ LINHAS_FORMATADAS = 200  # linhas já prontas para digitar (o limite do agente �
 # iss_retido e inss_retido (16/11/2026) são opcionais: em branco, vale a retenção cadastrada na empresa.
 # codigo_servico (17/11/2026) também: em branco, vale o código do cliente salvo ou o padrão da empresa.
 # municipio_prestacao (18/11/2026) também: em branco, vale a cidade da empresa.
-COLUNAS = ['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico', 'municipio_prestacao']
-LARGURAS = [24, 24, 34, 36, 14, 46, 14, 14, 16, 24]
+# obra_* (19/11/2026): obrigatórias só nos códigos de construção civil (E0370).
+# tomador_* (24/11/2026, Robson, Bragantina): endereço de quem recebe a nota. Em branco, a nota de CNPJ sai com o endereço
+# da Receita; a de CPF, sem endereço. Preenchido, vale o da planilha.
+COLUNAS = [
+    'cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador',
+    'tomador_cep', 'tomador_logradouro', 'tomador_numero', 'tomador_complemento', 'tomador_bairro', 'tomador_municipio_ibge',
+    'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico', 'municipio_prestacao',
+    'obra_cep', 'obra_logradouro', 'obra_numero', 'obra_complemento', 'obra_bairro', 'obra_cno',
+]
+LARGURAS = [24, 24, 34, 36, 14, 30, 14, 20, 22, 26, 14, 46, 14, 14, 16, 24, 14, 30, 14, 20, 22, 18]
+COLUNA_VALOR = COLUNAS.index('valor') + 1
 EXEMPLOS = [
-    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br', 1500, 'Honorários contábeis - novembro/2026', None, None, '17.19.01', 'Campinas/SP'],
-    ['12.345.678/0001-95', '529.982.247-25', 'Maria Exemplo da Silva', 'maria@exemplo.com.br', 350, None],
+    # CNPJ sem as colunas tomador_*: o endereço vem da Receita.
+    ['12.345.678/0001-95', '11.222.333/0001-81', 'Padaria Exemplo Ltda', 'financeiro@padaria-exemplo.com.br',
+     None, None, None, None, None, None,
+     1500, 'Honorários contábeis - novembro/2026', None, None, '17.19.01', 'Campinas/SP'],
+    # CPF com endereço: sai na nota.
+    ['12.345.678/0001-95', '529.982.247-25', 'Maria Exemplo da Silva', 'maria@exemplo.com.br',
+     '12900-000', 'Rua das Flores', '120', 'Apto 12', 'Centro', 'Bragança Paulista/SP',
+     350, None],
 ]
 
 fino = Side(style='thin', color='D9D9D4')
@@ -52,7 +67,7 @@ for r in range(2, 2 + LINHAS_FORMATADAS):
         c = ws.cell(row=r, column=i)
         c.border = borda
         c.font = Font(name='Calibri', size=11)
-        c.number_format = '#,##0.00' if i == 5 else '@'  # documento, nome, e-mail e descrição como texto: o zero à esquerda fica
+        c.number_format = '#,##0.00' if i == COLUNA_VALOR else '@'  # documento, nome, e-mail e descrição como texto: o zero à esquerda fica
 for r, linha in enumerate(EXEMPLOS, start=2):
     for i, v in enumerate(linha, start=1):
         if v is not None:
@@ -98,20 +113,29 @@ tabela = [
     ['cpf_cnpj_tomador', 'sim', 'CPF ou CNPJ de quem recebe a nota (o tomador), com ou sem pontuação.', '529.982.247-25'],
     ['nome_tomador', 'sim', 'Nome ou razão social de quem recebe a nota.', 'Maria Exemplo da Silva'],
     ['email_tomador', 'não', 'E-mail de quem recebe a nota. Com e-mail, o tomador recebe a nota por e-mail.', 'maria@exemplo.com.br'],
+    ['tomador_cep', 'não**', 'CEP do endereço de quem recebe a nota (8 dígitos, com ou sem traço).', '12900-000'],
+    ['tomador_logradouro', 'não**', 'Rua, avenida etc. do endereço de quem recebe a nota.', 'Rua das Flores'],
+    ['tomador_numero', 'não', 'Número do endereço. Em branco, sai S/N.', '120'],
+    ['tomador_complemento', 'não', 'Complemento do endereço (sala, apto, bloco).', 'Apto 12'],
+    ['tomador_bairro', 'não**', 'Bairro do endereço de quem recebe a nota.', 'Centro'],
+    ['tomador_municipio_ibge', 'não**', 'Cidade do endereço: o nome com a UF (Bragança Paulista/SP) ou o código IBGE de 7 dígitos (3507605). Também aceita o nome de coluna tomador_municipio.', 'Bragança Paulista/SP'],
     ['valor', 'sim', 'Valor da nota em reais, com até 2 casas. Pode ser número (1500) ou texto (1.500,00).', '1.500,00'],
     ['descricao', 'não', 'O texto que vai na descrição do serviço da nota. Em branco, vale a descrição já guardada para esse cliente ou "Prestação de serviços".', 'Honorários contábeis - novembro/2026'],
     ['iss_retido', 'não', 'ISS retido pelo tomador: a alíquota (de 2% a 5%), sim (usa a alíquota cadastrada na empresa) ou não. Só para tomador com CNPJ; MEI não tem retenção. Em branco, vale o cadastro da empresa.', '2%'],
     ['inss_retido', 'não', 'INSS retido: o percentual (11%), o valor em reais (165,00), sim (usa o percentual cadastrado na empresa) ou não. MEI não tem retenção. Em branco, vale o cadastro da empresa.', '11%'],
     ['codigo_servico', 'não', 'Código do serviço desta nota na lista nacional (6 dígitos, com ou sem pontos). Use quando a mesma empresa presta serviços diferentes (clínica com psicologia, fisioterapia e nutrição). Em branco, vale o código já usado para esse cliente ou o padrão da empresa.', '04.16.01'],
     ['municipio_prestacao', 'não', 'Cidade onde o serviço foi prestado, quando não é a cidade da empresa: o nome com a UF (Campinas/SP) ou o código IBGE de 7 dígitos (3509502). Em branco, vale a cidade da empresa. Também aceita o nome de coluna ibge_prestacao.', 'Campinas/SP'],
+    ['obra_cep, obra_logradouro, obra_numero, obra_complemento, obra_bairro', 'só em obra', 'Endereço da obra. Obrigatório nos códigos de construção civil (07.02, 07.04 a 07.08, 07.17, 07.19, 14.14.03/04): a Sefin exige o endereço ou o CNO. Nos outros códigos, fica em branco.', 'Rua das Palmeiras, 50'],
+    ['obra_cno', 'só em obra', 'CNO (ou CEI) da obra, 12 dígitos. Vale no lugar do endereço da obra.', '12.345.67890/12'],
 ]
 for k, linha in enumerate(tabela):
     linha_tabela(6 + k, linha)
     guia.row_dimensions[6 + k].height = 34
 NOTA = 6 + len(tabela)
 guia.cell(row=NOTA, column=1, value='* cnpj_prestador pode ficar em branco só quando a conta tem uma única empresa ativa.').font = Font(name='Calibri', italic=True, color=CINZA)
+guia.cell(row=NOTA + 1, column=1, value='** Endereço do tomador: deixe todas as colunas tomador_* em branco, ou preencha ao menos CEP, rua, bairro e cidade. Tomador com CNPJ e colunas em branco: vai o endereço da Receita.').font = Font(name='Calibri', italic=True, color=CINZA)
 
-REGRAS = NOTA + 2
+REGRAS = NOTA + 3
 titulo(REGRAS, 'Regras')
 regras = [
     'Uma linha por nota. Para emitir uma nota só, a planilha tem uma linha só.',
@@ -121,7 +145,8 @@ regras = [
     'CPF e CNPJ ficam como texto, para o zero à esquerda não sumir (as colunas deste modelo já estão assim).',
     'Linha com problema fica de fora e o motivo vem no resumo; as outras seguem.',
     'Retenção: o contador informa a alíquota e o percentual; o nó.fiscal não calcula regra tributária, só confere o que a Sefin recusa.',
-    'Local da prestação: em obras, eventos e outros serviços da LC 116 (art. 3º), o ISS é devido na cidade da prestação; quem decide é a Sefin, pelo código de serviço. Serviços de obra (07.02, 07.04 a 07.08, 07.17, 07.19, 14.14.03/04) e de eventos (item 12) com outra cidade ficam de fora, porque exigem dados da obra ou do evento que o nó.fiscal ainda não envia.',
+    'Endereço do tomador: toda nota de tomador com CNPJ sai com o endereço da Receita; se você preencher as colunas tomador_*, vale o da planilha. Tomador com CPF só sai com endereço se você preencher. Se a Receita não responder na hora, a nota sai sem o endereço e o resumo avisa (com ISS retido, a linha fica de fora, porque a Sefin exige o endereço).',
+    'Local da prestação: em obras, eventos e outros serviços da LC 116 (art. 3º), o ISS é devido na cidade da prestação; quem decide é a Sefin, pelo código de serviço. Serviços de eventos (item 12) com outra cidade ficam de fora, porque exigem dados do evento que o nó.fiscal ainda não envia.',
     'Código de serviço fora da lista nacional (https://www.notechstack.com.br/agentes/fiscal/dados/codigos-servico.json) deixa a linha de fora.',
     'Depois de mandar, você recebe o resumo. Nada é emitido antes de você responder confirmar. O resumo vale por 24 horas.',
     'No fim, o retorno de cada linha e os PDFs vão para o e-mail da conta e ficam em Minha conta → Relatórios.',
@@ -133,7 +158,7 @@ guia.sheet_view.showGridLines = False
 
 wb.properties.creator = 'nó.fiscal'
 wb.properties.title = 'Modelo de emissão por planilha'
-wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 18, 12, 0, 0)
+wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 24, 12, 0, 0)
 SAIDA.parent.mkdir(parents=True, exist_ok=True)
 wb.save(SAIDA)
 print(SAIDA, SAIDA.stat().st_size, 'bytes')

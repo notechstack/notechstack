@@ -150,7 +150,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
     expect(payload.tomador.endereco).toEqual(ENDERECO)
   })
 
-  it('"sem retenção" no pedido desliga o padrão; a nota sai como antes', async () => {
+  it('"sem retenção" no pedido desliga o padrão; o endereço da Receita vai do mesmo jeito', async () => {
     const s = await cenario()
     await padraoDaEmpresa(s.tenant.id, { retem_inss: true, inss_percentual: '11.00' })
     await criarModelo(admin.db, s.tenant.id, modelo(CNPJ_TOMADOR))
@@ -162,8 +162,9 @@ describe('retenção no pedido pelo WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'confirmar')
     const payload = await payloadDaUnicaNota(s.tenant.id)
     expect(payload.retencao).toBeUndefined()
-    expect(payload.tomador.endereco).toBeUndefined()
-    expect(c.consultas).toEqual([])
+    // Bragantina, 24/11/2026: toda nota de CNPJ leva o endereço, com ou sem retenção.
+    expect(payload.tomador.endereco).toEqual(ENDERECO)
+    expect(c.consultas).toEqual([CNPJ_TOMADOR])
   })
 
   it('ISS retido de tomador CPF não emite; corrigir com "sem retenção de ISS" e "retém INSS 11%" libera', async () => {

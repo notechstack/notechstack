@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { unzipSync } from 'fflate'
 import { readSheet } from 'read-excel-file/universal'
 import type { Db, Queryable } from '../db.js'
+import { lerEnderecoEscrito, registrarSemEndereco } from '../endereco-tomador.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
 import { exigeObra, lerObra, type Obra } from '../obra.js'
@@ -63,7 +64,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // 18/11/2026), opcional: o local da prestação (cLocPrestacao), por nome com UF ("Campinas/SP") ou código IBGE; vazia, o
 // município da empresa. O cabeçalho `ibge_prestacao` também vale. `obra_*` (Robson, Bragantina, 19/11/2026), opcionais:
 // o endereço (obra_cep, obra_logradouro, obra_numero, obra_complemento, obra_bairro) ou o obra_cno, obrigatórios nas
-// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais.
+// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `tomador_*` (Robson, Bragantina,
+// 24/11/2026), opcionais: o endereço do tomador, que prevalece sobre o da Receita; com CPF, é o único jeito de a nota
+// sair com endereço. `tomador_municipio_ibge` aceita o código IBGE ou "Cidade/UF" (cabeçalho `tomador_municipio` vale).
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -81,6 +84,12 @@ export const CAMPOS = [
   'obra_complemento',
   'obra_bairro',
   'obra_cno',
+  'tomador_cep',
+  'tomador_logradouro',
+  'tomador_numero',
+  'tomador_complemento',
+  'tomador_bairro',
+  'tomador_municipio_ibge',
 ] as const
 export type Campo = (typeof CAMPOS)[number]
 
@@ -103,6 +112,7 @@ export const CODIGOS_DE_PROBLEMA = [
   'MUNICIPIO_PRESTACAO_AMBIGUO',
   'OBRA_SEM_DADOS',
   'OBRA_INVALIDA',
+  'ENDERECO_TOMADOR_INVALIDO',
   ...PROBLEMAS_DE_LOCAL,
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
@@ -334,6 +344,7 @@ export const normalizarCabecalho = (texto: string) =>
 const CAMPO_DO_CABECALHO = new Map<string, Campo>([
   ...CAMPOS.map((campo): [string, Campo] => [normalizarCabecalho(campo), campo]),
   [normalizarCabecalho('ibge_prestacao'), 'municipio_prestacao'],
+  [normalizarCabecalho('tomador_municipio'), 'tomador_municipio_ibge'],
 ])
 
 export const textoDaCelula = (celula: Celula | undefined): string => {
@@ -552,6 +563,8 @@ export type ItemDoLote = {
   /** LINHA_REPETIDA: a primeira linha igual. */
   igualA?: number
   valor?: string
+  /** Tomador com CNPJ cujo endereço a Receita não deu agora: a nota sai sem endereço (só o resumo usa). */
+  semEndereco?: boolean
 }
 
 const lido = (celulas: LinhaLida['celulas']) =>
@@ -632,9 +645,21 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       if (!lida.obra) return falha('OBRA_SEM_DADOS', empresa.id)
       obra = lida.obra
     }
+    // Endereço do tomador escrito na planilha: prevalece sobre o da Receita (que entra depois, em `completarEnderecos`).
+    const enderecoEscrito = lerEnderecoEscrito({
+      cep: celulas.tomador_cep,
+      logradouro: celulas.tomador_logradouro,
+      numero: celulas.tomador_numero,
+      complemento: celulas.tomador_complemento,
+      bairro: celulas.tomador_bairro,
+      municipio: celulas.tomador_municipio_ibge,
+    })
+    if (!enderecoEscrito.ok) return falha('ENDERECO_TOMADOR_INVALIDO', empresa.id)
     const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra }
-    // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
-    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
+    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, {
+      retencao: resolvida.retencao,
+      endereco: enderecoEscrito.endereco,
+    })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
       linha,
       tenantId: empresa.id,
@@ -690,21 +715,40 @@ export function lerRetencaoDaLinha(celulas: LinhaLida['celulas']): RetencaoDoPed
   return r
 }
 
+/** Consultas de endereço ao mesmo tempo, na planilha. */
+const CONSULTAS_EM_PARALELO = 6
+
 /**
- * ISS retido leva o endereço do tomador (E0237), da Receita. Um pedido por CNPJ; sem endereço, a linha fica com
- * `ENDERECO_TOMADOR`. Sem consulta configurada, toda linha com ISS retido fica de fora.
+ * Endereço do tomador com CNPJ em toda linha (Bragantina, 24/11/2026), da Receita, quando a planilha não trouxe as
+ * colunas `tomador_*`. Um pedido por CNPJ, até `CONSULTAS_EM_PARALELO` ao mesmo tempo. Sem endereço: com ISS retido a
+ * linha fica com `ENDERECO_TOMADOR` (E0237); sem, a nota sai sem endereço e a linha fica com `semEndereco`.
  */
 export async function completarEnderecos(itens: ItemDoLote[], consulta: EnderecoDoTomador | null | undefined): Promise<void> {
-  const cache = new Map<string, Promise<EnderecoNacional | null>>()
-  for (const item of itens) {
-    const p = item.payload as { tomador?: { cnpj?: string; endereco?: EnderecoNacional }; retencao?: Retencao }
-    if (!p.retencao?.iss || !p.tomador) continue
-    const cnpj = p.tomador.cnpj ?? ''
-    if (!cache.has(cnpj)) cache.set(cnpj, consulta ? consulta.endereco(cnpj).catch(() => null) : Promise.resolve(null))
-    const endereco = await (cache.get(cnpj) as Promise<EnderecoNacional | null>)
-    if (endereco) p.tomador.endereco = endereco
-    else if (!item.problema) item.problema = 'ENDERECO_TOMADOR'
+  type P = { tomador?: { cnpj?: string; endereco?: EnderecoNacional }; retencao?: Retencao }
+  const precisam = itens.filter((i) => {
+    const p = i.payload as P
+    return p.tomador?.cnpj && !p.tomador.endereco
+  })
+  const cnpjs = [...new Set(precisam.map((i) => (i.payload as P).tomador?.cnpj as string))]
+  const achados = new Map<string, EnderecoNacional | null>()
+  let proximo = 0
+  const trabalhador = async () => {
+    while (proximo < cnpjs.length) {
+      const cnpj = cnpjs[proximo++]
+      achados.set(cnpj, consulta ? await consulta.endereco(cnpj).catch(() => null) : null)
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(CONSULTAS_EM_PARALELO, cnpjs.length) }, trabalhador))
+  for (const item of precisam) {
+    const p = item.payload as P
+    const endereco = achados.get(p.tomador?.cnpj as string) ?? null
+    if (endereco) (p.tomador as { endereco?: EnderecoNacional }).endereco = endereco
+    else if (p.retencao?.iss) {
+      if (!item.problema) item.problema = 'ENDERECO_TOMADOR'
+    } else item.semEndereco = true
+  }
+  const sem = precisam.filter((i) => i.semEndereco).length
+  if (sem) registrarSemEndereco('planilha', { notas: sem })
 }
 
 /** O motivo que a pessoa lê, por código (o do `emission_block` nomeia a empresa). */
@@ -747,6 +791,8 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'municipio_prestacao não encontrado: escreva a cidade com a UF, como Campinas/SP, ou o código IBGE de 7 dígitos'
     case 'OBRA_SEM_DADOS':
       return 'o código de serviço é de construção civil, e a Sefin exige os dados da obra: preencha obra_cep, obra_logradouro, obra_numero e obra_bairro, ou obra_cno'
+    case 'ENDERECO_TOMADOR_INVALIDO':
+      return 'endereço do tomador incompleto ou inválido: preencha tomador_cep (8 dígitos), tomador_logradouro, tomador_bairro e tomador_municipio_ibge (código IBGE ou Cidade/UF), ou deixe todas as colunas tomador_* vazias'
     case 'OBRA_INVALIDA':
       return 'dados da obra incompletos ou inválidos: o endereço precisa de obra_cep (8 dígitos), obra_logradouro, obra_numero e obra_bairro; o obra_cno, de 12 dígitos'
     case 'LOCAL_EXIGE_EVENTO':
@@ -816,6 +862,14 @@ export function textoDosCodigos(prontas: ItemDoLote[]): string | null {
   return `Códigos de serviço: ${[...porCodigo].map(([c, n]) => `${formatar(c)} (${plural(n, 'nota', 'notas')})`).join(', ')}.`
 }
 
+/** Notas prontas de CNPJ cujo endereço a Receita não deu agora: saem sem o endereço do tomador. */
+export function textoSemEndereco(prontas: ItemDoLote[]): string | null {
+  const linhas = prontas.filter((i) => i.semEndereco).map((i) => i.linha)
+  if (!linhas.length) return null
+  const quais = linhas.length <= 10 ? ` (${linhas.length === 1 ? 'linha' : 'linhas'} ${linhas.join(', ')})` : ''
+  return `Sem endereço do cliente: ${plural(linhas.length, 'nota sai', 'notas saem')} sem o endereço${quais}, porque não achei o CNPJ na Receita agora. Para pôr o endereço, preencha as colunas tomador_* e mande de novo.`
+}
+
 export function textoDoResumoDoLote(dados: {
   arquivo: string | null
   itens: ItemDoLote[]
@@ -840,6 +894,8 @@ export function textoDoResumoDoLote(dados: {
   if (retencoes) numeros.push(comRotulo(retencoes))
   const codigos = textoDosCodigos(prontas)
   if (codigos) numeros.push(comRotulo(codigos))
+  const semEndereco = textoSemEndereco(prontas)
+  if (semEndereco) numeros.push(comRotulo(semEndereco))
 
   const problemas: string[] = []
   for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
@@ -1116,7 +1172,7 @@ export async function lerLoteDaPlanilha(
     conteudo: Uint8Array
     tipo: TipoDePlanilha
     agora: Date
-    /** Endereço do tomador na Receita, para as linhas com ISS retido. */
+    /** Endereço do tomador na Receita, para as linhas de CNPJ sem as colunas `tomador_*`. */
     consulta?: EnderecoDoTomador | null
     /** A lista nacional de serviços, para conferir a coluna `codigo_servico`. */
     catalogo?: CatalogoDeServicos | null

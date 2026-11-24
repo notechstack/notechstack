@@ -1152,7 +1152,7 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', endereco: 'fa-av-end', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
   var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
@@ -1168,6 +1168,8 @@
   /* Construção civil (E0370, obra.ts): nestes códigos a Sefin exige o endereço da obra ou o CNO. */
   var CODIGOS_COM_OBRA = ['070201', '070202', '070401', '070501', '070502', '070601', '070602', '070701', '070801', '071701', '071901', '141403', '141404'];
   var CAMPOS_DA_OBRA = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cno'];
+  /* Endereço do cliente (endereco-tomador.ts): opcional; prevalece sobre o da Receita. */
+  var CAMPOS_DO_ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio'];
   function codigoDaAvulsa() {
     var c = em.seletor ? em.seletor.valor() : '';
     if (c) return String(c).replace(/\D/g, '');
@@ -1257,6 +1259,7 @@
     $('fa-av-info').value = '';
     $('fa-av-local').value = '';
     CAMPOS_DA_OBRA.forEach(function (k) { $('fa-av-obra-' + k).value = ''; });
+    CAMPOS_DO_ENDERECO.forEach(function (k) { $('fa-av-end-' + k).value = ''; });
     contarInfoAvulsa();
     prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
   }
@@ -1290,6 +1293,7 @@
       municipio_prestacao: $('fa-av-local').value
     };
     if (!$('fa-av-obra').hidden) CAMPOS_DA_OBRA.forEach(function (k) { corpo['obra_' + k] = $('fa-av-obra-' + k).value; });
+    CAMPOS_DO_ENDERECO.forEach(function (k) { corpo['tomador_' + k] = $('fa-av-end-' + k).value; });
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     if (retAv.visivel()) {
       var r = retAv.ler();
@@ -1323,6 +1327,7 @@
       nf.ocupado(botao, false);
       if (r.ok) { em.pedido = corpo; em.chave = novaChave(); desenharResumoAvulsa(r.dados); return; }
       if (r.status === 401) return;
+      if (r.dados && r.dados.campo === 'endereco') { erro('endereco', r.mensagem || 'Confira o endereço do cliente.'); $('fa-av-end-cep').focus(); return; }
       if (r.dados && r.dados.campo === 'obra') { atualizarObraAvulsa(true); erro('obra', r.mensagem || 'Confira os dados da obra.'); $('fa-av-obra-cep').focus(); return; }
       if (r.dados && CAMPO_AVULSA[r.dados.campo]) { erro(r.dados.campo, r.mensagem || 'Confira este campo.'); var c = $(CAMPO_AVULSA[r.dados.campo]); if (c) c.focus(); return; }
       nf.aviso($('fa-aviso-emitir'), nf.esc(r.mensagem || GENERICO), 'erro');
@@ -1334,6 +1339,7 @@
       ['Empresa', (emp.razao_social || '') + ' · ' + nf.formatarCnpj(emp.cnpj || '')],
       ['Cliente', t.nome],
       [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
+      ['Endereço' + (s.endereco_origem === 'receita' ? ' (Receita)' : ''), s.endereco_tomador ? textoDoEndereco(s.endereco_tomador) : (t.tipo === 'cnpj' ? 'Não achei na Receita agora; a nota sai sem endereço' : 'Sem endereço')],
       ['E-mail', t.email || 'Sem e-mail'],
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
       ['Descrição na nota', sv.descricao]
@@ -1349,7 +1355,7 @@
     $('fa-av-resumo').hidden = false;
     $('fa-av-resumo-titulo').focus();
   }
-  /* Retenção no resumo: ISS (alíquota e valor), INSS, valor líquido e o endereço do cliente que vai na nota. */
+  /* Retenção no resumo: ISS (alíquota e valor), INSS e valor líquido. O endereço do cliente fica no topo do resumo. */
   function linhasRetencaoDoResumo(s) {
     var r = s.retencao;
     if (!r) return [];
@@ -1357,9 +1363,10 @@
     if (r.iss) out.push(['ISS retido pelo tomador', comVirgula(r.iss.aliquota) + '% (R$ ' + valorTexto(r.iss.valor) + ')']);
     if (r.inss) out.push(['INSS retido', 'R$ ' + valorTexto(r.inss.valor)]);
     out.push(['Valor líquido', 'R$ ' + valorTexto(r.liquido)]);
-    var e = s.endereco_tomador;
-    if (e) out.push(['Endereço do cliente (Receita)', e.logradouro + ', ' + e.numero + (e.complemento ? ' ' + e.complemento : '') + ' · ' + e.bairro + ' · CEP ' + e.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')]);
     return out;
+  }
+  function textoDoEndereco(e) {
+    return e.logradouro + ', ' + e.numero + (e.complemento ? ', ' + e.complemento : '') + ' · ' + e.bairro + ' · CEP ' + String(e.cep).replace(/^(\d{5})(\d{3})$/, '$1-$2');
   }
   function fecharResumoAvulsa() {
     $('fa-av-resumo').hidden = true;
@@ -1434,9 +1441,11 @@
       return '<li>' + nf.esc(p.razao_social + ': ' + plural(p.notas, 'nota', 'notas') + ', ' + nf.reais(centavosDoTexto(p.total))) + '</li>';
     }).join('');
     var f = d.franquia || {};
-    nf.aviso($('fa-lote-franquia'), f.acima > 0
-      ? nf.esc('Franquia: com estas notas, o mês chega a ' + plural(f.no_mes + d.prontas, 'nota', 'notas') + ', ' + f.acima.toLocaleString('pt-BR') + ' acima das ' + f.limite.toLocaleString('pt-BR') + ' do seu plano. As notas saem normalmente.')
-      : '', 'info');
+    var semEnd = d.sem_endereco || [];
+    var avisosLote = [];
+    if (f.acima > 0) avisosLote.push('Franquia: com estas notas, o mês chega a ' + plural(f.no_mes + d.prontas, 'nota', 'notas') + ', ' + f.acima.toLocaleString('pt-BR') + ' acima das ' + f.limite.toLocaleString('pt-BR') + ' do seu plano. As notas saem normalmente.');
+    if (semEnd.length) avisosLote.push('Sem endereço do cliente: ' + plural(semEnd.length, 'nota sai', 'notas saem') + ' sem o endereço' + (semEnd.length <= 10 ? ' (' + (semEnd.length === 1 ? 'linha ' : 'linhas ') + semEnd.join(', ') + ')' : '') + ', porque não achei o CNPJ na Receita agora. Para pôr o endereço, preencha as colunas tomador_* e envie de novo.');
+    nf.aviso($('fa-lote-franquia'), avisosLote.map(nf.esc).join('<br>'), 'info');
     var problemas = d.problemas || [];
     $('fa-lote-rolagem').hidden = problemas.length === 0;
     $('fa-lote-problemas').innerHTML = problemas.map(function (p) {
@@ -1489,6 +1498,7 @@
   $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
   $('fa-av-info').addEventListener('input', contarInfoAvulsa);
   $('fa-av-local').addEventListener('focus', carregarMunicipios);
+  $('fa-av-end-municipio').addEventListener('focus', carregarMunicipios);
   // O seletor de código é recriado a cada empresa ou modelo: a escuta fica no formulário.
   ['click', 'change', 'input'].forEach(function (tipo) {
     $('fa-form-avulsa').addEventListener(tipo, function (ev) { if (!ev.target.closest || !ev.target.closest('#fa-av-obra')) atualizarObraAvulsa(); });

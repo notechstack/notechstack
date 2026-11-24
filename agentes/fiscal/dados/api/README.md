@@ -309,6 +309,7 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 | `tomador.cpf` ou `tomador.cnpj` | string | um dos dois | 11 ou 14 dígitos. |
 | `tomador.nome` | string | sim | 1 a 150 caracteres. |
 | `tomador.email` | string | não | Usado no e-mail da nota (se os e-mails da nó estiverem ligados). |
+| `tomador.endereco` | objeto | não | Endereço do tomador: `{ "cep", "logradouro", "numero" (opcional, vazio = S/N), "complemento" (opcional), "bairro", "municipio_ibge" }` (`municipio_ibge`: código IBGE de 7 dígitos ou `"Cidade/UF"`). Prevalece sobre o da Receita. **Tomador CNPJ sem este campo:** a nota sai com o endereço do CNPJ na Receita. **Tomador CPF:** só sai com endereço se você enviar. Se a Receita não responder, a nota sai sem endereço e `avisos` diz isso (com ISS retido, `422 ENDERECO_TOMADOR`). |
 | `servico.codigo_servico_nacional` | string | não | Padrão: o código da empresa. |
 | `servico.descricao` | string | não | 1 a 2.000 caracteres. Padrão: `"Prestação de serviços"`. |
 | `servico.nbs` | string | não | Código NBS (9 dígitos; aceita com pontos, `"1.1502.10.00"`). Ausente = o NBS padrão da empresa. |
@@ -328,11 +329,11 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 - `retem_iss` / `retem_inss`: `true` ou `false`. Campo ausente = padrão da empresa para aquele imposto.
 - `aliquota_iss`: de 2 a 5 (%). Obrigatória com ISS retido se a empresa não tiver alíquota padrão.
 - `inss`: percentual (`"11%"`) ou valor em reais (`"165.00"`).
-- ISS retido só para **tomador CNPJ**; o endereço do tomador é buscado na Receita. MEI não tem retenção.
+- ISS retido só para **tomador CNPJ**; o endereço do tomador (obrigatório na Sefin com ISS retido) é o de `tomador.endereco` ou o da Receita. MEI não tem retenção.
 
 Respostas:
 
-- `202` — nota na fila: o objeto `nfse` + `avisos` (lista de textos; hoje, só o aviso de franquia).
+- `202` — nota na fila: o objeto `nfse` + `avisos` (lista de textos: franquia e nota que sai sem o endereço do tomador).
 - `202` — mesmo `external_id` da mesma empresa: devolve a nota que já existe, sem conferir de novo.
 - `409 EMISSAO_BLOQUEADA` — a empresa não pode emitir agora; `bloqueio` traz o código (o mesmo da `situacao`).
 - `404 EMPRESA_NAO_ENCONTRADA` / `409 EMPRESA_INATIVA` — `cnpj_prestador` não é desta conta, ou está desativada.
