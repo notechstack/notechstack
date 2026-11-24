@@ -12,6 +12,7 @@ const NOMES_ENV = [
   "PAGARME_ASSINATURA_AMBIENTE",
   // Empresa adicionada pelo escritório: a mesma consulta e o mesmo ambiente de fiscal-cadastro.
   "CNPJ_API_URL",
+  "CNPJ_API_ESPELHO_URL",
   "FISCAL_AMBIENTE_PADRAO",
 ];
 

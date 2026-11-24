@@ -98,7 +98,12 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   }
 
   const consultar = (cnpj: string) =>
-    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
+    consultarCnpj(cnpj, {
+      apiUrl: deps.env("CNPJ_API_URL"),
+      espelhoUrl: deps.env("CNPJ_API_ESPELHO_URL") || undefined,
+      fetch: deps.fetch,
+      regimeConfirmado: deps.regimeConfirmado,
+    });
 
   if (b.acao === "consultar_cnpj") {
     const cnpj = soDigitos(b.cnpj);
@@ -106,7 +111,7 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     const c = await consultar(cnpj);
     const r = respostaConsulta(c, h);
     if (r || !c.ok) {
-      if (!c.ok) log("fiscal_cadastro_consulta", { motivo: c.motivo });
+      if (!c.ok) log("fiscal_cadastro_consulta", { motivo: c.motivo, ...("tentativas" in c ? { tentativas: c.tentativas } : {}) });
       return r!;
     }
     return json(200, { ok: true, ...c.dados, padrao_nacional: municipioAtendido(c.dados, await deps.municipios()) }, h);

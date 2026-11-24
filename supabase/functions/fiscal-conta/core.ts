@@ -733,10 +733,20 @@ async function adicionarEmpresa(
   }
 
   // Razão social, município, CNAE e regime vêm sempre da consulta, nunca do corpo.
-  const c = await consultarCnpj(cnpj, { apiUrl: deps.env.CNPJ_API_URL, fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
+  const c = await consultarCnpj(cnpj, {
+    apiUrl: deps.env.CNPJ_API_URL,
+    espelhoUrl: deps.env.CNPJ_API_ESPELHO_URL || undefined,
+    fetch: deps.fetch,
+    regimeConfirmado: deps.regimeConfirmado,
+  });
   const recusa = respostaConsulta(c);
   if (recusa || !c.ok) {
-    if (!c.ok) log("info", "fiscal_conta_empresa_consulta", { motivo: c.motivo });
+    if (!c.ok) {
+      log(c.motivo === "indisponivel" ? "warn" : "info", "fiscal_conta_empresa_consulta", {
+        motivo: c.motivo,
+        ...("tentativas" in c ? { tentativas: c.tentativas } : {}),
+      });
+    }
     return recusa!;
   }
   if (!municipioAtendido(c.dados, deps.municipios ? await deps.municipios() : null)) {
@@ -861,7 +871,12 @@ async function atualizarReceita(
   const cnpj = soDigitos(empresa.cnpj);
   if (!cnpjValido(cnpj)) return erro(422, "CNPJ_INVALIDO", MSG_CNPJ_INVALIDO, { campo: "cnpj" });
 
-  const c = await consultarCnpj(cnpj, { apiUrl: deps.env.CNPJ_API_URL, fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado });
+  const c = await consultarCnpj(cnpj, {
+    apiUrl: deps.env.CNPJ_API_URL,
+    espelhoUrl: deps.env.CNPJ_API_ESPELHO_URL || undefined,
+    fetch: deps.fetch,
+    regimeConfirmado: deps.regimeConfirmado,
+  });
   const recusa = respostaConsulta(c);
   if (recusa || !c.ok) {
     log("info", "fiscal_conta_empresa_receita_recusada", { tenant_id: tenantId, motivo: c.ok ? null : c.motivo });
