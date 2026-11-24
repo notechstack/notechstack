@@ -1,7 +1,7 @@
 // NF-e modelo 55, leiaute 4.00 (Pacote de Liberação 010h v1.03, Portal Nacional, nov/2026). Monta o <NFe> sem
 // assinatura: a assinatura (rsa-sha1, c14n, Reference "#NFe<chave>") vem depois, em nfe-signer.ts.
 // Escopo desta versão (.design/agente-fiscal-nfe.md): emitente de qualquer UF no Simples Nacional (CRT 1) ou MEI
-// (CRT 4), venda de mercadoria interna ou interestadual, vários itens, destinatário PF/PJ, frete, pagamento. ICMS
+// (CRT 4), venda ou remessa (natureza da operação pelo CFOP, natureza.ts) interna ou interestadual, vários itens, destinatário PF/PJ, frete, pagamento. ICMS
 // por CSOSN 101/102/103/300/400/500; PIS/COFINS sem valor (CST 49, 99 ou 07/08/09). Transporte: modalidade do frete,
 // transportador e volumes (grupo transp, sem retenção de ICMS do transporte nem veículo). Sem ST calculada, sem DIFAL,
 // sem exportação. A ordem dos elementos segue o XSD; o teste valida contra ele.
@@ -10,6 +10,7 @@ import { el, leaf } from '../xml.js'
 import { cnpjValido, cpfValido } from '../agente/documentos.js'
 import { CODIGO_UF, TP_AMB, UFS, type AmbienteNfe, type Uf } from './autorizadores.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
+import { avisosDaNatureza, LIMITE_NATUREZA, naturezaDaNota } from './natureza.js'
 
 export const VERSAO_NFE = '4.00'
 export const NS_NFE = 'http://www.portalfiscal.inf.br/nfe'
@@ -128,7 +129,8 @@ export type NfeInput = {
   serie: number
   numero: number
   emissao: Date
-  naturezaOperacao?: string
+  /** Natureza da operação (natOp). Sem ela, sai do CFOP dos itens (natureza.ts). */
+  naturezaOperacao?: string | null
   /** 0 normal, 1 consumidor final. Padrão: 1 se o destinatário não é contribuinte, senão 0. */
   consumidorFinal?: '0' | '1'
   /** 1 presencial, 2 internet, 3 teleatendimento, 9 outros, 0 não se aplica. */
@@ -330,6 +332,7 @@ export function validarNfe(input: NfeInput): string[] {
     }
   })
   validarTransporte(input, p)
+  if ((input.naturezaOperacao ?? '').replace(/\s+/g, ' ').trim().length > LIMITE_NATUREZA) p.push(`natureza da operação: até ${LIMITE_NATUREZA} caracteres`)
   if (input.pagamentos.length === 0) p.push('informe a forma de pagamento')
   for (const pag of input.pagamentos) {
     if (!/^\d{2}$/.test(pag.forma)) p.push(`pagamento: forma "${pag.forma}" inválida`)
@@ -395,8 +398,10 @@ function validarTransporte(input: NfeInput, p: string[]) {
 /** Peso para texto em português: 60,4 kg. */
 export const kg = (x: number) => `${x.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
 
-export function avisosNfe(input: Pick<NfeInput, 'transportador' | 'volumes' | 'modalidadeFrete'>): string[] {
-  const a: string[] = []
+export function avisosNfe(
+  input: Pick<NfeInput, 'transportador' | 'volumes' | 'modalidadeFrete'> & Partial<Pick<NfeInput, 'itens' | 'naturezaOperacao' | 'pagamentos'>>,
+): string[] {
+  const a: string[] = avisosDaNatureza(input)
   volumesDaNota(input).forEach((v, i, vols) => {
     const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
     if (v.pesoLiquido != null && v.pesoBruto != null && v.pesoBruto < v.pesoLiquido) {
@@ -661,7 +666,7 @@ export function montarNfe(input: NfeInput): NfeMontada {
   const ide = el('ide', [
     leaf('cUF', CODIGO_UF[e.endereco.uf]),
     leaf('cNF', codigoNumerico),
-    leaf('natOp', txt(input.naturezaOperacao ?? 'Venda de mercadoria', 60)),
+    leaf('natOp', txt(naturezaDaNota(input.itens, input.naturezaOperacao).natureza, LIMITE_NATUREZA)),
     leaf('mod', '55'),
     leaf('serie', String(input.serie)),
     leaf('nNF', String(input.numero)),

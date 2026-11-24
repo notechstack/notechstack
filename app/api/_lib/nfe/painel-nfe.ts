@@ -37,6 +37,7 @@ import {
 } from './nfe-builder.js'
 import type { SefazClient } from './sefaz-client.js'
 import { lerPlanilhaNfe, ratearFrete } from './planilha.js'
+import { formaPadrao, naturezaDaNota } from './natureza.js'
 import { lerPedidoNfe } from '../parceiro/nfe-api.js'
 import { resolverMunicipio } from '../local-prestacao.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
@@ -191,10 +192,11 @@ async function avulsa(ctx: Ctx, b: Record<string, unknown>, emitir: boolean): Pr
   const empresa = daConta(ctx, texto(b.tenant_id))
   if (!empresa) return errorResponse('NOT_FOUND', 'Esta empresa não é da sua conta.')
   if (typeof b.nota !== 'object' || b.nota === null || Array.isArray(b.nota)) return errorResponse('VALIDATION_FAILED', 'nota ausente')
-  const forma = texto(b.forma_pagamento) || '17'
-  if (!FORMAS_DO_PAINEL[forma]) return errorResponse('VALIDATION_FAILED', 'Forma de pagamento inválida.', { campo: 'forma_pagamento' })
+  // Forma vazia ("Automática"): resolvida depois de ler os itens (PIX na venda, sem pagamento na remessa).
+  const formaInformada = texto(b.forma_pagamento)
+  if (formaInformada && !FORMAS_DO_PAINEL[formaInformada]) return errorResponse('VALIDATION_FAILED', 'Forma de pagamento inválida.', { campo: 'forma_pagamento' })
   const descricaoPagamento = texto(b.descricao_pagamento)
-  if (forma === '99' && !descricaoPagamento) return errorResponse('VALIDATION_FAILED', 'Com a forma "Outros", descreva o pagamento.', { campo: 'descricao_pagamento' })
+  if (formaInformada === '99' && !descricaoPagamento) return errorResponse('VALIDATION_FAILED', 'Com a forma "Outros", descreva o pagamento.', { campo: 'descricao_pagamento' })
   // O formulário manda o município como se escreve ("Campinas/SP") ou o código IBGE; a UF vem do município.
   const nota = JSON.parse(JSON.stringify(b.nota)) as Record<string, unknown>
   const dest = nota.destinatario as Record<string, unknown> | undefined
@@ -221,6 +223,7 @@ async function avulsa(ctx: Ctx, b: Record<string, unknown>, emitir: boolean): Pr
     if (frete > 0) ratearFrete(base.itens, frete)
   }
   const t = calcularTotais(base.itens)
+  const forma = formaInformada || formaPadrao(base.itens, '17')
   const pedido: PedidoNfe = {
     ...base,
     pagamentos: [{ forma, valor: forma === '90' ? 0 : t.nota / 100, descricao: forma === '99' ? descricaoPagamento.slice(0, 60) : null }],
@@ -260,6 +263,7 @@ async function avulsa(ctx: Ctx, b: Record<string, unknown>, emitir: boolean): Pr
         total: reais(Math.round(i.quantidade * i.valorUnitario * 100)), desconto: i.desconto ? reais(Math.round(i.desconto * 100)) : null,
       })),
       totais: { produtos: reais(t.produtos), desconto: reais(t.desconto), frete: reais(t.frete), nota: reais(t.nota) },
+      natureza_operacao: naturezaDaNota(pedido.itens, pedido.naturezaOperacao).natureza,
       transporte: resumoDoTransporte(pedido),
       pagamento: FORMAS_DO_PAINEL[forma],
       // Crédito do Simples (CSOSN 101) e o texto como vai à nota, já com a frase do crédito calculada.
@@ -487,7 +491,8 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       [empresa.id, chave],
     )
     if (Number(antes[0]?.n ?? 0) > 0) chave = `${chave}:${antes[0].n}`
-    prontas.push({ nota, tenantId: empresa.id, valor: nota.pedido.pagamentos[0]?.valor ?? 0, chave })
+    // Valor da nota (vNF), não do pagamento: a remessa "sem pagamento" tem vPag 0 e vale o total dos produtos.
+    prontas.push({ nota, tenantId: empresa.id, valor: calcularTotais(nota.pedido.itens).nota / 100, chave })
   }
   const franquia = { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) }
   const resumo = {
@@ -497,6 +502,8 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       destinatario: p.nota.pedido.destinatario.nome,
       itens: p.nota.pedido.itens.length,
       valor: p.valor.toFixed(2),
+      natureza_operacao: naturezaDaNota(p.nota.pedido.itens, p.nota.pedido.naturezaOperacao).natureza,
+      pagamento: FORMAS_DO_PAINEL[p.nota.pedido.pagamentos[0]?.forma ?? ''] ?? p.nota.pedido.pagamentos[0]?.forma ?? null,
       transporte: resumoDoTransporte(p.nota.pedido),
       credito_icms_sn: resumoCreditoSn(p.nota.pedido.itens),
       avisos: p.nota.avisos,

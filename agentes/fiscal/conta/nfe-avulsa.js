@@ -202,6 +202,8 @@
       itens: itens,
       informacoes_complementares: v('fa-nfa-info') || null
     };
+    // Natureza da operação: vazia, o servidor tira do CFOP (5949/6949 → Simples remessa, 5102 → Venda de mercadoria…).
+    if (v('fa-nfa-natureza')) nota.natureza_operacao = v('fa-nfa-natureza');
     // UF do município escrito como Cidade/UF (o servidor confere); com o código IBGE, o servidor completa.
     var uf = /\/\s*([A-Za-z]{2})\s*$/.exec(v('fa-nfa-municipio'));
     nota.destinatario.endereco.uf = uf ? uf[1].toUpperCase() : '';
@@ -237,6 +239,7 @@
       ['Produtos', t.produtos],
       ['Desconto', t.desconto !== 'R$ 0,00' ? t.desconto : ''],
       ['Frete', t.frete !== 'R$ 0,00' ? t.frete : ''],
+      ['Natureza da operação', s.natureza_operacao || ''],
       ['Total da nota', t.nota],
       ['Pagamento', s.pagamento],
       ['Transporte', s.transporte || ''],

@@ -2,6 +2,9 @@
 // por texto, então o agente pergunta passo a passo e reaproveita o que a empresa já emitiu (historicoNfe): clientes,
 // produtos (com NCM, CFOP, CSOSN e preço da última nota) e transportadoras. Nada fiscal é inventado: produto novo vem
 // com todos os campos escritos pela pessoa, e o CFOP que não serve para a UF do cliente é perguntado, nunca trocado.
+// Natureza da operação (24/11/2026): na venda sai do CFOP sem perguntar; com CFOP de remessa (5949/6949 etc.), de
+// naturezas diferentes ou fora da tabela, o agente sugere a natureza (natureza.ts) e a pessoa confirma ou escreve outra;
+// a nota sem venda sai "sem pagamento" (90) sem a pergunta da forma.
 // O pedido mora em `fiscal_requests` (kind 'emitir_nfe', etapa 'nfe', passo em `conversa.nfe`; migração
 // 20261124090000) e só vira nota no *confirmar*, pela mesma conferência e fila do painel e da planilha (criarNfe,
 // origem 'whatsapp'). Quando a Sefaz responde, `avisarNfeDoWhatsApp` manda o DANFE (ou o motivo) a quem pediu.
@@ -28,6 +31,7 @@ import {
   type Volume,
 } from '../nfe/nfe-builder.js'
 import { FORMAS, lerNumero, modalidade as lerModalidade, ratearFrete } from '../nfe/campos.js'
+import { formaPadrao, LIMITE_NATUREZA, naturezaDaNota } from '../nfe/natureza.js'
 import { bloqueioNfe, conferirPedido, criarNfe, empresaNfe, historicoNfe, motivoDoBloqueio, type HistoricoNfe, type PedidoNfe } from '../nfe/servico.js'
 import type { EnviaWhatsApp } from './canais.js'
 import { ehConfirmarEmissao, ehDesistir, responder, semAcento, VALIDADE_DO_PEDIDO_MS, type Contexto } from './conversa.js'
@@ -49,6 +53,7 @@ type Passo =
   | 'itens'
   | 'produto_novo'
   | 'cfop'
+  | 'natureza'
   | 'pagamento'
   | 'transporte'
   | 'modalidade'
@@ -69,6 +74,10 @@ export type EstadoNfe = {
   itens: Item[]
   /** Item à espera do CFOP certo para a UF do cliente. */
   cfop_pendente?: number
+  /** Natureza escrita pela pessoa; null/ausente: a do CFOP. */
+  natureza?: string | null
+  /** A natureza já foi resolvida (venda sem pergunta, ou confirmada no passo 'natureza'). */
+  natureza_ok?: boolean
   forma?: string
   descricao_pagamento?: string | null
   frete?: number | null
@@ -112,7 +121,7 @@ export const TEXTOS_NFE = {
       ['No CSOSN 101, ponha no fim a alíquota do crédito. Exemplo:', 'EMB-50; Caixa 50x40x30; 4819.10.00; 5101; 101; UN; 200; 3,10; 2,56'],
     ],
   }),
-  corrigir: 'O que muda? *cliente*, *produtos*, *pagamento*, *transporte* ou *informações*.',
+  corrigir: 'O que muda? *cliente*, *produtos*, *natureza*, *pagamento*, *transporte* ou *informações*.',
   pergunta: 'Posso emitir? Responda *confirmar* para emitir, *corrigir* para mudar algo ou *descartar*.',
 }
 
@@ -279,6 +288,8 @@ async function responderPasso(ctx: Contexto, id: string, estado: EstadoNfe, text
       const itens = estado.itens.map((item, k) => (k === i ? { ...item, cfop } : item))
       return depoisDosItens(ctx, id, { ...estado, itens, cfop_pendente: undefined })
     }
+    case 'natureza':
+      return receberNatureza(ctx, id, estado, texto)
     case 'pagamento': {
       const lido = lerPagamento(texto)
       if (!lido) return void (await responder(ctx, `Não entendi a forma de pagamento. ${TEXTOS_NFE.pagamento}`))
@@ -529,7 +540,51 @@ async function depoisDosItens(ctx: Contexto, id: string, estado: EstadoNfe): Pro
     )
     return
   }
+  if (!estado.natureza_ok) {
+    const n = naturezaDaNota(estado.itens, estado.natureza)
+    // Venda pura (todos os CFOPs de venda da tabela): sem pergunta.
+    if (n.origem === 'cfop' && !n.semVenda && n.avisos.length === 0) return depoisDaNatureza(ctx, id, { ...estado, natureza_ok: true })
+    await salvar(ctx, id, { ...estado, passo: 'natureza' })
+    await responder(ctx, perguntaDaNatureza(estado.itens))
+    return
+  }
+  return depoisDaNatureza(ctx, id, estado)
+}
+
+/** A pergunta do passo 'natureza': a sugestão do CFOP (ou o padrão), para a pessoa confirmar ou escrever outra. */
+export function perguntaDaNatureza(itens: Item[]): string {
+  const n = naturezaDaNota(itens)
+  const cfops = [...new Set(itens.map((i) => soDigitos(i.cfop)))].join(', ')
+  return blocos(
+    n.origem === 'padrao'
+      ? `O CFOP ${cfops} não está na minha tabela de naturezas. Se não for venda, mande a natureza da operação (por exemplo, *Simples remessa*).`
+      : `Natureza da operação pelo CFOP ${cfops}: *${n.natureza}*${n.semVenda ? ', sem pagamento' : ''}.`,
+    ...n.avisos.filter(() => n.origem !== 'padrao').map((a) => `Confira: ${a}.`),
+    `Responda *ok* para usar *${n.natureza}*, ou mande outra natureza (até ${LIMITE_NATUREZA} caracteres).`,
+  )
+}
+
+async function receberNatureza(ctx: Contexto, id: string, estado: EstadoNfe, texto: string): Promise<void> {
+  const t = semAcento(texto).replace(/[.!?]+$/, '').trim()
+  const limpo = texto.replace(/\s+/g, ' ').trim()
+  let natureza: string | null
+  if (/^(ok|sim|s|isso|pode|confirmo|certo|usar|essa|esta)$/.test(t)) natureza = null
+  else if (limpo.length > LIMITE_NATUREZA) return void (await responder(ctx, `A natureza da operação vai até ${LIMITE_NATUREZA} caracteres. Mande um texto mais curto, ou *ok*.`))
+  else if (limpo.length < 3) return void (await responder(ctx, perguntaDaNatureza(estado.itens)))
+  else natureza = limpo
+  return depoisDaNatureza(ctx, id, { ...estado, natureza, natureza_ok: true })
+}
+
+/** Depois da natureza: a nota sem venda sai sem pagamento (90) sem perguntar; a venda pergunta a forma. */
+async function depoisDaNatureza(ctx: Contexto, id: string, estado: EstadoNfe): Promise<void> {
   if (estado.forma) return mostrarResumo(ctx, id, estado)
+  if (naturezaDaNota(estado.itens).semVenda) {
+    const novo = { ...estado, forma: '90', descricao_pagamento: null }
+    if (novo.info_perguntada) return mostrarResumo(ctx, id, novo)
+    await salvar(ctx, id, { ...novo, passo: 'transporte' })
+    await responder(ctx, TEXTOS_NFE.transporte)
+    return
+  }
   await salvar(ctx, id, { ...estado, passo: 'pagamento' })
   await responder(ctx, TEXTOS_NFE.pagamento)
 }
@@ -642,10 +697,11 @@ export function pedidoDoEstado(estado: EstadoNfe): PedidoNfe {
   const itens = estado.itens.map((i) => ({ ...i, frete: null }))
   if (estado.frete) ratearFrete(itens, estado.frete)
   const total = calcularTotais(itens).nota
-  const forma = estado.forma ?? '17'
+  const forma = estado.forma ?? formaPadrao(itens, '17')
   return {
     destinatario: estado.destinatario!,
     itens,
+    ...(estado.natureza ? { naturezaOperacao: estado.natureza } : {}),
     ...(estado.modalidade ? { modalidadeFrete: estado.modalidade } : {}),
     ...(estado.transportador ? { transportador: estado.transportador } : {}),
     ...(estado.volumes?.length ? { volumes: estado.volumes } : {}),
@@ -673,6 +729,7 @@ async function mostrarResumo(ctx: Contexto, id: string, estado: EstadoNfe): Prom
       campo('Emitente', `${estado.empresa!.razao_social} (CNPJ ${formatarDocumento(estado.empresa!.cnpj)})`),
       campo('Cliente', `${d.nome} · ${formatarDocumento(soDigitos(d.documento))}${d.inscricaoEstadual ? ` · IE ${d.inscricaoEstadual}` : d.indicadorIE === '2' ? ' · isento' : ''}`),
       `${d.endereco.logradouro}, ${d.endereco.numero}, ${d.endereco.bairro}, ${MUNICIPIOS_IBGE[d.endereco.codigoMunicipio] ?? d.endereco.codigoMunicipio}/${d.endereco.uf}`,
+      campo('Natureza da operação', naturezaDaNota(pedido.itens, pedido.naturezaOperacao).natureza),
     ],
     [
       '*Produtos:*',
@@ -717,8 +774,14 @@ async function corrigir(ctx: Contexto, id: string, estado: EstadoNfe, texto: str
     return
   }
   if (/^(produto|itens|item)/.test(t)) {
-    await salvar(ctx, id, { ...estado, itens: [], passo: 'itens' })
+    // Produtos novos podem mudar a natureza: ela é resolvida de novo, e o "sem pagamento" da remessa volta a ser perguntado.
+    await salvar(ctx, id, { ...estado, itens: [], natureza: null, natureza_ok: false, ...(estado.forma === '90' ? { forma: undefined } : {}), passo: 'itens' })
     await responder(ctx, blocos('Apaguei os produtos desta nota.', await textoDosProdutos(ctx, estado)))
+    return
+  }
+  if (/^(natureza|operacao|natop)/.test(t)) {
+    await salvar(ctx, id, { ...estado, natureza: null, natureza_ok: false, passo: 'natureza' })
+    await responder(ctx, perguntaDaNatureza(estado.itens))
     return
   }
   if (/^(pagamento|forma)/.test(t)) {

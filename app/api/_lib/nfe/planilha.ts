@@ -1,8 +1,8 @@
 // Planilha de NF-e (modelo publicado em /agentes/fiscal/dados/modelo-nfe.xlsx e .csv): uma linha por item; as linhas com o
 // mesmo `cnpj_emitente` + `nota` formam uma NF-e. Destinatário, frete, transporte (modalidade, transportador e volumes)
-// e pagamento são da nota: valem o que estiver preenchido em qualquer linha dela, e linhas que os repetem diferente
-// recusam a nota. Leitura determinística, sem
-// IA; reaproveita o leitor de .xlsx/.csv do lote da NFS-e (agente/lote.ts).
+// pagamento e natureza da operação são da nota: valem o que estiver preenchido em qualquer linha dela, e linhas que os repetem diferente
+// recusam a nota. Sem `natureza_operacao`, a natureza sai do CFOP (natureza.ts), e a nota sem venda (remessa etc.)
+// sem `forma_pagamento` sai "sem pagamento" (90). Leitura determinística, sem IA; reaproveita o leitor de .xlsx/.csv do lote da NFS-e (agente/lote.ts).
 import { cnpjValido } from '../agente/documentos.js'
 import {
   decodificarTexto,
@@ -28,6 +28,7 @@ import {
 } from './nfe-builder.js'
 import type { PedidoNfe } from './servico.js'
 import { FORMAS, lerNumero, modalidade, ratearFrete } from './campos.js'
+import { formaPadrao, LIMITE_NATUREZA } from './natureza.js'
 
 // Os leitores de campo moram em campos.ts (sem depender do lote, para o WhatsApp importar sem ciclo); reexportados
 // aqui para quem já importava da planilha.
@@ -47,7 +48,7 @@ export const COLUNAS_OPCIONAIS = [
   'desconto', 'frete', 'forma_pagamento', 'descricao_pagamento', 'informacoes', 'informacoes_item',
   'modalidade_frete', 'transportador_cpf_cnpj', 'transportador_nome', 'transportador_ie', 'transportador_endereco',
   'transportador_municipio', 'transportador_uf', 'volumes_quantidade', 'volumes_especie', 'volumes_marca',
-  'volumes_numeracao', 'peso_liquido', 'peso_bruto',
+  'volumes_numeracao', 'peso_liquido', 'peso_bruto', 'natureza_operacao',
 ] as const
 type Coluna = (typeof COLUNAS_OBRIGATORIAS)[number] | (typeof COLUNAS_OPCIONAIS)[number]
 const TODAS: Coluna[] = [...COLUNAS_OBRIGATORIAS, ...COLUNAS_OPCIONAIS]
@@ -59,7 +60,7 @@ const CAMPOS_DA_NOTA = [
   'complemento', 'bairro', 'municipio_ibge', 'uf', 'fone', 'frete', 'forma_pagamento', 'descricao_pagamento', 'informacoes',
   'modalidade_frete', 'transportador_cpf_cnpj', 'transportador_nome', 'transportador_ie', 'transportador_endereco',
   'transportador_municipio', 'transportador_uf', 'volumes_quantidade', 'volumes_especie', 'volumes_marca',
-  'volumes_numeracao', 'peso_liquido', 'peso_bruto',
+  'volumes_numeracao', 'peso_liquido', 'peso_bruto', 'natureza_operacao',
 ] as const
 
 export type NotaDaPlanilha = {
@@ -186,10 +187,8 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
     if (!UFS.includes(uf as Uf)) erros.push(`UF "${t('uf')}" inválida`)
     const ie = t('ie_destinatario')
     const indicadorIE: '1' | '2' | '9' = /^isent[oa]$/i.test(ie) ? '2' : soDigitos(ie) ? '1' : '9'
-    const forma = t('forma_pagamento')
-    const formaCodigo = !forma ? '17' : /^\d{2}$/.test(forma) ? forma : FORMAS[normalizarCabecalho(forma)] ?? null
-    if (!formaCodigo) erros.push(`forma de pagamento "${forma}" desconhecida (use pix, boleto, dinheiro, credito, debito, transferencia ou o código)`)
-    if (formaCodigo === '99' && !t('descricao_pagamento')) erros.push('forma de pagamento "outros" (99) pede a coluna descricao_pagamento')
+    const natureza = t('natureza_operacao').replace(/\s+/g, ' ')
+    if (natureza.length > LIMITE_NATUREZA) erros.push(`natureza_operacao com mais de ${LIMITE_NATUREZA} caracteres`)
     const freteTotal = valorOpcional(n('frete'))
     if (freteTotal === null) erros.push('frete inválido')
 
@@ -257,6 +256,11 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
         informacoes: tx('informacoes_item') || null,
       })
     }
+    // Forma de pagamento: a da coluna; vazia, PIX na venda e "sem pagamento" (90) na nota sem venda (remessa etc.).
+    const forma = t('forma_pagamento')
+    const formaCodigo = !forma ? formaPadrao(itens, '17') : /^\d{2}$/.test(forma) ? forma : FORMAS[normalizarCabecalho(forma)] ?? null
+    if (!formaCodigo) erros.push(`forma de pagamento "${forma}" desconhecida (use pix, boleto, dinheiro, credito, debito, transferencia, sem pagamento ou o código)`)
+    if (formaCodigo === '99' && !t('descricao_pagamento')) erros.push('forma de pagamento "outros" (99) pede a coluna descricao_pagamento')
     if (freteTotal) ratearFrete(itens, freteTotal)
     // O pagamento é o vNF calculado como o builder calcula (mesmo arredondamento).
     const vNF = calcularTotais(itens).nota
@@ -284,6 +288,9 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
       ...(temVolume(volume) ? { volumes: [volume] } : {}),
       pagamentos: [{ forma: formaCodigo ?? '99', valor: formaCodigo === '90' ? 0 : vNF / 100, descricao: t('descricao_pagamento') || null }],
       informacoesComplementares: t('informacoes') || null,
+      // Só a informada: sem a coluna, o pedido fica igual ao de antes (a chave da nota é o hash do conteúdo) e a natureza
+      // sai do CFOP na criação (servico.ts) e no XML.
+      ...(natureza ? { naturezaOperacao: natureza } : {}),
     }
     if (erros.length) {
       for (const m of erros) problemas.push({ linha: g.linhas[0].numero, nota: g.nota, mensagem: m })

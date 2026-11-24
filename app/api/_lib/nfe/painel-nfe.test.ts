@@ -49,8 +49,12 @@ describe('planilha de NF-e (pura)', () => {
       ['1', [2], 1, []],
       ['2', [3, 4], 2, []],
       ['3', [5], 1, []],
+      ['4', [6], 1, []],
     ])
-    const [transporte, um, dois] = r.notas
+    const [transporte, um, dois, remessa] = r.notas
+    // Nota 4: remessa 6949 com a natureza na coluna; sem forma_pagamento, sai "sem pagamento".
+    expect(remessa.pedido).toMatchObject({ naturezaOperacao: 'Simples remessa', pagamentos: [{ forma: '90', valor: 0 }] })
+    expect(remessa.pedido.itens[0]).toMatchObject({ cfop: '6949', csosn: '400' })
     expect(transporte.pedido).toMatchObject({
       modalidadeFrete: '0',
       transportador: { documento: '11444777000161', nome: 'Transportadora Exemplo Ltda', inscricaoEstadual: '190.123.456.110', municipio: 'Atibaia', uf: 'SP' },
@@ -200,14 +204,15 @@ describe('rota do painel', () => {
       notas: [
         { nota: '1', itens: 1, valor: '1163.75', avisos: [], credito_icms_sn: 'R$ 31,36 (alíquota de 2,56%)' },
         { nota: '2', itens: 2, valor: '89.56', credito_icms_sn: null },
-        { nota: '3', itens: 1, valor: '224.00', credito_icms_sn: null },
+        { nota: '3', itens: 1, valor: '224.00', credito_icms_sn: null, natureza_operacao: 'Venda de mercadoria', pagamento: 'Boleto' },
+        { nota: '4', itens: 1, valor: '362.61', natureza_operacao: 'Simples remessa', pagamento: 'Sem pagamento', avisos: [] },
       ],
       problemas: [],
     })
 
     const emitida = await chamar(esc.mae.ownerUserId, planilha('planilha_emitir'))
     expect(emitida.status).toBe(202)
-    expect(await emitida.json()).toMatchObject({ emitindo: 3 })
+    expect(await emitida.json()).toMatchObject({ emitindo: 4 })
     // A mesma planilha de novo não cria notas novas.
     await chamar(esc.mae.ownerUserId, planilha('planilha_emitir'))
     // Nem com o arquivo regravado (bytes diferentes, mesmo conteúdo), nem com a nota 2 corrigida depois de sair.
@@ -216,14 +221,14 @@ describe('rota do painel', () => {
     regravada.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente) + String.fromCharCode(10).repeat(2)], 'nfe-copia.csv', { type: 'text/csv' }))
     const r2 = (await (await chamar(esc.mae.ownerUserId, regravada)).json()) as { emitindo: number; problemas: { nota: string; mensagem: string }[] }
     expect(r2.emitindo).toBe(0)
-    expect(r2.problemas.map((p) => p.nota)).toEqual(['1', '2', '3'])
+    expect(r2.problemas.map((p) => p.nota)).toEqual(['1', '2', '3', '4'])
     const corrigida = new FormData()
     corrigida.append('acao', 'planilha_ler')
     corrigida.append('arquivo', new File([MODELO.replaceAll('12.345.678/0001-95', cnpjEmitente).replace('19,90;102;;;;pix', '18,90;102;;;;pix')], 'nfe-corrigida.csv', { type: 'text/csv' }))
     const r3 = (await (await chamar(esc.mae.ownerUserId, corrigida)).json()) as { notas: unknown[]; problemas: { nota: string; mensagem: string }[] }
     expect(r3.problemas.find((p) => p.nota === '2')?.mensagem).toMatch(/já saiu neste mês \(NF-e nº 502\) com outro conteúdo/)
     const { rows } = await admin.db.query<{ numero: string }>('select numero from nofiscal.fiscal_nfe where tenant_id = $1 order by numero', [esc.empresas[0].id])
-    expect(rows.map((r) => r.numero)).toEqual(['501', '502', '503'])
+    expect(rows.map((r) => r.numero)).toEqual(['501', '502', '503', '504'])
 
     let nProt = 135260000000100
     const transport = async (req: HttpRequest): Promise<HttpResponse> => {
@@ -235,10 +240,10 @@ describe('rota do painel', () => {
     }
     const sefaz = criarSefazClient({ transport })
     const now = () => new Date('2026-11-17T13:00:00Z')
-    expect(await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })).toMatchObject({ autorizadas: 3 })
+    expect(await processarNfes({ db: servico.db, sefaz, now, tenantId: esc.empresas[0].id })).toMatchObject({ autorizadas: 4 })
 
     const lista = (await (await chamar(esc.mae.ownerUserId, { acao: 'listar' })).json()) as { notas: { nfe_id: string; status: string; numero: number; homologacao: boolean }[] }
-    expect(lista.notas.map((n) => [n.numero, n.status, n.homologacao]).sort()).toEqual([[501, 'authorized', true], [502, 'authorized', true], [503, 'authorized', true]])
+    expect(lista.notas.map((n) => [n.numero, n.status, n.homologacao]).sort()).toEqual([[501, 'authorized', true], [502, 'authorized', true], [503, 'authorized', true], [504, 'authorized', true]])
     const id = lista.notas.find((n) => n.numero === 502)!.nfe_id
     // A nota 1 do modelo (NF-e 501) sai com transportador e volumes no XML autorizado.
     const comTransporte = lista.notas.find((n) => n.numero === 501)!.nfe_id

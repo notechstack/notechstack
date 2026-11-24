@@ -26,6 +26,7 @@ import {
   type ResponsavelTecnico,
   type Transportador,
 } from './nfe-builder.js'
+import { naturezaDaNota } from './natureza.js'
 import { pedidoCancelamento, pedidoCartaCorrecao, pedidoInutilizacao, PedidoInvalidoError } from './pedidos.js'
 import { abrirCertificado, type Credencial, type ResultadoAutorizacao, type SefazClient } from './sefaz-client.js'
 
@@ -214,7 +215,8 @@ export async function criarNfe(
         p.externalId,
         p.origem,
         ambienteDaEmpresa(empresa),
-        JSON.stringify(p.pedido),
+        // A natureza da operação vai gravada (a informada ou a do CFOP): o XML e o histórico mostram a mesma.
+        JSON.stringify({ ...p.pedido, naturezaOperacao: naturezaDaNota(p.pedido.itens, p.pedido.naturezaOperacao).natureza }),
         serie,
         numero,
         (total / 100).toFixed(2),
