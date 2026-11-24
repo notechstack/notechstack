@@ -1,8 +1,28 @@
 // API pública, chamada pela função exportada em api/v1/nfse.ts com Request HTTP, contra o
 // banco local. Checks: C2, C13, C32 (.checks/nfse-automatica-prontia.md).
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { closeSharedDb } from '../_lib/db.js'
 import { createTestTenant, dropTestTenant, openTestDb, TEST_DATABASE_URL, validPayload, type TestTenant } from './fixtures.js'
+
+// Dublê local da BrasilAPI (o endereço do tomador com CNPJ vai em toda nota): só o CNPJ do hospital tem endereço; o
+// resto responde 404. Endereço local desliga o espelho e a reserva (consultaCnpjFromEnv): o teste não sai para a rede.
+const CNPJ_COM_ENDERECO = '11444777000161'
+const receita = createServer((req, res) => {
+  const achado = req.url?.endsWith(`/${CNPJ_COM_ENDERECO}`)
+  res.writeHead(achado ? 200 : 404, { 'content-type': 'application/json' })
+  res.end(
+    JSON.stringify(
+      achado
+        ? { razao_social: 'HOSPITAL ALFA LTDA', codigo_municipio_ibge: 3550308, cep: '1310100', descricao_tipo_de_logradouro: 'AVENIDA', logradouro: 'PAULISTA', numero: '1000', complemento: 'ANDAR 5', bairro: 'BELA VISTA' }
+        : { message: 'não encontrado' },
+    ),
+  )
+})
+await new Promise<void>((ok) => receita.listen(0, '127.0.0.1', ok))
+process.env.CNPJ_API_URL = `http://127.0.0.1:${(receita.address() as AddressInfo).port}`
+const ENDERECO_DA_RECEITA = { cMun: '3550308', cep: '01310100', logradouro: 'AVENIDA PAULISTA', numero: '1000', complemento: 'ANDAR 5', bairro: 'BELA VISTA' }
 
 process.env.NOFISCAL_DATABASE_URL = TEST_DATABASE_URL
 const { default: entry } = await import('../v1/nfse.js')
@@ -41,6 +61,7 @@ afterAll(async () => {
   for (const t of tenants) await dropTestTenant(db, t.id)
   await pool.end()
   await closeSharedDb()
+  await new Promise((ok) => receita.close(ok))
 })
 
 describe('POST /v1/nfse', () => {
@@ -97,6 +118,51 @@ describe('POST /v1/nfse', () => {
     expect((await read(other)).id).not.toBe(firstBody.id)
   })
 
+  // Endereço do tomador (Robson, Bragantina, 24/11/2026): o informado prevalece; CPF só com o informado; CNPJ que a
+  // Receita não acha sai sem endereço, com aviso.
+  it('tomador.endereco: informado prevalece, CPF com e sem endereço, CNPJ sem endereço na Receita sai com aviso', async () => {
+    const payloadDe = async (res: Response) => {
+      const { rows } = await db.query<{ payload: { tomador: Record<string, unknown> } }>('select payload from nofiscal.fiscal_invoices where id = $1', [
+        (await read(res)).id,
+      ])
+      return rows[0].payload
+    }
+    const informado = { cep: '12900-000', logradouro: 'Rua das Flores', numero: '', complemento: 'Sala 2', bairro: 'Centro', municipio_ibge: '3507605' }
+    const ENDERECO_INFORMADO = { cMun: '3507605', cep: '12900000', logradouro: 'Rua das Flores', numero: 'S/N', complemento: 'Sala 2', bairro: 'Centro' }
+
+    const cpfSem = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: newSale('end-cpf-sem') })
+    expect(cpfSem.status).toBe(202)
+    expect((await payloadDe(cpfSem)).tomador.endereco).toBeUndefined()
+
+    const cpfCom = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: { ...newSale('end-cpf-com'), tomador: { ...validPayload().tomador, endereco: informado } } })
+    expect(cpfCom.status).toBe(202)
+    expect((await payloadDe(cpfCom)).tomador.endereco).toEqual(ENDERECO_INFORMADO)
+
+    const pjInformado = { ...newSale('end-pj-informado'), tomador: { cnpj: CNPJ_COM_ENDERECO, nome: 'Hospital Alfa Ltda', endereco: informado } }
+    const informadoVale = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: pjInformado })
+    expect((await payloadDe(informadoVale)).tomador.endereco).toEqual(ENDERECO_INFORMADO)
+
+    const naoAchado = await call('/v1/nfse', { method: 'POST', key: a.apiKey, body: { ...newSale('end-pj-sem'), tomador: { cnpj: '11222333000181', nome: 'Empresa X' } } })
+    expect(naoAchado.status).toBe(202)
+    const corpo = await read(naoAchado.clone())
+    expect(corpo.avisos).toEqual([expect.stringContaining('sem o endereço do tomador')])
+    expect((await payloadDe(naoAchado)).tomador.endereco).toBeUndefined()
+
+    const incompleto = await call('/v1/nfse', {
+      method: 'POST',
+      key: a.apiKey,
+      body: { ...newSale('end-incompleto'), tomador: { ...validPayload().tomador, endereco: { cep: '12900000' } } },
+    })
+    expect(incompleto.status).toBe(422)
+    expect((await read(incompleto)).error.message).toContain('tomador.endereco')
+    const campoExtra = await call('/v1/nfse', {
+      method: 'POST',
+      key: a.apiKey,
+      body: { ...newSale('end-extra'), tomador: { ...validPayload().tomador, endereco: { ...informado, uf: 'SP' } } },
+    })
+    expect((await read(campoExtra)).error.code).toBe('UNKNOWN_FIELD')
+  })
+
   // Lote B2 do agente fiscal (Landing, "Tomador pessoa jurídica: contrato do motor").
   it('tomador com CPF ou CNPJ, exatamente um', async () => {
     const pj = { ...newSale('venda-pj'), tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda' } }
@@ -105,7 +171,8 @@ describe('POST /v1/nfse', () => {
     const { rows } = await db.query<{ payload: unknown }>('select payload from nofiscal.fiscal_invoices where id = $1', [
       (await read(res)).id,
     ])
-    expect(rows[0].payload).toEqual({ ...validPayload(), tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda' } })
+    // Sem ISS retido, o endereço da Receita vai também (Bragantina, 24/11/2026), com o zero do CEP.
+    expect(rows[0].payload).toEqual({ ...validPayload(), tomador: { cnpj: '11444777000161', nome: 'Hospital Alfa Ltda', endereco: ENDERECO_DA_RECEITA } })
 
     for (const [externalId, tomador] of [
       ['pj-e-pf', { cpf: '12345678909', cnpj: '11444777000161', nome: 'X' }],

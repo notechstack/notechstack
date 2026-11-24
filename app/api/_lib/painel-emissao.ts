@@ -65,6 +65,7 @@ import {
   type Retencao,
   type RetencaoDoPedido,
 } from './retencao.js'
+import { AVISO_SEM_ENDERECO, lerEnderecoEscrito, registrarSemEndereco, resolverEnderecoDoTomador } from './endereco-tomador.js'
 
 export type PainelEmissaoDeps = {
   /** Conexão como `nofiscal_service`, a mesma do agente. */
@@ -72,7 +73,7 @@ export type PainelEmissaoDeps = {
   sessions: SessionVerifier
   /** Nome do código de serviço no resumo; sem ele, só o código. */
   catalogo?: CatalogoDeServicos
-  /** Endereço do tomador na Receita (ISS retido, E0237); sem ela, nota com ISS retido não sai. */
+  /** Endereço do tomador com CNPJ na Receita (toda nota, endereco-tomador.ts); sem ela, nota com ISS retido não sai. */
   enderecos?: EnderecoDoTomador | null
   now?: () => Date
   /** Teste do webhook da aba API (parceiro/painel-integracao.ts). Padrão: o fetch global. */
@@ -143,6 +144,8 @@ export type PedidoDoPainel = {
   obra: Obra | null
   /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
   retencao?: RetencaoDoPedido
+  /** "Endereço do cliente (opcional)": prevalece sobre o da Receita; com CPF, só ele. `null` = não informado. */
+  endereco?: EnderecoNacional | null
 }
 
 export type CampoDoPainel =
@@ -156,6 +159,7 @@ export type CampoDoPainel =
   | 'informacoes_complementares'
   | 'municipio_prestacao'
   | 'obra'
+  | 'endereco'
   | 'aliquota_iss'
   | 'inss'
   | 'retencao'
@@ -228,6 +232,17 @@ export function lerPedido(
     obra = lida.obra
   }
 
+  // Endereço do cliente (campos tomador_*): todos vazios = o da Receita (CNPJ) ou nenhum (CPF).
+  const enderecoLido = lerEnderecoEscrito({
+    cep: corpo.tomador_cep,
+    logradouro: corpo.tomador_logradouro,
+    numero: corpo.tomador_numero,
+    complemento: corpo.tomador_complemento,
+    bairro: corpo.tomador_bairro,
+    municipio: corpo.tomador_municipio,
+  })
+  if (!enderecoLido.ok) return falha('endereco', `Endereço do cliente: ${enderecoLido.erro}. Preencha CEP, rua, bairro e cidade, ou deixe tudo em branco.`)
+
   let retencao: RetencaoDoPedido | undefined
   if (typeof corpo.retem_iss === 'boolean' || typeof corpo.retem_inss === 'boolean') {
     retencao = { iss: corpo.retem_iss === true, inss: corpo.retem_inss === true }
@@ -257,6 +272,7 @@ export function lerPedido(
       municipio_prestacao_ibge,
       obra,
       retencao,
+      endereco: enderecoLido.endereco,
     },
   }
 }
@@ -410,11 +426,11 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
   if (!resolvida.ok) {
     return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao(resolvida.problema)}.`, { campo: CAMPO_DA_RETENCAO[resolvida.problema] ?? 'retencao' })
   }
-  let endereco: EnderecoNacional | null = null
-  if (resolvida.retencao?.iss) {
-    endereco = ctx.deps.enderecos ? await ctx.deps.enderecos.endereco(pedido.documento).catch(() => null) : null
-    if (!endereco) return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao('ENDERECO_TOMADOR')}.`, { campo: 'retencao' })
-  }
+  // Endereço do tomador: o informado, senão o da Receita (CNPJ). Sem ele, só o ISS retido trava (E0237).
+  const achado = await resolverEnderecoDoTomador({ documento: pedido.documento, informado: pedido.endereco ?? null, consulta: ctx.deps.enderecos })
+  const endereco = achado.endereco
+  if (resolvida.retencao?.iss && !endereco) return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao('ENDERECO_TOMADOR')}.`, { campo: 'retencao' })
+  if (emitir && achado.consultaFalhou) registrarSemEndereco('painel', { tenant_id: emp.id })
 
   const payload = payloadDoPedido(pedido, resolvida.retencao, endereco)
   if (emitir) {
@@ -437,6 +453,7 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
     )
   }
   if (!pedido.email) avisos.push('Sem e-mail, o cliente não recebe a nota por e-mail. Ela fica em Relatórios.')
+  if (achado.consultaFalhou) avisos.push(AVISO_SEM_ENDERECO)
 
   const nomeDoServico = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(pedido.codigo).catch(() => null) : null
   return json(200, {
@@ -453,6 +470,7 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       valor_texto: formatarReais(pedido.valor),
       retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),
       endereco_tomador: endereco,
+      endereco_origem: achado.origem,
     },
     bloqueio: bloqueio ? { codigo: bloqueio, motivo } : null,
     avisos,
@@ -526,6 +544,8 @@ export function resumoDoLote(lido: LoteLido) {
         }
       }),
     franquia: { limite: lido.franquia.limite, no_mes: lido.franquia.noMes, acima },
+    /** Linhas prontas de CNPJ que saem sem endereço (a Receita não achou agora). */
+    sem_endereco: prontas.filter((i) => i.semEndereco).map((i) => i.linha),
     resumo_texto: lido.resumo,
   }
 }

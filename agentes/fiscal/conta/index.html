@@ -317,6 +317,12 @@
           <div class="nf-campo"><label for="fa-av-nome">Nome ou razão social</label><input id="fa-av-nome" autocomplete="off" maxlength="150"><small class="nf-erro" id="fa-av-nome-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-email">E-mail do cliente (opcional)</label><input id="fa-av-email" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-av-email-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-valor">Valor (R$)</label><input id="fa-av-valor" inputmode="decimal" autocomplete="off" maxlength="20" placeholder="1.234,56"><small class="nf-erro" id="fa-av-valor-erro" hidden></small></div>
+          <fieldset class="nf-grupo" id="fa-av-end">
+            <legend>Endereço do cliente (opcional)</legend>
+            <small class="nf-dica" style="grid-column:1/-1">Cliente com CNPJ: em branco, vai na nota o endereço da Receita. Cliente com CPF: só sai com endereço se você preencher.</small>
+            <div class="nf-campo"><label for="fa-av-end-cep">CEP</label><input id="fa-av-end-cep" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="12900-000"></div><div class="nf-campo"><label for="fa-av-end-logradouro">Rua</label><input id="fa-av-end-logradouro" autocomplete="off" maxlength="255" placeholder="Rua das Flores"></div><div class="nf-campo"><label for="fa-av-end-numero">Número</label><input id="fa-av-end-numero" autocomplete="off" maxlength="60" placeholder="120 ou s/n"></div><div class="nf-campo"><label for="fa-av-end-complemento">Complemento (opcional)</label><input id="fa-av-end-complemento" autocomplete="off" maxlength="156" placeholder="Sala 2"></div><div class="nf-campo"><label for="fa-av-end-bairro">Bairro</label><input id="fa-av-end-bairro" autocomplete="off" maxlength="60" placeholder="Centro"></div><div class="nf-campo"><label for="fa-av-end-municipio">Cidade</label><input id="fa-av-end-municipio" list="fa-av-local-lista" autocomplete="off" maxlength="80" placeholder="Bragança Paulista/SP"></div>
+            <small class="nf-erro" id="fa-av-end-erro" style="grid-column:1/-1" hidden></small>
+          </fieldset>
           <fieldset class="nf-grupo nf-grupo--coluna nf-seletor" id="fa-av-seletor">
             <legend>Código de serviço nacional</legend>
             <div class="nf-sugestoes"></div>

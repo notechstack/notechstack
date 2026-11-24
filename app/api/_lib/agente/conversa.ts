@@ -7,6 +7,7 @@ import { requestCancel } from '../cancel.js'
 import type { Db, Queryable } from '../db.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR, separarInfoComplementar } from '../info-complementar.js'
 import { createOrGetInvoice } from '../invoices.js'
+import { registrarSemEndereco, resolverEnderecoDoTomador, rotuloDoEndereco } from '../endereco-tomador.js'
 import {
   issNoLocalDaPrestacao,
   motivoDoLocal,
@@ -92,7 +93,7 @@ export type MensagemRecebida = {
 /** Nome do CNPJ nos dados públicos (porta; sem cliente real neste lote). */
 export interface ConsultaCnpj {
   razaoSocial(cnpj: string): Promise<string | null>
-  /** Endereço do CNPJ na Receita, para a nota com ISS retido (E0237). Sem ele, o ISS retido não sai. */
+  /** Endereço do CNPJ na Receita, para toda nota de CNPJ (endereco-tomador.ts). Sem ele, o ISS retido não sai (E0237). */
   endereco?(cnpj: string): Promise<EnderecoNacional | null>
 }
 
@@ -354,7 +355,7 @@ type Conversa = {
   opcoes?: string[]
   /** O que o pedido disse da retenção ("sem retenção", "ISS retido 2%", "retém INSS 11%"); o resto vem da empresa. */
   retencao_pedido?: RetencaoDoPedido
-  /** Retenção resolvida no último resumo (a que vai na nota) e o endereço do tomador (só com ISS retido, E0237). */
+  /** Retenção resolvida no último resumo (a que vai na nota) e o endereço do tomador (o da Receita, em toda nota de CNPJ). */
   retencao?: Retencao | null
   endereco?: EnderecoNacional | null
   /** O último resumo achou um problema na retenção: o *confirmar* não emite até corrigir. */
@@ -521,6 +522,9 @@ export function textoDoResumo(
   informacoesComplementares?: string | null,
   /** "Campinas/SP": só quando o local da prestação é outro que não o município da empresa (ou o serviço é de obra). */
   localPrestacao?: string | null,
+  /** O endereço do tomador que vai na nota, para a pessoa conferir; `semEndereco`: a Receita não achou o do CNPJ. */
+  enderecoTomador?: EnderecoNacional | null,
+  semEndereco?: boolean,
 ): string {
   return mensagem({
     titulo: 'Resumo da nota',
@@ -529,6 +533,7 @@ export function textoDoResumo(
         emitente && comRotulo(linhaDoEmitente(emitente)),
         campo('Tomador', tomador.nome),
         campo(tipoDoDocumento(tomador.documento).toUpperCase(), formatarDocumento(tomador.documento)),
+        enderecoTomador ? campo('Endereço', rotuloDoEndereco(enderecoTomador)) : semEndereco && campo('Endereço', TEXTO_SEM_ENDERECO_NO_RESUMO),
       ],
       [
         campo('Serviço', `${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`),
@@ -542,6 +547,8 @@ export function textoDoResumo(
     acao: PERGUNTA_DE_EMISSAO,
   })
 }
+
+export const TEXTO_SEM_ENDERECO_NO_RESUMO = 'não achei o endereço deste CNPJ na Receita agora; a nota sai sem ele.'
 
 export const TEXTO_LOCAL_CORRIGIR =
   'Responda *descartar* e emita esta nota pelo emissor da prefeitura ou da Sefin, ou *corrigir* e me diga outro código de serviço.'
@@ -669,11 +676,21 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   if (!exigeObra(servico.codigo) && servico.obra) servico = { ...servico, obra: null }
   const faltaObra = !problema && problemaDaObra({ codigo: servico.codigo, obra: servico.obra }) !== null
   if (faltaObra) problema = 'OBRA_SEM_DADOS'
+  // Endereço do tomador em toda nota de CNPJ (Bragantina, 24/11/2026): sem ele, só o ISS retido trava (E0237).
   let endereco: EnderecoNacional | null = null
-  if (retencao?.iss) {
+  let semEndereco = false
+  if (!problema) {
     const consulta = ctx.deps.consultaCnpj
-    endereco = consulta?.endereco ? await consulta.endereco(tomador.documento).catch(() => null) : null
-    if (!endereco) problema = 'ENDERECO_TOMADOR'
+    const r = await resolverEnderecoDoTomador({
+      documento: tomador.documento,
+      consulta: consulta?.endereco ? { endereco: (cnpj) => (consulta.endereco as NonNullable<ConsultaCnpj['endereco']>)(cnpj) } : null,
+    })
+    endereco = r.endereco
+    if (retencao?.iss && !endereco) problema = 'ENDERECO_TOMADOR'
+    else if (r.consultaFalhou) {
+      semEndereco = true
+      registrarSemEndereco('whatsapp', { request_id: pedidoId, tenant_id: tenantId })
+    }
   }
   // Informações complementares: no primeiro resumo sem elas, duas mensagens perguntam (uma vez por pedido).
   const perguntar = !problema && !conversa.informacoes_complementares && !conversa.info_perguntada
@@ -708,6 +725,8 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     conversa.informacoes_complementares,
     // Na obra, o local aparece sempre (é onde o ISS é devido), mesmo sendo a cidade da empresa.
     local ? rotuloDoLocal(local, servico.codigo) : servico.obra && sede ? rotuloDoLocal(sede, servico.codigo) : null,
+    endereco,
+    semEndereco,
   )
   return perguntar ? [resumo, TEXTOS.perguntaInfoComplementar, TEXTOS.semInfoComplementar] : [resumo]
 }

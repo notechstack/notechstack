@@ -1,3 +1,3 @@
-﻿cnpj_prestador;cpf_cnpj_tomador;nome_tomador;email_tomador;valor;descricao;iss_retido;inss_retido;codigo_servico;municipio_prestacao;obra_cep;obra_logradouro;obra_numero;obra_complemento;obra_bairro;obra_cno
-12.345.678/0001-95;11.222.333/0001-81;Padaria Exemplo Ltda;financeiro@padaria-exemplo.com.br;1.500,00;Honorários contábeis - novembro/2026;;;17.19.01;Campinas/SP;;;;;;
-12.345.678/0001-95;529.982.247-25;Maria Exemplo da Silva;maria@exemplo.com.br;350,00;;;;;;;;;;;
+﻿cnpj_prestador;cpf_cnpj_tomador;nome_tomador;email_tomador;valor;descricao;iss_retido;inss_retido;codigo_servico;municipio_prestacao;obra_cep;obra_logradouro;obra_numero;obra_complemento;obra_bairro;obra_cno;tomador_cep;tomador_logradouro;tomador_numero;tomador_complemento;tomador_bairro;tomador_municipio_ibge
+12.345.678/0001-95;11.222.333/0001-81;Padaria Exemplo Ltda;financeiro@padaria-exemplo.com.br;1.500,00;Honorários contábeis - novembro/2026;;;17.19.01;Campinas/SP;;;;;;;;;;;;
+12.345.678/0001-95;529.982.247-25;Maria Exemplo da Silva;maria@exemplo.com.br;350,00;;;;;;;;;;;;12900-000;Rua das Flores;120;Apto 12;Centro;Bragança Paulista/SP

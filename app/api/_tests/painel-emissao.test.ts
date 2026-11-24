@@ -164,6 +164,7 @@ describe('nota avulsa', () => {
       valor_texto: 'R$ 1.234,50',
       retencao: null,
       endereco_tomador: null,
+      endereco_origem: null,
     })
     expect(conferido.corpo.bloqueio).toBeNull()
     expect(conferido.corpo.avisos).toEqual([])

@@ -32,6 +32,7 @@ import type { FetchLike } from './parceiro/webhook.js'
 import { agendarNaVercel, type Agendar } from './sandbox/agenda.js'
 import { salvarWebhookSandbox, webhookSandbox } from './sandbox/conta.js'
 import { ATRASO_MS, cancelarNotaSandbox, criarNotaSandbox, notaSandbox, notaSandboxPorExternalId, rodadaSandbox } from './sandbox/notas.js'
+import { registrarSemEndereco, resolverEnderecoDoTomador } from './endereco-tomador.js'
 import { motivoDaRetencao, resolverRetencao, SEM_RETENCAO_PADRAO, type EnderecoDoTomador, type EnderecoNacional } from './retencao.js'
 import { parseNewInvoice, type InvoicePayload } from './validation.js'
 import { exigeObra, MOTIVO_SEM_OBRA, problemaDaObra } from './obra.js'
@@ -113,7 +114,7 @@ const NFE_COM_XML: readonly string[] = ['authorized', 'cancel_requested', 'cance
 export type NfseDeps = {
   db: Db
   now?: () => Date
-  /** Endereço do tomador na Receita (ISS retido, E0237); sem ela, nota com ISS retido não sai. */
+  /** Endereço do tomador com CNPJ na Receita (toda nota, endereco-tomador.ts); sem ela, nota com ISS retido não sai. */
   enderecos?: EnderecoDoTomador | null
   /** Consulta de CNPJ do cadastro de empresa (POST /v1/empresas). Padrão: a real, pelo ambiente. */
   receita?: ConsultaReceita
@@ -256,6 +257,9 @@ const CAMPO_DA_RETENCAO: Record<string, string> = {
   ENDERECO_TOMADOR: 'tomador.cnpj',
 }
 
+const AVISO_SEM_ENDERECO_API =
+  'Não achamos o endereço deste CNPJ na Receita agora: a nota sai sem o endereço do tomador. Para incluí-lo, envie tomador.endereco.'
+
 type Preparada =
   | { ok: true; empresa: Empresa; externalId: string; valor: string; payload: InvoicePayload; avisos: string[] }
   | { ok: false; resposta: Response }
@@ -324,12 +328,15 @@ async function prepararNfse(
       }),
     }
   }
-  let endereco: EnderecoNacional | null = null
-  if (resolvida.retencao?.iss) {
-    endereco = ctx.deps.enderecos ? await ctx.deps.enderecos.endereco(pedido.tomador.documento).catch(() => null) : null
-    if (!endereco) {
-      return { ok: false, resposta: errorResponse('VALIDATION_FAILED', motivoDaRetencao('ENDERECO_TOMADOR'), { campo: 'tomador.cnpj', motivo: 'ENDERECO_TOMADOR' }) }
-    }
+  // Endereço do tomador: o informado em `tomador.endereco`, senão o da Receita (CNPJ). Sem ele, só o ISS retido trava.
+  const achado = await resolverEnderecoDoTomador({ documento: pedido.tomador.documento, informado: pedido.tomador.endereco ?? null, consulta: ctx.deps.enderecos })
+  const endereco: EnderecoNacional | null = achado.endereco
+  if (resolvida.retencao?.iss && !endereco) {
+    return { ok: false, resposta: errorResponse('VALIDATION_FAILED', motivoDaRetencao('ENDERECO_TOMADOR'), { campo: 'tomador.cnpj', motivo: 'ENDERECO_TOMADOR' }) }
+  }
+  if (achado.consultaFalhou) {
+    avisos.push(AVISO_SEM_ENDERECO_API)
+    registrarSemEndereco('api', { tenant_id: empresa.id, sandbox: Boolean(ctx.tenant.sandbox) })
   }
 
   // E0370: código de construção civil sem o CNO ou o endereço da obra; a Sefin recusaria.
@@ -366,7 +373,7 @@ async function criarNfse(ctx: Ctx, corpo: unknown): Promise<Response> {
   const nota = await ctx.db.transaction((tx) => createOrGetInvoice(tx, empresa.id, { external_id: externalId, payload, origem: 'api' }))
   logEvent('nofiscal.api_nfse_criada', { tenant_id: empresa.id, invoice_id: nota.id, status: nota.status })
   const visao = await visaoNfse(ctx.db, nota.id)
-  return json(202, { ...visao, avisos: await avisoDeFranquia(ctx) })
+  return json(202, { ...visao, avisos: [...pronta.avisos, ...(await avisoDeFranquia(ctx))] })
 }
 
 // ---------------------------------------------------------------------------------------

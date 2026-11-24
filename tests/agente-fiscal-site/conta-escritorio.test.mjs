@@ -535,7 +535,10 @@ test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com conf
   await p.enviar('fa-form-avulsa');
   assert.deepEqual(p.rede.de('app:emissao:avulsa_conferir')[0].corpo, {
     tenant_id: EMP_PRONTA, documento: '529.982.247-25', nome: 'Maria Tomadora', email: 'maria@tomador.test', valor: '350',
-    codigo: '170201', descricao: 'Honorários de novembro', retem_iss: false, retem_inss: false, acao: 'avulsa_conferir'
+    codigo: '170201', descricao: 'Honorários de novembro', retem_iss: false, retem_inss: false, acao: 'avulsa_conferir',
+    informacoes_complementares: '', municipio_prestacao: '',
+    // Endereço do cliente (opcional; Bragantina, 24/11/2026): em branco, o servidor usa o da Receita (CNPJ) ou nenhum (CPF).
+    tomador_cep: '', tomador_logradouro: '', tomador_numero: '', tomador_complemento: '', tomador_bairro: '', tomador_municipio: ''
   });
   assert.ok(p.visivel('fa-av-resumo'));
   assert.equal(p.visivel('fa-form-avulsa'), false);
