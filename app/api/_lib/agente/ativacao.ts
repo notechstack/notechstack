@@ -12,7 +12,9 @@ import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import type { MensagemRecebida } from './conversa.js'
 import type { Links } from './links.js'
 import { perguntaDeConferencia } from './boas-vindas.js'
+import { blocos } from './formato.js'
 import { LINHA_DA_PLANILHA, nomeDoPlano, planoDeEscritorio } from './planos.js'
+
 
 export const ATIVACAO_VALIDADE_MS = 24 * 3600_000
 export const PROPOSITO_ATIVACAO = 'whatsapp_activation'
@@ -214,7 +216,7 @@ async function ativar(
     etapa === 'boas_vindas_conferir' ? await perguntaDeConferencia(deps.db, alvo.tenantId, deps.catalogo) : textoFaltaSite(deps.links)
   // Escritório: a primeira resposta já conta que as notas do mês podem vir numa planilha.
   const { rows } = await deps.db.query<{ plan: string }>('select plan from nofiscal.fiscal_tenants where id = $1', [alvo.tenantId])
-  await deps.whatsapp.enviarTexto(alvo.telefone, planoDeEscritorio(rows[0]?.plan) ? [texto, LINHA_DA_PLANILHA].join('\n') : texto)
+  await deps.whatsapp.enviarTexto(alvo.telefone, planoDeEscritorio(rows[0]?.plan) ? blocos(texto, LINHA_DA_PLANILHA) : texto)
   return true
 }
 

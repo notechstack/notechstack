@@ -22,6 +22,8 @@ export default defineConfig({
           name: 'api',
           environment: 'node',
           include: ['api/**/*.test.ts', 'scripts/**/*.test.ts'],
+          // Toda mensagem do agente que passa pelo dublê dos canais é conferida (sem bloco corrido de ~280 caracteres).
+          setupFiles: './api/_tests/setup-formato.ts',
           testTimeout: 30000,
           hookTimeout: 30000,
         },

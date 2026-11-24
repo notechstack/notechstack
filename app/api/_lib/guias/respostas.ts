@@ -11,6 +11,7 @@ import type { EnviaEmail, EnviaWhatsApp } from '../agente/canais.js'
 import type { MensagemRecebida } from '../agente/conversa.js'
 import { diaLocal } from '../agente/tempo.js'
 import { marcarUmaVez } from '../agente/uma-vez.js'
+import { blocos } from '../agente/formato.js'
 import { formatarLinha } from './codigos.js'
 import { normalizar, type TipoDeGuia } from './leitura.js'
 import { dataBr, lerPayload, reaisSemSimbolo, ROTULO_DO_TIPO, type AcaoDoBotao } from './modelos.js'
@@ -144,7 +145,8 @@ export async function tratarRespostaDeGuia(deps: RespostasDeps, msg: MensagemRec
     default: {
       await alertar(deps, contato, `Resposta de ${contato.nome}: ${assunto(guia)}`, `${contato.nome} respondeu pelo WhatsApp sobre a ${assunto(guia)}:\n\n"${textoRecebido}"\n\nResponda ao cliente pelo seu canal de sempre.`)
       if (await marcarUmaVez(deps.db, `guias-recebido:${de}:${diaLocal(agora)}`, contato.conta)) {
-        await responder(deps, de, `Recebi sua mensagem e avisei ${contato.escritorio}. Se já pagou, responda "paguei"; para receber o PDF de novo, "2ª via".`)
+        await responder(deps, de, blocos(`Recebi sua mensagem e avisei ${contato.escritorio}.`, 'Se já pagou, responda "paguei"; para receber o PDF de novo, "2ª via".'))
+
       }
       return true
     }

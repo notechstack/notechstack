@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { botaoPrimario, botaoSecundario, campo, Carregando, Selo, Vazio } from '../marketing/ui'
 import { central, ErroCentral, type Autor, type ConversaAberta, type ConversaResumo, type Etiqueta, type Evento, type Mensagem } from './central-service'
+import { trechosDoWhatsApp } from './whatsapp-formato'
 
 // /no/fiscal/conversas (NO_ADMIN, aal2): as conversas do número do robô do nó.fiscal ao vivo (consulta a
 // cada 3 segundos). Assumir deixa o robô quieto naquele número até devolver, ou 2 horas depois da última
@@ -285,6 +286,18 @@ function Conversa({ conversa, agora, onMudou }: { conversa: ConversaAberta; agor
   )
 }
 
+/** *negrito* e _itálico_ do WhatsApp como <strong> e <em>; o texto entra só como texto, nunca como HTML. */
+function TextoDoWhatsApp({ texto }: { texto: string }) {
+  return (
+    <>
+      {trechosDoWhatsApp(texto).map((t, i) => {
+        const conteudo = t.italico ? <em>{t.texto}</em> : t.texto
+        return t.negrito ? <strong key={i} className="font-semibold">{conteudo}</strong> : t.italico ? <em key={i}>{t.texto}</em> : <span key={i}>{t.texto}</span>
+      })}
+    </>
+  )
+}
+
 function Bolha({ m }: { m: Mensagem }) {
   const nossa = m.direcao === 'saida'
   const cor = m.autor === 'cliente' ? 'border border-borda bg-white' : m.autor === 'equipe' ? 'bg-azul-tint' : 'bg-white/70 border border-dashed border-borda'
@@ -292,7 +305,9 @@ function Bolha({ m }: { m: Mensagem }) {
     <div className={`flex ${nossa ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm ${cor} ${m.status === 'falhou' ? 'ring-1 ring-vermelho' : ''}`}>
         <p className="mb-0.5 font-mono text-[0.625rem] uppercase tracking-[0.08em] text-cinza">{AUTORES[m.autor]}</p>
-        <p className="whitespace-pre-wrap break-words">{conteudo(m)}</p>
+        <p className="whitespace-pre-wrap break-words">
+          <TextoDoWhatsApp texto={conteudo(m)} />
+        </p>
         <p className="mt-1 text-right font-mono text-[0.625rem] text-cinza">
           {hora(m.em)}{nossa && m.status ? ` · ${STATUS[m.status]}` : ''}
         </p>

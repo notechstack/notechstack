@@ -159,9 +159,9 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
 
     await c.enviar(e.mae.ownerPhone, PELA_OFICINA)
     const resumo = c.ultimaPara(e.mae.ownerPhone).split('\n')
-    expect(resumo[0]).toBe('Resumo da nota:')
-    expect(resumo[1]).toBe(`Emitente: Oficina Trilho Ltda (CNPJ ${formatarDocumento(await cnpjDe(oficina.id))})`)
-    expect(resumo[2]).toBe('Tomador: Clínica Saúde')
+    expect(resumo[0]).toBe('*Resumo da nota*')
+    expect(resumo[2]).toBe(`*Emitente:* Oficina Trilho Ltda (CNPJ ${formatarDocumento(await cnpjDe(oficina.id))})`)
+    expect(resumo[3]).toBe('*Tomador:* Clínica Saúde')
     expect(resumo.at(-1)).toContain('Posso emitir?')
     // Nada foi perguntado: uma resposta só, e o pedido já nasceu na empresa.
     expect(c.respostasPara(e.mae.ownerPhone)).toHaveLength(1)
@@ -207,8 +207,8 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
 
     await c.enviar(e.mae.ownerPhone, '2')
     const resumo = c.ultimaPara(e.mae.ownerPhone)
-    expect(resumo).toContain('Emitente: Oficina Trilho Ltda (CNPJ ')
-    expect(resumo).toContain('Tomador: Clínica Saúde')
+    expect(resumo).toContain('*Emitente:* Oficina Trilho Ltda (CNPJ ')
+    expect(resumo).toContain('*Tomador:* Clínica Saúde')
     expect(resumo).toContain('R$ 450,00')
     // O mesmo pedido, agora da empresa escolhida; a IA leu só o pedido.
     expect(await pedidosDo(admin.db, e.mae.tenant.id)).toHaveLength(0)
@@ -231,19 +231,19 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
     const porNome = conversa(roteiro)
     await porNome.enviar(e.mae.ownerPhone, SEM_EMPRESA)
     await porNome.enviar(e.mae.ownerPhone, 'studio')
-    expect(porNome.ultimaPara(e.mae.ownerPhone)).toContain('Emitente: Studio Lima (CNPJ ')
+    expect(porNome.ultimaPara(e.mae.ownerPhone)).toContain('*Emitente:* Studio Lima (CNPJ ')
     await porNome.enviar(e.mae.ownerPhone, 'descartar')
 
     const porCnpj = conversa(roteiro)
     await porCnpj.enviar(e.mae.ownerPhone, SEM_EMPRESA)
     await porCnpj.enviar(e.mae.ownerPhone, formatarDocumento(await cnpjDe(studio.id)))
-    expect(porCnpj.ultimaPara(e.mae.ownerPhone)).toContain('Emitente: Studio Lima (CNPJ ')
+    expect(porCnpj.ultimaPara(e.mae.ownerPhone)).toContain('*Emitente:* Studio Lima (CNPJ ')
     await porCnpj.enviar(e.mae.ownerPhone, 'descartar')
 
     const peloEscritorio = conversa(roteiro)
     await peloEscritorio.enviar(e.mae.ownerPhone, SEM_EMPRESA)
     await peloEscritorio.enviar(e.mae.ownerPhone, 'escritório')
-    expect(peloEscritorio.ultimaPara(e.mae.ownerPhone)).toContain('Emitente: Contábil Aurora Ltda (CNPJ ')
+    expect(peloEscritorio.ultimaPara(e.mae.ownerPhone)).toContain('*Emitente:* Contábil Aurora Ltda (CNPJ ')
     await peloEscritorio.enviar(e.mae.ownerPhone, 'confirmar')
     expect(await notasDoAgente(admin.db, e.mae.tenant.id)).toHaveLength(1)
 
@@ -270,21 +270,22 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
 
     await c.enviar(e.mae.ownerPhone, pedido)
     expect(c.ultimaPara(e.mae.ownerPhone)).toBe(
-      ['Achei mais de uma empresa com esse nome.', 'Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.', '1. Padaria Lua Ltda', '2. Padaria Sol Ltda'].join('\n'),
+      ['Achei mais de uma empresa com esse nome.', '', 'Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.', '1. Padaria Lua Ltda', '2. Padaria Sol Ltda'].join('\n'),
     )
     // Resposta que não bate em nenhuma: a pergunta volta, com a conta inteira.
     await c.enviar(e.mae.ownerPhone, 'mercado')
     expect(c.ultimaPara(e.mae.ownerPhone).split('\n')[0]).toBe('Não achei "mercado" entre as empresas ativas de Minhas empresas.')
     expect(c.ultimaPara(e.mae.ownerPhone)).toContain('1. Contábil Aurora Ltda (escritório)')
     await c.enviar(e.mae.ownerPhone, 'padaria lua')
-    expect(c.ultimaPara(e.mae.ownerPhone)).toContain('Emitente: Padaria Lua Ltda (CNPJ ')
+    expect(c.ultimaPara(e.mae.ownerPhone)).toContain('*Emitente:* Padaria Lua Ltda (CNPJ ')
     await c.enviar(e.mae.ownerPhone, 'descartar')
 
     await c.enviar(e.mae.ownerPhone, 'nota pela Xpto pra Clínica Saúde, 450')
     const resposta = c.ultimaPara(e.mae.ownerPhone).split('\n')
     expect(resposta[0]).toBe('Não achei "Xpto" entre as empresas ativas de Minhas empresas.')
-    expect(resposta[1]).toBe('Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.')
-    expect(resposta).toHaveLength(5)
+    expect(resposta[1]).toBe('')
+    expect(resposta[2]).toBe('Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.')
+    expect(resposta).toHaveLength(6)
   })
 
   it('a IA leu o cliente como empresa: nome que não é de empresa da conta vira o tomador', async () => {
@@ -320,7 +321,7 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
       [SEM_EMPRESA]: { tomador: 'Clínica Saúde', valor: '450.00', intencao: 'emitir' },
     })
     const esperado =
-      'Não dá para emitir por Oficina Sem Certificado: Oficina Sem Certificado ainda não tem certificado A1. Resolva em Minha conta → Minhas empresas: https://site.test/agentes/fiscal/conta/#empresas'
+      'Não dá para emitir por Oficina Sem Certificado: Oficina Sem Certificado ainda não tem certificado A1.\n\nResolva em Minha conta → Minhas empresas: https://site.test/agentes/fiscal/conta/#empresas'
 
     await c.enviar(e.mae.ownerPhone, pedido)
     expect(c.ultimaPara(e.mae.ownerPhone)).toBe(esperado)
@@ -346,14 +347,14 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
     await c.enviar(e.mae.ownerPhone, '529.982.247-25 ana@souza.test')
     expect(c.ultimaPara(e.mae.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
     await c.enviar(e.mae.ownerPhone, 'padrão')
-    expect(c.ultimaPara(e.mae.ownerPhone)).toContain('Emitente: Oficina Trilho Ltda (CNPJ ')
+    expect(c.ultimaPara(e.mae.ownerPhone)).toContain('*Emitente:* Oficina Trilho Ltda (CNPJ ')
     await c.enviar(e.mae.ownerPhone, 'confirmar')
     await rodarWorker(servico.db, { sefin, tenantId: oficina.id, canais: c.canais, now: c.agora })
     expect(c.ultimaPara(e.mae.ownerPhone)).toBe('Quer que eu guarde Ana Souza para as próximas notas? Responda sim ou não.')
 
     await c.enviar(e.mae.ownerPhone, 'sim')
     expect(c.ultimaPara(e.mae.ownerPhone)).toBe(
-      'Modelo Ana Souza salvo em Oficina Trilho Ltda. Da próxima vez, é só escrever: nota pela Oficina Trilho Ltda pra Ana Souza, e o valor.',
+      'Modelo Ana Souza salvo em Oficina Trilho Ltda.\n\nDa próxima vez, é só escrever: nota pela Oficina Trilho Ltda pra Ana Souza, e o valor.',
     )
     const modelos = async (tenantId: string) =>
       (await admin.db.query<{ nome: string }>('select nome from nofiscal.fiscal_models where tenant_id = $1', [tenantId])).rows.map((r) => r.nome)
@@ -374,8 +375,8 @@ describe('emitente no pedido por mensagem (conta Escritório)', () => {
     await c.enviar(e.mae.ownerPhone, 'corrigir')
     await c.enviar(e.mae.ownerPhone, 'pela Studio Lima')
     const resumo = c.ultimaPara(e.mae.ownerPhone)
-    expect(resumo).toContain('Emitente: Studio Lima (CNPJ ')
-    expect(resumo).toContain('Tomador: Clínica Saúde')
+    expect(resumo).toContain('*Emitente:* Studio Lima (CNPJ ')
+    expect(resumo).toContain('*Tomador:* Clínica Saúde')
     expect(resumo).toContain('R$ 450,00')
     expect((await pedidosDo(admin.db, oficina.id)).map((p) => p.status)).toEqual(['rejected_by_user'])
     expect((await pedidosDo(admin.db, studio.id)).map((p) => p.status)).toEqual(['awaiting_confirmation'])
@@ -389,7 +390,7 @@ describe('contas sem escolha de empresa não mudam', () => {
     const c = conversa({ [PELA_OFICINA]: { tomador: 'Clínica Saúde', valor: '450.00', prestador: 'Oficina Trilho', intencao: 'emitir' } })
     await c.enviar(e.mae.ownerPhone, PELA_OFICINA)
     const resumo = c.ultimaPara(e.mae.ownerPhone)
-    expect(resumo.split('\n').slice(0, 2)).toEqual(['Resumo da nota:', 'Tomador: Clínica Saúde'])
+    expect(resumo.split('\n').slice(0, 3)).toEqual(['*Resumo da nota*', '', '*Tomador:* Clínica Saúde'])
     expect(resumo).not.toContain('Emitente')
     expect(await pedidosDo(admin.db, e.mae.tenant.id)).toHaveLength(1)
   })
@@ -457,7 +458,7 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
 
     await c.enviar(e.mae.ownerPhone, CANCELA)
     const pergunta = c.ultimaPara(e.mae.ownerPhone).split('\n')
-    expect(pergunta.slice(0, 3)).toEqual(['Nota nº 5', 'Emitente: Oficina Trilho Ltda', 'Tomador: Clínica Saúde'])
+    expect(pergunta.slice(0, 5)).toEqual(['*Cancelar nota*', '', '*Nota:* nº 5', '*Emitente:* Oficina Trilho Ltda', '*Tomador:* Clínica Saúde'])
     expect(pergunta.at(-1)).toContain('Cancelo esta nota?')
     expect(await pedidosDo(admin.db, e.mae.tenant.id)).toHaveLength(0)
     expect((await pedidosDo(admin.db, oficina.id))[0]).toMatchObject({ kind: 'cancelar', etapa: 'confirmar', invoice_id: nota })
@@ -493,7 +494,7 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
 
     await c.enviar(e.mae.ownerPhone, comEmpresa)
     const pergunta = c.ultimaPara(e.mae.ownerPhone)
-    expect(pergunta).toContain('Emitente: Oficina Trilho Ltda')
+    expect(pergunta).toContain('*Emitente:* Oficina Trilho Ltda')
     expect(pergunta).toContain('R$ 450,00')
     await c.enviar(e.mae.ownerPhone, 'confirmar')
     expect(await situacaoDa(daOficina)).toBe('cancel_requested')
@@ -537,6 +538,7 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
         `1) nº 2 de 4 ESTACOES BRAGANCA LTDA para CONTABILIDADE BRAGANTINA LTDA · R$ 1,00 · ${hoje}`,
         `2) nº 2 de CONTABILIDADE BRAGANTINA LTDA. para Soares de Campos Holding Ltda · R$ 1,00 · ${hoje}`,
         `3) nº 1 de CONTABILIDADE BRAGANTINA LTDA. para Soares de Campos Holding Ltda · R$ 250,00 · ${hoje}`,
+        '',
         'Responda com o número da opção (1, 2…). Também vale o nome da empresa, do cliente ou o valor. Para sair, escreva *sair*.',
       ])
     })
@@ -547,7 +549,7 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
       await c.enviar(b.fone, PEDIDO)
       await c.enviar(b.fone, '2')
       const pergunta = c.ultimaPara(b.fone).split('\n')
-      expect(pergunta.slice(0, 3)).toEqual(['Nota nº 2', 'Emitente: CONTABILIDADE BRAGANTINA LTDA.', 'Tomador: Soares de Campos Holding Ltda'])
+      expect(pergunta.slice(2, 5)).toEqual(['*Nota:* nº 2', '*Emitente:* CONTABILIDADE BRAGANTINA LTDA.', '*Tomador:* Soares de Campos Holding Ltda'])
       expect(pergunta.at(-1)).toContain('Cancelo esta nota?')
       await c.enviar(b.fone, 'confirmar')
       expect(await situacaoDa(b.n2DoEscritorio)).toBe('cancel_requested')
@@ -564,13 +566,14 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
       expect(restantes[0]).toBe('2 notas batem com isso. Qual delas você quer cancelar?')
       expect(restantes[1]).toMatch(/^1\) nº 2 de 4 ESTACOES BRAGANCA LTDA para /)
       expect(restantes[2]).toMatch(/^2\) nº 2 de CONTABILIDADE BRAGANTINA LTDA\. para /)
-      expect(restantes).toHaveLength(4)
+      expect(restantes).toHaveLength(5)
       await nenhumaCancelada([b.n2Da4Estacoes, b.n2DoEscritorio, b.n1])
 
       // A linha como a lista antiga mostrava, colada inteira.
       await c.enviar(b.fone, `nº 2 · CONTABILIDADE BRAGANTINA LTDA · R$ 1,00 · ${dataBr(new Date())} · 4 ESTACOES BRAGANCA LTDA`)
       const pergunta = c.ultimaPara(b.fone).split('\n')
-      expect(pergunta.slice(0, 3)).toEqual(['Nota nº 2', 'Emitente: 4 ESTACOES BRAGANCA LTDA', 'Tomador: CONTABILIDADE BRAGANTINA LTDA'])
+      expect(pergunta.slice(2, 5)).toEqual(['*Nota:* nº 2', '*Emitente:* 4 ESTACOES BRAGANCA LTDA', '*Tomador:* CONTABILIDADE BRAGANTINA LTDA'])
+
       expect((await pedidosDo(admin.db, b.estacoes.id))[0]).toMatchObject({ kind: 'cancelar', etapa: 'confirmar', invoice_id: b.n2Da4Estacoes })
 
       await c.enviar(b.fone, 'confirmar')
@@ -585,7 +588,8 @@ describe('cancelar nota de qualquer empresa da conta (conta Escritório)', () =>
       await c.enviar(b.fone, '4 ESTACOES BRAGANCA LTDA')
       const pergunta = c.ultimaPara(b.fone)
       expect(pergunta).not.toContain('Não achei a nota nº 4')
-      expect(pergunta.split('\n').slice(0, 2)).toEqual(['Nota nº 2', 'Emitente: 4 ESTACOES BRAGANCA LTDA'])
+      expect(pergunta.split('\n').slice(2, 4)).toEqual(['*Nota:* nº 2', '*Emitente:* 4 ESTACOES BRAGANCA LTDA'])
+
     })
 
     it('o que não se entende repete a lista, nunca a ajuda genérica; "sair" larga sem cancelar', async () => {

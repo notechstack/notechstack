@@ -22,6 +22,7 @@ import {
 import { registrarEvento } from './central.js'
 import { contarMensagens } from './conversa.js'
 import { formatarDocumento, formatarReais } from './documentos.js'
+import { mensagem } from './formato.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota } from './notas.js'
 import { dataBr, horaDosAvisos, limitesDoMes, mesLocal, partesLocais } from './tempo.js'
@@ -293,11 +294,16 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
     // Lote: a recusa entra no retorno do lote, com o motivo; não sai uma mensagem por nota. API: vai pelo webhook.
     if (nota.do_lote || semWhatsAppPorNota(nota)) return
     const pedido = await pedidoDaNota(deps.db, invoiceId, 'emitir')
-    const texto = [
-      `A Sefin recusou a nota${daEmpresa(nota)} para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
-      `Código ${nota.last_error_code ?? '-'}: ${nota.last_error ?? 'sem motivo informado'}`,
-      oQueCorrigir(nota.last_error_code),
-    ].join('\n')
+    const texto = mensagem({
+      titulo: 'Nota recusada',
+      blocos: [
+        [
+          `A Sefin recusou a nota${daEmpresa(nota)} para ${tomador.nome}${tomador.valor ? ` (${formatarReais(tomador.valor)})` : ''}.`,
+          `Código ${nota.last_error_code ?? '-'}: ${nota.last_error ?? 'sem motivo informado'}`,
+        ],
+      ],
+      acao: oQueCorrigir(nota.last_error_code),
+    })
     await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
     await alertarRecusa(deps.db, nota, pedido, `nota para ${tomador.nome}`)
     return
@@ -321,10 +327,12 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
   // cancel_refused (critério 34). Nota da API ou de conta parceira: vai pelo webhook.
   if (semWhatsAppPorNota(nota)) return
   const pedido = await pedidoDaNota(deps.db, invoiceId, 'cancelar')
-  const texto = [
-    `A Sefin recusou o cancelamento da nota nº ${numero}${daEmpresa(nota)}: ${nota.last_error ?? 'sem motivo informado'} (código ${nota.last_error_code ?? '-'}).`,
-    'A nota continua valendo. Para cancelar, use o portal da prefeitura (Emissor Nacional) ou peça ao seu contador.',
-  ].join('\n')
+  const texto = mensagem({
+    titulo: 'Cancelamento recusado',
+    blocos: [`A Sefin recusou o cancelamento da nota nº ${numero}${daEmpresa(nota)}: ${nota.last_error ?? 'sem motivo informado'} (código ${nota.last_error_code ?? '-'}).`],
+    acao: 'A nota continua valendo. Para cancelar, use o portal da prefeitura (Emissor Nacional) ou peça ao seu contador.',
+  })
+
   await avisarNoWhatsApp(canais, deps.db, nota, pedido, { texto })
   await alertarRecusa(deps.db, nota, pedido, `cancelamento da nota nº ${numero}`)
 }

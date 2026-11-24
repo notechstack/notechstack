@@ -82,18 +82,19 @@ describe('obra pelo WhatsApp (E0370)', () => {
     })
     await c.enviar(s.ownerPhone, 'nota pra Sakata, 3800')
     const [pergunta] = c.novas(s.ownerPhone)
-    expect(pergunta).toMatch(/^Este serviço é de construção civil, e a Sefin exige os dados da obra na nota\. Nada foi emitido ainda\./)
+    expect(pergunta).toMatch(/^\*Dados da obra\*\n\nEste serviço é de construção civil, e a Sefin exige os dados da obra na nota\. Nada foi emitido ainda\./)
     expect(pergunta).toContain('Me mande o endereço da obra: rua, número, bairro, CEP e a cidade')
 
     // "confirmar" antes dos dados da obra não emite.
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
-    expect(c.novas(s.ownerPhone)[0]).toMatch(/^Este serviço é de construção civil/)
+    expect(c.novas(s.ownerPhone)[0]).toMatch(/^\*Dados da obra\*\n\nEste serviço é de construção civil/)
+
 
     // O endereço, sem *corrigir*: o resumo sai com a obra e o local (o ISS da obra é devido lá).
     await c.enviar(s.ownerPhone, resposta)
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Local da prestação: Campinas/SP (o ISS deste serviço é devido nessa cidade)\nObra: Rua das Flores, 120 - Centro, CEP 12900-000\nValor: R$ 3.800,00')
+    expect(resumo).toContain('*Local da prestação:* Campinas/SP (o ISS deste serviço é devido nessa cidade)\n*Obra:* Rua das Flores, 120 - Centro, CEP 12900-000\n\n*Valor:* R$ 3.800,00')
 
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(c.novas(s.ownerPhone)).toEqual([TEXTOS.emitindo])
@@ -120,14 +121,14 @@ describe('obra pelo WhatsApp (E0370)', () => {
     })
     await c.enviar(s.ownerPhone, completo)
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Obra: Rua das Flores, 120 - Centro, CEP 12900-000\n')
+    expect(resumo).toContain('*Obra:* Rua das Flores, 120 - Centro, CEP 12900-000\n')
     await c.enviar(s.ownerPhone, 'descartar')
     c.novas(s.ownerPhone)
 
     await c.enviar(s.ownerPhone, parcial)
     expect(c.novas(s.ownerPhone)).toEqual(['Faltou no endereço da obra: número e bairro. Me mande o que falta, e eu monto a nota. Ou responda *descartar*.'])
     await c.enviar(s.ownerPhone, 'número 120, bairro Centro')
-    expect(c.novas(s.ownerPhone)[0]).toContain('Obra: Rua das Flores, 120 - Centro, CEP 12900-000\n')
+    expect(c.novas(s.ownerPhone)[0]).toContain('*Obra:* Rua das Flores, 120 - Centro, CEP 12900-000\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     const [payload] = await payloads(s.tenant.id)
     expect(payload.servico.obra).toEqual({ cep: '12900000', logradouro: 'Rua das Flores', numero: '120', bairro: 'Centro' })
@@ -149,13 +150,13 @@ describe('obra pelo WhatsApp (E0370)', () => {
     await c.enviar(s.ownerPhone, 'nota pra Sakata, 3800')
     c.novas(s.ownerPhone)
     await c.enviar(s.ownerPhone, 'CNO 12.345.67890/12')
-    expect(c.novas(s.ownerPhone)[0]).toContain('Obra: CNO 12.345.67890/12\n')
+    expect(c.novas(s.ownerPhone)[0]).toContain('*Obra:* CNO 12.345.67890/12\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect((await payloads(s.tenant.id))[0].servico.obra).toEqual({ cno: '123456789012' })
 
     await c.enviar(s.ownerPhone, 'nota pra Sakata, 3800, código 17.19.01, obra na Rua das Flores, 120, Centro, CEP 12900-000')
     const [resumo] = c.novas(s.ownerPhone).slice(-1)
-    expect(resumo).toContain('Resumo da nota:')
+    expect(resumo).toContain('*Resumo da nota*')
     expect(resumo).not.toContain('Obra:')
   })
 })

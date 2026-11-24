@@ -664,14 +664,14 @@ describe('conversa no WhatsApp', () => {
     // A resposta é lida pelo código, sem a IA, e entra com a primeira letra maiúscula.
     await c.enviar(s.ownerPhone, 'consultoria de marketing - outubro/2026')
     let resumo = c.ultimaPara(s.ownerPhone)
-    expect(resumo).toContain('Descrição na nota: Consultoria de marketing - outubro/2026')
+    expect(resumo).toContain('*Descrição na nota:* Consultoria de marketing - outubro/2026')
     expect(resumo).toContain('Posso emitir?')
 
     await c.enviar(s.ownerPhone, 'corrigir')
     expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.oQueMuda)
     await c.enviar(s.ownerPhone, 'descrição revisão de contrato')
     resumo = c.ultimaPara(s.ownerPhone)
-    expect(resumo).toContain('Descrição na nota: Revisão de contrato')
+    expect(resumo).toContain('*Descrição na nota:* Revisão de contrato')
     expect(resumo).toContain('R$ 150,00')
 
     await c.enviar(s.ownerPhone, 'confirmar')
@@ -680,7 +680,7 @@ describe('conversa no WhatsApp', () => {
 
     // Descrição dita no pedido: sem pergunta; o modelo continua com a descrição dele.
     await c.enviar(s.ownerPhone, 'nota pra Prontia, 10 reais, consultoria de outubro')
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Descrição na nota: Consultoria de outubro')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Descrição na nota:* Consultoria de outubro')
     expect(c.respostasPara(s.ownerPhone).filter((t) => t === TEXTOS.perguntaDeDescricao)).toHaveLength(1)
     const { rows } = await admin.db.query('select descricao from nofiscal.fiscal_models where tenant_id = $1', [s.tenant.id])
     expect(rows).toEqual([{ descricao: PRONTIA_CNPJ.descricao }])
@@ -701,7 +701,7 @@ describe('conversa no WhatsApp', () => {
       await c.enviar(s.ownerPhone, '529.982.247-25 contato@clinicanova.test')
       expect(c.ultimaPara(s.ownerPhone)).toBe(TEXTOS.perguntaDeDescricao)
       await c.enviar(s.ownerPhone, resposta)
-      expect(c.ultimaPara(s.ownerPhone), resposta).toContain(`Descrição na nota: ${DESCRICAO_PADRAO}`)
+      expect(c.ultimaPara(s.ownerPhone), resposta).toContain(`*Descrição na nota:* ${DESCRICAO_PADRAO}`)
       await c.enviar(s.ownerPhone, 'descartar')
     }
 

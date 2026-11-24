@@ -40,6 +40,7 @@ import {
 } from './conversa.js'
 import { lerCodigoServico, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido, formatarReais } from './documentos.js'
+import { blocos, campo, comRotulo, mensagem, topicos } from './formato.js'
 import { normalizarEmail } from './normalizacao.js'
 import { payloadDaNota } from './notas.js'
 import { MODELO_DA_PLANILHA, planoDeEscritorio } from './planos.js'
@@ -108,13 +109,18 @@ export const CODIGOS_DE_PROBLEMA = [
 
 export const TEXTOS_DO_LOTE = {
   soEscritorio: 'O envio por planilha é do plano Escritório. No seu plano, me mande cada nota por mensagem, por exemplo: nota pra Studio Lima, 350 reais.',
-  formatoNaoAceito: `Eu leio planilhas em .xlsx ou .csv (planilhas com macro, .xls antigo e .ods não). Salve como .xlsx ou .csv e mande de novo. Modelo: ${MODELO_DA_PLANILHA}`,
-  ilegivel: `Não consegui ler essa planilha. Confira se é um .xlsx ou .csv (UTF-8) e mande de novo. Modelo: ${MODELO_DA_PLANILHA}`,
+  formatoNaoAceito: blocos(
+    'Eu leio planilhas em .xlsx ou .csv (planilhas com macro, .xls antigo e .ods não). Salve como .xlsx ou .csv e mande de novo.',
+    `Modelo: ${MODELO_DA_PLANILHA}`,
+  ),
+  ilegivel: blocos('Não consegui ler essa planilha. Confira se é um .xlsx ou .csv (UTF-8) e mande de novo.', `Modelo: ${MODELO_DA_PLANILHA}`),
   grandeDemais: 'A planilha passou de 5 MB. Divida em duas e mande uma de cada vez.',
-  abaGrandeDemais:
-    'A primeira aba da planilha tem células usadas muito longe das notas (mais de 1.000 linhas ou de 50 colunas). Apague as linhas e colunas vazias abaixo e à direita das notas, ou salve só as notas em .csv, e mande de novo.',
+  abaGrandeDemais: blocos(
+    'A primeira aba da planilha tem células usadas muito longe das notas (mais de 1.000 linhas ou de 50 colunas).',
+    'Apague as linhas e colunas vazias abaixo e à direita das notas, ou salve só as notas em .csv, e mande de novo.',
+  ),
   semDownload: 'Não consegui baixar a planilha agora. Mande de novo em alguns minutos.',
-  vazia: `A planilha não tem linhas de nota abaixo do cabeçalho. Modelo: ${MODELO_DA_PLANILHA}`,
+  vazia: blocos('A planilha não tem linhas de nota abaixo do cabeçalho.', `Modelo: ${MODELO_DA_PLANILHA}`),
   linhasDemais: `A planilha passou de ${MAX_LINHAS.toLocaleString('pt-BR')} linhas. Divida em duas e mande uma de cada vez.`,
   expirou: 'Essa planilha expirou (24 horas sem *confirmar*) e nenhuma nota foi emitida. Mande a planilha de novo.',
   descartado: 'Ok, descartei a planilha. Nenhuma nota foi emitida.',
@@ -394,16 +400,35 @@ export function interpretarGrade(grade: Celula[][], opcoes: { prestadorObrigator
 }
 
 export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[]; repetidas: string[] }): string {
-  return [
-    'Não reconheci as colunas da planilha, e nada foi gravado.',
+  const problemas = [
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa). Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
-    `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ].filter((linha): linha is string => Boolean(linha))
+  return mensagem({
+    titulo: 'Colunas da planilha',
+    blocos: [
+      'Não reconheci as colunas da planilha, e nada foi gravado.',
+      problemas.length ? topicos(problemas) : null,
+      [
+        'A primeira linha precisa ter estes nomes:',
+        topicos([
+          'cnpj_prestador (pode faltar se a conta tem uma só empresa ativa)',
+          'cpf_cnpj_tomador',
+          'nome_tomador',
+          'email_tomador (opcional)',
+          'valor',
+          'descricao (opcional)',
+          'iss_retido (opcional)',
+          'inss_retido (opcional)',
+          'codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa)',
+          'municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa)',
+        ]),
+      ],
+      'Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
+    ],
+    acao: `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
+  })
 }
 
 // ---------------------------------------------------------------------------------------
@@ -804,45 +829,50 @@ export function textoDoResumoDoLote(dados: {
   const porEmpresa = new Map<string, number>()
   for (const i of prontas) porEmpresa.set(i.tenantId as string, (porEmpresa.get(i.tenantId as string) ?? 0) + 1)
 
-  const linhas: string[] = [
-    `Li a planilha${dados.arquivo ? ` ${dados.arquivo}` : ''}: ${plural(dados.itens.length, 'linha', 'linhas')}.`,
-    prontas.length
-      ? `Prontas para emitir: ${prontas.length.toLocaleString('pt-BR')}, total ${formatarReais(reaisDeCentavos(total))}.`
-      : 'Nenhuma linha está pronta para emitir.',
+  // Números das notas prontas: quanto, por empresa, retenções e códigos (só o que houver).
+  const numeros: (string | null)[] = [
+    prontas.length ? campo('Prontas para emitir', `${prontas.length.toLocaleString('pt-BR')}, total ${formatarReais(reaisDeCentavos(total))}.`) : null,
+    porEmpresa.size
+      ? campo('Empresas', `${[...porEmpresa].map(([id, n]) => `${nomeDe.get(id) ?? id} (${plural(n, 'nota', 'notas')})`).join(', ')}.`)
+      : null,
   ]
-  if (porEmpresa.size) {
-    linhas.push(`Empresas: ${[...porEmpresa].map(([id, n]) => `${nomeDe.get(id) ?? id} (${plural(n, 'nota', 'notas')})`).join(', ')}.`)
-  }
   const retencoes = textoDasRetencoes(prontas)
-  if (retencoes) linhas.push(retencoes)
+  if (retencoes) numeros.push(comRotulo(retencoes))
   const codigos = textoDosCodigos(prontas)
-  if (codigos) linhas.push(codigos)
-  if (comProblema.length) {
-    linhas.push(`Com problema (ficam de fora): ${plural(comProblema.length, 'linha', 'linhas')}.`)
-    for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
-      const semPrestador = !String((item.payload.lido as Record<string, string> | undefined)?.cnpj_prestador ?? '').trim()
-      linhas.push(
-        `- Linha ${item.linha}: ${motivoDoProblema(item.problema as string, { empresa: item.tenantId ? nomeDe.get(item.tenantId) : null, igualA: item.igualA, semPrestador })}`,
-      )
-    }
-    if (comProblema.length > MAX_PROBLEMAS_NO_RESUMO) {
-      linhas.push(`- e mais ${plural(comProblema.length - MAX_PROBLEMAS_NO_RESUMO, 'linha', 'linhas')} com problema.`)
-    }
+  if (codigos) numeros.push(comRotulo(codigos))
+
+  const problemas: string[] = []
+  for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
+    const semPrestador = !String((item.payload.lido as Record<string, string> | undefined)?.cnpj_prestador ?? '').trim()
+    problemas.push(
+      `Linha ${item.linha}: ${motivoDoProblema(item.problema as string, { empresa: item.tenantId ? nomeDe.get(item.tenantId) : null, igualA: item.igualA, semPrestador })}`,
+    )
   }
+  if (comProblema.length > MAX_PROBLEMAS_NO_RESUMO) {
+    problemas.push(`e mais ${plural(comProblema.length - MAX_PROBLEMAS_NO_RESUMO, 'linha', 'linhas')} com problema.`)
+  }
+
+  let franquia: string | null = null
   if (dados.franquia && prontas.length && dados.franquia.noMes + prontas.length > dados.franquia.limite) {
     const fica = dados.franquia.noMes + prontas.length
-    linhas.push(
-      `Franquia: com estas notas, o mês chega a ${fica.toLocaleString('pt-BR')} notas, ${(fica - dados.franquia.limite).toLocaleString('pt-BR')} acima das ${dados.franquia.limite.toLocaleString('pt-BR')} do seu plano. As notas saem normalmente.`,
+    franquia = campo(
+      'Franquia',
+      `com estas notas, o mês chega a ${fica.toLocaleString('pt-BR')} notas, ${(fica - dados.franquia.limite).toLocaleString('pt-BR')} acima das ${dados.franquia.limite.toLocaleString('pt-BR')} do seu plano. As notas saem normalmente.`,
     )
   }
-  if (prontas.length) {
-    linhas.push(
-      `Responda *confirmar* para emitir ${prontas.length === 1 ? 'a nota pronta' : `as ${prontas.length.toLocaleString('pt-BR')} notas prontas`}, ou *cancelar* para descartar. Vale por 24 horas.`,
-    )
-  } else {
-    linhas.push('Corrija a planilha e mande de novo.')
-  }
-  return linhas.join('\n')
+
+  return mensagem({
+    titulo: 'Resumo da planilha',
+    blocos: [
+      `Li a planilha${dados.arquivo ? ` ${dados.arquivo}` : ''}: ${plural(dados.itens.length, 'linha', 'linhas')}.`,
+      prontas.length ? numeros : 'Nenhuma linha está pronta para emitir.',
+      comProblema.length ? [campo('Com problema (ficam de fora)', `${plural(comProblema.length, 'linha', 'linhas')}.`), topicos(problemas)] : null,
+      franquia,
+    ],
+    acao: prontas.length
+      ? `Responda *confirmar* para emitir ${prontas.length === 1 ? 'a nota pronta' : `as ${prontas.length.toLocaleString('pt-BR')} notas prontas`}, ou *cancelar* para descartar. Vale por 24 horas.`
+      : 'Corrija a planilha e mande de novo.',
+  })
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1386,19 +1416,22 @@ async function confirmarLote(ctx: Contexto, loteId: string, donoId: string): Pro
       ].join('; ')}.`
     : null
   if (!resultado.emitindo) {
-    await responder(ctx, [barradas, 'Nenhuma nota foi emitida. Corrija e mande a planilha de novo.'].filter(Boolean).join('\n'))
+    await responder(ctx, blocos(barradas, 'Nenhuma nota foi emitida. Corrija e mande a planilha de novo.'))
     return
   }
   await responder(
     ctx,
-    [
-      `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
-      barradas,
-      // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
-      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui. Os PDFs também ficam em Minha conta → Relatórios.',
-    ]
-      .filter(Boolean)
-      .join('\n'),
+    mensagem({
+      titulo: 'Planilha confirmada',
+      blocos: [
+        `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
+        barradas,
+        // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
+        'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui.',
+        'Os PDFs também ficam em Minha conta → Relatórios.',
+      ],
+    }),
+
   )
 }
 
