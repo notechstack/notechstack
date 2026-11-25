@@ -58,6 +58,8 @@ export type NfseData = {
     pTotTribSN: string | null
     pTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
     vTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
+    /** Retenções federais da DPS (trib/tribFed): INSS (vRetCP), IRRF e contribuições sociais (vRetCSLL). */
+    tribFed: { vRetCP: string | null; vRetIRRF: string | null; vRetCSLL: string | null }
     xInfComp: string | null
   }
 }
@@ -202,6 +204,11 @@ export function parseNfseXml(xml: string): NfseData {
       pTotTribSN: text(totTrib, 'pTotTribSN'),
       pTotTrib: triple(child(totTrib, 'pTotTrib'), 'p'),
       vTotTrib: triple(child(totTrib, 'vTotTrib'), 'v'),
+      tribFed: {
+        vRetCP: text(valoresDps, 'trib', 'tribFed', 'vRetCP'),
+        vRetIRRF: text(valoresDps, 'trib', 'tribFed', 'vRetIRRF'),
+        vRetCSLL: text(valoresDps, 'trib', 'tribFed', 'vRetCSLL'),
+      },
       // Leiaute 1.01: serv/infoCompl/xInfComp (o caminho infAdic não existe no XSD; fica só por compatibilidade).
       xInfComp: text(infDps, 'serv', 'infoCompl', 'xInfComp') ?? text(infDps, 'infAdic', 'xInfComp'),
     },

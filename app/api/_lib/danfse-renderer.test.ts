@@ -63,6 +63,38 @@ describe('danfse-renderer', () => {
     expect(texts.some((t) => t.startsWith('José ? Ñandú'))).toBe(true)
   })
 
+  // Nota 6 da JP Jardinagem (Robson, 25/11/2026): INSS retido de R$ 490,00 no Portal Nacional e "-" no nosso DANFSe.
+  it('INSS retido aparece em "Contribuição previdenciária retida"', async () => {
+    const { xml } = buildDps({
+      tenant: tenant({ ambiente: 'producao', codigo_municipio_ibge: '3507605' }),
+      serie: '1',
+      numero: 1,
+      payload: {
+        tomador: {
+          cnpj: '11222333000181',
+          nome: 'Colinas do Park',
+          endereco: { cMun: '3520509', cep: '13334050', logradouro: 'AVENIDA ITORORO', numero: '777', bairro: 'CIDADE NOVA' },
+        },
+        servico: { codigo_servico_nacional: '071102', descricao: 'Manutenção periódica de jardinagem do canteiro' },
+        valor: '4454.55',
+        retencao: { iss: { aliquota: '3.06' }, inss: { valor: '490.00' } },
+      },
+      now: new Date('2026-11-24T20:58:00Z'),
+    })
+    const texts = pdfTexts(await renderDanfse(testNfseXml({ dpsXml: xml, chave: CHAVE, nNFSe: 6 })))
+    const i = texts.indexOf('Contribuição previdenciária retida')
+    expect(i).toBeGreaterThan(-1)
+    // A linha desenha título e valor de cada campo em sequência.
+    expect(texts[i + 1]).toBe('R$ 490,00')
+    expect(texts).toContain('Retido pelo tomador')
+  })
+
+  it('sem retenção federal: os campos federais ficam "-"', async () => {
+    const texts = pdfTexts(await renderDanfse(nfse()))
+    expect(texts).toContain('Contribuição previdenciária retida')
+    expect(texts.join(' ')).not.toMatch(/R\$ 490/)
+  })
+
   it('recusa XML que não é NFS-e', async () => {
     await expect(renderDanfse('<DPS/>')).rejects.toThrow(/NFS-e/)
     await expect(renderDanfse('não é xml')).rejects.toThrow()
