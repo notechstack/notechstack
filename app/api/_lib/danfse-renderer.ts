@@ -406,10 +406,13 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   ])
 
   y = blockTitle(p, y, 'Tributação federal (exceto CBS)')
+  // Retenções federais da DPS (tribFed). O INSS retido (vRetCP) já entrava no total das retenções,
+  // mas o campo ficava "-" e o contador não via a retenção na nota (Robson, 25/11/2026).
+  const fed = d.tribFed
   y = row(p, y, [
-    { label: 'IRRF', value: '-' },
-    { label: 'Contribuição previdenciária', value: '-' },
-    { label: 'CSLL', value: '-' },
+    { label: 'IRRF retido', value: fmtMoney(fed.vRetIRRF) },
+    { label: 'Contribuição previdenciária retida', value: fmtMoney(fed.vRetCP), span: 1.4 },
+    { label: 'Contribuições sociais retidas', value: fmtMoney(fed.vRetCSLL), span: 1.2 },
     { label: 'PIS', value: '-' },
     { label: 'COFINS', value: '-' },
   ])
