@@ -52,3 +52,15 @@ test('nota avulsa: confere antes de emitir, e emite com a chave do formulário',
   assert.match(avulsa, /acao: 'avulsa_emitir', chave: st\.chave/);
   assert.match(avulsa, /acao: 'historico'/);
 });
+
+test('natureza da operação (24/11/2026): campo no formulário avulso, no resumo e no modelo da planilha', () => {
+  assert.match(html, /id="fa-nfa-natureza"[^>]*maxlength="60"/);
+  assert.match(html, /<option value="Simples remessa">/);
+  assert.match(html, /<select id="fa-nfa-forma"><option value="">Automática/);
+  assert.match(avulsa, /nota\.natureza_operacao = v\('fa-nfa-natureza'\)/);
+  assert.match(avulsa, /\['Natureza da operação', s\.natureza_operacao/);
+  assert.match(js, /'Natureza da operação: ' \+ n\.natureza_operacao/);
+  const csv = readFileSync(new URL('../dados/modelo-nfe.csv', raiz), 'utf8');
+  assert.ok(csv.split(/\r?\n/)[0].endsWith(';natureza_operacao'));
+  assert.match(csv, /;6949;UN;9;40,29;400;.*;Simples remessa\r?\n/);
+});

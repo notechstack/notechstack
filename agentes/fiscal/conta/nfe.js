@@ -174,6 +174,7 @@
     $('fa-nfe-notas').innerHTML = emitido ? '' : notas.slice(0, 30).map(function (n) {
       var avisos = n.avisos || [];
       return '<li>' + nf.esc('Nota ' + n.nota + ': ' + n.destinatario + ', R$ ' + reais(n.valor) + (n.itens > 1 ? ' (' + n.itens + ' itens)' : '')) +
+        (n.natureza_operacao ? '<br><small>' + nf.esc('Natureza da operação: ' + n.natureza_operacao + (n.pagamento ? ' · pagamento: ' + n.pagamento : '')) + '</small>' : '') +
         (n.transporte ? '<br><small>' + nf.esc('Transporte: ' + n.transporte) + '</small>' : '') +
         (n.credito_icms_sn ? '<br><small>' + nf.esc('Crédito de ICMS do Simples (CSOSN 101): ' + n.credito_icms_sn + '; a frase vai sozinha nas informações complementares.') + '</small>' : '') +
         (avisos.length ? '<br><small><b>Confira:</b> ' + nf.esc(avisos.join('; ')) + '</small>' : '') + '</li>';

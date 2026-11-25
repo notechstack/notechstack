@@ -545,7 +545,7 @@
           <fieldset class="nf-grupo" id="fa-nfa-pagamento">
             <legend style="grid-column:1/-1">Frete e pagamento</legend>
             <div class="nf-campo"><label for="fa-nfa-frete">Frete cobrado na nota (R$, opcional)</label><input id="fa-nfa-frete" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="0,00"></div>
-            <div class="nf-campo"><label for="fa-nfa-forma">Forma de pagamento</label><select id="fa-nfa-forma"><option value="17">PIX</option><option value="15">Boleto</option><option value="01">Dinheiro</option><option value="03">Cartão de crédito</option><option value="04">Cartão de débito</option><option value="18">Transferência</option><option value="90">Sem pagamento</option><option value="99">Outros</option></select></div>
+            <div class="nf-campo"><label for="fa-nfa-forma">Forma de pagamento</label><select id="fa-nfa-forma"><option value="">Automática (PIX na venda, sem pagamento na remessa)</option><option value="17">PIX</option><option value="15">Boleto</option><option value="01">Dinheiro</option><option value="03">Cartão de crédito</option><option value="04">Cartão de débito</option><option value="18">Transferência</option><option value="90">Sem pagamento</option><option value="99">Outros</option></select></div>
             <div class="nf-campo" id="fa-nfa-campo-desc-pag" hidden><label for="fa-nfa-desc-pag">Descrição do pagamento</label><input id="fa-nfa-desc-pag" autocomplete="off" maxlength="60"></div>
           </fieldset>
           <details class="nf-proc nf-campo--largo" id="fa-nfa-transporte">
@@ -567,6 +567,7 @@
               <div class="nf-campo"><label for="fa-nfa-v-peso-bruto">Peso bruto (kg)</label><input id="fa-nfa-v-peso-bruto" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="60,4"></div>
             </div>
           </details>
+          <div class="nf-campo nf-campo--largo"><label for="fa-nfa-natureza">Natureza da operação (opcional)</label><input id="fa-nfa-natureza" list="fa-nfa-naturezas" autocomplete="off" maxlength="60" placeholder="Automática pelo CFOP: 5102 venda, 6949 simples remessa…"><datalist id="fa-nfa-naturezas"><option value="Venda de mercadoria"><option value="Simples remessa"><option value="Remessa em bonificação, doação ou brinde"><option value="Remessa de amostra grátis"><option value="Remessa para conserto"><option value="Remessa por conta e ordem de terceiros"><option value="Remessa para demonstração"><option value="Transferência de mercadoria"><option value="Devolução de compra"></datalist></div>
           <div class="nf-campo nf-campo--largo"><label for="fa-nfa-info">Informações complementares (opcional)</label><textarea id="fa-nfa-info" rows="3" maxlength="2000" placeholder="Documento emitido por ME ou EPP optante pelo Simples Nacional."></textarea></div>
           <small class="nf-erro nf-campo--largo" id="fa-nfa-erro" hidden></small>
           <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-nfa-conferir">Conferir a nota</button></div>
@@ -776,8 +777,8 @@
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=6"></script>
 <script src="/agentes/fiscal/conta/conta.js?v=16"></script>
-<script src="/agentes/fiscal/conta/nfe.js?v=2"></script>
-<script src="/agentes/fiscal/conta/nfe-avulsa.js?v=1"></script>
+<script src="/agentes/fiscal/conta/nfe.js?v=3"></script>
+<script src="/agentes/fiscal/conta/nfe-avulsa.js?v=2"></script>
 <script src="/agentes/fiscal/conta/integracao.js?v=2"></script>
 <script src="/agentes/fiscal/conta/guias.js?v=2"></script>
 </body>

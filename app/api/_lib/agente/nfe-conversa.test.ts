@@ -239,6 +239,30 @@ describe('conversa no WhatsApp (banco local)', () => {
     expect((await admin.db.query('select 1 from nofiscal.fiscal_nfe where tenant_id = $1', [empresa])).rowCount).toBe(2)
   })
 
+  it('remessa 6949: o agente sugere a natureza, aceita outra escrita, pula a forma de pagamento e mostra tudo no resumo', async () => {
+    const a = agente()
+    await a.diz('nfe')
+    await a.diz('2')
+    await a.diz('529.982.247-25')
+    await a.diz('Maria Exemplo da Silva')
+    await a.diz('Rua da Bahia, 500, Centro, 30130-000, Belo Horizonte/MG')
+    await a.diz('novo')
+    await a.diz('BR-01; Garrafa personalizada; 9617.00.10; 6949; 400; un; 9; 40,29')
+    const pergunta = await a.diz('pronto')
+    expect(pergunta).toContain('Natureza da operação pelo CFOP 6949: *Simples remessa*, sem pagamento.')
+    expect(pergunta).toContain('Responda *ok* para usar *Simples remessa*')
+    expect(await a.diz('Remessa por conta e ordem de terceiros')).toBe(TEXTOS_NFE.transporte)
+    expect(await a.diz('não')).toBe(TEXTOS_NFE.info)
+    const resumo = await a.diz('não')
+    expect(resumo).toContain('*Natureza da operação:* Remessa por conta e ordem de terceiros')
+    expect(resumo).toMatch(/\*Total: R\$ 362,61\* · sem pagamento/)
+    expect(resumo).not.toContain('Confira:')
+    expect(await a.diz('corrigir')).toBe(TEXTOS_NFE.corrigir)
+    expect(await a.diz('natureza')).toContain('*Simples remessa*')
+    expect(await a.diz('ok')).toContain('*Natureza da operação:* Simples remessa')
+    expect(await a.diz('descartar')).toBe(TEXTOS_NFE.descartada)
+  })
+
   it('conta sem a NF-e no plano: avisa e não abre pedido', async () => {
     await admin.db.query(`update nofiscal.fiscal_tenants set tipos_nota = array['nfse'] where id = $1`, [esc.mae.tenant.id])
     try {

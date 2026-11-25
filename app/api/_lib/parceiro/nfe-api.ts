@@ -5,6 +5,7 @@
 import type { Uf } from '../nfe/autorizadores.js'
 import { calcularTotais, type Csosn, type CstPisCofins, type Item, type Pagamento, type Transportador, type Volume } from '../nfe/nfe-builder.js'
 import type { PedidoNfe } from '../nfe/servico.js'
+import { formaPadrao } from '../nfe/natureza.js'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -184,8 +185,10 @@ export function lerPedidoNfe(corpo: unknown): LeituraNfe {
 
     let pagamentos: Pagamento[]
     if (corpo.pagamentos === undefined || corpo.pagamentos === null) {
-      // Sem pagamento informado: "outros" (99) no valor da nota, como na planilha sem forma_pagamento.
-      pagamentos = [{ forma: '99', valor: calcularTotais(itens).nota / 100 }]
+      // Sem pagamento informado: "outros" (99) no valor da nota; na nota sem venda (CFOP de remessa, bonificação,
+      // devolução, transferência), "sem pagamento" (90, vPag 0). A natureza, sem natureza_operacao, sai do CFOP.
+      const forma = formaPadrao(itens, '99')
+      pagamentos = [{ forma, valor: forma === '90' ? 0 : calcularTotais(itens).nota / 100 }]
     } else {
       if (!Array.isArray(corpo.pagamentos) || corpo.pagamentos.length === 0) throw new Recusa('VALIDATION_FAILED', 'pagamentos deve ser uma lista')
       pagamentos = corpo.pagamentos.map(pagamento)

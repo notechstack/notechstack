@@ -432,7 +432,8 @@ empresa** (a NF-e não aceita procuração) e o botão **Conferir na Sefaz**. A 
 | `destinatario.endereco.codigo_municipio` | IBGE, 7 dígitos. |
 | `itens` | 1 a 990 itens. `quantidade`, `valor_unitario` e valores em número (ponto decimal). |
 | `itens[].csosn` | `101`, `102`, `103`, `300`, `400`, `500`. Com `101`, informe `aliquota_credito_sn`. |
-| `pagamentos` | `forma`: `01` dinheiro, `03` crédito, `04` débito, `15` boleto, `17` PIX, `90` sem pagamento, `99` outros. Ausente: `99` no valor da nota. |
+| `natureza_operacao` | Opcional, até 60 caracteres. Ausente: sai do CFOP dos itens (`5101`/`5102`/`6102`/`6108` Venda de mercadoria, `5949`/`6949` Simples remessa, `5910`/`6910` Remessa em bonificação, doação ou brinde, `5911`/`6911` Remessa de amostra grátis, `5915`/`6915` Remessa para conserto, `5923`/`6923` Remessa por conta e ordem de terceiros, `5202`/`6202` Devolução de compra, `5152`/`6152` Transferência de mercadoria). Itens de naturezas diferentes: vale a venda, senão a do primeiro item. CFOP fora da tabela: Venda de mercadoria. |
+| `pagamentos` | `forma`: `01` dinheiro, `03` crédito, `04` débito, `15` boleto, `17` PIX, `90` sem pagamento, `99` outros. Ausente: `99` no valor da nota; `90` (sem pagamento) quando nenhum item é de venda (remessa, bonificação, devolução, transferência). |
 
 As regras fiscais (NCM de 8 dígitos, CFOP coerente com a UF do destinatário, totais, pagamento) são as mesmas do
 painel; quando algo não fecha, a resposta é `422 VALIDATION_FAILED` com a lista `problemas`.
