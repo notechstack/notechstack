@@ -82,6 +82,18 @@ describe('retenção: o pedido manda, o resto vem da empresa', () => {
     expect(resolver({ tomadorTipo: 'cpf', pedido: { inssTexto: '11%' } })).toEqual({ ok: true, retencao: { inss: { valor: '165.00' } } })
   })
 
+  it('tomador CPF não herda a retenção padrão da empresa (Bragantina, 26/11/2026)', () => {
+    const soIss = padrao({ retem_iss: true, aliquota_iss: '2.01' })
+    const issEInss = padrao({ retem_iss: true, aliquota_iss: '3.06', retem_inss: true, inss_percentual: '11.00' })
+    expect(resolver({ tomadorTipo: 'cpf', padrao: soIss })).toEqual({ ok: true, retencao: null })
+    expect(resolver({ tomadorTipo: 'cpf', padrao: issEInss })).toEqual({ ok: true, retencao: null })
+    // Com CNPJ, o padrão continua valendo.
+    expect(resolver({ tomadorTipo: 'cnpj', padrao: soIss })).toEqual({ ok: true, retencao: { iss: { aliquota: '2.01' } } })
+    // O pedido explícito ainda manda: ISS retido de CPF é recusado; "INSS retido" usa o percentual da empresa.
+    expect(resolver({ tomadorTipo: 'cpf', padrao: soIss, pedido: { iss: true } })).toEqual({ ok: false, problema: 'ISS_RETIDO_CPF' })
+    expect(resolver({ tomadorTipo: 'cpf', padrao: issEInss, pedido: { inss: true } })).toEqual({ ok: true, retencao: { inss: { valor: '165.00' } } })
+  })
+
   it('linhas do resumo', () => {
     expect(linhasDaRetencao('1500.00', { iss: { aliquota: '2.50' }, inss: { valor: '165.00' } })).toEqual([
       'ISS retido pelo tomador: 2,5% (R$ 37,50)',

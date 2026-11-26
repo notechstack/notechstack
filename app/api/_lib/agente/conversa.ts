@@ -129,8 +129,8 @@ export const TEXTOS = {
     titulo: 'Corrigir a nota',
     blocos: [
       [
-        'O que muda? Me mande o cliente, o valor, a descrição ou o código do serviço certo. Por exemplo:',
-        topicos(['valor 400 reais', 'descrição consultoria de outubro', 'código 04.08.02']),
+        'O que muda? Me mande o cliente, o valor, a descrição, o código do serviço ou a retenção certa. Por exemplo:',
+        topicos(['valor 400 reais', 'descrição consultoria de outubro', 'código 04.08.02', 'sem retenção']),
       ],
     ],
     acao: 'Para desistir da nota, responda *descartar*.',
