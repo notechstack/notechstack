@@ -54,20 +54,21 @@ describe('homologação da NT 009', () => {
     expect(r.fake.requests).toHaveLength(0)
   })
 
-  it('Presumido: três notas no leiaute NT 009 (sem IBSCBS, com IBSCBS, com retenção federal), válidas no XSD; consulta e cancela', async () => {
+  it('Presumido: três notas no release 2 da NT 009 (sem IBSCBS, com IBSCBS, com retenção federal), válidas no XSD; consulta e cancela', async () => {
     const r = deps(PRESUMIDO)
     const { relatorio, path } = await runHomologacao(r.deps)
+    expect(relatorio?.leiaute).toBe('nt009r2')
     expect(relatorio?.notas.map((n) => [n.caso, n.resultado, n.cancelamento])).toEqual([
-      ['nt009', 'authorized', 'accepted'],
-      ['nt009+ibscbs', 'authorized', 'accepted'],
-      ['nt009+retencao-federal', 'authorized', 'accepted'],
+      ['nt009r2', 'authorized', 'accepted'],
+      ['nt009r2+ibscbs', 'authorized', 'accepted'],
+      ['nt009r2+retencao-federal', 'authorized', 'accepted'],
     ])
     const dps = r.fake.requests.filter((q) => q.method === 'POST' && q.path === '/nfse').map((q) => q.xml as string)
     expect(dps).toHaveLength(3)
     for (const xml of dps) {
       expect(xml).toContain('<opSimpNac>1</opSimpNac>')
       expect(xml).toContain('<finNFSe>0</finNFSe>')
-      expect(await errosXsd(xml, 'producao-restrita-20261020')).toEqual([])
+      expect(await errosXsd(xml, 'producao-restrita-20261124')).toEqual([])
     }
     expect(dps[0]).not.toContain('<IBSCBS>')
     expect(dps[1]).toContain('<IBSCBS>')
@@ -80,7 +81,7 @@ describe('homologação da NT 009', () => {
     expect(r.fake.requests.filter((q) => q.url.includes('/convenio')).every((q) => q.method === 'GET')).toBe(true)
     // O relatório não leva nada que identifique a empresa ou o tomador.
     const texto = r.escritos[0].content
-    expect(path).toMatch(/^C:\/relatorios\/homologacao-nt009-presumido-/)
+    expect(path).toMatch(/^C:\/relatorios\/homologacao-nt009r2-presumido-/)
     for (const segredo of [SEGREDOS.cnpj, SEGREDOS.im, SEGREDOS.tomador, SEGREDOS.nome, SEGREDOS.pfx, cert.certificado.password]) {
       expect(texto).not.toContain(segredo)
     }
@@ -88,11 +89,36 @@ describe('homologação da NT 009', () => {
 
   it('MEI e Simples: uma nota cada sem --nbs; parâmetros do regime conferidos', async () => {
     const mei = deps(['--regime=mei', '--municipio=3550308', '--ctribnac=100401', '--serie=900', '--numero-inicial=1', '--saida=C:/r'])
-    expect((await runHomologacao(mei.deps)).relatorio?.notas.map((n) => n.caso)).toEqual(['nt009'])
+    expect((await runHomologacao(mei.deps)).relatorio?.notas.map((n) => n.caso)).toEqual(['nt009r2'])
     expect(mei.fake.requests.find((q) => q.path === '/nfse')?.xml).toContain('<opSimpNac>2</opSimpNac>')
     const simples = deps(['--regime=simples', '--municipio=3550308', '--ctribnac=100401', '--serie=900', '--numero-inicial=1', '--saida=C:/r'])
     await expect(runHomologacao(simples.deps)).rejects.toThrow(/p-tot-trib-sn/)
     await expect(runHomologacao(deps([...PRESUMIDO.filter((a) => !a.startsWith('--p-tot-trib'))]).deps)).rejects.toThrow(/p-tot-trib/)
+  })
+
+  it('--leiaute=nt009 testa o release 1 (XSD 20261020)', async () => {
+    const r = deps(['--regime=mei', '--municipio=3550308', '--ctribnac=100401', '--serie=900', '--numero-inicial=1', '--saida=C:/r', '--leiaute=nt009'])
+    expect((await runHomologacao(r.deps)).relatorio?.notas.map((n) => n.caso)).toEqual(['nt009'])
+    expect(await errosXsd(r.fake.requests.find((q) => q.path === '/nfse')?.xml as string, 'producao-restrita-20261020')).toEqual([])
+    await expect(runHomologacao(deps([...PRESUMIDO, '--leiaute=v1.01']).deps)).rejects.toThrow(/--leiaute/)
+  })
+
+  it('--locacao: imóvel (99.03.01) e bem móvel (99.04.01) sem ISS, com o grupo da locação, válidos no XSD do release 2', async () => {
+    const simples = ['--regime=simples', '--municipio=3550308', '--ctribnac=100401', '--serie=900', '--numero-inicial=1', '--saida=C:/r', '--p-tot-trib-sn=6.00']
+    await expect(runHomologacao(deps([...simples, '--locacao']).deps)).rejects.toThrow(/cep-imovel/)
+    const r = deps([...simples, '--locacao', '--cep-imovel=01310-100'])
+    const { relatorio } = await runHomologacao(r.deps)
+    expect(relatorio?.notas.map((n) => [n.caso, n.resultado])).toEqual([
+      ['nt009r2', 'authorized'],
+      ['nt009r2+locacao-imovel', 'authorized'],
+      ['nt009r2+locacao-movel', 'authorized'],
+    ])
+    const dps = r.fake.requests.filter((q) => q.method === 'POST' && q.path === '/nfse').map((q) => q.xml as string)
+    for (const xml of dps) expect(await errosXsd(xml, 'producao-restrita-20261124')).toEqual([])
+    expect(dps[1]).toContain('<cTribNac>990301</cTribNac>')
+    expect(dps[1]).toContain('<tribISSQN>4</tribISSQN>')
+    expect(dps[1]).toContain('<imovel><cMun>3550308</cMun><gLocacao><pCopropriedade>100.00</pCopropriedade><vTotOper>1000.00</vTotOper>')
+    expect(dps[2]).toContain('<bensMoveis><cNCMBemMovel>87032310</cNCMBemMovel>')
   })
 
   it('retenções federais de teste: 1,5% e 4,65%, arredondadas ao centavo', () => {

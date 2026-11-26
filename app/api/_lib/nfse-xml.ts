@@ -61,7 +61,27 @@ export type NfseData = {
     pTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
     vTotTrib: { fed: string | null; est: string | null; mun: string | null } | null
     xInfComp: string | null
+    /** `IBSCBS` da DPS (NT 009): classificação e, na locação, o imóvel ou os bens móveis. */
+    ibscbs: IbsCbsDps | null
   }
+  /** `infNFSe/IBSCBS`: o que a Sefin calculou de IBS e CBS (só quando a DPS levou o grupo). */
+  ibscbsNfse: { xLocalidadeIncid: string | null; vBC: string | null; vIBSTot: string | null; vCBS: string | null; vTotNF: string | null } | null
+}
+
+export type ImovelDps = {
+  cMun: string | null
+  pCopropriedade: string | null
+  vTotOper: string | null
+  dVencOrig: string | null
+  unidades: { inscImobFisc: string | null; cCIB: string | null; endereco: Endereco | null }[]
+}
+
+export type IbsCbsDps = {
+  cIndOp: string | null
+  CST: string | null
+  cClassTrib: string | null
+  imovel: ImovelDps | null
+  bensMoveis: { cNCMBemMovel: string | null; xNCMBemMovel: string | null; qtdNCMBemMovel: string | null }[]
 }
 
 export type TribFed = {
@@ -168,6 +188,41 @@ function tribFed(node: El | null): TribFed | null {
   }
 }
 
+function ibscbsDps(node: El | null): IbsCbsDps | null {
+  if (!node) return null
+  const trib = child(node, 'valores', 'trib')
+  const imovel = child(node, 'imovel')
+  return {
+    cIndOp: text(node, 'cIndOp'),
+    // NT 009: CST/cClassTrib direto em trib; NT 004: dentro de trib/gIBSCBS.
+    CST: text(trib, 'CST') ?? text(trib, 'gIBSCBS', 'CST'),
+    cClassTrib: text(trib, 'cClassTrib') ?? text(trib, 'gIBSCBS', 'cClassTrib'),
+    imovel: imovel
+      ? {
+          cMun: text(imovel, 'cMun'),
+          pCopropriedade: text(imovel, 'gLocacao', 'pCopropriedade'),
+          vTotOper: text(imovel, 'gLocacao', 'vTotOper'),
+          dVencOrig: text(imovel, 'gLocacao', 'dVencOrig'),
+          unidades: children(imovel, 'gUnidImob').map((u) => {
+            const end = child(u, 'end')
+            return {
+              inscImobFisc: text(u, 'inscImobFisc'),
+              cCIB: text(u, 'cCIB'),
+              endereco: end
+                ? { xLgr: text(end, 'xLgr'), nro: text(end, 'nro'), xCpl: text(end, 'xCpl'), xBairro: text(end, 'xBairro'), cMun: null, UF: null, CEP: text(end, 'CEP') }
+                : null,
+            }
+          }),
+        }
+      : null,
+    bensMoveis: children(node, 'bensMoveis').map((b) => ({
+      cNCMBemMovel: text(b, 'cNCMBemMovel'),
+      xNCMBemMovel: text(b, 'xNCMBemMovel'),
+      qtdNCMBemMovel: text(b, 'qtdNCMBemMovel'),
+    })),
+  }
+}
+
 export function parseNfseXml(xml: string): NfseData {
   const errors: string[] = []
   const doc = new DOMParser({
@@ -243,6 +298,16 @@ export function parseNfseXml(xml: string): NfseData {
       vTotTrib: triple(child(totTrib, 'vTotTrib'), 'v'),
       // Leiaute 1.01: serv/infoCompl/xInfComp (o caminho infAdic não existe no XSD; fica só por compatibilidade).
       xInfComp: text(infDps, 'serv', 'infoCompl', 'xInfComp') ?? text(infDps, 'infAdic', 'xInfComp'),
+      ibscbs: ibscbsDps(child(infDps, 'IBSCBS')),
     },
+    ibscbsNfse: child(inf, 'IBSCBS')
+      ? {
+          xLocalidadeIncid: text(inf, 'IBSCBS', 'xLocalidadeIncid'),
+          vBC: text(inf, 'IBSCBS', 'valores', 'vBC'),
+          vIBSTot: text(inf, 'IBSCBS', 'totCIBS', 'gIBS', 'vIBSTot'),
+          vCBS: text(inf, 'IBSCBS', 'totCIBS', 'gCBS', 'vCBS'),
+          vTotNF: text(inf, 'IBSCBS', 'totCIBS', 'vTotNF'),
+        }
+      : null,
   }
 }

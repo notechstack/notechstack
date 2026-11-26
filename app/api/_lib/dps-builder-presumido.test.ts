@@ -176,9 +176,9 @@ describe('virada da NT 009: MEI, Simples e Presumido no leiaute novo', () => {
     expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'v1.01' }, depois).leiaute).toBe('v1.01')
     // Antecipar (teste).
     expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }, antes).leiaute).toBe('nt009')
-    // Valor errado não muda nada; produção restrita é sempre nt009.
+    // Valor errado não muda nada; produção restrita é sempre a do release 2 (nt009r2, desde 24/11/2026).
     expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'NT009' }, antes).leiaute).toBe('v1.01')
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, { NOFISCAL_DPS_LEIAUTE: 'v1.01' }, antes).leiaute).toBe('nt009')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, { NOFISCAL_DPS_LEIAUTE: 'v1.01' }, antes).leiaute).toBe('nt009r2')
   })
 })
 

@@ -1,13 +1,15 @@
 // Validação da DPS contra os XSD oficiais da NFS-e Nacional (libxml2 em WebAssembly, sem rede).
 // Pacotes copiados de gov.br/nfse em 17/11/2026:
 // - producao-v1.01-20260209: nfse-esquemas_xsd-v1-01-20260209.zip (Documentação Atual; leiaute de produção).
-// - producao-restrita-20261020: esquemas_prod_restrita_20261020.zip (NT 009, release 1; produção a partir de 01/12/2026).
+// - producao-restrita-20261020: esquemas_prod_restrita_20261020.zip (NT 009, release 1).
+// - producao-restrita-20261124: esquemas-xsd-producao-restrita-20261124.zip (NT 009, release 2: indDest em infDPS),
+//   baixado em 26/11/2026. Releases 1 e 2 vão à produção em 07/12/2026 (cronograma da CGNFS-e de 25/11/2026).
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateXML } from 'xmllint-wasm'
 
-export type PacoteXsd = 'producao-v1.01-20260209' | 'producao-restrita-20261020'
+export type PacoteXsd = 'producao-v1.01-20260209' | 'producao-restrita-20261020' | 'producao-restrita-20261124'
 
 const ARQUIVOS = ['tiposComplexos_v1.01.xsd', 'tiposSimples_v1.01.xsd', 'xmldsig-core-schema.xsd']
 

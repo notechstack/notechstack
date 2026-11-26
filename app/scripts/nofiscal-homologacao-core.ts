@@ -3,7 +3,10 @@
 // Real). Para cada regime, transmite pelo cliente real do motor:
 //   (1) a DPS no leiaute NT 009 sem IBSCBS (o que vai para produção em 01/12/2026);
 //   (2) a mesma com o grupo IBSCBS e NBS, se --nbs vier (o que liga com NOFISCAL_DPS_IBSCBS=1);
-//   (3) Presumido/Real com tomador CNPJ: IRRF 1,5% e PIS/COFINS/CSLL 4,65% retidos (tribFed).
+//   (3) Presumido/Real com tomador CNPJ: IRRF 1,5% e PIS/COFINS/CSLL 4,65% retidos (tribFed);
+//   (4) com --locacao (26/11/2026): locação de imóvel (99.03.01) no município do prestador e locação de bem móvel
+//       (99.04.01, um carro), as duas sem ISS e com o grupo IBSCBS de locação.
+// Leiaute: release 2 da NT 009 (`nt009r2`, no ar na produção restrita desde 24/11/2026); `--leiaute=nt009` testa o 1.
 // Cada nota autorizada é consultada e cancelada em seguida (e101101), para não deixar nota viva no ambiente de teste.
 // O relatório JSON não traz PFX, senha, XML assinado, CNPJ, CPF, nome, inscrição municipal, Id da DPS nem chave: só o
 // resultado, o código e a mensagem da Sefin, e os campos do regime lidos de volta na NFS-e.
@@ -11,7 +14,8 @@
 import { createSefinClient, SEFIN_BASE_URLS, type SefinTransport } from '../api/_lib/sefin-client.js'
 import { pfxToPem } from '../api/_lib/pfx.js'
 import type { Certificado, SefinInvoice, SefinTenant } from '../api/_lib/sefin.js'
-import type { OpcoesDps } from '../api/_lib/dps-builder.js'
+import type { LeiauteDps, OpcoesDps } from '../api/_lib/dps-builder.js'
+import { LOCACAO_IMOVEL, LOCACAO_MOVEL } from '../api/_lib/locacao.js'
 import type { SignatureProfile } from '../api/_lib/xml-signer.js'
 import { cpfValido, makeMasker, parseFlags, SPIKE_AMBIENTE, SpikeRefused } from './nofiscal-spike-core.js'
 
@@ -47,12 +51,16 @@ export type HomologacaoParams = {
   saida: string
   perfil: SignatureProfile
   caPath: string | null
+  leiaute: Exclude<LeiauteDps, 'v1.01'>
+  /** CEP do imóvel de teste (no município do prestador): liga os casos de locação. */
+  cepImovel: string | null
 }
 
 export const USAGE_HOMOLOGACAO = `Uso: node scripts/nofiscal-homologacao.mjs --regime=mei|simples|presumido|real --municipio=<IBGE> \\
   --ctribnac=<6 dígitos> --serie=<1-49999> --numero-inicial=<n> --saida=<pasta> \\
   [--p-tot-trib-sn=6.00 (Simples)] [--p-tot-trib=13.45,0,5.00 (Presumido/Real: federal,estadual,municipal)] \\
   [--nbs=1.1502.10.00 (liga a nota com IBSCBS)] [--valor=1000.00] [--perfil-assinatura=sha256|sha1] [--ca=<PEM>]
+  [--leiaute=nt009r2|nt009] [--locacao --cep-imovel=<CEP de um imóvel no município>]
 CNPJ e inscrição municipal do prestador, documento e nome do tomador de teste, caminho do PFX e senha são pedidos
 no terminal. Tomador com CNPJ (14 dígitos) em Presumido/Real acrescenta a nota com retenções federais.
 Só roda contra a produção restrita.`
@@ -104,6 +112,13 @@ export function parseHomologacaoParams(flags: Record<string, string>): Homologac
   if (!/^\d{1,13}\.\d{2}$/.test(valor) || Number(valor) <= 0) throw new Error('--valor deve ter 2 casas decimais, por exemplo 1000.00')
   const perfil = flags['perfil-assinatura'] ?? 'sha256'
   if (perfil !== 'sha256' && perfil !== 'sha1') throw new Error('--perfil-assinatura deve ser sha256 ou sha1')
+  const leiaute = flags.leiaute ?? 'nt009r2'
+  if (leiaute !== 'nt009r2' && leiaute !== 'nt009') throw new Error('--leiaute deve ser nt009r2 (release 2) ou nt009 (release 1)')
+  let cepImovel: string | null = null
+  if (flags.locacao) {
+    cepImovel = (flags['cep-imovel'] ?? '').replace(/\D/g, '')
+    if (!/^\d{8}$/.test(cepImovel)) throw new Error('--locacao pede --cep-imovel com 8 dígitos (um imóvel no município do prestador)')
+  }
   return {
     regime,
     municipio,
@@ -117,6 +132,8 @@ export function parseHomologacaoParams(flags: Record<string, string>): Homologac
     saida: need('saida'),
     perfil: perfil === 'sha1' ? 'sha1-c14n' : 'sha256-exc-c14n',
     caPath: flags.ca ?? null,
+    leiaute,
+    cepImovel,
   }
 }
 
@@ -157,7 +174,7 @@ export type RelatorioHomologacao = {
   url_base: string
   regime: Regime
   municipio: string
-  leiaute: 'nt009'
+  leiaute: Exclude<LeiauteDps, 'v1.01'>
   certificado_valido_ate: string
   notas: ResultadoNota[]
   codigos_vistos: string[]
@@ -201,10 +218,39 @@ export async function runHomologacao(deps: HomologacaoDeps): Promise<{ relatorio
     p_tot_trib: p.pTotTrib,
   }
   const naoOptante = p.regime === 'presumido' || p.regime === 'real'
-  const casos: Caso[] = [{ rotulo: 'nt009', opcoes: { leiaute: 'nt009', ibscbs: false }, servico: {}, retencao: null }]
-  if (p.nbs) casos.push({ rotulo: 'nt009+ibscbs', opcoes: { leiaute: 'nt009', ibscbs: true }, servico: { nbs: p.nbs }, retencao: null })
+  const L = p.leiaute
+  const casos: Caso[] = [{ rotulo: L, opcoes: { leiaute: L, ibscbs: false }, servico: {}, retencao: null }]
+  if (p.nbs) casos.push({ rotulo: `${L}+ibscbs`, opcoes: { leiaute: L, ibscbs: true }, servico: { nbs: p.nbs }, retencao: null })
   if (naoOptante && s.tomador.length === 14) {
-    casos.push({ rotulo: 'nt009+retencao-federal', opcoes: { leiaute: 'nt009', ibscbs: false }, servico: {}, retencao: gerarRetencoesFederaisDeTeste(p.valor) })
+    casos.push({ rotulo: `${L}+retencao-federal`, opcoes: { leiaute: L, ibscbs: false }, servico: {}, retencao: gerarRetencoesFederaisDeTeste(p.valor) })
+  }
+  if (p.cepImovel) {
+    const locacao = { leiaute: L, ibscbs: false, locacao: true }
+    casos.push({
+      rotulo: `${L}+locacao-imovel`,
+      opcoes: locacao,
+      servico: {
+        codigo_servico_nacional: LOCACAO_IMOVEL,
+        descricao: 'Aluguel de imovel - teste de homologacao',
+        locacao: {
+          imovel: {
+            municipio_ibge: p.municipio, cep: p.cepImovel, logradouro: 'Rua de Teste', numero: '100', bairro: 'Centro',
+            residencial: false, vencimento: deps.now().toISOString().slice(0, 10),
+          },
+        },
+      },
+      retencao: null,
+    })
+    casos.push({
+      rotulo: `${L}+locacao-movel`,
+      opcoes: locacao,
+      servico: {
+        codigo_servico_nacional: LOCACAO_MOVEL,
+        descricao: 'Aluguel de veiculo - teste de homologacao',
+        locacao: { bens: [{ ncm: '87032310', descricao: 'Automovel de passageiros 1.5 a 3.0', quantidade: 1 }] },
+      },
+      retencao: null,
+    })
   }
 
   const inner = deps.transport({ extraCa })
@@ -250,6 +296,10 @@ export async function runHomologacao(deps: HomologacaoDeps): Promise<{ relatorio
         finNFSe: tag(r.xmlNfse, 'finNFSe'),
         cNBS: tag(r.xmlNfse, 'cNBS') !== null,
         grupo_IBSCBS: /<(?:\w+:)?IBSCBS>/.test(r.xmlNfse),
+        tribISSQN: tag(r.xmlNfse, 'tribISSQN'),
+        cClassTrib: tag(r.xmlNfse, 'cClassTrib'),
+        vIBSTot: tag(r.xmlNfse, 'vIBSTot'),
+        vCBS: tag(r.xmlNfse, 'vCBS'),
         vRetIRRF: tag(r.xmlNfse, 'vRetIRRF'),
         vRetCSLL: tag(r.xmlNfse, 'vRetCSLL'),
         vTotalRet: tag(r.xmlNfse, 'vTotalRet'),
@@ -288,14 +338,14 @@ export async function runHomologacao(deps: HomologacaoDeps): Promise<{ relatorio
     url_base: baseUrl,
     regime: p.regime,
     municipio: p.municipio,
-    leiaute: 'nt009',
+    leiaute: p.leiaute,
     certificado_valido_ate: pem.notAfter.toISOString(),
     notas,
     codigos_vistos: [...codigos].sort(),
     convenio,
   }
   const texto = mask(JSON.stringify(relatorio, null, 2))
-  const path = `${p.saida.replace(/[\\/]+$/, '')}/homologacao-nt009-${p.regime}-${relatorio.gerado_em.replace(/[:.]/g, '-')}.json`
+  const path = `${p.saida.replace(/[\\/]+$/, '')}/homologacao-${p.leiaute}-${p.regime}-${relatorio.gerado_em.replace(/[:.]/g, '-')}.json`
   await deps.writeFile(path, texto)
   deps.print(`Relatório: ${path}`)
   return { relatorio: JSON.parse(texto) as RelatorioHomologacao, path }
