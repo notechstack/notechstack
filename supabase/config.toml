@@ -90,6 +90,10 @@ verify_jwt = false
 [functions.assinatura-fiscal-ciclo]
 verify_jwt = false
 
+# verify_jwt = true é obrigatório: autorizadoEquipe confia no papel do JWT porque o gateway confere a assinatura.
+[functions.assinatura-fiscal-guias]
+verify_jwt = true
+
 # Agente fiscal v2 (lote A): código por e-mail e cadastro pelo site. fiscal-cadastro confere a sessão
 # no código (auth.getUser); a lista de municípios do padrão nacional (lote P) vai embutida no bundle.
 [functions.fiscal-acesso]

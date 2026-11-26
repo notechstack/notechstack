@@ -481,6 +481,18 @@ components:
             cnpj: { type: string, pattern: '^\d{14}$' }
             nome: { type: string, minLength: 1, maxLength: 150 }
             email: { type: string, format: email }
+            endereco:
+              type: object
+              additionalProperties: false
+              description: 'Endereço do tomador; prevalece sobre o da Receita. Tomador CNPJ sem ele: o endereço da Receita. Tomador CPF: só com ele.'
+              required: [cep, logradouro, bairro, municipio_ibge]
+              properties:
+                cep: { type: string, description: '8 dígitos, com ou sem traço.' }
+                logradouro: { type: string, maxLength: 255 }
+                numero: { type: string, maxLength: 60, description: 'Vazio ou ausente = S/N.' }
+                complemento: { type: string, maxLength: 156 }
+                bairro: { type: string, maxLength: 60 }
+                municipio_ibge: { type: string, description: 'Código IBGE de 7 dígitos ou "Cidade/UF".' }
           oneOf:
             - required: [cpf]
             - required: [cnpj]
@@ -633,6 +645,29 @@ components:
         consumidor_final: { type: string, enum: ['0', '1'] }
         presenca: { type: string, enum: ['0', '1', '2', '3', '4', '5', '9'] }
         modalidade_frete: { type: string, enum: ['0', '1', '2', '3', '4', '9'] }
+        transportador:
+          type: [object, 'null']
+          additionalProperties: false
+          properties:
+            documento: { type: [string, 'null'], description: 'CNPJ (14) ou CPF (11)' }
+            nome: { type: [string, 'null'], maxLength: 60 }
+            inscricao_estadual: { type: [string, 'null'], description: 'Só dígitos ou ISENTO' }
+            endereco: { type: [string, 'null'], maxLength: 60 }
+            municipio: { type: [string, 'null'], maxLength: 60 }
+            uf: { type: [string, 'null'] }
+        volumes:
+          type: [array, 'null']
+          maxItems: 5000
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              quantidade: { type: [integer, 'null'], minimum: 0 }
+              especie: { type: [string, 'null'], maxLength: 60 }
+              marca: { type: [string, 'null'], maxLength: 60 }
+              numeracao: { type: [string, 'null'], maxLength: 60 }
+              peso_liquido: { type: [number, 'null'], minimum: 0, description: 'kg, até 3 casas' }
+              peso_bruto: { type: [number, 'null'], minimum: 0, description: 'kg, até 3 casas' }
         destinatario:
           type: object
           required: [documento, nome, endereco]

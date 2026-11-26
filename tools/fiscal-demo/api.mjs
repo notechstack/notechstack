@@ -44,7 +44,10 @@ for (const [nome, mod] of [['http', http], ['https', https]]) {
 
 // Rewrites de app/vercel.json para a API.
 function reescrever(caminho, busca) {
-  let m = /^\/api\/v1\/nfse\/([^/]+)\/(cancel|pdf)$/.exec(caminho);
+  // Link rastreável do módulo Guias (app/vercel.json: /g/:token).
+  let m = /^\/g\/([A-Za-z0-9_-]+)$/.exec(caminho);
+  if (m) { busca.set('token', m[1]); return '/api/v1/fiscal/guia-link'; }
+  m = /^\/api\/v1\/nfse\/([^/]+)\/(cancel|pdf)$/.exec(caminho);
   if (m) { busca.set('id', m[1]); busca.set('acao', m[2]); return '/api/v1/nfse'; }
   m = /^\/api\/v1\/nfse\/([^/]+)$/.exec(caminho);
   if (m) { busca.set('id', m[1]); return '/api/v1/nfse'; }

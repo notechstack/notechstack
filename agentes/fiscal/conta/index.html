@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
 <link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=8">
-<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=6">
+<link rel="stylesheet" href="/agentes/fiscal/paginas.css?v=7">
 <script src="/shared/card-nav.js" defer></script>
 </head>
 <body class="fi-body nf-body">
@@ -79,6 +79,7 @@
       <button type="button" class="nf-aba" role="tab" id="fa-aba-relatorios" data-aba="relatorios" aria-controls="fa-painel-relatorios" aria-selected="false" tabindex="-1">Relatórios</button>
       <button type="button" class="nf-aba" role="tab" id="fa-aba-nfe" data-aba="nfe" aria-controls="fa-painel-nfe" aria-selected="false" tabindex="-1">NF-e</button>
       <button type="button" class="nf-aba" role="tab" id="fa-aba-api" data-aba="api" aria-controls="fa-painel-api" aria-selected="false" tabindex="-1">API</button>
+      <button type="button" class="nf-aba" role="tab" id="fa-aba-guias" data-aba="guias" aria-controls="fa-painel-guias" aria-selected="false" tabindex="-1" hidden>Guias</button>
     </div>
 
     <div class="nf-secoes" id="fa-painel-dados">
@@ -96,6 +97,8 @@
         <dt>Assinatura</dt><dd><span class="nf-status" id="fa-status"></span></dd>
       </dl>
       <dl class="nf-dados" id="fa-plano-uso" hidden></dl>
+      <!-- Com o módulo Guias: as duas mensalidades (guias.js); sem ele, fica oculto. -->
+      <dl class="nf-dados" id="fa-plano-mensalidades" hidden></dl>
       <div class="nf-acoes">
         <button type="button" class="fi-btn fi-btn--borda" id="fa-trocar-plano"></button>
         <button type="button" class="fi-btn fi-btn--borda" id="fa-abrir-faixas" hidden aria-expanded="false" aria-controls="fa-faixas">Trocar faixa</button>
@@ -322,6 +325,12 @@
           <div class="nf-campo"><label for="fa-av-nome">Nome ou razão social</label><input id="fa-av-nome" autocomplete="off" maxlength="150"><small class="nf-erro" id="fa-av-nome-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-email">E-mail do cliente (opcional)</label><input id="fa-av-email" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-av-email-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-valor">Valor (R$)</label><input id="fa-av-valor" inputmode="decimal" autocomplete="off" maxlength="20" placeholder="1.234,56"><small class="nf-erro" id="fa-av-valor-erro" hidden></small></div>
+          <fieldset class="nf-grupo" id="fa-av-end">
+            <legend>Endereço do cliente (opcional)</legend>
+            <small class="nf-dica" style="grid-column:1/-1">Cliente com CNPJ: em branco, vai na nota o endereço da Receita. Cliente com CPF: só sai com endereço se você preencher.</small>
+            <div class="nf-campo"><label for="fa-av-end-cep">CEP</label><input id="fa-av-end-cep" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="12900-000"></div><div class="nf-campo"><label for="fa-av-end-logradouro">Rua</label><input id="fa-av-end-logradouro" autocomplete="off" maxlength="255" placeholder="Rua das Flores"></div><div class="nf-campo"><label for="fa-av-end-numero">Número</label><input id="fa-av-end-numero" autocomplete="off" maxlength="60" placeholder="120 ou s/n"></div><div class="nf-campo"><label for="fa-av-end-complemento">Complemento (opcional)</label><input id="fa-av-end-complemento" autocomplete="off" maxlength="156" placeholder="Sala 2"></div><div class="nf-campo"><label for="fa-av-end-bairro">Bairro</label><input id="fa-av-end-bairro" autocomplete="off" maxlength="60" placeholder="Centro"></div><div class="nf-campo"><label for="fa-av-end-municipio">Cidade</label><input id="fa-av-end-municipio" list="fa-av-local-lista" autocomplete="off" maxlength="80" placeholder="Bragança Paulista/SP"></div>
+            <small class="nf-erro" id="fa-av-end-erro" style="grid-column:1/-1" hidden></small>
+          </fieldset>
           <fieldset class="nf-grupo nf-grupo--coluna nf-seletor" id="fa-av-seletor">
             <legend>Código de serviço nacional</legend>
             <div class="nf-sugestoes"></div>
@@ -528,16 +537,97 @@
         <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-nfe-conferir">Conferir na Sefaz</button></div>
       </section>
 
+      <section class="nf-cartao" aria-labelledby="fa-nfa-titulo">
+        <p class="nf-passo">Nota avulsa</p>
+        <h2 class="nf-h2" id="fa-nfa-titulo">Emitir uma NF-e</h2>
+        <p class="nf-texto">Para a empresa escolhida em cima. Clientes, produtos e transportadoras das notas anteriores desta empresa aparecem nas listas: escolha e confira. A nota passa pela mesma conferência da planilha e só sai depois que você confirmar o resumo.</p>
+        <p class="nf-aviso" id="fa-aviso-nfa" role="status" hidden></p>
+        <form id="fa-form-nfa" class="nf-form" novalidate>
+          <fieldset class="nf-grupo" id="fa-nfa-destinatario">
+            <legend style="grid-column:1/-1">Destinatário</legend>
+            <div class="nf-campo nf-campo--largo"><label for="fa-nfa-cliente">Cliente</label><select id="fa-nfa-cliente"><option value="">Cliente novo</option></select><small class="nf-dica">Os destinatários das NF-e anteriores desta empresa.</small></div>
+            <div class="nf-campo"><label for="fa-nfa-documento">CPF ou CNPJ</label><input id="fa-nfa-documento" inputmode="numeric" autocomplete="off" maxlength="18"></div>
+            <div class="nf-campo"><label for="fa-nfa-nome">Nome ou razão social</label><input id="fa-nfa-nome" autocomplete="off" maxlength="60"></div>
+            <div class="nf-campo"><label for="fa-nfa-ie">Inscrição estadual</label><input id="fa-nfa-ie" autocomplete="off" maxlength="20"><small class="nf-dica">Vazio: não contribuinte. ISENTO: contribuinte isento.</small></div>
+            <div class="nf-campo"><label for="fa-nfa-email">E-mail (opcional)</label><input id="fa-nfa-email" type="email" autocomplete="off" maxlength="60"></div>
+            <div class="nf-campo"><label for="fa-nfa-cep">CEP</label><input id="fa-nfa-cep" inputmode="numeric" autocomplete="off" maxlength="9"></div>
+            <div class="nf-campo"><label for="fa-nfa-logradouro">Rua</label><input id="fa-nfa-logradouro" autocomplete="off" maxlength="60"></div>
+            <div class="nf-campo"><label for="fa-nfa-numero">Número</label><input id="fa-nfa-numero" autocomplete="off" maxlength="60" placeholder="S/N"></div>
+            <div class="nf-campo"><label for="fa-nfa-complemento">Complemento (opcional)</label><input id="fa-nfa-complemento" autocomplete="off" maxlength="60"></div>
+            <div class="nf-campo"><label for="fa-nfa-bairro">Bairro</label><input id="fa-nfa-bairro" autocomplete="off" maxlength="60"></div>
+            <div class="nf-campo"><label for="fa-nfa-municipio">Município</label><input id="fa-nfa-municipio" list="fa-nfa-municipios" autocomplete="off" maxlength="80" placeholder="Campinas/SP"><datalist id="fa-nfa-municipios"></datalist></div>
+            <div class="nf-campo"><label for="fa-nfa-fone">Telefone (opcional)</label><input id="fa-nfa-fone" inputmode="tel" autocomplete="off" maxlength="20"></div>
+          </fieldset>
+          <fieldset class="nf-grupo nf-grupo--coluna" id="fa-nfa-itens-grupo">
+            <legend>Produtos</legend>
+            <small class="nf-dica">Digite o código de um produto que já saiu para trazer descrição, NCM, CFOP, CSOSN e preço. Confira cada um: CFOP 5xxx dentro do estado, 6xxx para outro estado.</small>
+            <datalist id="fa-nfa-produtos"></datalist>
+            <div id="fa-nfa-itens"></div>
+            <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" id="fa-nfa-mais-item">Adicionar produto</button></div>
+          </fieldset>
+          <fieldset class="nf-grupo" id="fa-nfa-pagamento">
+            <legend style="grid-column:1/-1">Frete e pagamento</legend>
+            <div class="nf-campo"><label for="fa-nfa-frete">Frete cobrado na nota (R$, opcional)</label><input id="fa-nfa-frete" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="0,00"></div>
+            <div class="nf-campo"><label for="fa-nfa-forma">Forma de pagamento</label><select id="fa-nfa-forma"><option value="">Automática (PIX na venda, sem pagamento na remessa)</option><option value="17">PIX</option><option value="15">Boleto</option><option value="01">Dinheiro</option><option value="03">Cartão de crédito</option><option value="04">Cartão de débito</option><option value="18">Transferência</option><option value="90">Sem pagamento</option><option value="99">Outros</option></select></div>
+            <div class="nf-campo" id="fa-nfa-campo-desc-pag" hidden><label for="fa-nfa-desc-pag">Descrição do pagamento</label><input id="fa-nfa-desc-pag" autocomplete="off" maxlength="60"></div>
+          </fieldset>
+          <details class="nf-proc nf-campo--largo" id="fa-nfa-transporte">
+            <summary>Transporte e volumes</summary>
+            <div class="nf-form">
+              <div class="nf-campo nf-campo--largo"><label for="fa-nfa-modalidade">Modalidade do frete</label><select id="fa-nfa-modalidade"><option value="">Automática (emitente com frete, sem frete sem valor)</option><option value="0">0 - Por conta do emitente (CIF)</option><option value="1">1 - Por conta do destinatário (FOB)</option><option value="2">2 - Por conta de terceiros</option><option value="3">3 - Transporte próprio do remetente</option><option value="4">4 - Transporte próprio do destinatário</option><option value="9">9 - Sem frete</option></select></div>
+              <div class="nf-campo nf-campo--largo"><label for="fa-nfa-transportadora">Transportadora</label><select id="fa-nfa-transportadora"><option value="">Nova (ou nenhuma)</option></select></div>
+              <div class="nf-campo"><label for="fa-nfa-t-documento">CNPJ ou CPF</label><input id="fa-nfa-t-documento" inputmode="numeric" autocomplete="off" maxlength="18"></div>
+              <div class="nf-campo"><label for="fa-nfa-t-nome">Razão social</label><input id="fa-nfa-t-nome" autocomplete="off" maxlength="60"></div>
+              <div class="nf-campo"><label for="fa-nfa-t-ie">Inscrição estadual</label><input id="fa-nfa-t-ie" autocomplete="off" maxlength="20" placeholder="ou ISENTO"></div>
+              <div class="nf-campo"><label for="fa-nfa-t-endereco">Endereço</label><input id="fa-nfa-t-endereco" autocomplete="off" maxlength="60"></div>
+              <div class="nf-campo"><label for="fa-nfa-t-municipio">Município</label><input id="fa-nfa-t-municipio" autocomplete="off" maxlength="60"></div>
+              <div class="nf-campo"><label for="fa-nfa-t-uf">UF</label><input id="fa-nfa-t-uf" autocomplete="off" maxlength="2"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-quantidade">Quantidade de volumes</label><input id="fa-nfa-v-quantidade" inputmode="numeric" autocomplete="off" maxlength="9"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-especie">Espécie</label><input id="fa-nfa-v-especie" autocomplete="off" maxlength="60" placeholder="CAIXA"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-marca">Marca</label><input id="fa-nfa-v-marca" autocomplete="off" maxlength="60"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-numeracao">Numeração</label><input id="fa-nfa-v-numeracao" autocomplete="off" maxlength="60" placeholder="1 a 10"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-peso-liquido">Peso líquido (kg)</label><input id="fa-nfa-v-peso-liquido" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="60,4"></div>
+              <div class="nf-campo"><label for="fa-nfa-v-peso-bruto">Peso bruto (kg)</label><input id="fa-nfa-v-peso-bruto" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="60,4"></div>
+            </div>
+          </details>
+          <div class="nf-campo nf-campo--largo"><label for="fa-nfa-natureza">Natureza da operação (opcional)</label><input id="fa-nfa-natureza" list="fa-nfa-naturezas" autocomplete="off" maxlength="60" placeholder="Automática pelo CFOP: 5102 venda, 6949 simples remessa…"><datalist id="fa-nfa-naturezas"><option value="Venda de mercadoria"><option value="Simples remessa"><option value="Remessa em bonificação, doação ou brinde"><option value="Remessa de amostra grátis"><option value="Remessa para conserto"><option value="Remessa por conta e ordem de terceiros"><option value="Remessa para demonstração"><option value="Transferência de mercadoria"><option value="Devolução de compra"></datalist></div>
+          <div class="nf-campo nf-campo--largo"><label for="fa-nfa-info">Informações complementares (opcional)</label><textarea id="fa-nfa-info" rows="3" maxlength="2000" placeholder="Documento emitido por ME ou EPP optante pelo Simples Nacional."></textarea></div>
+          <small class="nf-erro nf-campo--largo" id="fa-nfa-erro" hidden></small>
+          <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-nfa-conferir">Conferir a nota</button></div>
+        </form>
+        <div class="nf-bloco" id="fa-nfa-resumo" hidden>
+          <h3 class="nf-h3" id="fa-nfa-resumo-titulo" tabindex="-1">Confira antes de emitir</h3>
+          <dl class="nf-dados" id="fa-nfa-resumo-dados"></dl>
+          <ul class="nf-lista" id="fa-nfa-itens-resumo"></ul>
+          <div id="fa-nfa-avisos"></div>
+          <div class="nf-acoes">
+            <button type="button" class="fi-btn fi-btn--tinta" id="fa-nfa-emitir">Emitir NF-e</button>
+            <button type="button" class="fi-link-btn" id="fa-nfa-corrigir">Corrigir</button>
+          </div>
+        </div>
+      </section>
+
       <section class="nf-cartao" aria-labelledby="fa-nfe-planilha-titulo">
         <p class="nf-passo">Planilha</p>
         <h2 class="nf-h2" id="fa-nfe-planilha-titulo">Emitir NF-e por planilha</h2>
-        <p class="nf-texto">Uma linha por item; as linhas com o mesmo número na coluna <b>nota</b> viram uma NF-e. <a href="/agentes/fiscal/dados/modelo-nfe.csv" download>Baixar o modelo</a>.</p>
+        <p class="nf-texto">Uma linha por item; as linhas com o mesmo número na coluna <b>nota</b> viram uma NF-e. <a href="/agentes/fiscal/dados/modelo-nfe.xlsx" download>Baixar o modelo (.xlsx)</a> ou <a href="/agentes/fiscal/dados/modelo-nfe.csv" download>em .csv</a>.</p>
+        <details class="nf-proc" id="fa-nfe-transporte-ajuda">
+          <summary>Transporte e volumes</summary>
+          <p class="nf-texto">Colunas opcionais, da nota (como o destinatário): preencha numa linha dela; se repetir em outra linha, tem de ser igual. Sem elas, a nota sai como antes.</p>
+          <ul class="nf-lista">
+            <li><b>modalidade_frete</b>: 0 emitente (CIF), 1 destinatário (FOB), 2 terceiros, 3 transporte próprio do remetente, 4 transporte próprio do destinatário, 9 sem frete. Obrigatória quando há transportador.</li>
+            <li><b>Transportador</b>: transportador_cpf_cnpj, transportador_nome, transportador_ie (ou ISENTO), transportador_endereco, transportador_municipio, transportador_uf.</li>
+            <li><b>Volumes</b>: volumes_quantidade, volumes_especie (CAIXA, PALETE…), volumes_marca, volumes_numeracao, peso_liquido e peso_bruto (kg, até 3 casas).</li>
+          </ul>
+          <p class="nf-texto">Saem no XML e no quadro "Transportador / volumes transportados" do DANFE. Peso bruto menor que o líquido não impede a nota, mas aparece como aviso na conferência.</p>
+        </details>
         <form id="fa-form-nfe-planilha" class="nf-form" novalidate>
           <div class="nf-campo nf-campo--largo"><label for="fa-nfe-arquivo">Planilha (.xlsx ou .csv)</label><input id="fa-nfe-arquivo" type="file" accept=".xlsx,.csv"><small class="nf-erro" id="fa-nfe-arquivo-erro" hidden></small></div>
           <div class="nf-acoes nf-campo--largo"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-nfe-ler">Conferir planilha</button></div>
         </form>
         <div id="fa-nfe-resumo" hidden>
           <p class="nf-texto" id="fa-nfe-resumo-texto"></p>
+          <ul class="nf-lista" id="fa-nfe-notas"></ul>
           <ul class="nf-lista" id="fa-nfe-problemas"></ul>
           <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-nfe-emitir">Emitir</button></div>
         </div>
@@ -557,6 +647,141 @@
       </section>
     </div>
 
+    <!-- Aba Guias (módulo vendido à parte; guias.js mostra a aba só quando a API diz que está ligado). -->
+    <div class="nf-secoes" id="fa-painel-guias" hidden>
+      <section class="nf-cartao" aria-labelledby="fa-guias-titulo">
+        <p class="nf-passo">Guias</p>
+        <h2 class="nf-h2" id="fa-guias-titulo">Disparo de guias</h2>
+        <p class="nf-texto">Suba os PDFs das guias (DAS, DAS-MEI, DARF, DCTFWeb, boletos de honorários e parcelamentos). A nó lê de quem é cada uma, você confere e dispara: o cliente recebe pelo WhatsApp, com o PDF, e por e-mail, com lembrete no vencimento. <b>Nada é enviado sem o clique em Disparar.</b></p>
+        <p class="nf-texto" id="fa-guias-uso"></p>
+        <p class="nf-aviso" id="fa-aviso-guias" role="status" hidden></p>
+        <div class="nf-guias-telas" role="group" aria-label="Seções de Guias">
+          <button type="button" class="fi-btn fi-btn--tinta nf-btn-mini" data-guias-tela="enviar" aria-pressed="true">Enviar e conferir</button>
+          <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-guias-tela="acompanhar" aria-pressed="false">Acompanhar</button>
+          <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-guias-tela="clientes" aria-pressed="false">Clientes</button>
+          <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-guias-tela="ajustes" aria-pressed="false">Ajustes</button>
+        </div>
+      </section>
+
+      <div class="nf-secoes" id="fa-guias-tela-enviar">
+        <section class="nf-cartao" aria-labelledby="fa-guias-enviar-titulo">
+          <p class="nf-passo">1 · Enviar</p>
+          <h2 class="nf-h2" id="fa-guias-enviar-titulo">Subir os PDFs</h2>
+          <p class="nf-texto">Até 500 PDFs por lote, de qualquer sistema. Os arquivos vão direto para o armazenamento privado da nó; a leitura começa assim que terminam de subir.</p>
+          <form id="fa-form-guias-upload" class="nf-form" novalidate>
+            <div class="nf-campo nf-campo--largo"><label for="fa-guias-arquivos">PDFs das guias</label><input id="fa-guias-arquivos" type="file" accept=".pdf,application/pdf" multiple><small class="nf-erro" id="fa-guias-arquivos-erro" hidden></small></div>
+            <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-guias-subir">Enviar PDFs</button></div>
+          </form>
+          <p class="nf-aviso" id="fa-guias-progresso" role="status" aria-live="polite" hidden></p>
+          <div class="nf-campo" id="fa-guias-lotes-campo" hidden><label for="fa-guias-lote">Lote</label><select id="fa-guias-lote"></select></div>
+        </section>
+
+        <section class="nf-cartao" id="fa-guias-conferencia" aria-labelledby="fa-guias-conf-titulo" hidden>
+          <p class="nf-passo">2 · Conferir</p>
+          <h2 class="nf-h2" id="fa-guias-conf-titulo">Conferência</h2>
+          <p class="nf-texto"><b>Verde</b>: casou o CNPJ e leu tudo. <b>Amarela</b>: faltou campo ou o valor não bate com o código de barras. <b>Vermelha</b>: o CNPJ não tem contato. Corrija na linha e salve; só as verdes podem ser disparadas.</p>
+          <p class="nf-texto" id="fa-guias-conf-resumo"></p>
+          <div class="nf-tabela-rolagem" role="region" aria-labelledby="fa-guias-conf-titulo" tabindex="0">
+            <table class="nf-tabela nf-tabela--guias">
+              <thead><tr><th scope="col"><span class="nf-sr">Disparar</span></th><th scope="col">Situação</th><th scope="col">Arquivo e cliente</th><th scope="col">Tipo</th><th scope="col">CNPJ/CPF</th><th scope="col">Competência</th><th scope="col">Valor (R$)</th><th scope="col">Vencimento</th><th scope="col">Linha digitável</th><th scope="col">Ações</th></tr></thead>
+              <tbody id="fa-guias-conf-linhas"></tbody>
+            </table>
+          </div>
+          <form id="fa-form-guias-contato-rapido" class="nf-form nf-confirmar" novalidate hidden>
+            <p id="fa-guias-cr-titulo">Criar contato</p>
+            <div class="nf-campo"><label for="fa-guias-cr-doc">CNPJ/CPF</label><input id="fa-guias-cr-doc" inputmode="numeric" maxlength="18"></div>
+            <div class="nf-campo"><label for="fa-guias-cr-nome">Nome do cliente</label><input id="fa-guias-cr-nome" maxlength="200"></div>
+            <div class="nf-campo"><label for="fa-guias-cr-whatsapp">WhatsApp</label><input id="fa-guias-cr-whatsapp" inputmode="tel" placeholder="(11) 98765-4321"></div>
+            <div class="nf-campo"><label for="fa-guias-cr-email">E-mail</label><input id="fa-guias-cr-email" type="email" autocomplete="off"></div>
+            <label class="nf-aceite"><input type="checkbox" id="fa-guias-cr-aceite"> <span>O cliente autorizou receber as guias por WhatsApp e e-mail (aceite declarado pelo escritório).</span></label>
+            <p class="nf-aviso" id="fa-guias-cr-aviso" role="status" hidden></p>
+            <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-guias-cr-salvar">Criar contato</button><button type="button" class="fi-link-btn" id="fa-guias-cr-cancelar">Cancelar</button></div>
+          </form>
+          <fieldset class="nf-grupo nf-guias-disparo">
+            <legend>3 · Disparar</legend>
+            <label class="nf-aceite"><input type="radio" name="fa-guias-quando" value="agora" checked> <span>Agora</span></label>
+            <label class="nf-aceite"><input type="radio" name="fa-guias-quando" value="agendar"> <span>Agendar para</span></label>
+            <div class="nf-campo"><label for="fa-guias-agendar" class="nf-sr">Data e hora do envio</label><input id="fa-guias-agendar" type="datetime-local" disabled></div>
+            <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-guias-disparar" disabled>Disparar</button></div>
+            <p class="nf-aviso" id="fa-guias-disparo-aviso" role="status" hidden></p>
+          </fieldset>
+        </section>
+      </div>
+
+      <div class="nf-secoes" id="fa-guias-tela-acompanhar" hidden>
+        <section class="nf-cartao" aria-labelledby="fa-guias-acomp-titulo">
+          <p class="nf-passo">Acompanhar</p>
+          <h2 class="nf-h2" id="fa-guias-acomp-titulo">Guias do mês</h2>
+          <div class="nf-form">
+            <div class="nf-campo"><label for="fa-guias-mes">Mês</label><input id="fa-guias-mes" type="month"></div>
+            <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" id="fa-guias-acomp-atualizar">Atualizar</button><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" id="fa-guias-exportar">Exportar CSV</button></div>
+          </div>
+          <p class="nf-vazio" id="fa-guias-acomp-vazio" hidden>Nenhuma guia disparada neste mês.</p>
+          <div class="nf-tabela-rolagem" id="fa-guias-acomp-rolagem" role="region" aria-labelledby="fa-guias-acomp-titulo" tabindex="0" hidden>
+            <table class="nf-tabela nf-tabela--notas">
+              <thead><tr><th scope="col">Cliente</th><th scope="col">Guia</th><th scope="col" class="nf-num">Valor (R$)</th><th scope="col">Vencimento</th><th scope="col">Situação</th><th scope="col">WhatsApp</th><th scope="col">E-mail</th><th scope="col">Resposta</th><th scope="col">Ações</th></tr></thead>
+              <tbody id="fa-guias-acomp-linhas"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="nf-secoes" id="fa-guias-tela-clientes" hidden>
+        <section class="nf-cartao" aria-labelledby="fa-guias-imp-titulo">
+          <p class="nf-passo">Clientes</p>
+          <h2 class="nf-h2" id="fa-guias-imp-titulo">Importar clientes (CSV)</h2>
+          <p class="nf-texto">Colunas <b>documento,nome,whatsapp,email</b> (CNPJ ou CPF; vários WhatsApps ou e-mails na mesma célula separados por <b>|</b>). Quem já existe é atualizado pelo documento.</p>
+          <form id="fa-form-guias-importar" class="nf-form" novalidate>
+            <div class="nf-campo nf-campo--largo"><label for="fa-guias-csv">Arquivo CSV</label><input id="fa-guias-csv" type="file" accept=".csv,text/csv"><small class="nf-erro" id="fa-guias-csv-erro" hidden></small></div>
+            <div class="nf-campo"><label for="fa-guias-aceite-origem">Como os clientes autorizaram</label><input id="fa-guias-aceite-origem" maxlength="200" placeholder="Ex.: cláusula do contrato de serviços"></div>
+            <div class="nf-campo"><label for="fa-guias-aceite-data">Data do aceite</label><input id="fa-guias-aceite-data" type="date"></div>
+            <label class="nf-aceite"><input type="checkbox" id="fa-guias-aceite"> <span>Declaro que estes clientes autorizaram receber as guias por WhatsApp e e-mail. A primeira mensagem leva o nome do escritório e "Responda SAIR para não receber mais".</span></label>
+            <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-guias-importar">Importar</button></div>
+          </form>
+          <div id="fa-guias-imp-resultado" hidden><p class="nf-texto" id="fa-guias-imp-resumo" role="status"></p><ul class="nf-lista" id="fa-guias-imp-erros"></ul></div>
+        </section>
+        <section class="nf-cartao" aria-labelledby="fa-guias-contatos-titulo">
+          <p class="nf-passo">Contatos</p>
+          <h2 class="nf-h2" id="fa-guias-contatos-titulo">Clientes que recebem guias</h2>
+          <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--borda nf-btn-mini" id="fa-guias-novo-contato" aria-expanded="false">Adicionar cliente</button></div>
+          <form id="fa-form-guias-contato" class="nf-form nf-confirmar" novalidate hidden>
+            <p id="fa-guias-ct-titulo">Cliente</p>
+            <input type="hidden" id="fa-guias-ct-id">
+            <div class="nf-campo"><label for="fa-guias-ct-doc">CNPJ/CPF</label><input id="fa-guias-ct-doc" inputmode="numeric" maxlength="18"></div>
+            <div class="nf-campo"><label for="fa-guias-ct-nome">Nome</label><input id="fa-guias-ct-nome" maxlength="200"></div>
+            <div class="nf-campo"><label for="fa-guias-ct-whatsapp">WhatsApps (separe com |)</label><input id="fa-guias-ct-whatsapp" inputmode="tel"></div>
+            <div class="nf-campo"><label for="fa-guias-ct-email">E-mails (separe com |)</label><input id="fa-guias-ct-email" autocomplete="off"></div>
+            <div class="nf-campo"><label for="fa-guias-ct-aceite-origem">Origem do aceite</label><input id="fa-guias-ct-aceite-origem" maxlength="200"></div>
+            <div class="nf-campo"><label for="fa-guias-ct-aceite-data">Data do aceite</label><input id="fa-guias-ct-aceite-data" type="date"></div>
+            <p class="nf-aviso" id="fa-guias-ct-aviso" role="status" hidden></p>
+            <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-guias-ct-salvar">Salvar cliente</button><button type="button" class="fi-link-btn" id="fa-guias-ct-cancelar">Cancelar</button></div>
+          </form>
+          <p class="nf-vazio" id="fa-guias-contatos-vazio" hidden>Nenhum cliente ainda. Importe o CSV ou adicione um por um.</p>
+          <div class="nf-tabela-rolagem" id="fa-guias-contatos-rolagem" role="region" aria-labelledby="fa-guias-contatos-titulo" tabindex="0" hidden>
+            <table class="nf-tabela">
+              <thead><tr><th scope="col">Cliente</th><th scope="col">CNPJ/CPF</th><th scope="col">WhatsApp</th><th scope="col">E-mail</th><th scope="col">Aceite</th><th scope="col">Ações</th></tr></thead>
+              <tbody id="fa-guias-contatos-linhas"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="nf-secoes" id="fa-guias-tela-ajustes" hidden>
+        <section class="nf-cartao" aria-labelledby="fa-guias-ajustes-titulo">
+          <p class="nf-passo">Ajustes</p>
+          <h2 class="nf-h2" id="fa-guias-ajustes-titulo">Mensagens e alertas</h2>
+          <p class="nf-texto">Os lembretes saem na véspera e no dia do vencimento, a partir das 9 h, só para guia sem "paguei", no máximo 2 por guia.</p>
+          <form id="fa-form-guias-ajustes" class="nf-form" novalidate>
+            <div class="nf-campo"><label for="fa-guias-assinatura">Nome do escritório nas mensagens</label><input id="fa-guias-assinatura" maxlength="80"><small class="nf-erro" id="fa-guias-assinatura-erro" hidden></small></div>
+            <div class="nf-campo"><label for="fa-guias-email-alerta">E-mail que recebe as respostas</label><input id="fa-guias-email-alerta" type="email"><small class="nf-erro" id="fa-guias-email-alerta-erro" hidden></small></div>
+            <div class="nf-campo"><label for="fa-guias-whatsapp-escritorio">WhatsApp do escritório (botão "Falar com o escritório")</label><input id="fa-guias-whatsapp-escritorio" inputmode="tel"><small class="nf-erro" id="fa-guias-whatsapp-escritorio-erro" hidden></small></div>
+            <p class="nf-aviso" id="fa-guias-ajustes-aviso" role="status" hidden></p>
+            <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-guias-ajustes-salvar">Salvar</button></div>
+          </form>
+        </section>
+      </div>
+    </div>
+
     <div class="nf-acoes"><button type="button" class="fi-link-btn" id="fa-sair">Sair desta conta</button></div>
   </div>
 </main>
@@ -573,9 +798,11 @@
 </footer>
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
-<script src="/agentes/fiscal/nofiscal.js?v=5"></script>
-<script src="/agentes/fiscal/conta/conta.js?v=13"></script>
-<script src="/agentes/fiscal/conta/nfe.js?v=1"></script>
+<script src="/agentes/fiscal/nofiscal.js?v=6"></script>
+<script src="/agentes/fiscal/conta/conta.js?v=16"></script>
+<script src="/agentes/fiscal/conta/nfe.js?v=3"></script>
+<script src="/agentes/fiscal/conta/nfe-avulsa.js?v=2"></script>
 <script src="/agentes/fiscal/conta/integracao.js?v=2"></script>
+<script src="/agentes/fiscal/conta/guias.js?v=2"></script>
 </body>
 </html>

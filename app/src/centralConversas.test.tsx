@@ -51,6 +51,8 @@ function conversa(janelaAberta: boolean): ConversaAberta {
       { id: '1', direcao: 'entrada', autor: 'cliente', tipo: 'text', texto: 'atendente', arquivo: null, status: null, erro: null, em: minutosAtras(3) },
       { id: '2', direcao: 'saida', autor: 'robo', tipo: 'text', texto: 'Chamei a equipe da Nó.', arquivo: null, status: 'lida', erro: null, em: minutosAtras(2) },
       { id: '3', direcao: 'saida', autor: 'robo', tipo: 'document', texto: 'NFS-e nº 9 autorizada', arquivo: 'nfse-9.pdf', status: 'falhou', erro: '131042 · Sem forma de pagamento', em: minutosAtras(1) },
+      { id: '4', direcao: 'saida', autor: 'robo', tipo: 'text', texto: '*Resumo da nota*\n\n*Tomador:* Studio Lima\n_homologação_', arquivo: null, status: 'lida', erro: null, em: minutosAtras(1) },
+      { id: '5', direcao: 'entrada', autor: 'cliente', tipo: 'text', texto: '<b>oi</b> *<img src=x onerror=alert(1)>*', arquivo: null, status: null, erro: null, em: minutosAtras(1) },
     ],
     eventos: [{ id: 'e1', tipo: 'pediu_atendente', detalhe: null, em: minutosAtras(3) }],
   }
@@ -115,6 +117,24 @@ describe('central de conversas do nó.fiscal', () => {
     expect(within(aberta).getByText(/janela aberta · fecha em 23 h 4\d min/)).toBeInTheDocument()
     expect(within(aberta).getByText(/pediu atendente/)).toBeInTheDocument()
     expect(within(aberta).getByRole('button', { name: 'Assumir' })).toBeEnabled()
+  })
+
+  it('mostra o *negrito* e o _itálico_ do WhatsApp sem as marcas, e o texto da pessoa nunca vira HTML', async () => {
+    rota()
+    const user = userEvent.setup()
+    abrir()
+    const lista = await screen.findByRole('navigation', { name: 'Conversas' })
+    await user.click(within(lista).getByRole('button', { name: /Studio Lima/ }))
+    const aberta = await screen.findByRole('region', { name: 'Conversa aberta' })
+
+    expect(within(aberta).getByText('Resumo da nota').tagName).toBe('STRONG')
+    expect(within(aberta).getByText('Tomador:').tagName).toBe('STRONG')
+    expect(within(aberta).getByText('homologação').tagName).toBe('EM')
+    expect(within(aberta).queryByText(/\*Resumo da nota\*/)).toBeNull()
+    // Marcação HTML escrita pela pessoa aparece como texto; nenhum elemento é criado a partir dela.
+    expect(within(aberta).getByText('<b>oi</b>')).toBeInTheDocument()
+    expect(within(aberta).getByText('<img src=x onerror=alert(1)>').tagName).toBe('STRONG')
+    expect(aberta.querySelector('img, b')).toBeNull()
   })
 
   it('a resposta da equipe vai para a rota com o telefone e o texto, e a caixa limpa', async () => {

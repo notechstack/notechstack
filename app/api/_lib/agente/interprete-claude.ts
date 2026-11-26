@@ -4,7 +4,8 @@
 import { pedirJson, type Ia } from '../ia/claude.js'
 import { validarParsed, type Interprete } from './interprete.js'
 
-const TEXTO_OU_NULO = { anyOf: [{ type: 'string' }, { type: 'null' }] }
+const TEXTO = { type: 'string' }
+const TEXTO_OU_NULO = { anyOf: [TEXTO, { type: 'null' }] }
 const SIM_NAO_OU_NULO = { anyOf: [{ type: 'boolean' }, { type: 'null' }] }
 
 export const SCHEMA_PARSED = {
@@ -24,54 +25,49 @@ export const SCHEMA_PARSED = {
     servico: TEXTO_OU_NULO,
     informacoes_complementares: TEXTO_OU_NULO,
     municipio_prestacao: TEXTO_OU_NULO,
+    // Sem `anyOf` aqui: a saída estruturada aceita no máximo 16 parâmetros com união no schema
+    // inteiro (400 imediato, sem retry). Com o grupo obra nulável eram 22 e toda mensagem nova
+    // caía em `ia_falhou` (19/11/2026). Campo não escrito vem "" e `obraEscrita` vira null.
     obra: {
-      anyOf: [
-        {
-          type: 'object',
-          properties: {
-            cno: TEXTO_OU_NULO,
-            cep: TEXTO_OU_NULO,
-            logradouro: TEXTO_OU_NULO,
-            numero: TEXTO_OU_NULO,
-            complemento: TEXTO_OU_NULO,
-            bairro: TEXTO_OU_NULO,
-            cidade: TEXTO_OU_NULO,
-          },
-          required: ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade'],
-          additionalProperties: false,
-        },
-        { type: 'null' },
-      ],
+      type: 'object',
+      properties: {
+        cno: TEXTO,
+        cep: TEXTO,
+        logradouro: TEXTO,
+        numero: TEXTO,
+        complemento: TEXTO,
+        bairro: TEXTO,
+        cidade: TEXTO,
+      },
+      required: ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade'],
+      additionalProperties: false,
     },
+    // Locação (26/11/2026), no mesmo formato da obra: sem `anyOf`, para caber no limite de 16 uniões da saída
+    // estruturada. Campo não escrito vem "" e `locacaoEscrita` vira null; `tipo` "" = não é locação.
     locacao: {
-      anyOf: [
-        {
-          type: 'object',
-          properties: {
-            tipo: { anyOf: [{ type: 'string', enum: ['imovel', 'movel'] }, { type: 'null' }] },
-            cidade: TEXTO_OU_NULO,
-            cep: TEXTO_OU_NULO,
-            logradouro: TEXTO_OU_NULO,
-            numero: TEXTO_OU_NULO,
-            complemento: TEXTO_OU_NULO,
-            bairro: TEXTO_OU_NULO,
-            inscricao_imobiliaria: TEXTO_OU_NULO,
-            residencial: TEXTO_OU_NULO,
-            copropriedade: TEXTO_OU_NULO,
-            valor_total: TEXTO_OU_NULO,
-            vencimento: TEXTO_OU_NULO,
-            bem: TEXTO_OU_NULO,
-            ncm: TEXTO_OU_NULO,
-            quantidade: TEXTO_OU_NULO,
-          },
-          required: [
-            'tipo', 'cidade', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'inscricao_imobiliaria', 'residencial',
-            'copropriedade', 'valor_total', 'vencimento', 'bem', 'ncm', 'quantidade',
-          ],
-          additionalProperties: false,
-        },
-        { type: 'null' },
+      type: 'object',
+      properties: {
+        tipo: { type: 'string', enum: ['imovel', 'movel', ''] },
+        cidade: TEXTO,
+        cep: TEXTO,
+        logradouro: TEXTO,
+        numero: TEXTO,
+        complemento: TEXTO,
+        bairro: TEXTO,
+        inscricao_imobiliaria: TEXTO,
+        residencial: TEXTO,
+        copropriedade: TEXTO,
+        valor_total: TEXTO,
+        vencimento: TEXTO,
+        bem: TEXTO,
+        ncm: TEXTO,
+        quantidade: TEXTO,
+      },
+      required: [
+        'tipo', 'cidade', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'inscricao_imobiliaria', 'residencial',
+        'copropriedade', 'valor_total', 'vencimento', 'bem', 'ncm', 'quantidade',
       ],
+      additionalProperties: false,
     },
     intencao: { type: 'string', enum: ['emitir', 'cancelar', 'outro'] },
   },
@@ -97,8 +93,8 @@ export const INSTRUCOES = [
   '- servico: o tipo de serviço, quando a pessoa pede um código ou serviço específico para a nota ("serviço de fisioterapia", "código de nutrição", "no serviço de odontologia"), só o nome do serviço ("fisioterapia"); senão null. Uma descrição comum do trabalho ("consultoria de outubro") vai só em descricao, não aqui.',
   '- informacoes_complementares: o que a pessoa pede para ir nas informações complementares da nota, e não na descrição do serviço: dados bancários (banco, agência, conta, PIX), observações ("obs: …"), número de pedido ou contrato, ou o que vier depois de "informações complementares". Copie como está escrito, sem mudar nenhum número. Isso não entra em descricao. Senão null.',
   '- municipio_prestacao: a cidade onde o serviço foi prestado, só quando a mensagem diz ("serviço prestado em Campinas", "prestado em Campinas/SP", "realizado em Santos", "local da prestação: Jundiaí"), com a UF se vier escrita ("Campinas/SP"); senão null. A cidade do cliente, do endereço ou da empresa não é o local da prestação. Isso não entra em descricao.',
-  '- obra: os dados da obra (construção civil, reforma, alvenaria) quando a mensagem traz o endereço ou o CNO da obra ("obra na Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP", "endereço da obra: …", "CNO 12.345.67890/12"), ou quando a mensagem é só um endereço ou um CNO, que é a resposta à pergunta dos dados da obra. cno: o número do CNO ou CEI como escrito; cep: como escrito; logradouro: tipo e nome da rua ("Rua das Flores"); numero: o número do imóvel ("120", "s/n"); complemento: casa, bloco, lote, quadra, se houver; bairro; cidade: a cidade da obra com a UF se vier ("Atibaia/SP"). Campo não escrito fica null; sem nada da obra, obra é null. O endereço da obra não entra em descricao nem em municipio_prestacao.',
-  '- locacao: quando a nota é de aluguel ou locação ("nota de aluguel", "nota de locação", "aluguel do apartamento", "locação da betoneira"), ou quando a mensagem só traz os dados do imóvel ou do bem alugado, que é a resposta à pergunta da locação. tipo: "imovel" para casa, apartamento, sala, loja, galpão, terreno, imóvel; "movel" para carro, máquina, equipamento, betoneira, andaime, notebook, móvel; null se a mensagem não diz. Do imóvel: cidade (com a UF se vier, "Campinas/SP"), cep, logradouro ("Rua das Flores"), numero, complemento (apto, sala, bloco), bairro, inscricao_imobiliaria (a inscrição do IPTU, se vier), residencial ("sim" para casa e apartamento ou quando diz residencial; "nao" para sala, loja, galpão ou quando diz comercial; senão null), copropriedade (a parte do dono quando diz, "50%"), valor_total (o aluguel inteiro, só quando a nota é de uma parte dele), vencimento (data do vencimento do aluguel, se vier). Do bem: bem (o que é, "Betoneira 400 litros"), ncm (como escrito), quantidade (o número de bens, "2"). Campo não escrito fica null; sem nada de locação, locacao é null. Na locação, o tomador é o inquilino; o endereço e a cidade do imóvel não entram em descricao nem em municipio_prestacao, e não preencha servico nem codigo_servico.',
+  '- obra: os dados da obra (construção civil, reforma, alvenaria) quando a mensagem traz o endereço ou o CNO da obra ("obra na Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP", "endereço da obra: …", "CNO 12.345.67890/12"), ou quando a mensagem é só um endereço ou um CNO, que é a resposta à pergunta dos dados da obra. cno: o número do CNO ou CEI como escrito; cep: como escrito; logradouro: tipo e nome da rua ("Rua das Flores"); numero: o número do imóvel ("120", "s/n"); complemento: casa, bloco, lote, quadra, se houver; bairro; cidade: a cidade da obra com a UF se vier ("Atibaia/SP"). Campo não escrito fica "" (texto vazio); sem nada da obra, todos os campos de obra ficam "". O endereço da obra não entra em descricao nem em municipio_prestacao.',
+  '- locacao: quando a nota é de aluguel ou locação ("nota de aluguel", "nota de locação", "aluguel do apartamento", "locação da betoneira"), ou quando a mensagem só traz os dados do imóvel ou do bem alugado, que é a resposta à pergunta da locação. tipo: "imovel" para casa, apartamento, sala, loja, galpão, terreno, imóvel; "movel" para carro, máquina, equipamento, betoneira, andaime, notebook, móvel; "" se a mensagem não diz. Do imóvel: cidade (com a UF se vier, "Campinas/SP"), cep, logradouro ("Rua das Flores"), numero, complemento (apto, sala, bloco), bairro, inscricao_imobiliaria (a inscrição do IPTU, se vier), residencial ("sim" para casa e apartamento ou quando diz residencial; "nao" para sala, loja, galpão ou quando diz comercial; senão null), copropriedade (a parte do dono quando diz, "50%"), valor_total (o aluguel inteiro, só quando a nota é de uma parte dele), vencimento (data do vencimento do aluguel, se vier). Do bem: bem (o que é, "Betoneira 400 litros"), ncm (como escrito), quantidade (o número de bens, "2"). Campo não escrito fica "" (texto vazio); sem nada de locação, tipo e todos os campos de locacao ficam "". Na locação, o tomador é o inquilino; o endereço e a cidade do imóvel não entram em descricao nem em municipio_prestacao, e não preencha servico nem codigo_servico.',
   'Não emita nem confirme nada: você só lê o pedido.',
 ].join('\n')
 

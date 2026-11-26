@@ -7,6 +7,7 @@ import { requestCancel } from '../cancel.js'
 import type { Db, Queryable } from '../db.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR, separarInfoComplementar } from '../info-complementar.js'
 import { createOrGetInvoice } from '../invoices.js'
+import { registrarSemEndereco, resolverEnderecoDoTomador, rotuloDoEndereco } from '../endereco-tomador.js'
 import {
   issNoLocalDaPrestacao,
   motivoDoLocal,
@@ -34,7 +35,7 @@ import {
 import { tratarAtivacao } from './ativacao.js'
 import { conversarNasBoasVindas } from './boas-vindas.js'
 import { confirmarNumero, numeroPodeEmitir } from './cadastro.js'
-import { textoComRetentativa, whatsappComRetentativa, type EnviaWhatsApp } from './canais.js'
+import { textoComRetentativa, whatsappComRetentativa, type EnviaEmail, type EnviaWhatsApp } from './canais.js'
 import { buscarServicos, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { conversaAssumida, registrarEvento } from './central.js'
 import { tratarComando } from './comandos.js'
@@ -62,6 +63,10 @@ import { dataBr, diaLocal, partesLocais } from './tempo.js'
 import { ehSairDaEscolha, lerEscolhaDeNota, listaDeOpcoes, type Candidata } from './escolher-nota.js'
 import { desmarcar, marcarUmaVez } from './uma-vez.js'
 import type { BaixaMidia } from './whatsapp-cloud.js'
+import { tratarNfeConversa } from './nfe-conversa.js'
+import { tratarRespostaDeGuia } from '../guias/respostas.js'
+import { blocos, campo, comRotulo, mensagem, topicos } from './formato.js'
+import type { ArmazemDeGuias } from '../guias/storage.js'
 
 export const VALIDADE_DO_PEDIDO_MS = 24 * 3600_000
 export const MAX_CANDIDATAS = 5
@@ -82,12 +87,15 @@ export type MensagemRecebida = {
   texto: string | null
   /** `midiaId` = `document.id` da Meta, para baixar a planilha do lote (conta Escritório). */
   arquivo: { nome: string | null; mime: string | null; midiaId?: string | null } | null
+  /** Botão de resposta rápida de um modelo (`type: 'button'`): o texto do botão e o payload do envio (módulo Guias).
+   * `texto` continua null nesse caso: a conversa das contas não muda. */
+  botao?: { texto: string | null; payload: string | null } | null
 }
 
 /** Nome do CNPJ nos dados públicos (porta; sem cliente real neste lote). */
 export interface ConsultaCnpj {
   razaoSocial(cnpj: string): Promise<string | null>
-  /** Endereço do CNPJ na Receita, para a nota com ISS retido (E0237). Sem ele, o ISS retido não sai. */
+  /** Endereço do CNPJ na Receita, para toda nota de CNPJ (endereco-tomador.ts). Sem ele, o ISS retido não sai (E0237). */
   endereco?(cnpj: string): Promise<EnderecoNacional | null>
 }
 
@@ -104,6 +112,8 @@ export type ConversaDeps = {
   numeroProprio?: boolean
   /** Download da planilha do lote (`baixarMidia` da Cloud API); sem ele, a planilha é recusada com aviso. */
   midia?: BaixaMidia
+  /** Módulo Guias: respostas dos contatos de guia (número que não emite). Sem ele, esses números seguem o caminho de sempre. */
+  guias?: { email: EnviaEmail | null; storage: ArmazemDeGuias | null }
   now?: () => Date
 }
 
@@ -115,17 +125,56 @@ export const TEXTOS = {
   expirou: 'Esse pedido expirou. Me mande o pedido de novo.',
   semPedido: `Não há pedido aguardando confirmação. Me mande o pedido da nota, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   descartado: 'Ok, descartei esse pedido. Quando quiser, é só mandar outro.',
-  oQueMuda:
-    'O que muda? Me mande o cliente, o valor, a descrição ou o código do serviço certo, por exemplo: valor 400 reais, descrição consultoria de outubro, ou código 04.08.02. Para desistir da nota, responda *descartar*.',
-  naoEntendiACorrecao:
-    'Não entendi o que muda. Me mande o cliente, o valor, a descrição ou o código do serviço certo, responda *confirmar* para emitir como está ou *descartar* para desistir.',
+  oQueMuda: mensagem({
+    titulo: 'Corrigir a nota',
+    blocos: [
+      [
+        'O que muda? Me mande o cliente, o valor, a descrição ou o código do serviço certo. Por exemplo:',
+        topicos(['valor 400 reais', 'descrição consultoria de outubro', 'código 04.08.02']),
+      ],
+    ],
+    acao: 'Para desistir da nota, responda *descartar*.',
+  }),
+  naoEntendiACorrecao: mensagem({
+    titulo: 'Corrigir a nota',
+    blocos: ['Não entendi o que muda. Me mande o cliente, o valor, a descrição ou o código do serviço certo.'],
+    acao: 'Responda *confirmar* para emitir como está ou *descartar* para desistir.',
+  }),
   cancelamentoDesistido: 'Ok, nenhuma nota foi cancelada.',
   faltaValor: `Qual é o valor da nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTomador: `Para quem é a nota? Me mande o cliente e o valor juntos, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
   faltaTudo: `Para quem é a nota e qual é o valor? Por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
-  ajuda: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}", "${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota) ou "cancela a nota da Studio Lima de hoje". Para um serviço diferente do padrão, diga o código ou o serviço: "${EXEMPLO_DE_PEDIDO}, código 04.08.02" ou "serviço de fisioterapia". ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajuda: mensagem({
+    titulo: 'O que eu faço',
+    blocos: [
+      [
+        'Eu emito e cancelo notas fiscais. Por exemplo:',
+        topicos([
+          `"${EXEMPLO_DE_PEDIDO}"`,
+          `"${EXEMPLO_DE_PEDIDO}, consultoria de outubro" (o serviço vai na descrição da nota)`,
+          '"cancela a nota da Studio Lima de hoje"',
+        ]),
+      ],
+      [
+        'Para um serviço diferente do padrão, diga o código ou o serviço:',
+        topicos([`"${EXEMPLO_DE_PEDIDO}, código 04.08.02"`, '"serviço de fisioterapia"']),
+      ],
+      TEXTO_VER_NOTA,
+    ],
+    acao: 'Para falar com a equipe da Nó, escreva *atendente*.',
+  }),
   /** Conta Escritório: a ajuda cita também o pedido por empresa cliente, a planilha do mês (lote) e o modelo. */
-  ajudaEscritorio: `Eu emito e cancelo notas fiscais. Por exemplo: "${EXEMPLO_DE_PEDIDO}" ou "cancela a nota da Studio Lima de hoje". Para emitir por uma empresa cliente, diga a empresa no pedido: "nota pela Oficina Trilho pra Studio Lima, 350 reais". Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). Se quiser o arquivo do modelo aqui, escreva *modelo*. Para um serviço diferente do padrão, diga o código ou o serviço no pedido ("código 04.08.02", "serviço de fisioterapia") ou use a coluna codigo_servico da planilha. ${TEXTO_VER_NOTA} Para falar com a equipe da Nó, escreva *atendente*.`,
+  ajudaEscritorio: mensagem({
+    titulo: 'O que eu faço',
+    blocos: [
+      ['Eu emito e cancelo notas fiscais. Por exemplo:', topicos([`"${EXEMPLO_DE_PEDIDO}"`, '"cancela a nota da Studio Lima de hoje"'])],
+      ['Para emitir por uma empresa cliente, diga a empresa no pedido:', topicos(['"nota pela Oficina Trilho pra Studio Lima, 350 reais"'])],
+      `Para emitir as notas do mês de uma vez, mande a planilha aqui (modelo: ${MODELO_DA_PLANILHA}). Se quiser o arquivo do modelo aqui, escreva *modelo*.`,
+      'Para um serviço diferente do padrão, diga o código ou o serviço no pedido ("código 04.08.02", "serviço de fisioterapia") ou use a coluna codigo_servico da planilha.',
+      TEXTO_VER_NOTA,
+    ],
+    acao: 'Para falar com a equipe da Nó, escreva *atendente*.',
+  }),
   chamouAEquipe: 'Chamei a equipe da Nó: alguém te responde por aqui em breve. Enquanto isso, os pedidos de nota continuam funcionando.',
   naoEntendi: 'Não consegui entender agora. Tente de novo em alguns minutos.',
   soTexto: `Por enquanto eu só leio mensagens de texto. Me mande o pedido escrito, por exemplo: ${EXEMPLO_DE_PEDIDO}.`,
@@ -133,14 +182,24 @@ export const TEXTOS = {
   numeroConfirmado: 'Número confirmado. Você já pode pedir notas por aqui.',
   codigoRecusado: 'Esse código não vale (errado ou vencido). Peça um novo ao dono da conta no site da Nó.',
   modeloNaoSalvo: 'Ok, não salvei o modelo.',
-  perguntaDeDescricao: `Como você quer descrever o serviço na nota? Me mande o texto, por exemplo: *Consultoria de marketing - outubro/2026*. Ou responda *padrão* para usar "${DESCRICAO_PADRAO}".`,
+  perguntaDeDescricao: mensagem({
+    titulo: 'Descrição da nota',
+    blocos: ['Como você quer descrever o serviço na nota? Me mande o texto, por exemplo: *Consultoria de marketing - outubro/2026*.'],
+    acao: `Ou responda *padrão* para usar "${DESCRICAO_PADRAO}".`,
+  }),
   descricaoLonga: 'Essa descrição passou de 2.000 caracteres. Me mande um texto mais curto ou responda *padrão*.',
   // Informações complementares (Lucca, 17/11/2026, pedido da Contabilidade Bragantina): duas mensagens depois do
   // primeiro resumo. A resposta em texto vira o campo; *confirmar* emite sem ele.
-  perguntaInfoComplementar:
-    'Quer adicionar informações complementares (dados bancários, observações)? Se sim, descreva aqui abaixo numa mensagem de até 2.000 caracteres.',
+  perguntaInfoComplementar: mensagem({
+    titulo: 'Informações complementares',
+    blocos: ['Quer adicionar informações complementares (dados bancários, observações)?'],
+    acao: 'Se sim, descreva aqui abaixo numa mensagem de até 2.000 caracteres.',
+  }),
   semInfoComplementar: 'Se não, envie *CONFIRMAR*.',
-  infoComplementarPedida: 'Pode mandar: escreva aqui as informações complementares, numa mensagem de até 2.000 caracteres. Se não quiser, envie *confirmar*.',
+  infoComplementarPedida: blocos(
+    'Pode mandar: escreva aqui as informações complementares, numa mensagem de até 2.000 caracteres.',
+    'Se não quiser, envie *confirmar*.',
+  ),
   infoComplementarDispensada: 'Ok, sem informações complementares. Responda *confirmar* para emitir ou *corrigir* para mudar algo.',
 } as const
 
@@ -153,11 +212,21 @@ export const textoDeInfoLonga = (tamanho: number) =>
 // número próprio do agente (29/10/2026), a resposta manda a pessoa para o número oficial da Nó.
 const recebidoPelaEquipe = (links: Links, numeroProprio = false) =>
   numeroProprio
-    ? `Oi! Este é o número do nó.fiscal, que emite notas fiscais pelo WhatsApp para quem tem conta. Para criar a sua: ${links.site}. Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}.`
-    : `Oi! Aqui é a Nó. Recebi sua mensagem e alguém da nossa equipe te responde por aqui. Se você quer emitir notas fiscais pelo WhatsApp, crie sua conta no site: ${links.site}`
+    ? blocos(
+        'Oi! Este é o número do nó.fiscal, que emite notas fiscais pelo WhatsApp para quem tem conta.',
+        `Para criar a sua: ${links.site}.`,
+        `Para falar com a equipe da Nó, chame no ${WHATSAPP_COMERCIAL}.`,
+      )
+    : blocos(
+        'Oi! Aqui é a Nó. Recebi sua mensagem e alguém da nossa equipe te responde por aqui.',
+        `Se você quer emitir notas fiscais pelo WhatsApp, crie sua conta no site: ${links.site}`,
+      )
 
 const recusaDeCertificado = (links: Links) =>
-  `Por segurança, eu não recebo certificado pelo WhatsApp e não guardei o arquivo. Apague a mensagem com o arquivo e envie o certificado A1 na página segura: ${links.certificado}`
+  blocos(
+    'Por segurança, eu não recebo certificado pelo WhatsApp e não guardei o arquivo.',
+    `Apague a mensagem com o arquivo e envie o certificado A1 na página segura: ${links.certificado}`,
+  )
 
 export function textoDoBloqueio(codigo: string, links: Links): string {
   switch (codigo) {
@@ -169,14 +238,24 @@ export function textoDoBloqueio(codigo: string, links: Links): string {
       return `Ainda não há certificado A1 cadastrado. Envie na página segura: ${links.certificado}`
     // Procuração eletrônica (migração 20261111180000).
     case 'PROCURACAO_NAO_ENCONTRADA':
-      return `A Receita ainda não mostra a sua procuração para o serviço NFS-e. Confira no Portal de Serviços da Receita (servicos.receitafederal.gov.br, Procurações) se ela foi assinada para o CNPJ indicado. Eu confiro de novo sozinho a cada poucos minutos. Situação: ${links.certificado}`
+      return mensagem({
+        titulo: 'Procuração',
+        blocos: [
+          'A Receita ainda não mostra a sua procuração para o serviço NFS-e. Confira no Portal de Serviços da Receita (servicos.receitafederal.gov.br, Procurações) se ela foi assinada para o CNPJ indicado.',
+          'Eu confiro de novo sozinho a cada poucos minutos.',
+        ],
+        acao: `Situação: ${links.certificado}`,
+      })
     case 'PROCURACAO_MISSING':
     case 'PROCURACAO_INVALIDA':
       return `A procuração da sua empresa não está valendo. Faça de novo no Portal de Serviços da Receita, serviço NFS-e, ou envie o certificado A1: ${links.certificado}`
     case 'PROCURACAO_VENCIDA':
       return `A procuração da sua empresa venceu. Faça uma nova no Portal de Serviços da Receita, serviço NFS-e, e avise na página: ${links.certificado}`
     case 'PROCURADOR_CERT_INVALIDO':
-      return `O certificado A1 do escritório, que assina as notas desta empresa por procuração, venceu ou não está cadastrado. Envie o A1 do escritório na página segura: ${links.certificado}`
+      return blocos(
+        'O certificado A1 do escritório, que assina as notas desta empresa por procuração, venceu ou não está cadastrado.',
+        `Envie o A1 do escritório na página segura: ${links.certificado}`,
+      )
     case 'NO_SUBSCRIPTION':
       return `Sua empresa ainda não tem assinatura. Assine para emitir: ${links.assinatura}`
     case 'SUBSCRIPTION_CANCELLED':
@@ -280,7 +359,7 @@ type Conversa = {
   opcoes?: string[]
   /** O que o pedido disse da retenção ("sem retenção", "ISS retido 2%", "retém INSS 11%"); o resto vem da empresa. */
   retencao_pedido?: RetencaoDoPedido
-  /** Retenção resolvida no último resumo (a que vai na nota) e o endereço do tomador (só com ISS retido, E0237). */
+  /** Retenção resolvida no último resumo (a que vai na nota) e o endereço do tomador (o da Receita, em toda nota de CNPJ). */
   retencao?: Retencao | null
   endereco?: EnderecoNacional | null
   /** O último resumo achou um problema na retenção: o *confirmar* não emite até corrigir. */
@@ -454,26 +533,37 @@ export function textoDoResumo(
   informacoesComplementares?: string | null,
   /** "Campinas/SP": só quando o local da prestação é outro que não o município da empresa (ou o serviço é de obra). */
   localPrestacao?: string | null,
+  /** O endereço do tomador que vai na nota, para a pessoa conferir; `semEndereco`: a Receita não achou o do CNPJ. */
+  enderecoTomador?: EnderecoNacional | null,
+  semEndereco?: boolean,
   /** Avisos que não bloqueiam (ex.: locação de imóvel no Simples), antes da pergunta de emissão. */
   avisos: string[] = [],
 ): string {
-  return [
-    'Resumo da nota:',
-    ...(emitente ? [linhaDoEmitente(emitente)] : []),
-    `Tomador: ${tomador.nome}`,
-    `${tipoDoDocumento(tomador.documento).toUpperCase()}: ${formatarDocumento(tomador.documento)}`,
-    `Serviço: ${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`,
-    `Descrição na nota: ${servico.descricao}`,
-    ...(localPrestacao ? [`Local da prestação: ${localPrestacao}`] : []),
-    ...(servico.obra ? [`Obra: ${rotuloDaObra(servico.obra)}`] : []),
-    ...(servico.locacao ? linhasDaLocacao(servico.locacao) : []),
-    `Valor: ${formatarReais(valor)}`,
-    ...linhasDaRetencao(valor, retencao),
-    ...(informacoesComplementares ? [`Informações complementares: ${informacoesComplementares}`] : []),
-    ...avisos.map((a) => `Atenção: ${a}`),
-    PERGUNTA_DE_EMISSAO,
-  ].join('\n')
+  return mensagem({
+    titulo: 'Resumo da nota',
+    blocos: [
+      [
+        emitente && comRotulo(linhaDoEmitente(emitente)),
+        campo('Tomador', tomador.nome),
+        campo(tipoDoDocumento(tomador.documento).toUpperCase(), formatarDocumento(tomador.documento)),
+        enderecoTomador ? campo('Endereço', rotuloDoEndereco(enderecoTomador)) : semEndereco && campo('Endereço', TEXTO_SEM_ENDERECO_NO_RESUMO),
+      ],
+      [
+        campo('Serviço', `${formatarCodigoServico(servico.codigo)}${nomeDoServico ? ` ${nomeDoServico}` : ''}`),
+        campo('Descrição na nota', servico.descricao),
+        localPrestacao && campo('Local da prestação', localPrestacao),
+        servico.obra && campo('Obra', rotuloDaObra(servico.obra)),
+        ...(servico.locacao ? linhasDaLocacao(servico.locacao).map(comRotulo) : []),
+      ],
+      [campo('Valor', formatarReais(valor)), ...linhasDaRetencao(valor, retencao).map(comRotulo)],
+      informacoesComplementares && campo('Informações complementares', informacoesComplementares),
+      avisos.length > 0 && avisos.map((a) => campo('Atenção', a)),
+    ],
+    acao: PERGUNTA_DE_EMISSAO,
+  })
 }
+
+export const TEXTO_SEM_ENDERECO_NO_RESUMO = 'não achei o endereço deste CNPJ na Receita agora; a nota sai sem ele.'
 
 export const TEXTO_LOCAL_CORRIGIR =
   'Responda *descartar* e emita esta nota pelo emissor da prefeitura ou da Sefin, ou *corrigir* e me diga outro código de serviço.'
@@ -497,11 +587,15 @@ export function textoDaObraQueFalta(rascunho: ObraEscrita | null | undefined, ci
     const lista = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0]
     return `Faltou no endereço da obra: ${lista}. Me mande o que falta, e eu monto a nota. Ou responda *descartar*.`
   }
-  return [
-    'Este serviço é de construção civil, e a Sefin exige os dados da obra na nota. Nada foi emitido ainda.',
-    `Me mande o endereço da obra: rua, número, bairro, CEP${cidade}. Por exemplo: Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP.`,
-    'Se a obra tem CNO, pode mandar só o número dele. Para desistir, responda *descartar*.',
-  ].join('\n')
+  return mensagem({
+    titulo: 'Dados da obra',
+    blocos: [
+      'Este serviço é de construção civil, e a Sefin exige os dados da obra na nota. Nada foi emitido ainda.',
+      `Me mande o endereço da obra: rua, número, bairro, CEP${cidade}. Por exemplo: Rua das Flores, 120, Centro, CEP 12900-000, Atibaia/SP.`,
+      'Se a obra tem CNO, pode mandar só o número dele.',
+    ],
+    acao: 'Para desistir, responda *descartar*.',
+  })
 }
 
 /** Soma o que a mensagem trouxe da obra ao rascunho; `obra` só quando o resultado é válido. */
@@ -551,17 +645,28 @@ export const NAO_CADASTRADA = { ISS_NAO_CADASTRADO: 'ISS', INSS_NAO_CADASTRADO: 
 
 function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: string, empresa?: string | null): string {
   if ((PROBLEMAS_DE_LOCAL as readonly string[]).includes(problema)) {
-    return `Não dá para emitir esta nota com outro local da prestação: ${motivoDoLocal(problema)}. Nada foi emitido.\n${TEXTO_LOCAL_CORRIGIR}`
+    return mensagem({
+      titulo: 'Local da prestação',
+      blocos: [`Não dá para emitir esta nota com outro local da prestação: ${motivoDoLocal(problema)}. Nada foi emitido.`],
+      acao: TEXTO_LOCAL_CORRIGIR,
+    })
   }
   const tipo = NAO_CADASTRADA[problema as keyof typeof NAO_CADASTRADA]
   if (tipo) {
-    return [
-      `A retenção de ${tipo} não está cadastrada para ${empresa ?? 'a empresa que emite'}, e nada foi emitido.`,
-      `Cadastre em Minha conta → Minhas empresas → Dados fiscais (${ctx.links.conta}#empresas), marcando "Tem retenção de ${tipo}?", e depois responda *corrigir* com a retenção.`,
-      'Se a nota não tem retenção, responda *corrigir* e diga sem retenção.',
-    ].join('\n')
+    return mensagem({
+      titulo: 'Retenção não cadastrada',
+      blocos: [
+        `A retenção de ${tipo} não está cadastrada para ${empresa ?? 'a empresa que emite'}, e nada foi emitido.`,
+        `Cadastre em Minha conta → Minhas empresas → Dados fiscais (${ctx.links.conta}#empresas), marcando "Tem retenção de ${tipo}?", e depois responda *corrigir* com a retenção.`,
+      ],
+      acao: 'Se a nota não tem retenção, responda *corrigir* e diga sem retenção.',
+    })
   }
-  return `Não dá para emitir esta nota assim: ${motivoDaRetencao(problema)}.\n${TEXTO_SEM_RETENCAO_POSSIVEL}`
+  return mensagem({
+    titulo: 'Retenção',
+    blocos: [`Não dá para emitir esta nota assim: ${motivoDaRetencao(problema)}.`],
+    acao: TEXTO_SEM_RETENCAO_POSSIVEL,
+  })
 }
 
 /**
@@ -619,11 +724,21 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
       }
     }
   } else if (servico.locacao) servico = { ...servico, locacao: null }
+  // Endereço do tomador em toda nota de CNPJ (Bragantina, 24/11/2026): sem ele, só o ISS retido trava (E0237).
   let endereco: EnderecoNacional | null = null
-  if (retencao?.iss) {
+  let semEndereco = false
+  if (!problema) {
     const consulta = ctx.deps.consultaCnpj
-    endereco = consulta?.endereco ? await consulta.endereco(tomador.documento).catch(() => null) : null
-    if (!endereco) problema = 'ENDERECO_TOMADOR'
+    const r = await resolverEnderecoDoTomador({
+      documento: tomador.documento,
+      consulta: consulta?.endereco ? { endereco: (cnpj) => (consulta.endereco as NonNullable<ConsultaCnpj['endereco']>)(cnpj) } : null,
+    })
+    endereco = r.endereco
+    if (retencao?.iss && !endereco) problema = 'ENDERECO_TOMADOR'
+    else if (r.consultaFalhou) {
+      semEndereco = true
+      registrarSemEndereco('whatsapp', { request_id: pedidoId, tenant_id: tenantId })
+    }
   }
   // Informações complementares: no primeiro resumo sem elas, duas mensagens perguntam (uma vez por pedido).
   const perguntar = !problema && !conversa.informacoes_complementares && !conversa.info_perguntada
@@ -667,6 +782,8 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     conversa.informacoes_complementares,
     // Na obra, o local aparece sempre (é onde o ISS é devido), mesmo sendo a cidade da empresa.
     local ? rotuloDoLocal(local, servico.codigo) : servico.obra && sede ? rotuloDoLocal(sede, servico.codigo) : null,
+    endereco,
+    semEndereco,
     naLocacao ? avisosDaLocacao(servico.codigo, regime) : [],
   )
   return perguntar ? [resumo, TEXTOS.perguntaInfoComplementar, TEXTOS.semInfoComplementar] : [resumo]
@@ -784,8 +901,13 @@ export const perguntaDaUf = (p: { nome: string; ufs: string[] }) =>
  */
 export const mencionaRetencao = (texto: string) => /\b(retenc\w*|retid[oa]s?|retem|reter)\b/.test(semAcento(texto))
 
-export const TEXTO_RETENCAO_NAO_ENTENDIDA =
-  'Vi que o pedido fala de retenção, mas não entendi qual. Mande o pedido de novo dizendo a retenção assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção. Nada foi emitido.'
+const JEITOS_DE_DIZER_A_RETENCAO = topicos(['ISS retido 2% (a alíquota)', 'INSS retido 11% (ou o valor, 165,00)', 'sem retenção'])
+
+export const TEXTO_RETENCAO_NAO_ENTENDIDA = mensagem({
+  titulo: 'Retenção',
+  blocos: ['Vi que o pedido fala de retenção, mas não entendi qual. Nada foi emitido.'],
+  acao: `Mande o pedido de novo dizendo a retenção assim:\n${JEITOS_DE_DIZER_A_RETENCAO}`,
+})
 
 /** O que o pedido escrito diz da retenção (campos do intérprete); `undefined` quando não diz nada. */
 export function retencaoDoParsed(parsed: Parsed): RetencaoDoPedido | undefined {
@@ -828,12 +950,12 @@ export async function codigoDoPedido(
   const lista = itens && itens.size ? itens : null
   if (parsed.codigo_servico) {
     if (lista && !lista.has(parsed.codigo_servico)) {
-      return { texto: `O código ${formatarCodigoServico(parsed.codigo_servico)} não está na lista nacional de serviços. Confira o código. ${fim}` }
+      return { texto: blocos(`O código ${formatarCodigoServico(parsed.codigo_servico)} não está na lista nacional de serviços. Confira o código.`, fim) }
     }
     return { codigo: parsed.codigo_servico }
   }
   const servico = parsed.servico as string
-  if (!lista) return { texto: `Não consegui consultar a lista nacional de serviços agora para achar "${servico}". ${fim}` }
+  if (!lista) return { texto: blocos(`Não consegui consultar a lista nacional de serviços agora para achar "${servico}".`, fim) }
   let achados = buscarServicos(lista, servico)
   if (achados.length > 1) {
     const usados = new Set(await conhecidos())
@@ -841,15 +963,22 @@ export async function codigoDoPedido(
     if (daEmpresa.length === 1) achados = daEmpresa
   }
   if (achados.length === 1) return { codigo: achados[0] }
-  if (!achados.length) return { texto: `Não achei "${servico}" na lista nacional de serviços. ${fim}` }
+  if (!achados.length) return { texto: blocos(`Não achei "${servico}" na lista nacional de serviços.`, fim) }
   const MOSTRADOS = 6
   return {
-    texto: [
-      `Achei mais de um serviço para "${servico}":`,
-      ...achados.slice(0, MOSTRADOS).map((c) => `- ${formatarCodigoServico(c)} ${lista.get(c) ?? ''}`.trimEnd()),
-      ...(achados.length > MOSTRADOS ? [`- e mais ${achados.length - MOSTRADOS}.`] : []),
-      fim.replace('código 04.08.02', `código ${formatarCodigoServico(achados[0])}`),
-    ].join('\n'),
+    texto: mensagem({
+      titulo: 'Código de serviço',
+      blocos: [
+        [
+          `Achei mais de um serviço para "${servico}":`,
+          topicos([
+            ...achados.slice(0, MOSTRADOS).map((c) => `${formatarCodigoServico(c)} ${lista.get(c) ?? ''}`.trimEnd()),
+            ...(achados.length > MOSTRADOS ? [`e mais ${achados.length - MOSTRADOS}.`] : []),
+          ]),
+        ],
+      ],
+      acao: fim.replace('código 04.08.02', `código ${formatarCodigoServico(achados[0])}`),
+    }),
   }
 }
 
@@ -870,18 +999,26 @@ async function codigosDaEmpresa(db: Queryable, tenantId: string): Promise<string
 function textoDoBloqueioDoEmitente(ctx: Contexto, codigo: string, emitente?: EmitenteDoPedido | null): string {
   const daConta = ['PAYMENT_NOT_APPROVED', 'NO_SUBSCRIPTION', 'SUBSCRIPTION_CANCELLED'].includes(codigo)
   if (!emitente || emitente.id === ctx.tenantId || daConta) return textoDoBloqueio(codigo, ctx.links)
-  return `Não dá para emitir por ${emitente.razao_social}: ${motivoDoProblema(codigo, { empresa: emitente.razao_social })}. Resolva em Minha conta → Minhas empresas: ${ctx.links.conta}#empresas`
+  return blocos(
+    `Não dá para emitir por ${emitente.razao_social}: ${motivoDoProblema(codigo, { empresa: emitente.razao_social })}.`,
+    `Resolva em Minha conta → Minhas empresas: ${ctx.links.conta}#empresas`,
+  )
 }
 
 const perguntaDeCancelamento = (c: Candidata) =>
-  [
-    `Nota nº ${c.numero}`,
-    ...(c.empresa ? [`Emitente: ${c.empresa}`] : []),
-    `Tomador: ${c.nome}`,
-    `Valor: ${c.valor ? formatarReais(c.valor) : '-'}`,
-    `Emitida em: ${dataBr(c.emitidaEm)}`,
-    'Cancelo esta nota? Responda *confirmar* para cancelar ou *manter* para deixar como está.',
-  ].join('\n')
+  mensagem({
+    titulo: 'Cancelar nota',
+    blocos: [
+      [
+        campo('Nota', `nº ${c.numero}`),
+        c.empresa && campo('Emitente', c.empresa),
+        campo('Tomador', c.nome),
+        campo('Valor', c.valor ? formatarReais(c.valor) : '-'),
+        campo('Emitida em', dataBr(c.emitidaEm)),
+      ],
+    ],
+    acao: 'Cancelo esta nota? Responda *confirmar* para cancelar ou *manter* para deixar como está.',
+  })
 
 // ---------------------------------------------------------------------------------------
 // Entrada.
@@ -910,7 +1047,7 @@ function noEnderecoRecebido(whatsapp: EnviaWhatsApp, msg: MensagemRecebida): Env
   return {
     enviarTexto: (destino, texto) => whatsapp.enviarTexto(para(destino), texto),
     enviarDocumento: (destino, anexo, legenda) => whatsapp.enviarDocumento(para(destino), anexo, legenda),
-    enviarModelo: (destino, nome, parametros) => whatsapp.enviarModelo(para(destino), nome, parametros),
+    enviarModelo: (destino, nome, parametros, extras) => whatsapp.enviarModelo(para(destino), nome, parametros, extras),
   }
 }
 
@@ -941,6 +1078,16 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
 
   const numero = await numeroPodeEmitir(deps.db, msg.de)
   if (!numero) {
+    // Módulo Guias: o contato que recebe guias responde ao escritório ("paguei", "2ª via", "SAIR"…).
+    if (deps.guias) {
+      const guias = { db: deps.db, whatsapp: noEnderecoRecebido(deps.whatsapp, msg), email: deps.guias.email, storage: deps.guias.storage, now: deps.now }
+      // Falha do módulo (ex.: tabela ainda não migrada) nunca tira a resposta de sempre de quem não é contato de guia.
+      const tratada = await tratarRespostaDeGuia(guias, msg).catch((error: unknown) => {
+        logEvent('guias.resposta_falhou', { message_id: msg.id, error_name: error instanceof Error ? error.name : 'unknown' })
+        return false
+      })
+      if (tratada) return
+    }
     await numeroSemPermissao(deps, msg, links, fora, agora)
     return
   }
@@ -978,6 +1125,11 @@ async function tratar(deps: ConversaDeps, msg: MensagemRecebida): Promise<void> 
   if (await tratarComando(ctx, texto)) return
   // "confirmar"/"cancelar" de um lote aguardando, quando ele é mais recente que o pedido avulso aguardando.
   if (await responderAoLote(ctx, texto)) return
+  // NF-e avulsa (nota de produto), conversa guiada sem a IA: "nfe" começa; a resposta a uma NF-e aberta segue aqui.
+  if (await tratarNfeConversa(ctx, texto, pareceNovoPedido)) {
+    if (ctx.pedidoId) await contarMensagens(deps.db, ctx.pedidoId, 1 + ctx.enviadas)
+    return
+  }
   // "nota 123" / "nota Maria": o PDF de uma nota, por código, sem a IA.
   if (await tratarVerNota(ctx, texto)) return
   // "qual é o modelo da planilha?" (conta Escritório): o arquivo .xlsx, por código, sem a IA.
@@ -1257,7 +1409,14 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     }
     if (empresas.length && achadas.length !== 1) {
       const nenhuma = achadas.length === 0
-      await responder(ctx, perguntaDoEmitente(empresas, nenhuma ? { naoAchei: parsed.prestador } : { candidatas: achadas }).texto.replace(/\nPor qual empresa sai a nota\?[^\n]*/, '\nPara trocar a empresa, responda *corrigir* e me mande o nome ou o CNPJ dela.'))
+      await responder(
+        ctx,
+        perguntaDoEmitente(empresas, nenhuma ? { naoAchei: parsed.prestador } : { candidatas: achadas }).texto.replace(
+          /Por qual empresa sai a nota\?[^\n]*/,
+          'Para trocar a empresa, responda *corrigir* e me mande o nome ou o CNPJ dela.',
+        ),
+      )
+
       return true
     }
   }
@@ -1265,7 +1424,14 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   const retencaoNova = retencaoDoParsed(parsed)
   if (mencionaRetencao(paraIa) && !retencaoNova) {
     // O pedido continua em correção: a próxima mensagem é lida de novo como a correção.
-    await responder(ctx, 'Vi que a correção fala de retenção, mas não entendi qual. Me diga assim: ISS retido 2% (a alíquota), INSS retido 11% (ou o valor, 165,00), ou sem retenção.')
+    await responder(
+      ctx,
+      mensagem({
+        titulo: 'Retenção',
+        blocos: ['Vi que a correção fala de retenção, mas não entendi qual.'],
+        acao: `Me diga assim:\n${JEITOS_DE_DIZER_A_RETENCAO}`,
+      }),
+    )
     return true
   }
   // "código 04.08.02" ou "serviço de fisioterapia" na correção: o mesmo pedido, com o código novo.
@@ -1422,7 +1588,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
     await responder(
       ctx,
       criada.modeloAtualizado
-        ? `${TEXTOS.emitindo}\nGuardei o código ${formatarCodigoServico(servico.codigo)} no cliente ${criada.modeloAtualizado}: as próximas notas para ele saem com esse código.`
+        ? `${TEXTOS.emitindo}\n\nGuardei o código ${formatarCodigoServico(servico.codigo)} no cliente ${criada.modeloAtualizado}: as próximas notas para ele saem com esse código.`
         : TEXTOS.emitindo,
     )
     return
@@ -1607,8 +1773,8 @@ async function salvarModelo(ctx: Contexto, pedido: Pedido): Promise<void> {
     await responder(
       ctx,
       emitente
-        ? `Modelo ${nome} salvo em ${emitente.razao_social}. Da próxima vez, é só escrever: nota pela ${emitente.razao_social} pra ${nome}, e o valor.`
-        : `Modelo ${nome} salvo. Da próxima vez, é só escrever: nota pra ${nome}, e o valor.`,
+        ? blocos(`Modelo ${nome} salvo em ${emitente.razao_social}.`, `Da próxima vez, é só escrever: nota pela ${emitente.razao_social} pra ${nome}, e o valor.`)
+        : blocos(`Modelo ${nome} salvo.`, `Da próxima vez, é só escrever: nota pra ${nome}, e o valor.`),
     )
     return
   }
@@ -1619,7 +1785,10 @@ async function salvarModelo(ctx: Contexto, pedido: Pedido): Promise<void> {
   await atualizarPedido(ctx.deps.db, pedido.id, 'substituir_modelo', pedido.conversa, ctx.agora)
   await responder(
     ctx,
-    `Já existe um modelo ${existente.rows[0]?.nome ?? nome}. Quer substituir pelo de ${tomador.nome} (${formatarDocumento(tomador.documento)})? Responda sim ou não.`,
+    blocos(
+      `Já existe um modelo ${existente.rows[0]?.nome ?? nome}. Quer substituir pelo de ${tomador.nome} (${formatarDocumento(tomador.documento)})?`,
+      'Responda sim ou não.',
+    ),
   )
 }
 
@@ -1784,7 +1953,7 @@ async function pedidoDeEmissao(
   if (info && info.length > MAX_INFO_COMPLEMENTAR) {
     semPedido()
     if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
-    await responder(ctx, `${textoDeInfoLonga(info.length)} Mande o pedido de novo.`)
+    await responder(ctx, blocos(textoDeInfoLonga(info.length), 'Mande o pedido de novo.'))
     return
   }
   /** A empresa que emite: a escolhida ou a do telefone. */
@@ -1840,7 +2009,7 @@ async function pedidoDeEmissao(
   if (local && 'texto' in local) {
     semPedido()
     if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
-    await responder(ctx, `${local.texto} Mande o pedido de novo.`)
+    await responder(ctx, blocos(local.texto, 'Mande o pedido de novo.'))
     return
   }
   if (local && 'ambiguo' in local) {

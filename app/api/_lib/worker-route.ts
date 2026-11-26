@@ -12,11 +12,13 @@ import { runEmission, type FinalStatus } from './emission.js'
 import { errorResponse, json } from './http.js'
 import { logEvent } from './log.js'
 import { processarNfes, type ResumoNfe } from './nfe/servico.js'
+import { avisarNfeDoWhatsApp } from './agente/nfe-conversa.js'
 import type { SefazClient } from './nfe/sefaz-client.js'
 import type { ResponsavelTecnico } from './nfe/nfe-builder.js'
 import { enfileirarNfe, enfileirarNfse, entregarWebhooks, type FetchLike, type ResumoWebhooks } from './parceiro/webhook.js'
 import { conferirPendentes, type ResumoConferencias } from './procuracao.js'
 import type { SefinClient } from './sefin.js'
+import { rodadaDeGuias, type GuiasWorkerDeps, type ResumoGuias } from './guias/envio.js'
 
 export type WorkerDeps = {
   db: Db
@@ -32,6 +34,8 @@ export type WorkerDeps = {
   adn?: DistribuicaoAdn
   /** Sefaz da NF-e (migração 20261117090000); sem ela, a fila da NF-e não roda. */
   nfe?: { sefaz: SefazClient; responsavelTecnico: ResponsavelTecnico | null }
+  /** Módulo Guias (migração 20261119180000): leitura dos PDFs, disparo agendado e lembretes; sem ele, o passo não roda. */
+  guias?: Omit<GuiasWorkerDeps, 'db' | 'now'>
 }
 
 export async function handleWorkerRequest(request: Request, deps: WorkerDeps): Promise<Response> {
@@ -85,6 +89,8 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
             await enfileirarNfe(deps.db, nfeId, status).catch((error) =>
               logEvent('nofiscal.webhook_nao_gravado', { nfe_id: nfeId, error_name: error instanceof Error ? error.name : 'unknown' }),
             )
+            // NF-e pedida pelo WhatsApp: o DANFE (ou o motivo da recusa) volta para quem pediu.
+            if (agente) await avisarNfeDoWhatsApp(deps.db, agente.whatsapp, nfeId, status)
           },
         })
       } catch (error) {
@@ -101,6 +107,15 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
       })
     }
     const tarefas = agente ? await tarefasDoAgente(deps.db, { now, ...agente }, { tenantId: deps.tenantId }) : null
+    // Módulo Guias depois das tarefas do agente. Falha aqui não para o resto do worker.
+    let guias: ResumoGuias | null = null
+    if (deps.guias && !deps.tenantId) {
+      try {
+        guias = await rodadaDeGuias({ ...deps.guias, db: deps.db, now })
+      } catch (error) {
+        logEvent('guias.rodada_falhou', { error_name: error instanceof Error ? error.name : 'unknown' })
+      }
+    }
     // Webhook do parceiro por último: entrega os eventos desta rodada e os reenvios cuja hora chegou.
     let webhooks: ResumoWebhooks | null = null
     try {
@@ -116,6 +131,7 @@ export async function handleWorkerRequest(request: Request, deps: WorkerDeps): P
       ...(nfe ? { nfe } : {}),
       ...(tarefas ? { agente: tarefas } : {}),
       ...(webhooks ? { webhooks } : {}),
+      ...(guias ? { guias } : {}),
     })
   } catch (error) {
     logEvent('nofiscal.worker_failed', { error_name: error instanceof Error ? error.name : 'unknown' })

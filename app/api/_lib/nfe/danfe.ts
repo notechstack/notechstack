@@ -83,6 +83,13 @@ export function lerNfeProc(xml: string) {
       vNF: t(tot, 'vNF'), vTotTrib: t(tot, 'vTotTrib'),
     },
     modFrete: t(filho(inf, 'transp'), 'modFrete'),
+    transportador: (() => {
+      const tr = filho(filho(inf, 'transp'), 'transporta')
+      return { nome: t(tr, 'xNome'), documento: t(tr, 'CNPJ') || t(tr, 'CPF'), ie: t(tr, 'IE'), endereco: t(tr, 'xEnder'), municipio: t(tr, 'xMun'), uf: t(tr, 'UF') }
+    })(),
+    volumes: filhos(filho(inf, 'transp'), 'vol').map((v) => ({
+      quantidade: t(v, 'qVol'), especie: t(v, 'esp'), marca: t(v, 'marca'), numeracao: t(v, 'nVol'), pesoL: t(v, 'pesoL'), pesoB: t(v, 'pesoB'),
+    })),
     itens: filhos(inf, 'det').map((det) => {
       const prod = filho(det, 'prod')
       const icms = filho(det, 'ICMS')?.firstChild as El | null
@@ -339,9 +346,54 @@ function blocoImposto(p: Pintor, d: DanfeDados, top: number): number {
   top += 18
   linha2.forEach(([r, v], i) => p.campo(r, dinheiro(v), L + i * w, top, w, 18, 'dir', i === 5 ? 8.5 : 7.5))
   top += 18 + 3
+  return blocoTransporte(p, d, top)
+}
+
+/** Volumes do quadro: um só como veio; vários somados (quantidade e pesos) e os textos distintos juntos. */
+export function volumesDoQuadro(vols: DanfeDados['volumes']) {
+  const distintos = (f: (v: DanfeDados['volumes'][number]) => string) => [...new Set(vols.map(f).filter(Boolean))].join(' / ')
+  const soma = (f: (v: DanfeDados['volumes'][number]) => string) => {
+    const preenchidos = vols.map(f).filter(Boolean)
+    return preenchidos.length ? String(preenchidos.reduce((s, x) => s + Number(x), 0)) : ''
+  }
+  return {
+    quantidade: soma((v) => v.quantidade),
+    especie: distintos((v) => v.especie),
+    marca: distintos((v) => v.marca),
+    numeracao: distintos((v) => v.numeracao),
+    pesoB: soma((v) => v.pesoB),
+    pesoL: soma((v) => v.pesoL),
+  }
+}
+
+/** Quadro "Transportador / volumes transportados" do Anexo II do MOC (sem veículo: o emissor não informa placa nem ANTT). */
+function blocoTransporte(p: Pintor, d: DanfeDados, top: number): number {
   p.titulo('Transportador / volumes transportados', top)
   top += 8
-  p.campo('Modalidade do frete', MOD_FRETE[d.modFrete] ?? d.modFrete, L, top, W)
+  const tr = d.transportador
+  p.campo('Nome / razão social', tr.nome, L, top, 190)
+  p.campo('Frete por conta', MOD_FRETE[d.modFrete] ?? d.modFrete, L + 190, top, 130)
+  p.campo('Código ANTT', '', L + 320, top, 44)
+  p.campo('Placa do veículo', '', L + 364, top, 60)
+  p.campo('UF', '', L + 424, top, 22)
+  p.campo('CNPJ / CPF', documento(tr.documento), L + 446, top, W - 446)
+  top += 18
+  p.campo('Endereço', tr.endereco, L, top, 250)
+  p.campo('Município', tr.municipio, L + 250, top, 174)
+  p.campo('UF', tr.uf, L + 424, top, 22)
+  p.campo('Inscrição estadual', tr.ie, L + 446, top, W - 446)
+  top += 18
+  const v = volumesDoQuadro(d.volumes)
+  const w = W / 6
+  const linha: [string, string, boolean][] = [
+    ['Quantidade', v.quantidade ? num(v.quantidade, 0) : '', true],
+    ['Espécie', v.especie, false],
+    ['Marca', v.marca, false],
+    ['Numeração', v.numeracao, false],
+    ['Peso bruto', v.pesoB ? num(v.pesoB, 3) : '', true],
+    ['Peso líquido', v.pesoL ? num(v.pesoL, 3) : '', true],
+  ]
+  linha.forEach(([r, valor, dir], i) => p.campo(r, valor, L + i * w, top, w, 18, dir ? 'dir' : 'esq'))
   return top + 18 + 3
 }
 
@@ -412,8 +464,8 @@ export async function renderDanfe(xmlNfeProc: string, options: DanfeOptions = {}
   const alturaItem = (n: number) => Math.max(1, n) * 7 + 2
   const folhas: (typeof itens)[] = []
   {
-    // Medidas fixas (pontos): cabeçalho com canhoto ~ 188, sem ~ 146; destinatário 65; imposto+transporte 73; título+cabeçalho dos itens 22.
-    const disponivelPrimeira = A4.height - M - 188 - 65 - 73 - 22 - ALTURA_ADICIONAIS - M
+    // Medidas fixas (pontos): cabeçalho com canhoto ~ 188, sem ~ 146; destinatário 65; imposto 47 + transporte 65; título+cabeçalho dos itens 22.
+    const disponivelPrimeira = A4.height - M - 188 - 65 - 47 - 65 - 22 - ALTURA_ADICIONAIS - M
     const disponivelDemais = A4.height - M - 146 - 22 - M
     let atual: typeof itens = []
     let livre = disponivelPrimeira

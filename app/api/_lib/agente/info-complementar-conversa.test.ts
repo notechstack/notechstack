@@ -80,17 +80,17 @@ describe('informações complementares pelo WhatsApp', () => {
     const c = conversa({})
     await c.enviar(s.ownerPhone, PEDIDO)
     const [resumo, pergunta, senao, ...resto] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Resumo da nota:')
+    expect(resumo).toContain('*Resumo da nota*')
     expect(resumo).not.toContain('Informações complementares')
     expect(pergunta).toBe(
-      'Quer adicionar informações complementares (dados bancários, observações)? Se sim, descreva aqui abaixo numa mensagem de até 2.000 caracteres.',
+      '*Informações complementares*\n\nQuer adicionar informações complementares (dados bancários, observações)?\n\nSe sim, descreva aqui abaixo numa mensagem de até 2.000 caracteres.',
     )
     expect(senao).toBe('Se não, envie *CONFIRMAR*.')
     expect(resto).toEqual([])
 
     await c.enviar(s.ownerPhone, `${BANCO}\nFavorecido: Contabilidade Modelo`)
     const [deNovo, ...semPergunta] = c.novas(s.ownerPhone)
-    expect(deNovo).toContain(`Valor: R$ 10,00\nInformações complementares: ${BANCO} - Favorecido: Contabilidade Modelo\nPosso emitir?`)
+    expect(deNovo).toContain(`*Valor:* R$ 10,00\n\n*Informações complementares:* ${BANCO} - Favorecido: Contabilidade Modelo\n\nPosso emitir?`)
     // Não pergunta de novo, e a IA não foi chamada para ler a informação.
     expect(semPergunta).toEqual([])
     expect(c.ia.chamadas).toEqual([PEDIDO])
@@ -126,7 +126,7 @@ describe('informações complementares pelo WhatsApp', () => {
     expect(c.ia.chamadas).toEqual([pedido])
     const respostas = c.novas(s.ownerPhone)
     expect(respostas).toHaveLength(1)
-    expect(respostas[0]).toContain(`Descrição na nota: Honorários contábeis realizados no mês 09/2026\nValor: R$ 1.500,00\nInformações complementares: ${BANCO}\n`)
+    expect(respostas[0]).toContain(`*Descrição na nota:* Honorários contábeis realizados no mês 09/2026\n\n*Valor:* R$ 1.500,00\n\n*Informações complementares:* ${BANCO}\n`)
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await payloadDa(s.tenant.id)).toEqual([
       expect.objectContaining({ servico: expect.objectContaining({ descricao: 'Honorários contábeis realizados no mês 09/2026' }), informacoes_complementares: BANCO }),
@@ -140,7 +140,7 @@ describe('informações complementares pelo WhatsApp', () => {
     await c.enviar(s.ownerPhone, pedido)
     const respostas = c.novas(s.ownerPhone)
     expect(respostas).toHaveLength(1)
-    expect(respostas[0]).toContain('Informações complementares: Pago via PIX\n')
+    expect(respostas[0]).toContain('*Informações complementares:* Pago via PIX\n')
   })
 
   it('"sim" pede o texto; "não" fecha a pergunta; acima de 2.000, pede para encurtar', async () => {
@@ -171,13 +171,13 @@ describe('informações complementares pelo WhatsApp', () => {
     expect(c.novas(s.ownerPhone)).toEqual([TEXTOS.oQueMuda])
     await c.enviar(s.ownerPhone, 'valor 20')
     const [resumo, ...resto] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Valor: R$ 20,00')
+    expect(resumo).toContain('*Valor:* R$ 20,00')
     // A pergunta já foi feita neste pedido: não volta.
     expect(resto).toEqual([])
     await c.enviar(s.ownerPhone, 'corrigir')
     c.novas(s.ownerPhone)
     await c.enviar(s.ownerPhone, 'Informações complementares: contrato 77')
-    expect(c.novas(s.ownerPhone)[0]).toContain('Valor: R$ 20,00\nInformações complementares: contrato 77\n')
+    expect(c.novas(s.ownerPhone)[0]).toContain('*Valor:* R$ 20,00\n\n*Informações complementares:* contrato 77\n')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect(await payloadDa(s.tenant.id)).toEqual([expect.objectContaining({ valor: '20.00', informacoes_complementares: 'contrato 77' })])
   })
@@ -194,7 +194,7 @@ describe('informações complementares pelo WhatsApp', () => {
     c.novas(s.ownerPhone)
     await c.enviar(s.ownerPhone, 'nota pra Prontia, 30 reais')
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Valor: R$ 30,00')
+    expect(resumo).toContain('*Valor:* R$ 30,00')
     expect(resumo).not.toContain('Informações complementares')
     await c.enviar(s.ownerPhone, 'descartar')
     expect(c.novas(s.ownerPhone)).toEqual([TEXTOS.descartado])

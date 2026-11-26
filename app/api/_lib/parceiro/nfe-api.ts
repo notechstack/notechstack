@@ -3,8 +3,9 @@
 // tamanhos básicos); as regras fiscais (NCM, CFOP, CSOSN, totais, pagamento) são as de `validarNfe`, chamadas por
 // `criarNfe` com a empresa já carregada, iguais às do painel e da planilha.
 import type { Uf } from '../nfe/autorizadores.js'
-import { calcularTotais, type Csosn, type CstPisCofins, type Item, type Pagamento } from '../nfe/nfe-builder.js'
+import { calcularTotais, type Csosn, type CstPisCofins, type Item, type Pagamento, type Transportador, type Volume } from '../nfe/nfe-builder.js'
 import type { PedidoNfe } from '../nfe/servico.js'
+import { formaPadrao } from '../nfe/natureza.js'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -119,10 +120,44 @@ function pagamento(o: unknown, i: number): Pagamento {
   }
 }
 
+function transportador(o: unknown): Transportador {
+  const p = 'transportador.'
+  if (!isObj(o)) throw new Recusa('VALIDATION_FAILED', 'transportador deve ser um objeto')
+  campos(o, ['documento', 'nome', 'inscricao_estadual', 'endereco', 'municipio', 'uf'], p)
+  return {
+    documento: texto(o, 'documento', p, false, 18),
+    nome: texto(o, 'nome', p, false, 60),
+    inscricaoEstadual: texto(o, 'inscricao_estadual', p, false, 14),
+    endereco: texto(o, 'endereco', p, false, 60),
+    municipio: texto(o, 'municipio', p, false, 60),
+    uf: texto(o, 'uf', p, false, 2)?.toUpperCase() ?? null,
+  }
+}
+
+function volume(o: unknown, i: number): Volume {
+  const p = `volumes[${i}].`
+  if (!isObj(o)) throw new Recusa('VALIDATION_FAILED', `volumes[${i}] deve ser um objeto`)
+  campos(o, ['quantidade', 'especie', 'marca', 'numeracao', 'peso_liquido', 'peso_bruto'], p)
+  return {
+    quantidade: numero(o, 'quantidade', p, false),
+    especie: texto(o, 'especie', p, false, 60),
+    marca: texto(o, 'marca', p, false, 60),
+    numeracao: texto(o, 'numeracao', p, false, 60),
+    pesoLiquido: numero(o, 'peso_liquido', p, false),
+    pesoBruto: numero(o, 'peso_bruto', p, false),
+  }
+}
+
 const CAMPOS_TOPO = [
   'external_id', 'cnpj_emitente', 'natureza_operacao', 'consumidor_final', 'presenca', 'modalidade_frete',
-  'destinatario', 'itens', 'pagamentos', 'informacoes_complementares',
+  'transportador', 'volumes', 'destinatario', 'itens', 'pagamentos', 'informacoes_complementares',
 ] as const
+
+function volumes(v: unknown): Volume[] {
+  if (!Array.isArray(v)) throw new Recusa('VALIDATION_FAILED', 'volumes deve ser uma lista')
+  if (v.length > 5000) throw new Recusa('VALIDATION_FAILED', 'volumes passa de 5000')
+  return v.map(volume)
+}
 
 export function lerPedidoNfe(corpo: unknown): LeituraNfe {
   try {
@@ -150,8 +185,10 @@ export function lerPedidoNfe(corpo: unknown): LeituraNfe {
 
     let pagamentos: Pagamento[]
     if (corpo.pagamentos === undefined || corpo.pagamentos === null) {
-      // Sem pagamento informado: "outros" (99) no valor da nota, como na planilha sem forma_pagamento.
-      pagamentos = [{ forma: '99', valor: calcularTotais(itens).nota / 100 }]
+      // Sem pagamento informado: "outros" (99) no valor da nota; na nota sem venda (CFOP de remessa, bonificação,
+      // devolução, transferência), "sem pagamento" (90, vPag 0). A natureza, sem natureza_operacao, sai do CFOP.
+      const forma = formaPadrao(itens, '99')
+      pagamentos = [{ forma, valor: forma === '90' ? 0 : calcularTotais(itens).nota / 100 }]
     } else {
       if (!Array.isArray(corpo.pagamentos) || corpo.pagamentos.length === 0) throw new Recusa('VALIDATION_FAILED', 'pagamentos deve ser uma lista')
       pagamentos = corpo.pagamentos.map(pagamento)
@@ -165,6 +202,8 @@ export function lerPedidoNfe(corpo: unknown): LeituraNfe {
       consumidorFinal: umDe(corpo, 'consumidor_final', '', ['0', '1'] as const),
       presenca: umDe(corpo, 'presenca', '', ['0', '1', '2', '3', '4', '5', '9'] as const),
       modalidadeFrete: umDe(corpo, 'modalidade_frete', '', ['0', '1', '2', '3', '4', '9'] as const),
+      ...(corpo.transportador === undefined || corpo.transportador === null ? {} : { transportador: transportador(corpo.transportador) }),
+      ...(corpo.volumes === undefined || corpo.volumes === null ? {} : { volumes: volumes(corpo.volumes) }),
       informacoesComplementares: texto(corpo, 'informacoes_complementares', '', false, 2000),
     }
     return { ok: true, valor: { external_id: externalId, cnpj_emitente: cnpjEmitente, pedido } }

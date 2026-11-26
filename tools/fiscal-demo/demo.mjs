@@ -1,7 +1,7 @@
 // npm run fiscal:demo (critérios 54–56 da tarefa agente-fiscal-v2): com o Supabase local no ar (API 54321, banco
 // 54322), sobe o site (:3000), a API do app (:3001), as edge functions (`supabase functions serve` com variáveis
 // locais geradas aqui) e os dublês do Pagar.me (:3002), da Resend (:3003), da Meta (:3004), da IA (:3005) e da
-// BrasilAPI (:3006). Os dublês só existem aqui (Landing: "Dublês só na demonstração").
+// BrasilAPI (:3006), e o Storage do módulo Guias (:3007). Os dublês só existem aqui (Landing: "Dublês só na demonstração").
 //   --sem-funcoes   não sobe `supabase functions serve` (quando já está rodando em outro terminal)
 import { spawn, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
@@ -16,6 +16,7 @@ import { iniciarResend } from './dubles/resend.mjs';
 import { iniciarMeta } from './dubles/meta.mjs';
 import { iniciarIa } from './dubles/ia.mjs';
 import { iniciarBrasilApi } from './dubles/brasilapi.mjs';
+import { iniciarStorage } from './dubles/storage.mjs';
 
 const demo = dirname(fileURLToPath(import.meta.url));
 const raiz = resolve(demo, '..', '..');
@@ -23,7 +24,7 @@ const app = resolve(raiz, 'app');
 const windows = process.platform === 'win32';
 const args = new Set(process.argv.slice(2));
 
-export const PORTAS = { site: 3000, api: 3001, pagarme: 3002, resend: 3003, meta: 3004, ia: 3005, brasilapi: 3006 };
+export const PORTAS = { site: 3000, api: 3001, pagarme: 3002, resend: 3003, meta: 3004, ia: 3005, brasilapi: 3006, storage: 3007 };
 export const ARQUIVO_VARS = resolve(demo, 'funcoes.local.vars');
 const BANCO = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const SUPABASE = 'http://127.0.0.1:54321';
@@ -116,6 +117,13 @@ export function variaveisDoApp(s, anon) {
     FISCAL_TRIAL_SALT: s.salTeste,
     FISCAL_ALERTA_EMAIL: 'lucca@demo.local',
     AGENTE_FISCAL_SITE_URL: `http://localhost:${PORTAS.site}/agentes/fiscal/`,
+    // Módulo Guias: Storage dublê (o navegador sobe direto nele), link /g/<token> servido pela API da demo.
+    FISCAL_GUIAS_STORAGE_URL: local(PORTAS.storage),
+    FISCAL_GUIAS_STORAGE_URL_PUBLICA: `http://localhost:${PORTAS.storage}`,
+    FISCAL_GUIAS_STORAGE_KEY: 'demo-storage-local',
+    GUIAS_LINK_SEGREDO: s.linkGuias,
+    GUIAS_LINK_BASE_URL: `http://localhost:${PORTAS.api}`,
+    GUIAS_TETO_DIARIO: '200',
     DEMO_API_PORTA: String(PORTAS.api)
   };
 }
@@ -197,7 +205,7 @@ async function principal() {
   instalarSeFaltar(demo, 'tsx');
   await cuponsDaDemo();
   const anon = anonLocal();
-  const s = { cron: rand(), salTeste: rand(), salAcesso: rand(), metaSegredo: rand(), metaVerificacao: rand(), webhookPagarme: rand(12) };
+  const s = { cron: rand(), salTeste: rand(), salAcesso: rand(), metaSegredo: rand(), metaVerificacao: rand(), webhookPagarme: rand(12), linkGuias: rand(32) };
   escreverVars(variaveisDasFuncoes(s));
 
   const urls = { site: `http://localhost:${PORTAS.site}`, resend: `http://localhost:${PORTAS.resend}`, pagarme: `http://localhost:${PORTAS.pagarme}`, meta: `http://localhost:${PORTAS.meta}`, ia: `http://localhost:${PORTAS.ia}` };
@@ -205,6 +213,7 @@ async function principal() {
   await iniciarResend({ porta: PORTAS.resend });
   await iniciarIa({ porta: PORTAS.ia });
   await iniciarBrasilApi({ porta: PORTAS.brasilapi });
+  await iniciarStorage({ porta: PORTAS.storage });
   await iniciarMeta({ porta: PORTAS.meta, webhookUrl: `http://127.0.0.1:${PORTAS.api}/api/whatsapp/webhook`, segredo: s.metaSegredo, phoneNumberId: PHONE_NUMBER_ID, numeroAgente: NUMERO_AGENTE, donoPadrao });
   const configJs = `/* config.js da demonstração local (tools/fiscal-demo), servido no lugar do de produção. */\nwindow.NOFISCAL_CONFIG = ${JSON.stringify({
     supabaseUrl: urls.site, anonKey: anon, funcoesUrl: `${urls.site}/functions/v1`, apiBase: '/agentes/fiscal/api', whatsappAgente: NUMERO_AGENTE, pagarmeApiUrl: `${urls.pagarme}/core/v5`, codigoFixoDemo: CODIGO_FIXO_DEMO
@@ -237,6 +246,7 @@ async function principal() {
   e-mails ......... ${urls.resend}   (o código de 6 dígitos aparece aqui; ou use ${CODIGO_FIXO_DEMO})
   WhatsApp ........ ${urls.meta}/conversa
   Pagar.me ........ ${urls.pagarme}   IA ... ${urls.ia}   BrasilAPI ... http://localhost:${PORTAS.brasilapi}
+  Storage (Guias) . http://localhost:${PORTAS.storage}   (fluxo das guias de ponta a ponta: node --import tsx tools/fiscal-demo/guias-e2e.mjs)
   cupons .......... ${CUPONS_DEMO.map((k) => k.codigo).join(', ')}   (NOTESTE100 pula o pagamento)
   CNPJs de teste .. começando com 777 (os demais consultam a BrasilAPI real)
 Ctrl+C encerra tudo.`);

@@ -6,6 +6,7 @@
 // Fontes: Helvetica (métrica da Arial), porque a Arial não pode ser embutida.
 import { cmyk, degrees, PDFDocument, PDFFont, PDFName, PDFPage, PDFString, StandardFonts } from 'pdf-lib'
 import QRCode from 'qrcode'
+import { municipio as municipioIbge } from './local-prestacao.js'
 import { parseNfseXml, type NfseData, type Pessoa } from './nfse-xml.js'
 
 export const CM = 72 / 2.54
@@ -47,7 +48,9 @@ function digits(value: string | null, mask: (d: string) => string, size: number)
 }
 const fmtCnpj = (v: string | null) => digits(v, (d) => `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`, 14)
 const fmtCpf = (v: string | null) => digits(v, (d) => `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`, 11)
-const fmtCep = (v: string | null) => digits(v, (d) => `${d.slice(0, 5)}-${d.slice(5)}`, 8)
+// A Sefin devolve o CEP do emitente sem o zero à esquerda ("9220140" para 09220-140, NFS-e 56 da Bragantina, 24/11/2026):
+// CEP de 7 dígitos ganha o zero de volta.
+const fmtCep = (v: string | null) => digits(v && /^\d{7}$/.test(v) ? `0${v}` : v, (d) => `${d.slice(0, 5)}-${d.slice(5)}`, 8)
 const fmtDoc = (p: Pessoa | null) => (p?.CNPJ ? fmtCnpj(p.CNPJ) : p?.CPF ? fmtCpf(p.CPF) : '-')
 
 function fmtDate(value: string | null): string {
@@ -104,6 +107,11 @@ export function retencaoPisCofinsCsll(tp: string | null): { pis: boolean; cofins
   return { pis, cofins, csll }
 }
 
+function nomeDoMunicipio(cMun: string | null, uf: string | null): string {
+  const m = cMun ? municipioIbge(cMun) : null
+  return m ? `${m.nome}/${uf || m.uf} / ` : ''
+}
+
 function fmtEndereco(p: Pessoa | null): { endereco: string; municipio: string; ibgeCep: string } {
   const e = p?.endereco
   if (!e) return { endereco: '-', municipio: '-', ibgeCep: '-' }
@@ -111,7 +119,8 @@ function fmtEndereco(p: Pessoa | null): { endereco: string; municipio: string; i
   return {
     endereco: dash(linha),
     municipio: e.UF ? `${dash(e.cMun)} / ${e.UF}` : dash(e.cMun),
-    ibgeCep: `${dash(e.cMun)} / ${fmtCep(e.CEP)}`,
+    // "Santo André/SP / 3547809 / 09220-140": o nome sai da tabela do IBGE (o `toma/end` da DPS não leva UF).
+    ibgeCep: `${nomeDoMunicipio(e.cMun, e.UF)}${dash(e.cMun)} / ${fmtCep(e.CEP)}`,
   }
 }
 
@@ -456,15 +465,16 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   ])
 
   y = blockTitle(p, y, 'Tributação federal (exceto CBS)')
-  // tribFed da DPS: retenções (IRRF, CP, CSLL) e PIS/COFINS, com a marca de retido do tpRetPisCofins.
+  // Retenções federais da DPS (tribFed): IRRF, CP e CSLL (o INSS retido, vRetCP, aparece aqui; Robson, 25/11/2026)
+  // e PIS/COFINS, com a marca de retido do tpRetPisCofins (Presumido e Real).
   const fed = d.tribFed
   const pc = fed?.piscofins ?? null
   const ret = retencaoPisCofinsCsll(pc?.tpRetPisCofins ?? null)
   const comRetido = (valor: string | null | undefined, retido: boolean) => (valor ? `${fmtMoney(valor)}${retido ? ' (retido)' : ''}` : '-')
   y = row(p, y, [
     { label: 'IRRF retido', value: fed?.vRetIRRF ? fmtMoney(fed.vRetIRRF) : '-' },
-    { label: 'Contribuição previdenciária retida', value: fed?.vRetCP ? fmtMoney(fed.vRetCP) : '-' },
-    { label: 'CSLL retida', value: fed?.vRetCSLL ? fmtMoney(fed.vRetCSLL) : '-' },
+    { label: 'Contribuição previdenciária retida', value: fed?.vRetCP ? fmtMoney(fed.vRetCP) : '-', span: 1.4 },
+    { label: 'Contribuições sociais retidas', value: fed?.vRetCSLL ? fmtMoney(fed.vRetCSLL) : '-', span: 1.2 },
     { label: 'PIS', value: comRetido(pc?.vPis, ret.pis) },
     { label: 'COFINS', value: comRetido(pc?.vCofins, ret.cofins) },
   ])

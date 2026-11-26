@@ -224,6 +224,6 @@ describe('conversa: peças sem banco', () => {
       'Faltou no endereço da obra: bairro. Me mande o que falta, e eu monto a nota. Ou responda *descartar*.',
     )
     const resumo = textoDoResumo({ documento: '11222333000181', nome: 'Sakata', email: null }, { codigo: '070201', descricao: 'Alvenaria', obra: { cno: '123456789012' } }, '3800.00')
-    expect(resumo).toContain('Obra: CNO 12.345.67890/12\nValor: R$ 3.800,00')
+    expect(resumo).toContain('*Obra:* CNO 12.345.67890/12\n\n*Valor:* R$ 3.800,00')
   })
 })

@@ -80,7 +80,7 @@ describe('local da prestação pelo WhatsApp', () => {
     const c = conversa({ [pedido]: PRONTIA_PARSED })
     await c.enviar(s.ownerPhone, pedido)
     const [resumo, ...resto] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Descrição na nota: Consultoria em saúde\nLocal da prestação: Campinas/SP\nValor: R$ 10,00')
+    expect(resumo).toContain('*Descrição na nota:* Consultoria em saúde\n*Local da prestação:* Campinas/SP\n\n*Valor:* R$ 10,00')
     expect(resto).toEqual([])
 
     await c.enviar(s.ownerPhone, 'confirmar')
@@ -108,7 +108,7 @@ describe('local da prestação pelo WhatsApp', () => {
     expect(c.novas(s.ownerPhone)[0]).toMatch(/^Há 5 cidades chamadas Bom Jesus/)
     await c.enviar(s.ownerPhone, 'Santa Catarina')
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Local da prestação: Bom Jesus/SC\n')
+    expect(resumo).toContain('*Local da prestação:* Bom Jesus/SC\n')
     // A IA leu só o pedido: a resposta da UF é do código.
     expect(c.ia.chamadas).toEqual([pedido])
     await c.enviar(s.ownerPhone, 'confirmar')
@@ -128,14 +128,14 @@ describe('local da prestação pelo WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'corrigir')
     c.novas(s.ownerPhone)
     await c.enviar(s.ownerPhone, 'foi prestado em Campinas/SP')
-    expect(c.novas(s.ownerPhone)[0]).toContain('Local da prestação: Campinas/SP\n')
+    expect(c.novas(s.ownerPhone)[0]).toContain('*Local da prestação:* Campinas/SP\n')
     await c.enviar(s.ownerPhone, 'descartar')
     c.novas(s.ownerPhone)
 
     // A sede (o mesmo município da empresa) não entra: a nota sai como sempre.
     await c.enviar(s.ownerPhone, 'nota pra Prontia, 10 reais, prestado em São Paulo/SP')
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Resumo da nota:')
+    expect(resumo).toContain('*Resumo da nota*')
     if (s.sede === '3550308') expect(resumo).not.toContain('Local da prestação')
   })
 
@@ -145,7 +145,7 @@ describe('local da prestação pelo WhatsApp', () => {
     const c = conversa({ [pedido]: { ...PRONTIA_PARSED, municipio_prestacao: 'Lugar Nenhum' } })
     await c.enviar(s.ownerPhone, pedido)
     expect(c.novas(s.ownerPhone)).toEqual([
-      'Não achei a cidade "Lugar Nenhum" na tabela do IBGE. Escreva a cidade com a UF, por exemplo: prestado em Campinas/SP. Mande o pedido de novo.',
+      'Não achei a cidade "Lugar Nenhum" na tabela do IBGE. Escreva a cidade com a UF, por exemplo: prestado em Campinas/SP.\n\nMande o pedido de novo.',
     ])
   })
 })

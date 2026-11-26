@@ -7,7 +7,10 @@
 export const CNPJ_API_PADRAO = "https://brasilapi.com.br";
 // A BrasilAPI responde 403 ao user-agent "node" e 429 sem user-agent (22/10/2026): o nosso vai sempre explícito.
 export const USER_AGENT = "no-fiscal/1.0 (+https://www.notechstack.com.br)";
-const TEMPO_MS = 8000;
+// Espelho: `GET <CNPJ_API_ESPELHO_URL>/<cnpj>`, mesmos campos da BrasilAPI (conferido em 24/11/2026).
+export const CNPJ_API_ESPELHO = "https://minhareceita.org";
+// Por fonte. Com o espelho, o pior caso fica em ~14 s, dentro do limite da edge function.
+const TEMPO_MS = 7000;
 
 export function soDigitos(v: unknown): string {
   return typeof v === "string" ? v.replace(/\D/g, "") : "";
@@ -53,9 +56,13 @@ export function lerRegimeNormal(v: unknown): RegimeNormal | null {
 /** Fora do Simples, a consulta devolve os dados da empresa (sem regime) para o cadastro oferecer o Presumido. */
 export type DadosSemRegime = Omit<DadosCnpj, "regime">;
 
+/** O que cada fonte respondeu quando a consulta não confirmou nada (vai para a log, sem dado do CNPJ). */
+export type Tentativa = { fonte: "principal" | "espelho"; status?: number; erro?: "tempo" | "rede" | "corpo"; ms: number };
+
 export type Consulta =
   | { ok: true; dados: DadosCnpj }
-  | { ok: false; motivo: "nao_encontrado" | "indisponivel" }
+  | { ok: false; motivo: "nao_encontrado" }
+  | { ok: false; motivo: "indisponivel"; tentativas?: Tentativa[] }
   | { ok: false; motivo: "fora_do_simples"; dados?: DadosSemRegime }
   | { ok: false; motivo: "inativo"; situacao: string };
 
@@ -75,6 +82,8 @@ export async function consultarCnpj(
   o: {
     apiUrl?: string;
     reservaUrl?: string;
+    /** Espelho da BrasilAPI para quando ela falha; `null` desliga. */
+    espelhoUrl?: string | null;
     fetch?: (url: string, init?: RequestInit) => Promise<Response>;
     /** Regime confirmado à mão (nofiscal.fiscal_regime_confirmado), usado quando a base pública nega o Simples. */
     regimeConfirmado?: (cnpj: string) => Promise<Regime | null>;
@@ -97,42 +106,64 @@ export async function consultarCnpj(
   return r;
 }
 
+/** Corpo da BrasilAPI ou do espelho com tudo o que a consulta precisa; sem um campo, ela não confirma nada. */
+function completo(b: Record<string, unknown> | null): b is Record<string, unknown> {
+  return !!b && typeof b === "object" && !!codigo(b.codigo_municipio_ibge, 7) && !!texto(b.razao_social) &&
+    !!texto(b.descricao_situacao_cadastral) && "opcao_pelo_mei" in b && "opcao_pelo_simples" in b;
+}
+
 async function consultarPublico(
   cnpj: string,
-  o: { apiUrl?: string; reservaUrl?: string; fetch?: (url: string, init?: RequestInit) => Promise<Response> },
+  o: { apiUrl?: string; reservaUrl?: string; espelhoUrl?: string | null; fetch?: (url: string, init?: RequestInit) => Promise<Response> },
   regimeForcado?: Regime,
 ): Promise<Consulta> {
   const f = o.fetch ?? fetch;
   const base = (o.apiUrl || CNPJ_API_PADRAO).replace(/\/+$/, "");
-  let resp: Response;
-  const controle = new AbortController();
-  const relogio = setTimeout(() => controle.abort(), TEMPO_MS);
-  try {
-    resp = await f(`${base}/api/cnpj/v1/${cnpj}`, {
-      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-      signal: controle.signal,
-    });
-  } catch {
-    return { ok: false, motivo: "indisponivel" };
-  } finally {
-    clearTimeout(relogio);
+  // Em 23/11/2026 a BrasilAPI falhou por ~30 min e nenhum escritório conseguiu adicionar empresa. Se ela cai,
+  // demora, dá erro ou responde incompleto, pergunta ao espelho (minhareceita.org: mesma base e mesmos campos,
+  // é de onde a BrasilAPI tira o CNPJ). Só depois das duas a consulta fica indisponível.
+  const fontes: { fonte: Tentativa["fonte"]; url: string }[] = [{ fonte: "principal", url: `${base}/api/cnpj/v1/${cnpj}` }];
+  if (o.espelhoUrl !== null) {
+    fontes.push({ fonte: "espelho", url: `${(o.espelhoUrl || CNPJ_API_ESPELHO).replace(/\/+$/, "")}/${cnpj}` });
   }
-  // A BrasilAPI (e a base que ela espelha) não tem todo CNPJ: em 16/11/2026 respondeu 404 para um escritório
-  // ativo no Simples desde 2009 que a CNPJ.ws, a CNPJá e a ReceitaWS acharam. No 404, pergunta à reserva.
-  if (resp.status === 404) return await consultarReserva(cnpj, f, o.reservaUrl, regimeForcado);
-  if (!resp.ok) return { ok: false, motivo: "indisponivel" };
-  const b = await resp.json().catch(() => null) as Record<string, unknown> | null;
-  if (!b || typeof b !== "object") return { ok: false, motivo: "indisponivel" };
-  const ibge = codigo(b.codigo_municipio_ibge, 7);
+  const tentativas: Tentativa[] = [];
+  let b: Record<string, unknown> | null = null;
+  for (const { fonte, url } of fontes) {
+    const inicio = Date.now();
+    const controle = new AbortController();
+    const relogio = setTimeout(() => controle.abort(), TEMPO_MS);
+    let resp: Response;
+    try {
+      resp = await f(url, { headers: { Accept: "application/json", "User-Agent": USER_AGENT }, signal: controle.signal });
+    } catch {
+      tentativas.push({ fonte, erro: controle.signal.aborted ? "tempo" : "rede", ms: Date.now() - inicio });
+      continue;
+    } finally {
+      clearTimeout(relogio);
+    }
+    // A BrasilAPI (e a base que ela espelha) não tem todo CNPJ: em 16/11/2026 respondeu 404 para um escritório
+    // ativo no Simples desde 2009 que a CNPJ.ws, a CNPJá e a ReceitaWS acharam. No 404, pergunta à reserva.
+    if (resp.status === 404) return await consultarReserva(cnpj, f, o.reservaUrl, regimeForcado);
+    if (!resp.ok) {
+      await resp.body?.cancel().catch(() => {});
+      tentativas.push({ fonte, status: resp.status, ms: Date.now() - inicio });
+      continue;
+    }
+    const corpo = await resp.json().catch(() => null) as Record<string, unknown> | null;
+    if (completo(corpo)) {
+      b = corpo;
+      break;
+    }
+    tentativas.push({ fonte, status: resp.status, erro: "corpo", ms: Date.now() - inicio });
+  }
+  if (!b) return { ok: false, motivo: "indisponivel", tentativas };
+  const ibge = codigo(b.codigo_municipio_ibge, 7)!;
   const razao = texto(b.razao_social);
-  if (!ibge || !razao) return { ok: false, motivo: "indisponivel" };
-  // Só empresa ATIVA na Receita emite (pedido de Lucca, 22/10/2026). Sem o campo, a consulta não confirma nada.
+  // Só empresa ATIVA na Receita emite (pedido de Lucca, 22/10/2026).
   const situacao = texto(b.descricao_situacao_cadastral).toUpperCase();
-  if (!situacao) return { ok: false, motivo: "indisponivel" };
   if (situacao !== "ATIVA") return { ok: false, motivo: "inativo", situacao };
   // Só MEI e Simples ME/EPP emitem (Lucca, 22/10/2026): Lucro Presumido, Real e Arbitrado ficam fora.
-  // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou); sem as chaves, não confirma nada.
-  if (!("opcao_pelo_mei" in b) || !("opcao_pelo_simples" in b)) return { ok: false, motivo: "indisponivel" };
+  // A BrasilAPI responde true (optante hoje), false (saiu) ou null (nunca optou).
   const regime: Regime | null = regimeForcado ?? (b.opcao_pelo_mei === true ? "mei" : b.opcao_pelo_simples === true ? "simples" : null);
   const empresa: DadosSemRegime = {
     cnpj,

@@ -32,6 +32,13 @@ Deno.serve(async (request) => {
         fetch: (url, init) => fetch(url, init),
         segredoOk: async (segredo) => Boolean(await rpc("fiscal_ciclo_segredo_ok", { p_segredo: segredo })),
         vencidas: async (limite) => ((await rpc("fiscal_cancelamentos_vencidos", { p_limite: limite })) || []) as Vencida[],
+        // Módulo Guias: a assinatura separada vai junto com a principal e o módulo desligado é cancelado no Pagar.me.
+        guiasComPrincipal: async (tenantId) => { await rpc("fiscal_guias_cancelar_com_principal", { p_tenant_id: tenantId }); },
+        guiasPendentes: async (limite) =>
+          ((await rpc("fiscal_guias_cancelamentos_pendentes", { p_limite: limite })) || []) as { tenant_id: string; pagarme_subscription_id: string }[],
+        guiasCancelamentoPedido: async (tenantId, sub) => {
+          await rpc("fiscal_guias_cancelamento_pedido", { p_tenant_id: tenantId, p_subscription_id: sub });
+        },
         log,
       },
     );

@@ -469,7 +469,8 @@
      Só quando `estado.escritorio` existe (fiscal-conta, plano escritorio_5|20|50). Meus dados reaproveita as
      seções de cima (escritório, plano e assinatura, cartão, cancelamento); o certificado e os dados fiscais de cada
      empresa, inclusive a do escritório, ficam numa linha de Minhas empresas. Contas Inicial/Pro não passam daqui. */
-  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe', 'api'];
+  // 'guias' só aparece com o módulo Guias ligado (guias.js mostra o botão quando a API diz que está ligado).
+  var ABAS = ['dados', 'empresas', 'emitir', 'relatorios', 'nfe', 'api', 'guias'];
   var MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   var SITUACAO = {
     pronta: ['Pronta', 'ok'],
@@ -514,10 +515,12 @@
     var h = location.hash.replace(/^#/, '');
     if (h === 'assinatura') return 'dados';
     if (h === 'certificado') return 'empresas';
-    return ABAS.indexOf(h) >= 0 ? h : null;
+    return ABAS.indexOf(h) >= 0 && abaDisponivel(h) ? h : null;
   }
+  function abaDisponivel(a) { var b = $('fa-aba-' + a); return !!b && !b.hidden; }
   function mostrarAba(aba, opcoes) {
     opcoes = opcoes || {};
+    if (!abaDisponivel(aba)) aba = 'dados';
     ec.aba = aba;
     ABAS.forEach(function (a) {
       var tab = $('fa-aba-' + a), ativa = a === aba;
@@ -536,7 +539,10 @@
     if (aba === 'nfe' && window.contaNfe) window.contaNfe.abrir();
     // A aba API mora em integracao.js.
     if (aba === 'api' && window.contaApi) window.contaApi.abrir();
+    // A aba Guias mora em guias.js (só com o módulo ligado).
+    if (aba === 'guias' && window.contaGuias) window.contaGuias.abrir();
   }
+  window.contaAbas = { mostrar: mostrarAba, atual: function () { return ec.aba; } };
 
   function proximaCobranca(a) {
     if (!a || a.status === 'cancelada') return 'Sem cobrança';
@@ -559,6 +565,12 @@
       else { p.removeAttribute('role'); p.removeAttribute('aria-labelledby'); }
     });
     $('fa-abas').hidden = !x;
+    // O módulo Guias pergunta à API se está ligado e só então mostra a aba (e as duas mensalidades em Meus dados).
+    if (x) {
+      var fx = nf.FAIXAS[x.plano] || { centavos: null };
+      window.contaPlano = { valor: fx.centavos ? nf.reais(fx.centavos) + '/mês' : '', proxima: proximaCobranca(st.estado && st.estado.assinatura) };
+    }
+    if (window.contaGuias) window.contaGuias.verificar(!!x);
     $('certificado').hidden = !!x;
     $('fa-secao-fiscal').hidden = !!x;
     $('fa-secao-apagar').hidden = !!x;
@@ -570,11 +582,12 @@
       $('fa-painel-emitir').hidden = true;
       $('fa-painel-relatorios').hidden = true;
       $('fa-painel-nfe').hidden = true;
+      $('fa-painel-guias').hidden = true;
       $('fa-faixas').hidden = true;
       return;
     }
     var e = st.estado, a = e.assinatura, emp = e.empresa || {};
-    var faixa = nf.FAIXAS[x.plano] || { nome: 'Até ' + x.max_empresas + ' empresas', centavos: null };
+    var faixa = nf.FAIXAS[x.plano] || { nome: x.notas_limite + ' documentos', centavos: null };
     // A configuração que falta ao escritório é só pagamento e ativação; A1 e dados fiscais são por empresa.
     $('fa-retomar').hidden = !(e.onboarding_etapa === 'pagamento' || e.onboarding_etapa === 'ativacao');
 
@@ -589,7 +602,7 @@
     $('fa-plano-notas').textContent = faixa.nome + (faixa.centavos ? ' · ' + nf.reais(faixa.centavos) + '/mês' : '');
     var excedente = Number(x.notas_mes) - Number(x.notas_limite);
     $('fa-plano-uso').innerHTML = linhas([
-      ['Empresas ativas', x.empresas_ativas + ' de ' + x.max_empresas],
+      ['Empresas ativas', semLimiteDeEmpresas(x) ? String(x.empresas_ativas) : x.empresas_ativas + ' de ' + x.max_empresas],
       ['Notas do mês', x.notas_mes + ' de ' + x.notas_limite + (excedente > 0 ? ' (' + excedente + ' acima da franquia)' : '')],
       ['Próxima cobrança', proximaCobranca(a)]
     ]);
@@ -603,13 +616,16 @@
     mostrarAba(ec.aba || abaDoHash() || 'dados', { hash: false });
   }
 
+  /* Sem limite de empresas (23/11/2026): o banco devolve 100000 quando a conta não tem pacote (max_empresas_override). */
+  function semLimiteDeEmpresas(x) { return !x.max_empresas_override && Number(x.max_empresas) >= 100000; }
+
   /* ---------- trocar faixa ---------- */
   function desenharFaixas(x) {
     $('fa-faixas-lista').innerHTML = Object.keys(nf.FAIXAS).map(function (c) {
       var f = nf.FAIXAS[c], atual = c === x.plano, pequena = Number(x.empresas_ativas) > (Number(x.max_empresas_override) || f.empresas);
       return '<button type="button" class="nf-faixa' + (atual ? ' nf-faixa--atual' : '') + '" data-faixa="' + c + '"' +
         (atual ? ' disabled aria-current="true"' : '') + '><b>' + nf.esc(f.nome) + '</b><span>' + nf.esc(nf.reais(f.centavos)) +
-        '/mês · ' + f.notas + ' notas por mês</span>' +
+        '/mês · empresas ilimitadas</span>' +
         (atual ? '<small>Faixa atual</small>' : pequena ? '<small>Você tem ' + x.empresas_ativas + ' empresas ativas</small>' : '') + '</button>';
     }).join('');
     $('fa-confirmar-faixa').hidden = true;
@@ -791,8 +807,9 @@
   }
   function desenharEmpresas(x) {
     var f = nf.FAIXAS[x.plano];
-    $('fa-empresas-resumo').textContent = x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' +
-      (x.max_empresas_override ? ' no seu pacote' : f ? ' na faixa ' + f.nome : '') + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
+    $('fa-empresas-resumo').textContent = (semLimiteDeEmpresas(x)
+      ? x.empresas_ativas + (Number(x.empresas_ativas) === 1 ? ' empresa ativa' : ' empresas ativas') + ', sem limite de empresas no seu plano'
+      : x.empresas_ativas + ' de ' + x.max_empresas + ' empresas ativas' + (x.max_empresas_override ? ' no seu pacote' : f ? ' na faixa ' + f.nome : '')) + '. Cada empresa emite com o próprio certificado A1 ou por procuração ao escritório, com os próprios dados fiscais.';
     var a = st.estado.assinatura, motivo = '';
     if (!a) motivo = 'Sem assinatura ativa: nenhuma empresa emite.';
     else if (a.status === 'recusada') motivo = 'Pagamento recusado: nenhuma empresa emite até o cartão ser trocado em Meus dados.';
@@ -1176,7 +1193,7 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', locacao: 'fa-av-loc', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', endereco: 'fa-av-end', locacao: 'fa-av-loc', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
   var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
@@ -1192,6 +1209,8 @@
   /* Construção civil (E0370, obra.ts): nestes códigos a Sefin exige o endereço da obra ou o CNO. */
   var CODIGOS_COM_OBRA = ['070201', '070202', '070401', '070501', '070502', '070601', '070602', '070701', '070801', '071701', '071901', '141403', '141404'];
   var CAMPOS_DA_OBRA = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cno'];
+  /* Endereço do cliente (endereco-tomador.ts): opcional; prevalece sobre o da Receita. */
+  var CAMPOS_DO_ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio'];
   function codigoDaAvulsa() {
     var c = em.seletor ? em.seletor.valor() : '';
     if (c) return String(c).replace(/\D/g, '');
@@ -1293,6 +1312,7 @@
     CAMPOS_DA_OBRA.forEach(function (k) { $('fa-av-obra-' + k).value = ''; });
     Object.keys(CAMPOS_DO_IMOVEL).forEach(function (k) { $('fa-av-loc-' + CAMPOS_DO_IMOVEL[k]).value = ''; });
     Object.keys(CAMPOS_DO_BEM).forEach(function (k) { $('fa-av-loc-' + CAMPOS_DO_BEM[k]).value = ''; });
+    CAMPOS_DO_ENDERECO.forEach(function (k) { $('fa-av-end-' + k).value = ''; });
     contarInfoAvulsa();
     prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
   }
@@ -1328,6 +1348,7 @@
     if (!$('fa-av-obra').hidden) CAMPOS_DA_OBRA.forEach(function (k) { corpo['obra_' + k] = $('fa-av-obra-' + k).value; });
     if (!$('fa-av-loc-imovel').hidden) Object.keys(CAMPOS_DO_IMOVEL).forEach(function (k) { corpo['locacao_' + k] = $('fa-av-loc-' + CAMPOS_DO_IMOVEL[k]).value; });
     if (!$('fa-av-loc-bem').hidden) Object.keys(CAMPOS_DO_BEM).forEach(function (k) { corpo[k] = $('fa-av-loc-' + CAMPOS_DO_BEM[k]).value; });
+    CAMPOS_DO_ENDERECO.forEach(function (k) { corpo['tomador_' + k] = $('fa-av-end-' + k).value; });
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     if (retAv.visivel()) {
       var r = retAv.ler();
@@ -1361,6 +1382,7 @@
       nf.ocupado(botao, false);
       if (r.ok) { em.pedido = corpo; em.chave = novaChave(); desenharResumoAvulsa(r.dados); return; }
       if (r.status === 401) return;
+      if (r.dados && r.dados.campo === 'endereco') { erro('endereco', r.mensagem || 'Confira o endereço do cliente.'); $('fa-av-end-cep').focus(); return; }
       if (r.dados && r.dados.campo === 'obra') { atualizarObraAvulsa(true); erro('obra', r.mensagem || 'Confira os dados da obra.'); $('fa-av-obra-cep').focus(); return; }
       if (r.dados && r.dados.campo === 'locacao') { atualizarLocacaoAvulsa(); erro('locacao', r.mensagem || 'Confira os dados da locação.'); var l = $(codigoDaAvulsa() === '990401' ? 'fa-av-loc-ncm' : 'fa-av-loc-cep'); if (l) l.focus(); return; }
       if (r.dados && CAMPO_AVULSA[r.dados.campo]) { erro(r.dados.campo, r.mensagem || 'Confira este campo.'); var c = $(CAMPO_AVULSA[r.dados.campo]); if (c) c.focus(); return; }
@@ -1373,6 +1395,7 @@
       ['Empresa', (emp.razao_social || '') + ' · ' + nf.formatarCnpj(emp.cnpj || '')],
       ['Cliente', t.nome],
       [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
+      ['Endereço' + (s.endereco_origem === 'receita' ? ' (Receita)' : ''), s.endereco_tomador ? textoDoEndereco(s.endereco_tomador) : (t.tipo === 'cnpj' ? 'Não achei na Receita agora; a nota sai sem endereço' : 'Sem endereço')],
       ['E-mail', t.email || 'Sem e-mail'],
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
       ['Descrição na nota', sv.descricao]
@@ -1390,7 +1413,7 @@
     $('fa-av-resumo').hidden = false;
     $('fa-av-resumo-titulo').focus();
   }
-  /* Retenção no resumo: ISS (alíquota e valor), INSS, valor líquido e o endereço do cliente que vai na nota. */
+  /* Retenção no resumo: ISS (alíquota e valor), INSS e valor líquido. O endereço do cliente fica no topo do resumo. */
   function linhasRetencaoDoResumo(s) {
     var r = s.retencao;
     if (!r) return [];
@@ -1398,9 +1421,10 @@
     if (r.iss) out.push(['ISS retido pelo tomador', comVirgula(r.iss.aliquota) + '% (R$ ' + valorTexto(r.iss.valor) + ')']);
     if (r.inss) out.push(['INSS retido', 'R$ ' + valorTexto(r.inss.valor)]);
     out.push(['Valor líquido', 'R$ ' + valorTexto(r.liquido)]);
-    var e = s.endereco_tomador;
-    if (e) out.push(['Endereço do cliente (Receita)', e.logradouro + ', ' + e.numero + (e.complemento ? ' ' + e.complemento : '') + ' · ' + e.bairro + ' · CEP ' + e.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')]);
     return out;
+  }
+  function textoDoEndereco(e) {
+    return e.logradouro + ', ' + e.numero + (e.complemento ? ', ' + e.complemento : '') + ' · ' + e.bairro + ' · CEP ' + String(e.cep).replace(/^(\d{5})(\d{3})$/, '$1-$2');
   }
   function fecharResumoAvulsa() {
     $('fa-av-resumo').hidden = true;
@@ -1475,9 +1499,11 @@
       return '<li>' + nf.esc(p.razao_social + ': ' + plural(p.notas, 'nota', 'notas') + ', ' + nf.reais(centavosDoTexto(p.total))) + '</li>';
     }).join('');
     var f = d.franquia || {};
-    nf.aviso($('fa-lote-franquia'), f.acima > 0
-      ? nf.esc('Franquia: com estas notas, o mês chega a ' + plural(f.no_mes + d.prontas, 'nota', 'notas') + ', ' + f.acima.toLocaleString('pt-BR') + ' acima das ' + f.limite.toLocaleString('pt-BR') + ' do seu plano. As notas saem normalmente.')
-      : '', 'info');
+    var semEnd = d.sem_endereco || [];
+    var avisosLote = [];
+    if (f.acima > 0) avisosLote.push('Franquia: com estas notas, o mês chega a ' + plural(f.no_mes + d.prontas, 'nota', 'notas') + ', ' + f.acima.toLocaleString('pt-BR') + ' acima das ' + f.limite.toLocaleString('pt-BR') + ' do seu plano. As notas saem normalmente.');
+    if (semEnd.length) avisosLote.push('Sem endereço do cliente: ' + plural(semEnd.length, 'nota sai', 'notas saem') + ' sem o endereço' + (semEnd.length <= 10 ? ' (' + (semEnd.length === 1 ? 'linha ' : 'linhas ') + semEnd.join(', ') + ')' : '') + ', porque não achei o CNPJ na Receita agora. Para pôr o endereço, preencha as colunas tomador_* e envie de novo.');
+    nf.aviso($('fa-lote-franquia'), avisosLote.map(nf.esc).join('<br>'), 'info');
     var problemas = d.problemas || [];
     $('fa-lote-rolagem').hidden = problemas.length === 0;
     $('fa-lote-problemas').innerHTML = problemas.map(function (p) {
@@ -1530,6 +1556,7 @@
   $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
   $('fa-av-info').addEventListener('input', contarInfoAvulsa);
   $('fa-av-local').addEventListener('focus', carregarMunicipios);
+  $('fa-av-end-municipio').addEventListener('focus', carregarMunicipios);
   // O seletor de código é recriado a cada empresa ou modelo: a escuta fica no formulário.
   ['click', 'change', 'input'].forEach(function (tipo) {
     $('fa-form-avulsa').addEventListener(tipo, function (ev) { if (!ev.target.closest || !ev.target.closest('#fa-av-obra')) atualizarObraAvulsa(); });
@@ -1560,11 +1587,11 @@
     if (b) mostrarAba(b.getAttribute('data-aba'));
   });
   $('fa-abas').addEventListener('keydown', function (ev) {
-    var i = ABAS.indexOf(ec.aba), n = null;
-    if (ev.key === 'ArrowRight') n = ABAS[(i + 1) % ABAS.length];
-    else if (ev.key === 'ArrowLeft') n = ABAS[(i + ABAS.length - 1) % ABAS.length];
-    else if (ev.key === 'Home') n = ABAS[0];
-    else if (ev.key === 'End') n = ABAS[ABAS.length - 1];
+    var vis = ABAS.filter(abaDisponivel), i = vis.indexOf(ec.aba), n = null;
+    if (ev.key === 'ArrowRight') n = vis[(i + 1) % vis.length];
+    else if (ev.key === 'ArrowLeft') n = vis[(i + vis.length - 1) % vis.length];
+    else if (ev.key === 'Home') n = vis[0];
+    else if (ev.key === 'End') n = vis[vis.length - 1];
     if (n) { ev.preventDefault(); mostrarAba(n, { foco: true }); }
   });
   window.addEventListener('hashchange', function () {

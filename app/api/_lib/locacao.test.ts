@@ -257,7 +257,7 @@ describe('flag e regras de leitura', () => {
     const r = lerLocacao({ imovel: IMOVEL }, LOCACAO_IMOVEL, '2500.00')
     if (!r.ok || !r.locacao) throw new Error('esperava locação')
     const linhas = linhasDaLocacao(r.locacao)
-    expect(linhas[0]).toBe('Tipo: *locação de imóvel residencial* (99.03.01), sem ISS')
+    expect(linhas[0]).toBe('Tipo: locação de imóvel residencial (99.03.01), sem ISS')
     expect(linhas[1]).toBe('Imóvel: Rua das Flores, 120, apto 32 - Centro, CEP 13015-100, Campinas/SP')
     expect(avisosDaLocacao(LOCACAO_IMOVEL, 'simples')[0]).toMatch(/impeditiva do Simples/)
     expect(avisosDaLocacao(LOCACAO_IMOVEL, 'presumido')).toEqual([])

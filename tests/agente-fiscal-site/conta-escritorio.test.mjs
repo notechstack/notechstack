@@ -27,7 +27,7 @@ function estadoEscritorio(extra = {}, esc = {}) {
     onboarding_etapa: 'concluido', plano: 'escritorio_5',
     empresa: { cnpj: '11222333000181', razao_social: 'CONTABIL SANDRA LTDA', municipio: null, uf: null, cnae: '6920601', regime: 'simples', responsavel: 'Sandra Teste', email: 'sandra@exemplo.com', telefone: '+5511987654321' },
     assinatura: { status: 'paga', com_teste: false, trial_ends_at: null, periodo_fim: '2026-12-05T15:00:00.000Z', cancelamento_agendado_para: null, cortesia: false, ciclo: 'mensal' },
-    escritorio: { escritorio_tenant_id: TENANT, plano: 'escritorio_5', max_empresas: 5, empresas_ativas: 4, notas_limite: 500, notas_mes: 37, empresas: empresas(), ...esc },
+    escritorio: { escritorio_tenant_id: TENANT, plano: 'escritorio_5', max_empresas: 100000, empresas_ativas: 4, notas_limite: 500, notas_mes: 37, empresas: empresas(), ...esc },
     ...extra
   });
 }
@@ -85,15 +85,17 @@ test('abas e Meus dados do escritório', async () => {
   const p = await painel();
   assert.ok(p.visivel('fa-abas'));
   assert.equal(p.$('fa-abas').getAttribute('role'), 'tablist');
-  const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')];
-  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios', 'NF-e']);
+  // A aba Guias só aparece com o módulo ligado (conta-guias.test.mjs); sem ele, as abas de sempre.
+  const abas = [...p.$('fa-abas').querySelectorAll('[role=tab]')].filter((a) => !a.hidden);
+  assert.deepEqual(abas.map((a) => p.texto(a)), ['Meus dados', 'Minhas empresas', 'Emitir', 'Relatórios', 'NF-e', 'API']);
+  assert.equal(p.visivel('fa-aba-guias'), false);
   assert.equal(p.$('fa-aba-dados').getAttribute('aria-selected'), 'true');
   assert.equal(p.$('fa-painel-dados').getAttribute('role'), 'tabpanel');
   assert.ok(p.visivel('fa-painel-dados'));
   assert.equal(p.visivel('fa-painel-empresas'), false);
 
   const t = p.textoVisivel();
-  for (const s of ['Escritório', 'CONTABIL SANDRA LTDA', '11.222.333/0001-81', 'Sandra Teste', 'sandra@exemplo.com', 'Até 5 empresas · R$ 297/mês', '4 de 5', '37 de 500', '05/12/2026']) {
+  for (const s of ['Escritório', 'CONTABIL SANDRA LTDA', '11.222.333/0001-81', 'Sandra Teste', 'sandra@exemplo.com', '500 documentos · R$ 297/mês', '37 de 500', '05/12/2026']) {
     assert.ok(t.includes(s), `"${s}" em Meus dados`);
   }
   assert.equal(p.texto('fa-status'), 'Ativa');
@@ -106,15 +108,16 @@ test('abas e Meus dados do escritório', async () => {
   assert.ok(p.visivel('fa-secao-cancelar'));
   assert.equal(p.visivel('fa-retomar'), false);
 
-  // Trocar faixa: as três faixas, a atual marcada; confirma antes de chamar.
+  // Trocar faixa: as cinco faixas por volume, a atual marcada; confirma antes de chamar.
   await p.clicar('fa-abrir-faixas');
   const faixas = [...p.$('fa-faixas-lista').querySelectorAll('button')];
-  assert.deepEqual(faixas.map((b) => b.querySelector('b').textContent), ['Até 5 empresas', 'Até 20 empresas', 'Até 50 empresas']);
-  assert.ok(p.texto(faixas[1]).includes('R$ 797/mês') && p.texto(faixas[2]).includes('R$ 1.497/mês'));
+  assert.deepEqual(faixas.map((b) => b.querySelector('b').textContent), ['500 documentos', '1.000 documentos', '2.000 documentos', '5.000 documentos', '10.000 documentos']);
+  assert.ok(p.texto(faixas[1]).includes('R$ 497/mês') && p.texto(faixas[2]).includes('R$ 797/mês') && p.texto(faixas[4]).includes('R$ 2.497/mês'));
+  assert.ok(p.texto(faixas[2]).includes('empresas ilimitadas'));
   assert.equal(faixas[0].disabled, true);
-  await p.clicar(faixas[1]);
+  await p.clicar(faixas[2]);
   assert.equal(p.rede.de('fiscal-conta:trocar_plano').length, 0, 'só pergunta');
-  assert.match(p.texto('fa-faixa-pergunta'), /^Trocar para a faixa Até 20 empresas, R\$ 797\/mês\?/);
+  assert.match(p.texto('fa-faixa-pergunta'), /^Trocar para a faixa 2\.000 documentos, R\$ 797\/mês\?/);
   await p.clicar('fa-faixa-sim');
   assert.deepEqual(p.rede.de('fiscal-conta:trocar_plano')[0].corpo, { acao: 'trocar_plano', plano: 'escritorio_20' });
 });
@@ -132,7 +135,8 @@ test('troca de faixa recusada e aba pelo endereço', async () => {
   assert.equal(p.window.location.hash, '#dados');
   await p.clicar('fa-abrir-faixas');
   const cinco = p.$('fa-faixas-lista').querySelector('[data-faixa="escritorio_5"]');
-  assert.ok(p.texto(cinco).includes('Você tem 6 empresas ativas'));
+  // A faixa não limita empresas (23/11/2026): o botão não avisa; a recusa que sobra vem do servidor (pacote da conta).
+  assert.equal(p.texto(cinco).includes('Você tem 6 empresas ativas'), false);
   await p.clicar(cinco);
   await p.clicar('fa-faixa-sim');
   assert.equal(p.texto('fa-aviso-plano'), 'Você tem 6 empresas ativas, e esta faixa permite até 5. Desative empresas antes de trocar.');
@@ -160,7 +164,7 @@ test('Minhas empresas: situações e ações por linha', async () => {
   assert.equal(p.texto(botaoDe(p, TENANT, 'cert')), 'Enviar A1');
   assert.equal(botaoDe(p, EMP_OFF, 'cert'), null, 'desativada: só Reativar');
   assert.ok(botaoDe(p, EMP_OFF, 'reativar'));
-  assert.ok(p.texto('fa-empresas-resumo').startsWith('4 de 5 empresas ativas'));
+  assert.ok(p.texto('fa-empresas-resumo').startsWith('4 empresas ativas, sem limite de empresas no seu plano.'));
 
   // Enviar o A1 de uma empresa: o mesmo endpoint, com o tenant_id da linha.
   await p.clicar(botaoDe(p, EMP_PRONTA, 'cert'));
@@ -531,7 +535,10 @@ test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com conf
   await p.enviar('fa-form-avulsa');
   assert.deepEqual(p.rede.de('app:emissao:avulsa_conferir')[0].corpo, {
     tenant_id: EMP_PRONTA, documento: '529.982.247-25', nome: 'Maria Tomadora', email: 'maria@tomador.test', valor: '350',
-    codigo: '170201', descricao: 'Honorários de novembro', retem_iss: false, retem_inss: false, acao: 'avulsa_conferir'
+    codigo: '170201', descricao: 'Honorários de novembro', retem_iss: false, retem_inss: false, acao: 'avulsa_conferir',
+    informacoes_complementares: '', municipio_prestacao: '',
+    // Endereço do cliente (opcional; Bragantina, 24/11/2026): em branco, o servidor usa o da Receita (CNPJ) ou nenhum (CPF).
+    tomador_cep: '', tomador_logradouro: '', tomador_numero: '', tomador_complemento: '', tomador_bairro: '', tomador_municipio: ''
   });
   assert.ok(p.visivel('fa-av-resumo'));
   assert.equal(p.visivel('fa-form-avulsa'), false);

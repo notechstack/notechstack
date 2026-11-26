@@ -1,13 +1,16 @@
 // NF-e modelo 55, leiaute 4.00 (Pacote de Liberação 010h v1.03, Portal Nacional, nov/2026). Monta o <NFe> sem
 // assinatura: a assinatura (rsa-sha1, c14n, Reference "#NFe<chave>") vem depois, em nfe-signer.ts.
 // Escopo desta versão (.design/agente-fiscal-nfe.md): emitente de qualquer UF no Simples Nacional (CRT 1) ou MEI
-// (CRT 4), venda de mercadoria interna ou interestadual, vários itens, destinatário PF/PJ, frete, pagamento. ICMS
-// por CSOSN 101/102/103/300/400/500; PIS/COFINS sem valor (CST 49, 99 ou 07/08/09). Sem ST calculada, sem DIFAL,
+// (CRT 4), venda ou remessa (natureza da operação pelo CFOP, natureza.ts) interna ou interestadual, vários itens, destinatário PF/PJ, frete, pagamento. ICMS
+// por CSOSN 101/102/103/300/400/500; PIS/COFINS sem valor (CST 49, 99 ou 07/08/09). Transporte: modalidade do frete,
+// transportador e volumes (grupo transp, sem retenção de ICMS do transporte nem veículo). Sem ST calculada, sem DIFAL,
 // sem exportação. A ordem dos elementos segue o XSD; o teste valida contra ele.
 import { randomInt } from 'node:crypto'
 import { el, leaf } from '../xml.js'
-import { CODIGO_UF, TP_AMB, type AmbienteNfe, type Uf } from './autorizadores.js'
+import { cnpjValido, cpfValido } from '../agente/documentos.js'
+import { CODIGO_UF, TP_AMB, UFS, type AmbienteNfe, type Uf } from './autorizadores.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
+import { avisosDaNatureza, LIMITE_NATUREZA, naturezaDaNota } from './natureza.js'
 
 export const VERSAO_NFE = '4.00'
 export const NS_NFE = 'http://www.portalfiscal.inf.br/nfe'
@@ -82,6 +85,40 @@ export type Pagamento = {
   indicador?: '0' | '1' | null
 }
 
+export type ModalidadeFrete = '0' | '1' | '2' | '3' | '4' | '9'
+export const MODALIDADES_FRETE: Record<ModalidadeFrete, string> = {
+  '0': 'Por conta do emitente (CIF)',
+  '1': 'Por conta do destinatário (FOB)',
+  '2': 'Por conta de terceiros',
+  '3': 'Transporte próprio do remetente',
+  '4': 'Transporte próprio do destinatário',
+  '9': 'Sem frete',
+}
+
+/** Grupo transporta: todos os campos são opcionais no leiaute; vai ao XML o que estiver preenchido. */
+export type Transportador = {
+  /** CNPJ (14) ou CPF (11). */
+  documento?: string | null
+  nome?: string | null
+  /** Inscrição estadual (só dígitos) ou "ISENTO". */
+  inscricaoEstadual?: string | null
+  /** Endereço completo numa linha (xEnder). */
+  endereco?: string | null
+  municipio?: string | null
+  uf?: Uf | string | null
+}
+
+/** Grupo vol: um por volume transportado (ou um com a soma). */
+export type Volume = {
+  quantidade?: number | null
+  especie?: string | null
+  marca?: string | null
+  numeracao?: string | null
+  /** Em kg, até 3 casas. */
+  pesoLiquido?: number | null
+  pesoBruto?: number | null
+}
+
 export type ResponsavelTecnico = { cnpj: string; contato: string; email: string; fone: string }
 
 export type NfeInput = {
@@ -92,13 +129,16 @@ export type NfeInput = {
   serie: number
   numero: number
   emissao: Date
-  naturezaOperacao?: string
+  /** Natureza da operação (natOp). Sem ela, sai do CFOP dos itens (natureza.ts). */
+  naturezaOperacao?: string | null
   /** 0 normal, 1 consumidor final. Padrão: 1 se o destinatário não é contribuinte, senão 0. */
   consumidorFinal?: '0' | '1'
   /** 1 presencial, 2 internet, 3 teleatendimento, 9 outros, 0 não se aplica. */
   presenca?: '0' | '1' | '2' | '3' | '4' | '5' | '9'
   /** 0 emitente (CIF), 1 destinatário (FOB), 2 terceiros, 3 próprio remetente, 4 próprio destinatário, 9 sem frete. */
-  modalidadeFrete?: '0' | '1' | '2' | '3' | '4' | '9'
+  modalidadeFrete?: ModalidadeFrete
+  transportador?: Transportador | null
+  volumes?: Volume[] | null
   pagamentos: Pagamento[]
   informacoesComplementares?: string | null
   responsavelTecnico?: ResponsavelTecnico | null
@@ -291,6 +331,8 @@ export function validarNfe(input: NfeInput): string[] {
       p.push(`${n}: desconto maior ou igual ao valor do produto`)
     }
   })
+  validarTransporte(input, p)
+  if ((input.naturezaOperacao ?? '').replace(/\s+/g, ' ').trim().length > LIMITE_NATUREZA) p.push(`natureza da operação: até ${LIMITE_NATUREZA} caracteres`)
   if (input.pagamentos.length === 0) p.push('informe a forma de pagamento')
   for (const pag of input.pagamentos) {
     if (!/^\d{2}$/.test(pag.forma)) p.push(`pagamento: forma "${pag.forma}" inválida`)
@@ -305,6 +347,74 @@ export function validarNfe(input: NfeInput): string[] {
     if (!semPagamento && pago < total) p.push(`pagamento (R$ ${dec2(pago)}) menor que o total da nota (R$ ${dec2(total)})`)
   }
   return p
+}
+
+/** Transportador com algum campo preenchido (o grupo vazio não vai ao XML). */
+export function temTransportador(t: Transportador | null | undefined): t is Transportador {
+  return !!t && [t.documento, t.nome, t.inscricaoEstadual, t.endereco, t.municipio, t.uf].some((v) => !vazio(v))
+}
+/** Volume com algum campo preenchido (zero conta como preenchido nos números). */
+export function temVolume(v: Volume | null | undefined): v is Volume {
+  return !!v && ([v.especie, v.marca, v.numeracao].some((x) => !vazio(x)) || [v.quantidade, v.pesoLiquido, v.pesoBruto].some((x) => x !== null && x !== undefined))
+}
+export const volumesDaNota = (input: Pick<NfeInput, 'volumes'>) => (input.volumes ?? []).filter(temVolume)
+/** Peso em kg com até 3 casas (TDec_1203). */
+const pesoValido = (x: number | null | undefined) =>
+  x === null || x === undefined || (Number.isFinite(x) && x >= 0 && x < 1e12 && Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6)
+
+function validarTransporte(input: NfeInput, p: string[]) {
+  const mod = input.modalidadeFrete
+  if (mod !== undefined && mod !== null && !(mod in MODALIDADES_FRETE)) p.push(`modalidade do frete "${mod}" inválida (0, 1, 2, 3, 4 ou 9)`)
+  const t = input.transportador
+  if (temTransportador(t)) {
+    if (mod === undefined || mod === null) {
+      p.push('transportador informado: informe também a modalidade do frete (0 emitente, 1 destinatário, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)')
+    }
+    const doc = soDigitos(t.documento)
+    if (doc && !(doc.length === 14 ? cnpjValido(doc) : doc.length === 11 && cpfValido(doc))) p.push('transportador: CPF ou CNPJ inválido')
+    const nome = limpo(t.nome)
+    if (nome && nome.length < 2) p.push('transportador: nome com pelo menos 2 letras')
+    const ie = limpo(t.inscricaoEstadual)
+    if (ie && !/^isento$/i.test(ie) && !/^\d{2,14}$/.test(soDigitos(ie))) p.push('transportador: inscrição estadual de 2 a 14 dígitos (ou ISENTO)')
+    if (ie && !doc) p.push('transportador: a inscrição estadual pede o CPF ou CNPJ do transportador')
+    if (!vazio(t.uf) && !UFS.includes(limpo(t.uf).toUpperCase() as Uf)) p.push(`transportador: UF "${limpo(t.uf)}" inválida`)
+  }
+  const vols = volumesDaNota(input)
+  if (vols.length > 5000) p.push('a NF-e aceita no máximo 5.000 volumes')
+  vols.forEach((v, i) => {
+    const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
+    if (v.quantidade !== null && v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 0 && v.quantidade < 1e15)) {
+      p.push(`${n}: quantidade de volumes deve ser um número inteiro, zero ou mais`)
+    }
+    if (!pesoValido(v.pesoLiquido)) p.push(`${n}: peso líquido deve ser zero ou mais, com até 3 casas (kg)`)
+    if (!pesoValido(v.pesoBruto)) p.push(`${n}: peso bruto deve ser zero ou mais, com até 3 casas (kg)`)
+  })
+}
+
+/**
+ * Avisos que não impedem a nota (a Sefaz aceita), mas costumam ser erro de digitação: peso bruto menor que o líquido,
+ * transportador sem nome ou sem documento, modalidade "sem frete" com transportador.
+ */
+/** Peso para texto em português: 60,4 kg. */
+export const kg = (x: number) => `${x.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
+
+export function avisosNfe(
+  input: Pick<NfeInput, 'transportador' | 'volumes' | 'modalidadeFrete'> & Partial<Pick<NfeInput, 'itens' | 'naturezaOperacao' | 'pagamentos'>>,
+): string[] {
+  const a: string[] = avisosDaNatureza(input)
+  volumesDaNota(input).forEach((v, i, vols) => {
+    const n = vols.length > 1 ? `volume ${i + 1}` : 'volumes'
+    if (v.pesoLiquido != null && v.pesoBruto != null && v.pesoBruto < v.pesoLiquido) {
+      a.push(`${n}: peso bruto (${kg(v.pesoBruto)}) menor que o peso líquido (${kg(v.pesoLiquido)}); confira`)
+    }
+  })
+  const t = input.transportador
+  if (temTransportador(t)) {
+    if (vazio(t.nome)) a.push('transportador sem nome (razão social)')
+    if (!soDigitos(t.documento)) a.push('transportador sem CPF ou CNPJ')
+    if (input.modalidadeFrete === '9') a.push('modalidade "sem frete" (9) com transportador informado; confira a modalidade')
+  }
+  return a
 }
 
 function validarEndereco(quem: string, end: Endereco, p: string[], cepObrigatorio: boolean) {
@@ -356,11 +466,92 @@ function endereco(tag: string, end: Endereco): string {
   ])
 }
 
+/** vCredICMSSN do item (centavos): alíquota do crédito sobre o valor do produto, arredondado no item. */
+const creditoDoItem = (item: Item) => centavos((valorProduto(item) / 100) * (Number(item.aliquotaCreditoSN) / 100))
+
+// --- crédito do Simples (CSOSN 101) nas informações complementares ---------------------------------------------
+// Art. 23 da LC 123/2006 e art. 59 da Resolução CGSN 140/2018: com CSOSN 101, o documento traz a frase do crédito com
+// o valor e a alíquota. O valor é a SOMA dos vCredICMSSN dos itens (o que o destinatário escritura), não a alíquota
+// sobre o total: na NF-e 4081 da POLI BOX, 8 itens a 2,84% somam R$ 33,47, e 2,84% de R$ 1.178,75 daria R$ 33,48.
+// Decisão (24/11/2026): itens com alíquotas diferentes levam o total e as alíquotas em ordem crescente, "às alíquotas de
+// 2,56% e 3,95%"; não se quebra o crédito por alíquota (a lei pede o valor do crédito e a alíquota aplicada).
+
+export type CreditoSn = { centavos: number; aliquotas: number[] }
+
+/** Crédito do Simples da nota (null sem item com CSOSN 101). */
+export function creditoIcmsSn(itens: Item[]): CreditoSn | null {
+  const com = itens.filter((i) => i.csosn === '101' && Number(i.aliquotaCreditoSN) > 0)
+  if (com.length === 0) return null
+  const aliquotas = [...new Set(com.map((i) => Number(i.aliquotaCreditoSN)))].sort((a, b) => a - b)
+  return { centavos: com.reduce((s, i) => s + creditoDoItem(i), 0), aliquotas }
+}
+
+const reaisBr = (cents: number) =>
+  (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const percentualBr = (x: number) => `${decN(x, 2, 4).replace('.', ',')}%`
+const listaBr = (xs: string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`)
+
+/** "Permite o aproveitamento do crédito de ICMS no valor de R$ X, correspondente à alíquota de Y%" (sem o fim). */
+function nucleoDaFrase(c: CreditoSn): string {
+  const aliq = listaBr(c.aliquotas.map(percentualBr))
+  return `Permite o aproveitamento do crédito de ICMS no valor de R$ ${reaisBr(c.centavos)}, correspondente ${c.aliquotas.length > 1 ? 'às alíquotas' : 'à alíquota'} de ${aliq}`
+}
+
+/** Para os resumos antes de emitir: "R$ 33,47 (alíquota de 2,84%)"; null sem item com CSOSN 101. */
+export function resumoCreditoSn(itens: Item[]): string | null {
+  const c = creditoIcmsSn(itens)
+  if (!c) return null
+  return `R$ ${reaisBr(c.centavos)} (${c.aliquotas.length > 1 ? 'alíquotas de' : 'alíquota de'} ${listaBr(c.aliquotas.map(percentualBr))})`
+}
+
+/** A frase completa, como vai quando o texto do usuário não a traz. */
+export function fraseCreditoSn(c: CreditoSn): string {
+  return `${nucleoDaFrase(c)}, nos termos do art. 23 da LC 123/2006.`
+}
+
+// A frase como o usuário costuma escrever (com ou sem acento, maiúsculas, "R$0,00", "à/a/às alíquota(s)"): o valor e as
+// alíquotas que vierem são trocados pelos calculados; o resto do texto fica como está.
+const FRASE_CREDITO =
+  /permite\s+o\s+aproveitamento\s+do\s+cr[eé]dito\s+de\s+icms\s+no\s+valor\s+de\s+r\$\s*[\d.,]*\s*,?\s*correspondente\s+(?:[aà]s?\s+)?al[ií]quotas?\s+de\s+[\d.,]*\s*%(?:\s*(?:,|e)\s*[\d.,]+\s*%)*/giu
+
+/** A frase com o fim "nos termos do art. 23 da LC 123/2006" (para tirá-la inteira quando vai para o início). */
+const FRASE_CREDITO_INTEIRA = new RegExp(
+  String.raw`${FRASE_CREDITO.source}(?:\s*,?\s*nos\s+termos\s+do\s+art\.?\s*23[^.]*(?:\.\d+[^.]*)*)?\.?`,
+  'giu',
+)
+
+const LIMITE_INF_CPL = 5000
+/** Mesmo saneamento do txt() da montagem, sem cortar: o limite é aplicado aqui, protegendo a frase. */
+const sanear = (s: string) => latin1(s).replace(/\s+/g, ' ').trim()
+
+/**
+ * Informações complementares que vão ao XML (infCpl). Sem item com CSOSN 101, o texto do usuário como está. Com 101:
+ * se o texto já traz a frase do crédito, o valor e a alíquota são trocados pelos calculados; se não traz, a frase vai
+ * no início, antes do texto do usuário. A frase nunca é cortada pelo limite de 5.000 caracteres: corta-se o texto do usuário.
+ */
+export function informacoesComplementaresDaNota(texto: string | null | undefined, itens: Item[]): string | null {
+  const usuario = sanear(texto ?? '')
+  const credito = creditoIcmsSn(itens)
+  if (!credito) return usuario ? usuario.slice(0, LIMITE_INF_CPL) : null
+  const nucleo = nucleoDaFrase(credito)
+  let achou = false
+  const trocado = usuario.replace(FRASE_CREDITO, (m) => {
+    achou = true
+    return m === m.toUpperCase() ? nucleo.toUpperCase() : nucleo
+  })
+  if (achou && sanear(trocado).length <= LIMITE_INF_CPL) return sanear(trocado)
+  // Sem a frase (ou com ela e o texto passando do limite): a frase completa no início e o resto do texto depois.
+  const frase = sanear(fraseCreditoSn(credito))
+  const resto = sanear(usuario.replace(FRASE_CREDITO_INTEIRA, '').replace(/^[\s.,;:-]+/, '').replace(/\s+([.,;])/g, '$1'))
+  if (!resto) return frase
+  return `${frase} ${resto}`.slice(0, LIMITE_INF_CPL).trim()
+}
+
 function icms(item: Item): string {
   const orig = item.origem ?? '0'
   switch (item.csosn) {
     case '101': {
-      const credito = centavos((valorProduto(item) / 100) * (Number(item.aliquotaCreditoSN) / 100))
+      const credito = creditoDoItem(item)
       return el('ICMS', el('ICMSSN101', [
         leaf('orig', orig),
         leaf('CSOSN', '101'),
@@ -419,6 +610,36 @@ function detalhe(item: Item, n: number): string {
   )
 }
 
+const peso = (x: number | null | undefined) => (x === null || x === undefined ? null : x.toFixed(3))
+
+function grupoTransp(input: NfeInput, freteCentavos: number): string {
+  const tr = input.transportador
+  let transporta: string | null = null
+  if (temTransportador(tr)) {
+    const doc = soDigitos(tr.documento)
+    const ie = limpo(tr.inscricaoEstadual)
+    transporta = el('transporta', [
+      doc.length === 14 ? leaf('CNPJ', doc) : doc.length === 11 ? leaf('CPF', doc) : null,
+      leaf('xNome', opt(tr.nome, 60)),
+      ie ? leaf('IE', /^isento$/i.test(ie) ? 'ISENTO' : soDigitos(ie)) : null,
+      leaf('xEnder', opt(tr.endereco, 60)),
+      leaf('xMun', opt(tr.municipio, 60)),
+      vazio(tr.uf) ? null : leaf('UF', limpo(tr.uf).toUpperCase()),
+    ])
+  }
+  const vols = volumesDaNota(input).map((v) =>
+    el('vol', [
+      v.quantidade === null || v.quantidade === undefined ? null : leaf('qVol', String(v.quantidade)),
+      leaf('esp', opt(v.especie, 60)),
+      leaf('marca', opt(v.marca, 60)),
+      leaf('nVol', opt(v.numeracao, 60)),
+      leaf('pesoL', peso(v.pesoLiquido)),
+      leaf('pesoB', peso(v.pesoBruto)),
+    ]),
+  )
+  return el('transp', [leaf('modFrete', input.modalidadeFrete ?? (freteCentavos > 0 ? '0' : '9')), transporta, ...vols])
+}
+
 export function montarNfe(input: NfeInput): NfeMontada {
   const problemas = validarNfe(input)
   if (problemas.length) throw new NfeInvalidaError(problemas)
@@ -445,7 +666,7 @@ export function montarNfe(input: NfeInput): NfeMontada {
   const ide = el('ide', [
     leaf('cUF', CODIGO_UF[e.endereco.uf]),
     leaf('cNF', codigoNumerico),
-    leaf('natOp', txt(input.naturezaOperacao ?? 'Venda de mercadoria', 60)),
+    leaf('natOp', txt(naturezaDaNota(input.itens, input.naturezaOperacao).natureza, LIMITE_NATUREZA)),
     leaf('mod', '55'),
     leaf('serie', String(input.serie)),
     leaf('nNF', String(input.numero)),
@@ -509,7 +730,7 @@ export function montarNfe(input: NfeInput): NfeMontada {
     leaf('vNF', dec2(t.nota)),
   ]))
 
-  const transp = el('transp', leaf('modFrete', input.modalidadeFrete ?? (t.frete > 0 ? '0' : '9')))
+  const transp = grupoTransp(input, t.frete)
 
   const pago = input.pagamentos.reduce((s, x) => s + centavos(x.valor), 0)
   const pag = el('pag', [
@@ -524,9 +745,8 @@ export function montarNfe(input: NfeInput): NfeMontada {
     pago > t.nota && input.pagamentos.every((x) => x.forma !== '90') ? leaf('vTroco', dec2(pago - t.nota)) : null,
   ])
 
-  const infAdic = input.informacoesComplementares?.trim()
-    ? el('infAdic', leaf('infCpl', txt(input.informacoesComplementares, 5000)))
-    : null
+  const infCpl = informacoesComplementaresDaNota(input.informacoesComplementares, input.itens)
+  const infAdic = infCpl ? el('infAdic', leaf('infCpl', txt(infCpl, LIMITE_INF_CPL))) : null
 
   const rt = input.responsavelTecnico
   const infRespTec = rt

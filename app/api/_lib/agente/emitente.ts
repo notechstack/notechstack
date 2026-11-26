@@ -6,6 +6,7 @@
 // Conta que não é Escritório, ou com uma empresa ativa só, não tem escolha: emite pela empresa do telefone, como antes.
 import type { Queryable } from '../db.js'
 import { formatarDocumento } from './documentos.js'
+import { blocos } from './formato.js'
 import { empresasDoDono } from './lote.js'
 import { planoDeEscritorio } from './planos.js'
 
@@ -91,16 +92,19 @@ const nomeNaLista = (e: EmpresaDaConta) => `${e.razao_social}${e.principal ? ' (
 export function perguntaDoEmitente(empresas: EmpresaDaConta[], opcoes: { candidatas?: EmpresaDaConta[]; naoAchei?: string } = {}): { texto: string; opcoes: string[] } {
   const lista = opcoes.candidatas?.length ? opcoes.candidatas : empresas
   const cabe = lista.length <= MAX_EMPRESAS_NA_PERGUNTA
-  const linhas = [
+  const texto = blocos(
     opcoes.naoAchei
       ? `Não achei "${opcoes.naoAchei}" entre as empresas ativas de Minhas empresas.`
       : opcoes.candidatas?.length
         ? 'Achei mais de uma empresa com esse nome.'
         : null,
-    cabe ? 'Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.' : 'Por qual empresa sai a nota? Me mande o nome ou o CNPJ dela.',
-    ...(cabe ? lista.map((e, i) => `${i + 1}. ${nomeNaLista(e)}`) : []),
-  ].filter(Boolean)
-  return { texto: linhas.join('\n'), opcoes: cabe ? lista.map((e) => e.id) : [] }
+    [
+      cabe ? 'Por qual empresa sai a nota? Me mande o número, o nome ou o CNPJ.' : 'Por qual empresa sai a nota? Me mande o nome ou o CNPJ dela.',
+      ...(cabe ? lista.map((e, i) => `${i + 1}. ${nomeNaLista(e)}`) : []),
+    ],
+  )
+  return { texto, opcoes: cabe ? lista.map((e) => e.id) : [] }
+
 }
 
 export type EmitenteDoPedido = { id: string; razao_social: string; cnpj: string }

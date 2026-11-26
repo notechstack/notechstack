@@ -132,7 +132,7 @@ export type CobrancaPaga = {
   chave: string;
   valorCentavos: number;
   /** Os planos de fiscal_subscriptions.plano (core.ts, PlanoAssinatura; repetido aqui porque core.ts importa este arquivo). */
-  plano: "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
+  plano: "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50" | "escritorio_1000" | "escritorio_10000";
   /** O Escritório é só mensal. */
   ciclo: "mensal" | "anual";
 };
@@ -143,6 +143,8 @@ const NOME_PLANO: Record<CobrancaPaga["plano"], string> = {
   escritorio_5: "Escritório 5",
   escritorio_20: "Escritório 20",
   escritorio_50: "Escritório 50",
+  escritorio_1000: "Escritório 1.000",
+  escritorio_10000: "Escritório 10.000",
 };
 
 export function eventIdDaCobranca(chave: string): string {

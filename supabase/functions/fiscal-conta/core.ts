@@ -170,6 +170,8 @@ export type Deps = {
     fimCiclo: string | null,
   ) => Promise<{ status: string; cancelamento_agendado_para?: string }>;
   apagarConta: (userId: string) => Promise<RespostaBanco>;
+  /** Módulo Guias (20261119190000): id da assinatura "nó.fiscal Guias" ativa da conta, para o cartão novo valer nela também. */
+  assinaturaGuias?: (tenantId: string) => Promise<string | null>;
   /** Códigos da lista nacional (`codigos-servico.json`), ou null quando a lista não está à mão. */
   codigosServico?: () => Promise<Set<string> | null>;
   agora?: () => Date;
@@ -535,6 +537,17 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     if (!r || r.status >= 500) return erro(502, "PAGARME_FALHOU", MSG_PAGARME);
     if (!r.ok) return erro(402, "CARTAO_RECUSADO", MSG_CARTAO_RECUSADO);
     log("info", "fiscal_conta_cartao_trocado", { tenant_id: estado.tenant_id });
+    // O token do cartão é de uso único: a Guias recebe o cartão novo pelo id, lido da principal já trocada.
+    const guias = deps.assinaturaGuias ? await deps.assinaturaGuias(estado.tenant_id).catch(() => null) : null;
+    if (guias) {
+      const principal = await chamar("fiscal_conta_cartao_guias_falhou", "GET", caminhoAssinatura(sub.pagarme_subscription_id));
+      const cardId = principal && principal.ok ? obj(obj(principal.json).card).id : null;
+      const g = typeof cardId === "string"
+        ? await chamar("fiscal_conta_cartao_guias_falhou", "PATCH", `${caminhoAssinatura(guias)}/payment-method`, { payment_method: "credit_card", card_id: cardId })
+        : null;
+      log(g && g.ok ? "info" : "error", "fiscal_conta_cartao_guias", { tenant_id: estado.tenant_id, trocado: Boolean(g && g.ok) });
+      return { http: 200, body: { ok: true, guias: g && g.ok ? "cartao_trocado" : "cartao_nao_trocado" } };
+    }
     return { http: 200, body: { ok: true } };
   }
 
@@ -561,6 +574,12 @@ export async function processarConta(metodo: string, body: unknown, deps: Deps):
     }
     const ciclo = cicloDaAssinatura(sub);
     // Escritório: só mensal (o anual já saiu acima); nome e preço do plano no Pagar.me (assinatura-fiscal).
+    // Conta com NFS-e e NF-e paga o segundo tipo de nota no item. A página só sabe mostrar o preço da faixa, então a
+    // troca dessas contas fica com a equipe, em vez de cobrar um valor diferente do que a pessoa confirmou.
+    const precoAtual = Number(obj(item.pricing_scheme).price);
+    if (planoDeEscritorio(estado.plano) && precoAtual === centavosDoCiclo(estado.plano, ciclo, true)) {
+      return erro(409, "TROCA_COM_MODULO_INDISPONIVEL", "Com NFS-e e NF-e no plano, a troca de faixa é feita com a nó. Fale com a gente pelo WhatsApp.");
+    }
     const nome = PLANOS_PAGARME[plano].nome;
     const preco = centavosDoCiclo(plano, ciclo);
     const r = await chamar(
@@ -671,7 +690,7 @@ async function conferirTroca(
       resultado: erro(
         400,
         "DADOS_INVALIDOS",
-        escritorio ? "Escolha uma das faixas: até 5, 20 ou 50 empresas." : "Escolha um dos planos: Inicial ou Pro.",
+        escritorio ? "Escolha uma das faixas de documentos por mês." : "Escolha um dos planos: Inicial ou Pro.",
       ),
     };
   }
@@ -753,13 +772,19 @@ async function adicionarEmpresa(
   // Receita não distingue, vem declarado (`regime`) e só vale se a base disser "fora do Simples".
   const c = await consultarCnpj(cnpj, {
     apiUrl: deps.env.CNPJ_API_URL,
+    espelhoUrl: deps.env.CNPJ_API_ESPELHO_URL || undefined,
     fetch: deps.fetch,
     regimeConfirmado: deps.regimeConfirmado,
     regimeDeclarado: lerRegimeNormal(b.regime),
   });
   const recusa = respostaConsulta(c, await situacaoDaCidade(c, deps));
   if (recusa || !c.ok) {
-    if (!c.ok) log("info", "fiscal_conta_empresa_consulta", { motivo: c.motivo });
+    if (!c.ok) {
+      log(c.motivo === "indisponivel" ? "warn" : "info", "fiscal_conta_empresa_consulta", {
+        motivo: c.motivo,
+        ...("tentativas" in c ? { tentativas: c.tentativas } : {}),
+      });
+    }
     return recusa!;
   }
   if (!municipioAtendido(c.dados, deps.municipios ? await deps.municipios() : null)) {
@@ -888,6 +913,7 @@ async function atualizarReceita(
   // Presumido/Real: a Receita só diz "fora do Simples"; vale o regime declarado no cadastro, ou o que vier no corpo.
   const c = await consultarCnpj(cnpj, {
     apiUrl: deps.env.CNPJ_API_URL,
+    espelhoUrl: deps.env.CNPJ_API_ESPELHO_URL || undefined,
     fetch: deps.fetch,
     regimeConfirmado: deps.regimeConfirmado,
     regimeDeclarado: lerRegimeNormal(b.regime) ?? lerRegimeNormal(empresa.regime),

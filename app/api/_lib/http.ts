@@ -24,6 +24,7 @@ export type ErrorCode =
   // Emissão pelo painel "Minha conta" (painel-emissao.ts).
   | 'CONTA_SEM_EMPRESA'
   | 'SO_ESCRITORIO'
+  | 'NFE_NAO_CONTRATADA'
   | 'EMISSAO_BLOQUEADA'
   | 'PLANILHA_RECUSADA'
   | 'LOTE_FECHADO'
@@ -43,6 +44,10 @@ export type ErrorCode =
   | 'SO_SANDBOX'
   | 'SANDBOX_SOMENTE_LEITURA'
   | 'SANDBOX_SEM_NFE'
+  // Módulo Guias (20261119180000_agente_fiscal_guias.sql).
+  | 'GUIAS_DESLIGADO'
+  | 'STORAGE_NAO_CONFIGURADO'
+  | 'GUIAS_BLOQUEADO'
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_JSON: 400,
@@ -64,6 +69,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDADE_PASSADA: 422,
   CONTA_SEM_EMPRESA: 404,
   SO_ESCRITORIO: 403,
+  NFE_NAO_CONTRATADA: 403,
   EMISSAO_BLOQUEADA: 409,
   PLANILHA_RECUSADA: 422,
   LOTE_FECHADO: 409,
@@ -81,6 +87,9 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   SO_SANDBOX: 403,
   SANDBOX_SOMENTE_LEITURA: 403,
   SANDBOX_SEM_NFE: 501,
+  GUIAS_DESLIGADO: 403,
+  STORAGE_NAO_CONFIGURADO: 503,
+  GUIAS_BLOQUEADO: 409,
 }
 
 const NO_STORE = { 'cache-control': 'no-store' }

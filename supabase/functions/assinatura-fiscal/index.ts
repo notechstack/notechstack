@@ -10,6 +10,7 @@ import {
   responderConfiguracao,
 } from "./core.ts";
 import { enviarParaMeta } from "./medicao.ts";
+import { processarGuias, type ContextoGuias } from "../assinatura-fiscal-guias/core.ts";
 
 // Só nomes (variaveis-ambiente.txt); os valores ficam com Lucca.
 const NOMES_ENV = [
@@ -43,6 +44,17 @@ const NOMES_ENV = [
   "PAGARME_PLANO_FISCAL_ESCRITORIO_20_ANUAL_SEM_TESTE_ID",
   "PAGARME_PLANO_FISCAL_ESCRITORIO_50_ANUAL_ID",
   "PAGARME_PLANO_FISCAL_ESCRITORIO_50_ANUAL_SEM_TESTE_ID",
+  // Faixas de 1.000 e 10.000 documentos (23/11/2026): opcionais. Sem o id, a funcao acha ou cria o plano (obterPlano).
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_1000_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_1000_SEM_TESTE_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_1000_TESTE30_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_1000_ANUAL_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_1000_ANUAL_SEM_TESTE_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_10000_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_10000_SEM_TESTE_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_10000_TESTE30_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_10000_ANUAL_ID",
+  "PAGARME_PLANO_FISCAL_ESCRITORIO_10000_ANUAL_SEM_TESTE_ID",
   "FISCAL_VENDA_ABERTA",
   "FISCAL_TRIAL_SALT",
   // Só em teste: manda a compra para a aba "Testar eventos" do Events Manager.
@@ -148,6 +160,34 @@ Deno.serve(async (request) => {
       log,
       // Meta CAPI da compra: o mesmo segredo de meta-capi e pagarme-webhook-no. Sem ele, nada sai.
       enviarMeta: metaToken ? (corpo) => enviarParaMeta((url, init) => fetch(url, init), metaToken, corpo) : undefined,
+      definirTiposNota: async (tenantId, notas) => {
+        const r = await rpc("fiscal_definir_tipos_nota", { p_tenant_id: tenantId, p_tipos: notas }) as { ok?: boolean; erro?: string } | null;
+        if (!r?.ok) throw new Error(`fiscal_definir_tipos_nota_${r?.erro ?? "falhou"}`);
+      },
+      // Módulo Guias no checkout: a mesma regra de assinatura-fiscal-guias (segunda assinatura, no cartão da principal),
+      // chamada por dentro, sem outra requisição.
+      ligarGuias: async (tenantId, limiteMes, cupom, inicioEm) => {
+        const r = await processarGuias(
+          { metodo: "POST", autorizado: true, body: { acao: "ligar", tenant_id: tenantId, limite_mes: limiteMes, inicio_em: inicioEm, ...(cupom ? { cupom } : {}) } },
+          {
+            env: { ...lerEnv(), PAGARME_PLANO_FISCAL_GUIAS_ID: Deno.env.get("PAGARME_PLANO_FISCAL_GUIAS_ID") },
+            fetch: (url, init) => fetch(url, init),
+            contexto: async (t) => (await rpc("fiscal_guias_contexto", { p_tenant_id: t })) as ContextoGuias,
+            reservar: async (t, l) => await rpc("fiscal_guias_reservar", { p_tenant_id: t, p_limite_mes: l }),
+            soltar: async (t) => { await rpc("fiscal_guias_soltar", { p_tenant_id: t }); },
+            registrar: async (a) =>
+              await rpc("fiscal_guias_registrar", {
+                p_tenant_id: a.tenantId, p_subscription_id: a.subscriptionId, p_limite_mes: a.limite, p_cupom: a.cupom, p_inicio: a.inicio,
+              }),
+            ligarModulo: async (t, l) => await rpc("fiscal_definir_modulo_guias", { p_tenant_id: t, p_ligado: true, p_limite_mes: l }),
+            desligar: async (t) => await rpc("fiscal_guias_desligar", { p_tenant_id: t }),
+            cancelamentoPedido: async (t, s) => { await rpc("fiscal_guias_cancelamento_pedido", { p_tenant_id: t, p_subscription_id: s }); },
+            validarCupom: async (t, c) => (await rpc("fiscal_validar_cupom", { p_tenant_id: t, p_codigo: c, p_plano: "guias" })) as CupomBanco,
+            log,
+          },
+        );
+        return { ok: r.http >= 200 && r.http < 300, erro: typeof r.body.error_code === "string" ? r.body.error_code : undefined };
+      },
       registrarMedicao: async (assinaturaId, m) => {
         await rpc("fiscal_registrar_medicao", {
           p_subscription_id: assinaturaId,

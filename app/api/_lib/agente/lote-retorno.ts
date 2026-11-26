@@ -14,6 +14,7 @@ import { logEvent } from '../log.js'
 import { saiuComRetentativa, type AnexoEmail } from './canais.js'
 import { formatarDocumento, formatarReais } from './documentos.js'
 import type { EntregasDeps } from './entregas.js'
+import { mensagem } from './formato.js'
 import { dentroDaJanela } from './janela.js'
 import { linksDoSite } from './links.js'
 import { centavosDe, lerValor, motivoDoProblema, reaisDeCentavos } from './lote.js'
@@ -261,13 +262,17 @@ export function avisoDoRetorno(
     c.naFila ? plural(c.naFila, 'ainda na fila', 'ainda na fila') : null,
     c.naoEmitidas ? plural(c.naoEmitidas, 'linha não emitida', 'linhas não emitidas') : null,
   ].filter(Boolean) as string[]
-  return [
-    `Planilha de ${dataBr(lote.created_at)}: ${juntar(partes)}.`,
-    c.emitidas && !destino.pdfsNoEmail
-      ? `O retorno (CSV) foi para ${destino.email}; os PDFs estão em Minha conta → Relatórios: ${relatorios}`
-      : `O retorno (CSV)${c.emitidas ? ' e os PDFs' : ''} ${c.emitidas ? 'foram' : 'foi'} para ${destino.email}. Tudo também em Minha conta → Relatórios: ${relatorios}`,
-    TEXTO_VER_NOTA,
-  ].join('\n')
+  return mensagem({
+    titulo: 'Planilha concluída',
+    blocos: [
+      `Planilha de ${dataBr(lote.created_at)}: ${juntar(partes)}.`,
+      c.emitidas && !destino.pdfsNoEmail
+        ? `O retorno (CSV) foi para ${destino.email}; os PDFs estão em Minha conta → Relatórios: ${relatorios}`
+        : `O retorno (CSV)${c.emitidas ? ' e os PDFs' : ''} ${c.emitidas ? 'foram' : 'foi'} para ${destino.email}. Tudo também em Minha conta → Relatórios: ${relatorios}`,
+    ],
+    acao: TEXTO_VER_NOTA,
+  })
+
 }
 
 /**

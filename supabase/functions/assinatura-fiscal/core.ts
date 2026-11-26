@@ -14,7 +14,9 @@ import { type ClienteHttp, corpoDaCompraMeta, eventoDaCompra, lerMedicao, type M
 export type CodigoPlano = "inicial" | "pro";
 /** Faixas do plano Escritório (Lucca, 05/11/2026; .design/agente-fiscal-escritorio.md, "Faixas do Escritório").
     A empresa do próprio escritório é a conta-mãe: um tenant comum com uma destas faixas. Só mensal na v1. */
-export type PlanoEscritorio = "escritorio_5" | "escritorio_20" | "escritorio_50";
+export type PlanoEscritorio = "escritorio_5" | "escritorio_20" | "escritorio_50" | "escritorio_1000" | "escritorio_10000";
+/** O que a conta emite (Lucca, 23/11/2026): o primeiro tipo vem no preço do plano; o segundo soma MODULO_SEGUNDA_NOTA. */
+export type TipoNota = "nfse" | "nfe";
 /** Todo plano que uma assinatura pode ter (o mesmo check de fiscal_subscriptions.plano). */
 export type PlanoAssinatura = CodigoPlano | PlanoEscritorio;
 /** Ciclo de cobrança (Lucca, 03/11/2026): anual = 12 mensalidades com 20% off, cobradas de uma vez. */
@@ -42,20 +44,52 @@ const DIAS_DE_TESTE = 7;
 export const DIAS_DE_TESTE_DO_CUPOM = 30;
 const DIA_MS = 24 * 3600 * 1000;
 
-/** Empresas e notas por mês de cada faixa: o mesmo de nofiscal.limite_do_plano e max_empresas_do_plano. */
-export const FAIXAS_ESCRITORIO: Record<PlanoEscritorio, { centavos: number; empresas: number; notas: number }> = {
-  escritorio_5: { centavos: 29700, empresas: 5, notas: 500 },
-  escritorio_20: { centavos: 79700, empresas: 20, notas: 2000 },
-  escritorio_50: { centavos: 149700, empresas: 50, notas: 5000 },
+/** Sem limite de empresas no Escritório (Lucca, 23/11/2026): o mesmo número de nofiscal.max_empresas_do_plano. */
+export const EMPRESAS_SEM_LIMITE = 100000;
+/** Segundo tipo de nota no Escritório (NFS-e + NF-e): R$ 197 por mês a mais, cobrados no próprio plano. */
+export const MODULO_SEGUNDA_NOTA = 19700;
+/** Módulo Guias (assinatura-fiscal-guias) e o preço dos dois módulos juntos: R$ 297 em vez de R$ 394. */
+export const MODULO_GUIAS = 19700;
+export const MODULOS_JUNTOS = 29700;
+/** Cupom interno que dá os R$ 97 de desconto no Guias de quem leva também a NF-e (migração 20261123210000). */
+export const CUPOM_MODULOS_JUNTOS = "MODULOSJUNTOS";
+
+/**
+ * Faixas do Escritório por volume (Lucca, 23/11/2026): documentos por mês, empresas ilimitadas. Os três códigos antigos
+ * (escritorio_5/20/50, de quando a faixa era por empresas) continuam valendo para 500, 2.000 e 5.000 documentos, com os
+ * planos e os cupons que já existem; as faixas de 1.000 e 10.000 nasceram com o código pelo volume.
+ * `nome` é o nome do plano no Pagar.me. O mesmo de nofiscal.limite_do_plano e max_empresas_do_plano.
+ */
+export const FAIXAS_ESCRITORIO: Record<PlanoEscritorio, { centavos: number; empresas: number; notas: number; nome: string }> = {
+  escritorio_5: { centavos: 29700, empresas: EMPRESAS_SEM_LIMITE, notas: 500, nome: "Agente Fiscal Escritório 5" },
+  escritorio_1000: { centavos: 49700, empresas: EMPRESAS_SEM_LIMITE, notas: 1000, nome: "Agente Fiscal Escritório 1.000 documentos" },
+  escritorio_20: { centavos: 79700, empresas: EMPRESAS_SEM_LIMITE, notas: 2000, nome: "Agente Fiscal Escritório 20" },
+  escritorio_50: { centavos: 149700, empresas: EMPRESAS_SEM_LIMITE, notas: 5000, nome: "Agente Fiscal Escritório 50" },
+  escritorio_10000: { centavos: 249700, empresas: EMPRESAS_SEM_LIMITE, notas: 10000, nome: "Agente Fiscal Escritório 10.000 documentos" },
 };
 const ESCRITORIO_ENV: Record<PlanoEscritorio, string> = {
   escritorio_5: "PAGARME_PLANO_FISCAL_ESCRITORIO_5",
   escritorio_20: "PAGARME_PLANO_FISCAL_ESCRITORIO_20",
   escritorio_50: "PAGARME_PLANO_FISCAL_ESCRITORIO_50",
+  escritorio_1000: "PAGARME_PLANO_FISCAL_ESCRITORIO_1000",
+  escritorio_10000: "PAGARME_PLANO_FISCAL_ESCRITORIO_10000",
 };
+/** Faixas cujos planos o Pagar.me já tem cadastrados, com o id nos secrets. As outras (e todo plano com as duas notas)
+    são achadas ou criadas pela própria função, com a chave que ela já tem (obterPlano). */
+const FAIXAS_COM_ID_FIXO: PlanoEscritorio[] = ["escritorio_5", "escritorio_20", "escritorio_50"];
 
 export function planoDeEscritorio(plano: unknown): plano is PlanoEscritorio {
-  return plano === "escritorio_5" || plano === "escritorio_20" || plano === "escritorio_50";
+  return typeof plano === "string" && Object.prototype.hasOwnProperty.call(FAIXAS_ESCRITORIO, plano);
+}
+
+/** `notas` do pedido: ausente é só NFS-e (páginas antigas). NF-e só no Escritório. Devolve em ordem fixa, ou null. */
+export function lerNotas(valor: unknown, plano: PlanoAssinatura): TipoNota[] | null {
+  if (valor === undefined || valor === null) return ["nfse"];
+  if (!Array.isArray(valor) || valor.length < 1 || valor.length > 2) return null;
+  if (!valor.every((v) => v === "nfse" || v === "nfe") || new Set(valor).size !== valor.length) return null;
+  const notas = (["nfse", "nfe"] as TipoNota[]).filter((t) => valor.includes(t));
+  if (!planoDeEscritorio(plano) && (notas.length !== 1 || notas[0] !== "nfse")) return null;
+  return notas;
 }
 
 /** Plano do corpo do pedido, ou null quando não é um dos cinco. */
@@ -75,7 +109,7 @@ type PlanoPagarme = { nome: string; centavos: number; comTeste: boolean; diasDeT
 function planosDoEscritorio(): Record<string, PlanoPagarme> {
   const planos: Record<string, PlanoPagarme> = {};
   for (const faixa of Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]) {
-    const nome = `Agente Fiscal Escritório ${FAIXAS_ESCRITORIO[faixa].empresas}`;
+    const nome = FAIXAS_ESCRITORIO[faixa].nome;
     const base = { nome, centavos: FAIXAS_ESCRITORIO[faixa].centavos, ciclo: "mensal" as Ciclo };
     planos[faixa] = { ...base, comTeste: true, env: `${ESCRITORIO_ENV[faixa]}_ID` };
     planos[`${faixa}_sem_teste`] = { ...base, comTeste: false, env: `${ESCRITORIO_ENV[faixa]}_SEM_TESTE_ID` };
@@ -96,11 +130,15 @@ function planosDoEscritorio(): Record<string, PlanoPagarme> {
 
 export const DESCONTO_ANUAL_PERCENTUAL = 20;
 /** Desconto do anual em cada faixa do Escritório (Lucca, 13/11/2026): mais agressivo que os 20% de Inicial e Pro. */
-export const DESCONTO_ANUAL_ESCRITORIO: Record<PlanoEscritorio, number> = { escritorio_5: 25, escritorio_20: 30, escritorio_50: 45 };
+export const DESCONTO_ANUAL_ESCRITORIO: Record<PlanoEscritorio, number> = {
+  escritorio_5: 25, escritorio_1000: 25, escritorio_20: 30, escritorio_50: 45, escritorio_10000: 45,
+};
 
-/** Preço do ano no anual do Escritório: 12 mensalidades da faixa com o desconto dela, em centavos. */
-export function centavosAnuaisDoEscritorio(faixa: PlanoEscritorio): number {
-  return Math.round(FAIXAS_ESCRITORIO[faixa].centavos * 12 * (100 - DESCONTO_ANUAL_ESCRITORIO[faixa]) / 100);
+/** Preço do ano no anual do Escritório: 12 mensalidades da faixa (com o segundo tipo de nota, quando há) com o desconto
+    dela, em centavos. */
+export function centavosAnuaisDoEscritorio(faixa: PlanoEscritorio, duasNotas = false): number {
+  const mensal = FAIXAS_ESCRITORIO[faixa].centavos + (duasNotas ? MODULO_SEGUNDA_NOTA : 0);
+  return Math.round(mensal * 12 * (100 - DESCONTO_ANUAL_ESCRITORIO[faixa]) / 100);
 }
 
 /** Preço do ano no anual: 12 mensalidades com o desconto, em centavos. */
@@ -161,17 +199,34 @@ export function codigoPagarme(plano: CodigoPlano, ciclo: Ciclo, comTeste: boolea
   return `${plano}${ciclo === "anual" ? "_anual" : ""}${comTeste ? "" : "_sem_teste"}` as CodigoPlanoPagarme;
 }
 
-/** O que a assinatura cobra por ciclo, em centavos (sem cupom). */
-export function centavosDoCiclo(plano: PlanoAssinatura, ciclo: Ciclo): number {
-  if (planoDeEscritorio(plano)) return ciclo === "anual" ? centavosAnuaisDoEscritorio(plano) : PLANOS_PAGARME[plano].centavos;
+/** O que a assinatura cobra por ciclo, em centavos (sem cupom). `duasNotas`: NFS-e e NF-e no Escritório. */
+export function centavosDoCiclo(plano: PlanoAssinatura, ciclo: Ciclo, duasNotas = false): number {
+  if (planoDeEscritorio(plano)) {
+    return ciclo === "anual"
+      ? centavosAnuaisDoEscritorio(plano, duasNotas)
+      : PLANOS_PAGARME[plano].centavos + (duasNotas ? MODULO_SEGUNDA_NOTA : 0);
+  }
   return PLANOS_PAGARME[codigoPagarme(plano, ciclo, true)].centavos;
 }
 
 // Corpo de POST /plans (docs.pagar.me, "Criar plano"; molde scripts/pagarme-assinatura/planos.mjs).
 // trial_period_days: "Dias de teste. A assinatura será iniciada após o término deste período." Os planos sem
 // teste não mandam o campo (equivale a 0), como os de Inicial e Pro que já estão em produção.
-export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown> {
-  const p = PLANOS_PAGARME[codigo];
+/** Faixa do Escritório de um código de plano do Pagar.me (escritorio_1000_anual → escritorio_1000), ou null. */
+function faixaDoCodigo(codigo: string): PlanoEscritorio | null {
+  const faixa = (Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[])
+    .filter((f) => codigo === f || codigo.startsWith(`${f}_`))
+    .sort((a, b) => b.length - a.length)[0];
+  return faixa ?? null;
+}
+
+/** `duasNotas` (só Escritório): o plano com NFS-e e NF-e, com o segundo tipo de nota no preço e no nome. */
+export function corpoDoPlano(codigo: CodigoPlanoPagarme, duasNotas = false): Record<string, unknown> {
+  const base = PLANOS_PAGARME[codigo];
+  const faixa = duasNotas ? faixaDoCodigo(codigo) : null;
+  const p = faixa
+    ? { ...base, nome: `${base.nome} com NFS-e e NF-e`, centavos: centavosDoCiclo(faixa, base.ciclo, true) }
+    : base;
   const nome = p.ciclo === "anual" ? `${p.nome} anual` : p.nome;
   const dias = p.diasDeTeste ?? DIAS_DE_TESTE;
   return {
@@ -186,8 +241,60 @@ export function corpoDoPlano(codigo: CodigoPlanoPagarme): Record<string, unknown
     statement_descriptor: "NOFISCAL",
     items: [{ name: nome, quantity: 1, pricing_scheme: { scheme_type: "unit", price: p.centavos } }],
     ...(p.comTeste ? { trial_period_days: dias } : {}),
-    metadata: { origem: "agente-fiscal", codigo },
+    metadata: { origem: "agente-fiscal", codigo: faixa ? `${codigo}_duas_notas` : codigo },
   };
+}
+
+/** O plano do Pagar.me bate com o corpo que criaríamos? Mesmo nome, ativo, mesmo intervalo e mesmo preço. */
+function ehOPlano(p: Record<string, unknown>, corpo: Record<string, unknown>): boolean {
+  const itens = Array.isArray(p.items) ? p.items as Record<string, unknown>[] : [];
+  const preco = obj(obj(itens[0]).pricing_scheme).price;
+  const esperado = obj(obj((corpo.items as unknown[])[0]).pricing_scheme).price;
+  return p.name === corpo.name && (p.status === undefined || p.status === "active")
+    && (p.interval === undefined || p.interval === corpo.interval) && (preco === undefined || preco === esperado);
+}
+
+/**
+ * Acha no Pagar.me o plano com este corpo (GET /plans pelo nome) ou cria uma vez (POST /plans, Idempotency-Key fixa por
+ * código). Mesmo caminho do plano "nó.fiscal Guias" (assinatura-fiscal-guias/core.ts, em produção desde 23/11/2026):
+ * ninguém precisa cadastrar o plano no painel nem colar o id nos secrets. Devolve o id, ou null se não deu.
+ */
+export async function obterPlano(
+  deps: Pick<Deps, "fetch">,
+  apiUrl: string,
+  headers: Record<string, string>,
+  codigo: CodigoPlanoPagarme,
+  duasNotas: boolean,
+  log: (n: Nivel, e: string, d?: Record<string, unknown>) => void = () => {},
+): Promise<string | null> {
+  const corpo = corpoDoPlano(codigo, duasNotas);
+  const chave = `${codigo}${duasNotas ? "_duas_notas" : ""}`;
+  try {
+    const res = await deps.fetch(`${apiUrl}/plans?name=${encodeURIComponent(String(corpo.name))}&status=active&size=100`, { method: "GET", headers });
+    if (res.ok) {
+      const lista = obj(await res.json().catch(() => null)).data;
+      const achado = Array.isArray(lista) ? (lista as unknown[]).map(obj).find((p) => ehOPlano(p, corpo)) : undefined;
+      const id = achado && typeof achado.id === "string" ? achado.id : "";
+      if (id) {
+        log("info", "assinatura_fiscal_plano_achado", { codigo: chave, plan_id: id });
+        return id;
+      }
+    }
+    const criado = await deps.fetch(`${apiUrl}/plans`, {
+      method: "POST",
+      // O preço entra na chave: se a tabela mudar, o plano novo não é confundido com o antigo.
+      headers: { ...headers, "Idempotency-Key": `nofiscal-plano-${chave}-${obj(obj((corpo.items as unknown[])[0]).pricing_scheme).price}-v1` },
+      body: JSON.stringify(corpo),
+    });
+    const json = obj(await criado.json().catch(() => null));
+    const id = typeof json.id === "string" ? json.id : "";
+    if (!criado.ok || !id) throw new Error(`HTTP ${criado.status}`);
+    log("info", "assinatura_fiscal_plano_criado", { codigo: chave, plan_id: id });
+    return id;
+  } catch (e) {
+    log("error", "assinatura_fiscal_plano_falhou", { codigo: chave, erro: String(e) });
+    return null;
+  }
 }
 
 // Texto e Termos aprovados por Lucca em 22/10/2026 (fecha a RFC 1 / Unresolved 8). Voltar a true
@@ -248,7 +355,7 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
     Boolean(config.planIds[codigoPagarme(p, "anual", true)] && config.planIds[codigoPagarme(p, "anual", false)])
   );
   // O Escritório só abre com os 9 planos dele cadastrados (sem eles o checkout responde PLANO_INDISPONIVEL).
-  const escritorioDisponivel = (Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]).every((faixa) =>
+  const escritorioDisponivel = FAIXAS_COM_ID_FIXO.every((faixa) =>
     escritorioConfigurado(config, faixa)
   );
   const faixa = (p: PlanoEscritorio) => ({
@@ -257,7 +364,7 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
     empresas: FAIXAS_ESCRITORIO[p].empresas,
     notas: FAIXAS_ESCRITORIO[p].notas,
   });
-  const escritorioAnualDisponivel = (Object.keys(FAIXAS_ESCRITORIO) as PlanoEscritorio[]).every((faixa) =>
+  const escritorioAnualDisponivel = FAIXAS_COM_ID_FIXO.every((faixa) =>
     escritorioConfigurado(config, faixa, "anual")
   );
   return {
@@ -272,14 +379,20 @@ export function configuracaoPublica(env: Record<string, string | undefined>): Re
       inicial: { valor_centavos: PLANOS_PAGARME.inicial.centavos, anual_centavos: centavosDoCiclo("inicial", "anual") },
       pro: { valor_centavos: PLANOS_PAGARME.pro.centavos, anual_centavos: centavosDoCiclo("pro", "anual") },
       escritorio_5: faixa("escritorio_5"),
+      escritorio_1000: faixa("escritorio_1000"),
       escritorio_20: faixa("escritorio_20"),
       escritorio_50: faixa("escritorio_50"),
+      escritorio_10000: faixa("escritorio_10000"),
     },
+    // Módulos do Escritório (Lucca, 23/11/2026): o segundo tipo de nota, o Guias e os dois juntos, por mês.
+    modulos: { segunda_nota_centavos: MODULO_SEGUNDA_NOTA, guias_centavos: MODULO_GUIAS, juntos_centavos: MODULOS_JUNTOS },
   };
 }
 
 /** Os três planos da faixa (7 dias, sem teste e 30 dias) têm id no ambiente. */
 function escritorioConfigurado(config: Config, faixa: PlanoEscritorio, ciclo: Ciclo = "mensal"): boolean {
+  // Faixas novas: o plano é achado ou criado na hora (obterPlano); basta a chave do Pagar.me.
+  if (!FAIXAS_COM_ID_FIXO.includes(faixa)) return Boolean(config.secretKey);
   // Mensal: 7 dias, sem teste e 30 dias (fundador). Anual (13/11/2026): com e sem o teste de 7 dias.
   const testes: TesteDoEscritorio[] = ciclo === "anual" ? ["anual", "anual_sem_teste"] : ["teste", "sem_teste", "teste30"];
   return testes.every((t) =>
@@ -305,6 +418,10 @@ export type Pedido = {
   card_token: string;
   endereco: Endereco;
   aceite_texto: string;
+  /** O que a conta emite. Com os dois tipos (só Escritório), o plano cobra MODULO_SEGUNDA_NOTA a mais. */
+  notas: TipoNota[];
+  /** Módulo Guias pedido no checkout (só Escritório): vira a assinatura "nó.fiscal Guias" depois da principal. */
+  guias: boolean;
 };
 
 /** O que public.fiscal_assinatura_contexto devolve. */
@@ -370,6 +487,10 @@ export type Deps = {
   /** public.fiscal_registrar_medicao: guarda o consentimento (e fbp/fbc só com "granted") na assinatura, para o
       webhook medir a cobrança depois do teste e as renovações. Ausente: nada é gravado e o webhook não mede. */
   registrarMedicao?: (assinaturaId: string, medicao: MedicaoDoNavegador) => Promise<void>;
+  /** public.fiscal_definir_tipos_nota: grava o que a conta emite (a NF-e do painel só abre com 'nfe' na lista). */
+  definirTiposNota?: (tenantId: string, notas: TipoNota[]) => Promise<void>;
+  /** Liga o módulo Guias pela mesma regra de assinatura-fiscal-guias (segunda assinatura, no cartão da principal). */
+  ligarGuias?: (tenantId: string, limiteMes: number, cupom: string | null, inicioEm: string | null) => Promise<{ ok: boolean; erro?: string }>;
 };
 
 export type Resultado = { http: number; body: Record<string, unknown> };
@@ -391,6 +512,7 @@ function invalido(mensagem: string) {
 }
 
 const MSG_ESCOLHA_PLANO = "Escolha um dos planos: Inicial, Pro ou Escritório.";
+const MSG_ESCOLHA_NOTAS = "Escolha o que você vai emitir: NFS-e, NF-e ou as duas. A NF-e é do plano Escritório.";
 export const MSG_ESCRITORIO_SO_MENSAL = "O plano Escritório é só mensal. Escolha a cobrança mensal.";
 
 /** Escritório com ciclo anual: recusado antes de qualquer cupom ou chamada (Decisions "Faixas do Escritório"). */
@@ -439,6 +561,9 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
   if (!plano) return invalido(MSG_ESCOLHA_PLANO);
   const ciclo = lerCiclo(b.ciclo);
   if (!ciclo) return invalido("Escolha a cobrança: mensal ou anual.");
+  const notas = lerNotas(b.notas, plano);
+  if (!notas) return invalido(MSG_ESCOLHA_NOTAS);
+  const guias = b.guias === true && planoDeEscritorio(plano);
 
   const cpf = typeof b.cpf === "string" ? b.cpf.replace(/\D/g, "") : "";
   if (cpf !== "" && cpf.length !== 11) return invalido("Confira o CPF (11 números).");
@@ -460,7 +585,7 @@ export function validarPedido(body: unknown): { ok: true; pedido: Pedido } | { o
 
   return {
     ok: true,
-    pedido: { plano, ciclo, ...(cpf ? { cpf } : {}), card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL },
+    pedido: { plano, ciclo, ...(cpf ? { cpf } : {}), card_token: cardToken, endereco, aceite_texto: TEXTO_ACEITE_FISCAL, notas, guias },
   };
 }
 
@@ -516,6 +641,9 @@ export function corpoAssinatura(
       // Só o teste de 30 dias do cupom de fundador; o de 7 dias segue sem o campo, como antes.
       ...(comTeste && diasDeTeste !== DIAS_DE_TESTE ? { dias_de_teste: diasDeTeste } : {}),
       ...(cupom ? { cupom: cupom.codigo } : {}),
+      // Só fora do padrão (só NFS-e, sem Guias), para as assinaturas de Inicial e Pro seguirem iguais.
+      ...(pedido.notas.join(",") !== "nfse" ? { notas: pedido.notas.join(",") } : {}),
+      ...(pedido.guias ? { guias: true } : {}),
     },
   };
 }
@@ -606,8 +734,9 @@ async function avaliarCupom(
   return { ok: true, cupom };
 }
 
-function cupomPublico(cupom: CupomValido, plano: PlanoAssinatura): Record<string, unknown> {
-  const centavos = PLANOS_PAGARME[plano].centavos;
+/** `duasNotas`: o desconto é calculado sobre o que o Pagar.me cobra de fato (o plano com o segundo tipo de nota). */
+function cupomPublico(cupom: CupomValido, plano: PlanoAssinatura, duasNotas = false): Record<string, unknown> {
+  const centavos = centavosDoCiclo(plano, "mensal", duasNotas);
   return {
     codigo: cupom.codigo,
     descricao: cupom.descricao,
@@ -639,22 +768,24 @@ export async function processarValidarCupom(body: unknown, deps: Deps): Promise<
   if (!contexto) return erro(403, "CONTA_SEM_EMPRESA", "Conclua o cadastro da empresa antes de usar um cupom.");
   const a = await avaliarCupom(deps, contexto.tenant_id, codigo, plano);
   if (!a.ok) return a.resultado;
-  return { http: 200, body: { ok: true, cupom: cupomPublico(a.cupom, plano) } };
+  return { http: 200, body: { ok: true, cupom: cupomPublico(a.cupom, plano, (lerNotas(b.notas, plano) ?? []).length === 2) } };
 }
 
 /** Pedido de cortesia: só plano e aceite; cartão e endereço não entram. */
-function validarPedidoCortesia(b: Record<string, unknown>): { ok: true; plano: PlanoAssinatura } | { ok: false; mensagem: string } {
+function validarPedidoCortesia(b: Record<string, unknown>): { ok: true; plano: PlanoAssinatura; notas: TipoNota[] } | { ok: false; mensagem: string } {
   if (CAMPOS_CARTAO.some((campo) => tem(b, campo))) {
     return invalido("Por segurança, os dados do cartão não passam por aqui. Recarregue a página e tente de novo.");
   }
   const plano = lerPlano(b.plano);
   if (!plano) return invalido(MSG_ESCOLHA_PLANO);
+  const notas = lerNotas(b.notas, plano);
+  if (!notas) return invalido(MSG_ESCOLHA_NOTAS);
   if (b.termos_aceite !== true) return invalido("Para assinar, aceite os Termos de Uso.");
   const recebido = typeof b.aceite_texto === "string" ? normalizarTexto(b.aceite_texto) : "";
   if (recebido !== TEXTO_ACEITE_FISCAL) {
     return invalido("Não conseguimos registrar o seu aceite. Recarregue a página e tente de novo.");
   }
-  return { ok: true, plano };
+  return { ok: true, plano, notas };
 }
 
 const MSG_PAGARME =
@@ -728,22 +859,33 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
   // Escritório: três planos por faixa no Pagar.me. Sem os três ids da faixa, nada é reivindicado nem cobrado
   // (e Inicial/Pro seguem funcionando sem eles).
   const escritorio = planoDeEscritorio(pedido.plano) ? pedido.plano : null;
+  const duasNotas = Boolean(escritorio) && pedido.notas.length === 2;
+  const headers = { "Content-Type": "application/json", Authorization: `Basic ${btoa(`${config.secretKey}:`)}` };
   let planoComTeste: string;
   let planoSemTeste: string;
   let planoTeste30 = "";
   if (escritorio) {
-    if (!escritorioConfigurado(config, escritorio, pedido.ciclo)) {
-      log("warn", "assinatura_fiscal_escritorio_indisponivel", { plano: escritorio });
+    const indisponivel = () => {
+      log("warn", "assinatura_fiscal_escritorio_indisponivel", { plano: escritorio, duas_notas: duasNotas });
       return erro(
         409,
         "PLANO_INDISPONIVEL",
         "O plano Escritório ainda não está disponível para assinatura. Nada foi cobrado; fale com a nó pelo WhatsApp.",
       );
-    }
+    };
+    if (!escritorioConfigurado(config, escritorio, pedido.ciclo)) return indisponivel();
     const anual = pedido.ciclo === "anual";
-    planoComTeste = config.planIds[codigoPagarmeEscritorio(escritorio, anual ? "anual" : "teste")];
-    planoSemTeste = config.planIds[codigoPagarmeEscritorio(escritorio, anual ? "anual_sem_teste" : "sem_teste")];
-    planoTeste30 = config.planIds[codigoPagarmeEscritorio(escritorio, "teste30")];
+    // Id fixo dos secrets nas três faixas antigas com um só tipo de nota; nos outros casos (faixas de 1.000 e 10.000,
+    // ou NFS-e + NF-e em qualquer faixa) o plano é achado ou criado no Pagar.me. Tudo antes de reivindicar o teste:
+    // sem plano, nada é reivindicado nem cobrado.
+    const idDoPlano = async (codigo: CodigoPlanoPagarme) =>
+      (!duasNotas ? config.planIds[codigo] : "") ||
+      (await obterPlano(deps, config.apiUrl, headers, codigo, duasNotas, log)) || "";
+    planoComTeste = await idDoPlano(codigoPagarmeEscritorio(escritorio, anual ? "anual" : "teste"));
+    planoSemTeste = await idDoPlano(codigoPagarmeEscritorio(escritorio, anual ? "anual_sem_teste" : "sem_teste"));
+    const pedeTeste30 = cupom?.diasDeTeste === DIAS_DE_TESTE_DO_CUPOM;
+    if (pedeTeste30) planoTeste30 = await idDoPlano(codigoPagarmeEscritorio(escritorio, "teste30"));
+    if (!planoComTeste || !planoSemTeste || (pedeTeste30 && !planoTeste30)) return indisponivel();
   } else {
     const plano = pedido.plano as CodigoPlano;
     planoComTeste = config.planIds[codigoPagarme(plano, pedido.ciclo, true)];
@@ -776,13 +918,12 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
         ok: false,
         error_code: "CONFIRMAR_SEM_TESTE",
         mensagem: `${MSG_TESTE_JA_USADO}. No anual, o ano inteiro é cobrado agora.`,
-        valor_centavos: centavosDoCiclo(pedido.plano, "anual"),
+        valor_centavos: centavosDoCiclo(pedido.plano, "anual", duasNotas),
       },
     };
   }
   const planId = testeDoCupom ? planoTeste30 : comTeste ? planoComTeste : planoSemTeste;
 
-  const headers = { "Content-Type": "application/json", Authorization: `Basic ${btoa(`${config.secretKey}:`)}` };
   const cancelar = async (subId: string, motivo: string) => {
     try {
       const res = await deps.fetch(`${config.apiUrl}/subscriptions/${encodeURIComponent(subId)}`, {
@@ -890,8 +1031,41 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       log("error", "assinatura_fiscal_marca_pago_falhou", { subscription_id: subId });
     }
   }
+  // O que a conta emite e o módulo Guias. A assinatura principal já existe: uma falha aqui não desfaz a compra; ela
+  // volta em `modulos_pendentes`, a página avisa e a nó liga à mão (o log leva o motivo).
+  const modulosPendentes: string[] = [];
+  if (escritorio && deps.definirTiposNota) {
+    try {
+      await deps.definirTiposNota(contexto.tenant_id, pedido.notas);
+    } catch {
+      log("error", "assinatura_fiscal_tipos_nota_falhou", { subscription_id: subId, notas: pedido.notas.join(",") });
+      if (pedido.notas.includes("nfe")) modulosPendentes.push("nfe");
+    }
+  }
+  let guiasLigado = false;
+  if (escritorio && pedido.guias) {
+    try {
+      // Quem leva NF-e e Guias paga R$ 297 pelos dois: o desconto de R$ 97 vai no Guias. O Guias começa junto com a
+      // cobrança da principal: no fim do teste, ou já (trialEndsAt nulo) para quem assina sem teste.
+      const ligar = (cupomGuias: string | null) => deps.ligarGuias
+        ? deps.ligarGuias(contexto.tenant_id, FAIXAS_ESCRITORIO[escritorio].notas, cupomGuias, trialEndsAt)
+        : Promise.resolve({ ok: false, erro: "SEM_LIGAR_GUIAS" });
+      let r = await ligar(duasNotas ? CUPOM_MODULOS_JUNTOS : null);
+      // O cupom dos dois módulos vale uma vez por conta: quem cancelou e voltou liga o Guias sem ele, em vez de ficar sem.
+      if (!r.ok && duasNotas && /^CUPOM_/.test(r.erro ?? "")) {
+        log("warn", "assinatura_fiscal_guias_sem_desconto", { subscription_id: subId, erro: r.erro });
+        r = await ligar(null);
+      }
+      guiasLigado = r.ok;
+      if (!r.ok) log("error", "assinatura_fiscal_guias_nao_ligado", { subscription_id: subId, erro: r.erro ?? null });
+    } catch {
+      log("error", "assinatura_fiscal_guias_nao_ligado", { subscription_id: subId, erro: "excecao" });
+    }
+    if (!guiasLigado) modulosPendentes.push("guias");
+  }
+
   // Medição (medicao.ts): o navegador repete este evento com o mesmo event_id; com consentimento, a CAPI também.
-  const centavos = centavosDoCiclo(pedido.plano, pedido.ciclo);
+  const centavos = centavosDoCiclo(pedido.plano, pedido.ciclo, duasNotas);
   const compra = eventoDaCompra(registro.id, comTeste, cupom ? valorComDesconto(centavos, cupom) : centavos);
   const medicao = lerMedicao(b.medicao);
   // A assinatura já existe: uma falha aqui só fica no log (o webhook deixa de medir as cobranças dela).
@@ -930,7 +1104,9 @@ export async function processarCheckout(body: unknown, deps: Deps): Promise<Resu
       medicao: compra,
       trial_ends_at: trialEndsAt,
       ...(comTeste ? {} : { aviso: MSG_TESTE_JA_USADO }),
-      ...(cupom ? { cupom: cupomPublico(cupom, pedido.plano) } : {}),
+      ...(cupom ? { cupom: cupomPublico(cupom, pedido.plano, duasNotas) } : {}),
+      ...(escritorio ? { notas: pedido.notas, guias: guiasLigado } : {}),
+      ...(modulosPendentes.length ? { modulos_pendentes: modulosPendentes } : {}),
     },
   };
 }
@@ -952,6 +1128,14 @@ async function processarCortesia(
     return erroCupom(r?.motivo || "CUPOM_INVALIDO");
   }
   log("info", "assinatura_fiscal_cortesia", { plano: v.plano, cupom: cupom.codigo });
+  // Cortesia não tem cartão: o Guias (segunda assinatura) não nasce aqui; só o que a conta emite é gravado.
+  if (planoDeEscritorio(v.plano) && deps.definirTiposNota) {
+    try {
+      await deps.definirTiposNota(contexto.tenant_id, v.notas);
+    } catch {
+      log("error", "assinatura_fiscal_tipos_nota_falhou", { cortesia: true });
+    }
+  }
   if (deps.marcarPago) {
     try {
       await deps.marcarPago(contexto.tenant_id);

@@ -1,18 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { makeTestCertificate } from '../../_tests/certs.js'
 import { verifySignature } from '../../_tests/verify-signature.js'
+import { errosXsdNfe } from '../../_tests/xsd.js'
 import { signXml } from '../xml-signer.js'
 import { CODIGO_UF, UFS, type Uf } from './autorizadores.js'
 import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
 import {
+  avisosNfe,
   calcularTotais,
+  creditoIcmsSn,
   dataHoraBrasilia,
+  fraseCreditoSn,
   digitoChave,
   gtinValido,
+  informacoesComplementaresDaNota,
   montarNfe,
   NfeInvalidaError,
   NOME_HOMOLOGACAO,
+  resumoCreditoSn,
   validarNfe,
+  type Item,
 } from './nfe-builder.js'
 import { notaExemplo } from './nfe-fixtures.js'
 
@@ -214,5 +221,219 @@ describe('regras da revisão de 17/11/2026', () => {
     })
     expect(validarNfe(isento('SP', '3550308'))[0]).toMatch(/não aceita contribuinte isento/)
     expect(validarNfe(isento('RJ', '3304557'))).toEqual([])
+  })
+})
+
+describe('transporte e volumes (grupo transp)', () => {
+  const transporte = {
+    modalidadeFrete: '0' as const,
+    transportador: {
+      documento: '11.444.777/0001-61',
+      nome: 'Transportadora Exemplo Ltda',
+      inscricaoEstadual: '190.123.456.110',
+      endereco: 'Rua das Cargas, 50 - Distrito Industrial',
+      municipio: 'Atibaia',
+      uf: 'sp',
+    },
+    volumes: [{ quantidade: 10, especie: 'CAIXA', marca: 'DAVI', numeracao: '1 a 10', pesoLiquido: 60.4, pesoBruto: 60.4 }],
+  }
+  const assinar = (xml: string) => {
+    const cert = makeTestCertificate()
+    return signXml({ xml, signedElement: 'infNFe', keyPem: cert.keyPem, certPem: cert.certPem, profile: 'sha1-c14n' })
+  }
+
+  it('sem os campos novos: só modFrete, como antes', () => {
+    const { xml } = montarNfe(notaExemplo())
+    expect(xml).toContain('<transp><modFrete>9</modFrete></transp>')
+  })
+
+  it('transportador e volumes completos, na ordem do leiaute', () => {
+    const { xml } = montarNfe(notaExemplo(transporte))
+    expect(xml).toContain(
+      '<transp><modFrete>0</modFrete><transporta><CNPJ>11444777000161</CNPJ><xNome>Transportadora Exemplo Ltda</xNome>' +
+        '<IE>190123456110</IE><xEnder>Rua das Cargas, 50 - Distrito Industrial</xEnder><xMun>Atibaia</xMun><UF>SP</UF></transporta>' +
+        '<vol><qVol>10</qVol><esp>CAIXA</esp><marca>DAVI</marca><nVol>1 a 10</nVol><pesoL>60.400</pesoL><pesoB>60.400</pesoB></vol></transp>',
+    )
+  })
+
+  it('transportador pessoa física, IE ISENTO e vários volumes', () => {
+    const { xml } = montarNfe(notaExemplo({
+      modalidadeFrete: '1',
+      transportador: { documento: '529.982.247-25', nome: 'Joao Freteiro', inscricaoEstadual: 'isento' },
+      volumes: [{ quantidade: 2, especie: 'PALETE' }, { quantidade: 0, pesoBruto: 1.5 }, { especie: '  ' }],
+    }))
+    expect(xml).toContain('<transporta><CPF>52998224725</CPF><xNome>Joao Freteiro</xNome><IE>ISENTO</IE></transporta>')
+    expect(xml).toContain('<vol><qVol>2</qVol><esp>PALETE</esp></vol><vol><qVol>0</qVol><pesoB>1.500</pesoB></vol></transp>')
+  })
+
+  it('validação: documento, UF, peso, quantidade, modalidade', () => {
+    const problemas = validarNfe(notaExemplo({
+      modalidadeFrete: undefined,
+      transportador: { documento: '11.444.777/0001-62', uf: 'XX', inscricaoEstadual: '1' },
+      volumes: [{ quantidade: 1.5, pesoLiquido: -1, pesoBruto: 1.2345 }],
+    }))
+    expect(problemas).toEqual([
+      'transportador informado: informe também a modalidade do frete (0 emitente, 1 destinatário, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)',
+      'transportador: CPF ou CNPJ inválido',
+      'transportador: inscrição estadual de 2 a 14 dígitos (ou ISENTO)',
+      'transportador: UF "XX" inválida',
+      'volumes: quantidade de volumes deve ser um número inteiro, zero ou mais',
+      'volumes: peso líquido deve ser zero ou mais, com até 3 casas (kg)',
+      'volumes: peso bruto deve ser zero ou mais, com até 3 casas (kg)',
+    ])
+    expect(validarNfe(notaExemplo({ modalidadeFrete: '7' as never }))).toEqual(['modalidade do frete "7" inválida (0, 1, 2, 3, 4 ou 9)'])
+  })
+
+  it('aviso (não bloqueia): peso bruto menor que o líquido, sem frete com transportador', () => {
+    const nota = notaExemplo({ modalidadeFrete: '9', transportador: { nome: 'Transp' }, volumes: [{ pesoLiquido: 10, pesoBruto: 9.5 }] })
+    expect(validarNfe(nota)).toEqual([])
+    expect(avisosNfe(nota)).toEqual([
+      'volumes: peso bruto (9,5 kg) menor que o peso líquido (10 kg); confira',
+      'transportador sem CPF ou CNPJ',
+      'modalidade "sem frete" (9) com transportador informado; confira a modalidade',
+    ])
+    expect(avisosNfe(notaExemplo(transporte))).toEqual([])
+  })
+
+  it('XSD oficial (PL 010h v1.03): nota sem transporte, com transportador CNPJ e com CPF/ISENTO e vários volumes', async () => {
+    const casos = [
+      notaExemplo({ ambiente: 'producao' }),
+      notaExemplo({ ...transporte, ambiente: 'producao' }),
+      notaExemplo({
+        modalidadeFrete: '4',
+        transportador: { documento: '529.982.247-25', nome: 'Joao Freteiro', inscricaoEstadual: 'ISENTO', uf: 'MG' },
+        volumes: [{ quantidade: 2, especie: 'PALETE', pesoLiquido: 0, pesoBruto: 1234.567 }, { numeracao: 'A1' }],
+      }),
+    ]
+    for (const nota of casos) expect(await errosXsdNfe(assinar(montarNfe(nota).xml))).toEqual([])
+  })
+})
+
+describe('frase do crédito do Simples (CSOSN 101) nas informações complementares', () => {
+  const assinar = (xml: string) => {
+    const cert = makeTestCertificate()
+    return signXml({ xml, signedElement: 'infNFe', keyPem: cert.keyPem, certPem: cert.certPem, profile: 'sha1-c14n' })
+  }
+  const infCpl = (xml: string) => tag(xml, 'infCpl')
+  const creditos = (xml: string) => [...xml.matchAll(/<vCredICMSSN>([\d.]+)<\/vCredICMSSN>/g)].map((m) => m[1])
+
+  // NF-e 4081 da POLI BOX (planilha "POLI BOX - PLASDEPEL", 24/11/2026): 8 itens, R$ 1.178,75, CSOSN 101 a 2,84%.
+  // Saiu com "R$ 0,00" na frase e foi cancelada. O texto abaixo é o da coluna `informacoes` daquela planilha.
+  const TEXTO_4081 =
+    'Documento emitido por ME ou EPP optante pelo Simples Nacional. Não gera direito a crédito fiscal de IPI. ' +
+    'Permite o aproveitamento do crédito de ICMS no valor de R$ 0,00, correspondente à alíquota de 2,84%, nos termos do ' +
+    'art. 23 da LC 123/2006. VENDA A VISTA - EM DINHEIRO'
+  const caixa = (codigo: string, descricao: string, quantidade: number, valorUnitario: number): Item => ({
+    codigo, descricao, ncm: '48191000', cfop: '5102', unidade: 'UN', quantidade, valorUnitario, origem: '0', csosn: '101', aliquotaCreditoSN: 2.84,
+  })
+  const ITENS_4081: Item[] = [
+    caixa('1', 'CXB-24-15', 25, 4.3),
+    caixa('2', 'CXB-34', 25, 4.6),
+    caixa('3', 'CXB-20-15', 25, 4.2),
+    caixa('4', 'CXB-26-15', 25, 4.4),
+    caixa('5', 'CXB-32-15', 25, 5.65),
+    caixa('6', 'CXB-41', 25, 4.3),
+    caixa('7', 'CXB-41-15', 50, 6.1),
+    caixa('8', 'CXB-49-15', 25, 7.5),
+  ]
+  const nota4081 = (texto: string | null = TEXTO_4081) =>
+    notaExemplo({ itens: ITENS_4081, pagamentos: [{ forma: '01', valor: 1178.75 }], informacoesComplementares: texto })
+
+  it('nota 4081: o crédito é a soma dos vCredICMSSN de cada item (R$ 33,47), não 2,84% do total (R$ 33,48)', () => {
+    const { xml, totais } = montarNfe(nota4081())
+    expect(totais.nota).toBe(117875)
+    // Os mesmos valores que foram no XML real da nota 4081 (item 1: 3,05).
+    expect(creditos(xml)).toEqual(['3.05', '3.27', '2.98', '3.12', '4.01', '3.05', '8.66', '5.33'])
+    expect(creditoIcmsSn(ITENS_4081)).toEqual({ centavos: 3347, aliquotas: [2.84] })
+    expect(Math.round(117875 * 0.0284)).toBe(3348) // a conta pelo total daria 1 centavo a mais
+  })
+
+  it('nota 4081: o "R$ 0,00" da planilha vira o crédito calculado e o resto do texto fica como estava', () => {
+    const { xml } = montarNfe(nota4081())
+    expect(infCpl(xml)).toBe(
+      'Documento emitido por ME ou EPP optante pelo Simples Nacional. Não gera direito a crédito fiscal de IPI. ' +
+        'Permite o aproveitamento do crédito de ICMS no valor de R$ 33,47, correspondente à alíquota de 2,84%, nos termos do ' +
+        'art. 23 da LC 123/2006. VENDA A VISTA - EM DINHEIRO',
+    )
+    expect(infCpl(xml)).not.toContain('R$ 0,00')
+  })
+
+  it('nota 4081 passa no XSD do PL 010h (assinada), com e sem texto do usuário', async () => {
+    for (const texto of [TEXTO_4081, null, 'VENDA A VISTA - EM DINHEIRO']) {
+      expect(await errosXsdNfe(assinar(montarNfe(nota4081(texto)).xml))).toEqual([])
+    }
+  })
+
+  it('valor e alíquota errados, sem acento e em maiúsculas: troca os dois e mantém as maiúsculas', () => {
+    const texto = 'PERMITE O APROVEITAMENTO DO CREDITO DE ICMS NO VALOR DE R$1.234,56 CORRESPONDENTE A ALIQUOTA DE 4% NOS TERMOS DO ART. 23 DA LC 123/2006.'
+    expect(infCpl(montarNfe(nota4081(texto)).xml)).toBe(
+      'PERMITE O APROVEITAMENTO DO CRÉDITO DE ICMS NO VALOR DE R$ 33,47, CORRESPONDENTE À ALÍQUOTA DE 2,84% NOS TERMOS DO ART. 23 DA LC 123/2006.',
+    )
+  })
+
+  it('texto sem a frase: a frase completa vai no início, antes do texto do usuário', () => {
+    expect(infCpl(montarNfe(nota4081('VENDA A VISTA - EM DINHEIRO')).xml)).toBe(
+      'Permite o aproveitamento do crédito de ICMS no valor de R$ 33,47, correspondente à alíquota de 2,84%, nos termos do ' +
+        'art. 23 da LC 123/2006. VENDA A VISTA - EM DINHEIRO',
+    )
+  })
+
+  it('sem texto nenhum: só a frase', () => {
+    for (const texto of [null, '', '   ']) {
+      expect(infCpl(montarNfe(nota4081(texto)).xml)).toBe(
+        'Permite o aproveitamento do crédito de ICMS no valor de R$ 33,47, correspondente à alíquota de 2,84%, nos termos do art. 23 da LC 123/2006.',
+      )
+    }
+  })
+
+  it('alíquotas diferentes: o total e as alíquotas em ordem crescente', () => {
+    const itens: Item[] = [
+      { ...ITENS_4081[0], aliquotaCreditoSN: 3.95 }, // 107,50 × 3,95% = 4,25
+      ITENS_4081[1], // 115,00 × 2,84% = 3,27
+      { ...ITENS_4081[2], csosn: '102', aliquotaCreditoSN: null }, // fora do crédito
+    ]
+    expect(creditoIcmsSn(itens)).toEqual({ centavos: 752, aliquotas: [2.84, 3.95] })
+    expect(resumoCreditoSn(itens)).toBe('R$ 7,52 (alíquotas de 2,84% e 3,95%)')
+    const { xml } = montarNfe(notaExemplo({ itens, pagamentos: [{ forma: '01', valor: 2000 }], informacoesComplementares: TEXTO_4081 }))
+    expect(infCpl(xml)).toContain('crédito de ICMS no valor de R$ 7,52, correspondente às alíquotas de 2,84% e 3,95%, nos termos')
+  })
+
+  it('nenhum item 101: o texto do usuário vai como está, até com a frase', () => {
+    const itens: Item[] = ITENS_4081.map((i) => ({ ...i, csosn: '102', aliquotaCreditoSN: null }))
+    expect(creditoIcmsSn(itens)).toBeNull()
+    expect(resumoCreditoSn(itens)).toBeNull()
+    expect(infCpl(montarNfe(notaExemplo({ itens, pagamentos: [{ forma: '01', valor: 2000 }], informacoesComplementares: TEXTO_4081 })).xml)).toBe(TEXTO_4081)
+    expect(montarNfe(notaExemplo({ itens, pagamentos: [{ forma: '01', valor: 2000 }], informacoesComplementares: null })).xml).not.toContain('<infAdic>')
+  })
+
+  it('limite de 5.000 caracteres: a frase nunca é cortada; corta-se o texto do usuário', async () => {
+    const longo = 'X'.repeat(6000)
+    const semFrase = infCpl(montarNfe(nota4081(longo)).xml)!
+    expect(semFrase).toHaveLength(5000)
+    expect(semFrase.startsWith('Permite o aproveitamento do crédito de ICMS no valor de R$ 33,47, correspondente à alíquota de 2,84%')).toBe(true)
+    expect(await errosXsdNfe(assinar(montarNfe(nota4081(longo)).xml))).toEqual([])
+
+    // A frase no fim de um texto que passa do limite: sai de lá e vai para o início, inteira.
+    const comFraseNoFim = infCpl(montarNfe(nota4081(`${'Y'.repeat(4990)} ${TEXTO_4081}`)).xml)!
+    expect(comFraseNoFim).toHaveLength(5000)
+    expect(comFraseNoFim.startsWith('Permite o aproveitamento do crédito de ICMS no valor de R$ 33,47')).toBe(true)
+    expect(comFraseNoFim).not.toContain('R$ 0,00')
+    expect(comFraseNoFim.match(/aproveitamento/g)).toHaveLength(1)
+    expect(comFraseNoFim).not.toContain('nos termos do art. 23 da LC 123/2006. nos termos')
+
+    // Rente ao limite, a troca no lugar ainda cabe (R$ 0,00 → R$ 33,47 soma 1 caractere).
+    const justo = `${'Z'.repeat(5000 - TEXTO_4081.length - 2)} ${TEXTO_4081}`
+    expect(justo).toHaveLength(4999)
+    const r = infCpl(montarNfe(nota4081(justo)).xml)!
+    expect(r).toHaveLength(5000)
+    expect(r.startsWith('ZZZ')).toBe(true)
+  })
+
+  it('a mesma função para todos os canais: o pedido salvo (planilha, painel, WhatsApp, API) monta a mesma frase', () => {
+    expect(informacoesComplementaresDaNota(TEXTO_4081, ITENS_4081)).toBe(infCpl(montarNfe(nota4081()).xml))
+    expect(resumoCreditoSn(ITENS_4081)).toBe('R$ 33,47 (alíquota de 2,84%)')
+    expect(fraseCreditoSn({ centavos: 123456, aliquotas: [1.25] })).toBe(
+      'Permite o aproveitamento do crédito de ICMS no valor de R$ 1.234,56, correspondente à alíquota de 1,25%, nos termos do art. 23 da LC 123/2006.',
+    )
   })
 })

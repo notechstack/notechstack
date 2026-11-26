@@ -315,6 +315,7 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 | `tomador.cpf` ou `tomador.cnpj` | string | um dos dois | 11 ou 14 dígitos. |
 | `tomador.nome` | string | sim | 1 a 150 caracteres. |
 | `tomador.email` | string | não | Usado no e-mail da nota (se os e-mails da nó estiverem ligados). |
+| `tomador.endereco` | objeto | não | Endereço do tomador: `{ "cep", "logradouro", "numero" (opcional, vazio = S/N), "complemento" (opcional), "bairro", "municipio_ibge" }` (`municipio_ibge`: código IBGE de 7 dígitos ou `"Cidade/UF"`). Prevalece sobre o da Receita. **Tomador CNPJ sem este campo:** a nota sai com o endereço do CNPJ na Receita. **Tomador CPF:** só sai com endereço se você enviar. Se a Receita não responder, a nota sai sem endereço e `avisos` diz isso (com ISS retido, `422 ENDERECO_TOMADOR`). |
 | `servico.codigo_servico_nacional` | string | não | Padrão: o código da empresa. |
 | `servico.descricao` | string | não | 1 a 2.000 caracteres. Padrão: `"Prestação de serviços"`. |
 | `servico.nbs` | string | não | Código NBS (9 dígitos; aceita com pontos, `"1.1502.10.00"`). Ausente = o NBS padrão da empresa. |
@@ -336,11 +337,11 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 - `aliquota_iss`: de 2 a 5 (%). Obrigatória com ISS retido se a empresa não tiver alíquota padrão.
 - `inss`: percentual (`"11%"`) ou valor em reais (`"165.00"`).
 - `irrf` e `csrf` (só **Lucro Presumido e Real**): IRRF retido e PIS + COFINS + CSLL retidos (somados), em percentual (`"1,5%"`, `"4,65%"`) ou valor (`"15.00"`). Na DPS viram `vRetIRRF` e `vRetCSLL` (com `tpRetPisCofins` 3). Não há padrão por empresa: vão no pedido.
-- ISS retido só para **tomador CNPJ**; o endereço do tomador é buscado na Receita. MEI não tem retenção.
+- ISS retido só para **tomador CNPJ**; o endereço do tomador (obrigatório na Sefin com ISS retido) é o de `tomador.endereco` ou o da Receita. MEI não tem retenção.
 
 Respostas:
 
-- `202` — nota na fila: o objeto `nfse` + `avisos` (lista de textos; hoje, só o aviso de franquia).
+- `202` — nota na fila: o objeto `nfse` + `avisos` (lista de textos: franquia e nota que sai sem o endereço do tomador).
 - `202` — mesmo `external_id` da mesma empresa: devolve a nota que já existe, sem conferir de novo.
 - `409 EMISSAO_BLOQUEADA` — a empresa não pode emitir agora; `bloqueio` traz o código (o mesmo da `situacao`).
 - `404 EMPRESA_NAO_ENCONTRADA` / `409 EMPRESA_INATIVA` — `cnpj_prestador` não é desta conta, ou está desativada.
@@ -396,7 +397,12 @@ empresa** (a NF-e não aceita procuração) e o botão **Conferir na Sefaz**. A 
   "natureza_operacao": "Venda de mercadoria",
   "consumidor_final": "1",
   "presenca": "2",
-  "modalidade_frete": "9",
+  "modalidade_frete": "0",
+  "transportador": {
+    "documento": "11444777000161", "nome": "Transportadora Exemplo Ltda", "inscricao_estadual": "190123456110",
+    "endereco": "Rua das Cargas, 50", "municipio": "Atibaia", "uf": "SP"
+  },
+  "volumes": [ { "quantidade": 1, "especie": "CAIXA", "marca": null, "numeracao": null, "peso_liquido": 0.4, "peso_bruto": 0.5 } ],
   "destinatario": {
     "documento": "52998224725",
     "nome": "Maria Souza",
@@ -427,12 +433,15 @@ empresa** (a NF-e não aceita procuração) e o botão **Conferir na Sefaz**. A 
 | `cnpj_emitente` | Empresa ativa da conta. Sem ele, a própria conta. |
 | `consumidor_final` | `"0"` ou `"1"`. Padrão: `1` se o destinatário não é contribuinte. |
 | `presenca` | `0`, `1` presencial, `2` internet, `3` teleatendimento, `4`, `5`, `9` outros. |
-| `modalidade_frete` | `0` emitente, `1` destinatário, `2` terceiros, `3`, `4`, `9` sem frete. |
+| `modalidade_frete` | `0` emitente (CIF), `1` destinatário (FOB), `2` terceiros, `3` próprio remetente, `4` próprio destinatário, `9` sem frete. Obrigatória com `transportador`. |
+| `transportador` | Opcional. `documento` (CNPJ ou CPF), `nome`, `inscricao_estadual` (dígitos ou `ISENTO`), `endereco`, `municipio`, `uf`. |
+| `volumes` | Opcional, lista. `quantidade` (inteiro), `especie`, `marca`, `numeracao`, `peso_liquido` e `peso_bruto` em kg (até 3 casas). |
 | `destinatario.indicador_ie` | `1` contribuinte com IE, `2` isento, `9` não contribuinte (padrão). |
 | `destinatario.endereco.codigo_municipio` | IBGE, 7 dígitos. |
 | `itens` | 1 a 990 itens. `quantidade`, `valor_unitario` e valores em número (ponto decimal). |
 | `itens[].csosn` | `101`, `102`, `103`, `300`, `400`, `500`. Com `101`, informe `aliquota_credito_sn`. |
-| `pagamentos` | `forma`: `01` dinheiro, `03` crédito, `04` débito, `15` boleto, `17` PIX, `90` sem pagamento, `99` outros. Ausente: `99` no valor da nota. |
+| `natureza_operacao` | Opcional, até 60 caracteres. Ausente: sai do CFOP dos itens (`5101`/`5102`/`6102`/`6108` Venda de mercadoria, `5949`/`6949` Simples remessa, `5910`/`6910` Remessa em bonificação, doação ou brinde, `5911`/`6911` Remessa de amostra grátis, `5915`/`6915` Remessa para conserto, `5923`/`6923` Remessa por conta e ordem de terceiros, `5202`/`6202` Devolução de compra, `5152`/`6152` Transferência de mercadoria). Itens de naturezas diferentes: vale a venda, senão a do primeiro item. CFOP fora da tabela: Venda de mercadoria. |
+| `pagamentos` | `forma`: `01` dinheiro, `03` crédito, `04` débito, `15` boleto, `17` PIX, `90` sem pagamento, `99` outros. Ausente: `99` no valor da nota; `90` (sem pagamento) quando nenhum item é de venda (remessa, bonificação, devolução, transferência). |
 
 As regras fiscais (NCM de 8 dígitos, CFOP coerente com a UF do destinatário, totais, pagamento) são as mesmas do
 painel; quando algo não fecha, a resposta é `422 VALIDATION_FAILED` com a lista `problemas`.

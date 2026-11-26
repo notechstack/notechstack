@@ -1,7 +1,8 @@
-// Planilha de NF-e (modelo publicado em /agentes/fiscal/dados/modelo-nfe.csv): uma linha por item; as linhas com o
-// mesmo `cnpj_emitente` + `nota` formam uma NF-e. Destinatário, frete e pagamento são da nota: valem o que estiver
-// preenchido em qualquer linha dela, e linhas que os repetem diferente recusam a nota. Leitura determinística, sem
-// IA; reaproveita o leitor de .xlsx/.csv do lote da NFS-e (agente/lote.ts).
+// Planilha de NF-e (modelo publicado em /agentes/fiscal/dados/modelo-nfe.xlsx e .csv): uma linha por item; as linhas com o
+// mesmo `cnpj_emitente` + `nota` formam uma NF-e. Destinatário, frete, transporte (modalidade, transportador e volumes)
+// pagamento e natureza da operação são da nota: valem o que estiver preenchido em qualquer linha dela, e linhas que os repetem diferente
+// recusam a nota. Sem `natureza_operacao`, a natureza sai do CFOP (natureza.ts), e a nota sem venda (remessa etc.)
+// sem `forma_pagamento` sai "sem pagamento" (90). Leitura determinística, sem IA; reaproveita o leitor de .xlsx/.csv do lote da NFS-e (agente/lote.ts).
 import { cnpjValido } from '../agente/documentos.js'
 import {
   decodificarTexto,
@@ -14,10 +15,26 @@ import {
   type TipoDePlanilha,
 } from '../agente/lote.js'
 import { UFS, type Uf } from './autorizadores.js'
-import { calcularTotais, centavos, soDigitos, type Csosn, type Item } from './nfe-builder.js'
+import {
+  avisosNfe,
+  calcularTotais,
+  soDigitos,
+  temTransportador,
+  temVolume,
+  type Csosn,
+  type Item,
+  type Transportador,
+  type Volume,
+} from './nfe-builder.js'
 import type { PedidoNfe } from './servico.js'
+import { FORMAS, lerNumero, modalidade, ratearFrete } from './campos.js'
+import { formaPadrao, LIMITE_NATUREZA } from './natureza.js'
 
-export const MODELO_DA_PLANILHA_NFE = 'https://www.notechstack.com.br/agentes/fiscal/dados/modelo-nfe.csv'
+// Os leitores de campo moram em campos.ts (sem depender do lote, para o WhatsApp importar sem ciclo); reexportados
+// aqui para quem já importava da planilha.
+export { FORMAS, lerNumero, modalidade, ratearFrete }
+
+export const MODELO_DA_PLANILHA_NFE = 'https://www.notechstack.com.br/agentes/fiscal/dados/modelo-nfe.xlsx'
 export const MAX_LINHAS_NFE = 2000
 export const MAX_TAMANHO_DA_NOTA = 30
 
@@ -29,6 +46,9 @@ export const COLUNAS_OBRIGATORIAS = [
 export const COLUNAS_OPCIONAIS = [
   'ie_destinatario', 'email_destinatario', 'complemento', 'fone', 'cest', 'origem', 'aliquota_credito_sn', 'gtin',
   'desconto', 'frete', 'forma_pagamento', 'descricao_pagamento', 'informacoes', 'informacoes_item',
+  'modalidade_frete', 'transportador_cpf_cnpj', 'transportador_nome', 'transportador_ie', 'transportador_endereco',
+  'transportador_municipio', 'transportador_uf', 'volumes_quantidade', 'volumes_especie', 'volumes_marca',
+  'volumes_numeracao', 'peso_liquido', 'peso_bruto', 'natureza_operacao',
 ] as const
 type Coluna = (typeof COLUNAS_OBRIGATORIAS)[number] | (typeof COLUNAS_OPCIONAIS)[number]
 const TODAS: Coluna[] = [...COLUNAS_OBRIGATORIAS, ...COLUNAS_OPCIONAIS]
@@ -38,19 +58,18 @@ const DO_CABECALHO = new Map<string, Coluna>(TODAS.map((c) => [normalizarCabecal
 const CAMPOS_DA_NOTA = [
   'cpf_cnpj_destinatario', 'nome_destinatario', 'ie_destinatario', 'email_destinatario', 'cep', 'logradouro', 'numero',
   'complemento', 'bairro', 'municipio_ibge', 'uf', 'fone', 'frete', 'forma_pagamento', 'descricao_pagamento', 'informacoes',
+  'modalidade_frete', 'transportador_cpf_cnpj', 'transportador_nome', 'transportador_ie', 'transportador_endereco',
+  'transportador_municipio', 'transportador_uf', 'volumes_quantidade', 'volumes_especie', 'volumes_marca',
+  'volumes_numeracao', 'peso_liquido', 'peso_bruto', 'natureza_operacao',
 ] as const
-
-/** Forma de pagamento: código do leiaute ou o nome que as pessoas escrevem. */
-const FORMAS: Record<string, string> = {
-  dinheiro: '01', cheque: '02', credito: '03', cartaodecredito: '03', debito: '04', cartaodedebito: '04',
-  boleto: '15', pix: '17', transferencia: '18', sempagamento: '90', outros: '99',
-}
 
 export type NotaDaPlanilha = {
   cnpjEmitente: string
   nota: string
   linhas: number[]
   pedido: PedidoNfe
+  /** Não impedem a emissão (peso bruto menor que o líquido etc.); o painel mostra antes de emitir. */
+  avisos: string[]
 }
 
 export type ProblemaDaPlanilha = { linha: number | null; nota: string | null; mensagem: string }
@@ -58,26 +77,6 @@ export type ProblemaDaPlanilha = { linha: number | null; nota: string | null; me
 export type PlanilhaNfe =
   | { ok: true; notas: NotaDaPlanilha[]; problemas: ProblemaDaPlanilha[] }
   | { ok: false; mensagem: string }
-
-/**
- * Número pt-BR ("1.234,5678", "2,5") ou da célula numérica; até `casas` decimais (também na célula numérica, sem
- * contar o ruído de ponto flutuante).
- */
-export function lerNumero(celula: Celula | undefined, casas: number): number | null {
-  if (typeof celula === 'number') {
-    if (!Number.isFinite(celula)) return null
-    // Compara no espaço do valor (19,99 vem como 19.990000000000002 em escala 1e10 e não pode ser recusado).
-    return Number(celula.toFixed(casas)) === celula ? celula : null
-  }
-  let t = textoDaCelula(celula).replace(/^R\$\s*/i, '').replace(/\s/g, '')
-  if (!t) return null
-  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
-  if (!/^\d+(\.\d+)?$/.test(t)) return null
-  const [, dec = ''] = t.split('.')
-  if (dec.length > casas) return null
-  return Number(t)
-}
 
 /** Código numérico (CEP, NCM, CEST, IBGE): célula numérica do .xlsx perde zeros à esquerda; aqui eles voltam. */
 function codigo(celula: Celula | undefined, tamanho: number): string {
@@ -94,8 +93,13 @@ const valorOpcional = (c: Celula | undefined) => (textoDaCelula(c) ? lerNumero(c
 function comparavel(c: string, celula: Celula | undefined): string {
   const texto = textoDaCelula(celula)
   if (!texto) return ''
-  if (c === 'cpf_cnpj_destinatario' || c === 'cep' || c === 'municipio_ibge' || c === 'fone') return soDigitos(texto).replace(/^0+/, '') || texto
+  if (c === 'cpf_cnpj_destinatario' || c === 'transportador_cpf_cnpj' || c === 'cep' || c === 'municipio_ibge' || c === 'fone') {
+    return soDigitos(texto).replace(/^0+/, '') || texto
+  }
   if (c === 'frete') return String(lerNumero(celula, 2) ?? texto)
+  if (c === 'peso_liquido' || c === 'peso_bruto') return String(lerNumero(celula, 3) ?? texto)
+  if (c === 'volumes_quantidade') return String(lerNumero(celula, 0) ?? texto)
+  if (c === 'modalidade_frete') return modalidade(texto) ?? normalizarCabecalho(texto)
   return normalizarCabecalho(texto) || texto
 }
 
@@ -183,12 +187,47 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
     if (!UFS.includes(uf as Uf)) erros.push(`UF "${t('uf')}" inválida`)
     const ie = t('ie_destinatario')
     const indicadorIE: '1' | '2' | '9' = /^isent[oa]$/i.test(ie) ? '2' : soDigitos(ie) ? '1' : '9'
-    const forma = t('forma_pagamento')
-    const formaCodigo = !forma ? '17' : /^\d{2}$/.test(forma) ? forma : FORMAS[normalizarCabecalho(forma)] ?? null
-    if (!formaCodigo) erros.push(`forma de pagamento "${forma}" desconhecida (use pix, boleto, dinheiro, credito, debito, transferencia ou o código)`)
-    if (formaCodigo === '99' && !t('descricao_pagamento')) erros.push('forma de pagamento "outros" (99) pede a coluna descricao_pagamento')
+    const natureza = t('natureza_operacao').replace(/\s+/g, ' ')
+    if (natureza.length > LIMITE_NATUREZA) erros.push(`natureza_operacao com mais de ${LIMITE_NATUREZA} caracteres`)
     const freteTotal = valorOpcional(n('frete'))
     if (freteTotal === null) erros.push('frete inválido')
+
+    // Transporte: transportador e um volume (com a soma) por nota; sem as colunas, nada muda.
+    // CPF/CNPJ do transportador: o mesmo leitor do destinatário (zeros que a célula numérica perde voltam).
+    const docTransp = t('transportador_cpf_cnpj') ? lerDocumentoDaCelula(n('transportador_cpf_cnpj')) : null
+    if (docTransp && 'erro' in docTransp) {
+      erros.push(docTransp.erro === 'DOCUMENTO_AMBIGUO' ? 'CPF/CNPJ do transportador ambíguo: escreva com a pontuação (ou como texto)' : 'CPF ou CNPJ do transportador inválido')
+    }
+    const transportador: Transportador = {
+      documento: docTransp && 'documento' in docTransp ? docTransp.documento : null,
+      nome: t('transportador_nome') || null,
+      inscricaoEstadual: t('transportador_ie') || null,
+      endereco: t('transportador_endereco') || null,
+      municipio: t('transportador_municipio') || null,
+      uf: t('transportador_uf').toUpperCase() || null,
+    }
+    const numeroOuNulo = (c: (typeof CAMPOS_DA_NOTA)[number], casas: number, rotulo: string) => {
+      if (!t(c)) return null
+      const x = lerNumero(n(c), casas)
+      if (x === null) erros.push(`${rotulo} inválido (${t(c)})`)
+      return x
+    }
+    const volume: Volume = {
+      quantidade: numeroOuNulo('volumes_quantidade', 0, 'volumes_quantidade (número inteiro)'),
+      especie: t('volumes_especie') || null,
+      marca: t('volumes_marca') || null,
+      numeracao: t('volumes_numeracao') || null,
+      pesoLiquido: numeroOuNulo('peso_liquido', 3, 'peso_liquido (kg, até 3 casas)'),
+      pesoBruto: numeroOuNulo('peso_bruto', 3, 'peso_bruto (kg, até 3 casas)'),
+    }
+    const textoModalidade = t('modalidade_frete')
+    const modalidadeInformada = textoModalidade ? modalidade(textoModalidade) : null
+    if (textoModalidade && !modalidadeInformada) {
+      erros.push(`modalidade_frete "${textoModalidade}" desconhecida (use 0 emitente/CIF, 1 destinatário/FOB, 2 terceiros, 3 próprio remetente, 4 próprio destinatário ou 9 sem frete)`)
+    }
+    if (!textoModalidade && temTransportador(transportador)) {
+      erros.push('com transportador, preencha modalidade_frete (0 emitente/CIF, 1 destinatário/FOB, 2 terceiros, 3 próprio remetente, 4 próprio destinatário)')
+    }
 
     const itens: Item[] = []
     for (const { numero, v } of g.linhas) {
@@ -217,18 +256,12 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
         informacoes: tx('informacoes_item') || null,
       })
     }
-    // Frete da nota rateado pelos itens, proporcional ao valor, nos mesmos centavos do leiaute (o resto no último).
-    if (freteTotal) {
-      const total = centavos(freteTotal)
-      const bases = itens.map((i) => centavos(i.quantidade * i.valorUnitario))
-      const soma = bases.reduce((a, b) => a + b, 0) || 1
-      let usado = 0
-      itens.forEach((item, i) => {
-        const parte = i === itens.length - 1 ? total - usado : Math.floor((total * bases[i]) / soma)
-        usado += parte
-        item.frete = parte / 100
-      })
-    }
+    // Forma de pagamento: a da coluna; vazia, PIX na venda e "sem pagamento" (90) na nota sem venda (remessa etc.).
+    const forma = t('forma_pagamento')
+    const formaCodigo = !forma ? formaPadrao(itens, '17') : /^\d{2}$/.test(forma) ? forma : FORMAS[normalizarCabecalho(forma)] ?? null
+    if (!formaCodigo) erros.push(`forma de pagamento "${forma}" desconhecida (use pix, boleto, dinheiro, credito, debito, transferencia, sem pagamento ou o código)`)
+    if (formaCodigo === '99' && !t('descricao_pagamento')) erros.push('forma de pagamento "outros" (99) pede a coluna descricao_pagamento')
+    if (freteTotal) ratearFrete(itens, freteTotal)
     // O pagamento é o vNF calculado como o builder calcula (mesmo arredondamento).
     const vNF = calcularTotais(itens).nota
     const pedido: PedidoNfe = {
@@ -250,15 +283,20 @@ export function interpretarPlanilhaNfe(grade: Celula[][], opcoes: { contarCampos
         },
       },
       itens,
-      modalidadeFrete: freteTotal ? '0' : '9',
+      modalidadeFrete: modalidadeInformada ?? (freteTotal ? '0' : '9'),
+      ...(temTransportador(transportador) ? { transportador } : {}),
+      ...(temVolume(volume) ? { volumes: [volume] } : {}),
       pagamentos: [{ forma: formaCodigo ?? '99', valor: formaCodigo === '90' ? 0 : vNF / 100, descricao: t('descricao_pagamento') || null }],
       informacoesComplementares: t('informacoes') || null,
+      // Só a informada: sem a coluna, o pedido fica igual ao de antes (a chave da nota é o hash do conteúdo) e a natureza
+      // sai do CFOP na criação (servico.ts) e no XML.
+      ...(natureza ? { naturezaOperacao: natureza } : {}),
     }
     if (erros.length) {
       for (const m of erros) problemas.push({ linha: g.linhas[0].numero, nota: g.nota, mensagem: m })
       continue
     }
-    notas.push({ cnpjEmitente: g.cnpj, nota: g.nota, linhas: g.linhas.map((l) => l.numero), pedido })
+    notas.push({ cnpjEmitente: g.cnpj, nota: g.nota, linhas: g.linhas.map((l) => l.numero), pedido, avisos: avisosNfe(pedido) })
   }
   return { ok: true, notas, problemas }
 }

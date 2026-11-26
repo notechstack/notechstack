@@ -3,7 +3,10 @@
 // ser do dono.
 //
 // POST JSON (`acao`): `contexto` (empresas com dados de NF-e, bloqueio e franquia), `dados_salvar` (IE, endereço,
-// série e próximo número), `listar`, `cancelar`, `corrigir` (CC-e) e `inutilizar`.
+// série e próximo número), `listar`, `cancelar`, `corrigir` (CC-e) e `inutilizar`. Emissão avulsa (23/11/2026):
+// `historico` (destinatários, produtos e transportadores das notas anteriores da empresa), `avulsa_conferir` e
+// `avulsa_emitir`: o campo `nota` tem a forma do POST /v1/nfe da API (parceiro/nfe-api.ts), e passa pela mesma
+// conferência (`conferirPedido`) e pela mesma fila (`criarNfe`, origem 'painel', chave `painel:<uuid>`) da planilha.
 // POST multipart (`acao` = `planilha_ler` ou `planilha_emitir`, campo `arquivo`): ler confere e devolve o resumo; emitir
 // põe na fila as notas sem problema. A chave de cada nota é `planilha:<cnpj>:<nota>:<sha256 do conteúdo da nota>`: a
 // mesma nota (mesmo número na coluna `nota`, mesmo conteúdo) nunca sai duas vezes, mesmo que o arquivo mude. Uma nota do
@@ -21,19 +24,36 @@ import type { SessionVerifier } from '../session.js'
 import type { Uf } from './autorizadores.js'
 import { conferenciaDaEmpresa, conferirEmpresaNfe } from './conferencia.js'
 import { renderDanfe } from './danfe.js'
-import type { ResponsavelTecnico } from './nfe-builder.js'
+import {
+  avisosNfe,
+  calcularTotais,
+  informacoesComplementaresDaNota,
+  kg,
+  MODALIDADES_FRETE,
+  resumoCreditoSn,
+  temTransportador,
+  volumesDaNota,
+  type ResponsavelTecnico,
+} from './nfe-builder.js'
 import type { SefazClient } from './sefaz-client.js'
-import { lerPlanilhaNfe } from './planilha.js'
+import { lerPlanilhaNfe, ratearFrete } from './planilha.js'
+import { formaPadrao, naturezaDaNota } from './natureza.js'
+import { lerPedidoNfe } from '../parceiro/nfe-api.js'
+import { resolverMunicipio } from '../local-prestacao.js'
+import { MUNICIPIOS_IBGE } from './municipios-ibge.js'
 import {
   conferirPedido,
   criarNfe,
   DadosNfeInvalidos,
   empresaNfe,
   bloqueioNfe,
+  historicoNfe,
   pedirCancelamento,
   pedirCartaCorrecao,
+  motivoDoBloqueio,
   pedirInutilizacao,
   salvarDadosNfe,
+  type PedidoNfe,
 } from './servico.js'
 
 export type PainelNfeDeps = {
@@ -48,31 +68,16 @@ export type PainelNfeDeps = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const texto = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : typeof v === 'number' ? String(v) : '')
 
-/** O que o painel mostra para cada código de bloqueio da NF-e. */
-export const MOTIVO_DO_BLOQUEIO: Record<string, string> = {
-  TENANT_INACTIVE: 'a empresa está desativada',
-  NFE_REGIME_NAO_SUPORTADO: 'por enquanto a NF-e é só para Simples Nacional e MEI',
-  NFE_SEM_IE: 'falta a inscrição estadual',
-  NFE_SEM_ENDERECO: 'falta o endereço da empresa',
-  NFE_SEM_SERIE: 'falta a série e o próximo número da NF-e',
-  NFE_CERT_MISSING: 'falta o certificado A1 da própria empresa (a NF-e não aceita procuração)',
-  NFE_NAO_CONFERIDA: 'falta a conferência da empresa na Sefaz (clique em Conferir na Sefaz)',
-  NFE_CONFERIR_DE_NOVO: 'o certificado, a IE ou a UF mudaram desde a última conferência; confira de novo na Sefaz',
-  NFE_NAO_CREDENCIADA: 'a empresa não está credenciada para emitir NF-e na Sefaz do estado',
-  NFE_IE_NAO_E_DO_CNPJ: 'a Sefaz não encontra a inscrição estadual neste CNPJ',
-  NFE_IE_NAO_HABILITADA: 'a inscrição estadual não está habilitada na Sefaz',
-  NFE_IE_INVALIDA: 'a Sefaz recusou a inscrição estadual',
-  SEFAZ_INDISPONIVEL: 'a Sefaz não respondeu na última conferência; tente de novo',
-  CERT_SEM_CNPJ: 'o certificado não é um e-CNPJ A1',
-  CERT_EXPIRED: 'o certificado A1 venceu',
-  NO_SUBSCRIPTION: 'a conta não tem assinatura',
-  SUBSCRIPTION_CANCELLED: 'a assinatura foi cancelada',
-  PAYMENT_NOT_APPROVED: 'o pagamento da assinatura não foi aprovado',
-  CERT_DE_OUTRO_CNPJ: 'o certificado A1 é de outro CNPJ; a NF-e precisa do A1 da própria empresa',
-}
-export const motivoDoBloqueio = (codigo: string) => MOTIVO_DO_BLOQUEIO[codigo] ?? codigo
+// O texto de cada bloqueio mora em servico.ts (o WhatsApp também usa); reexportado aqui para quem já importava do painel.
+export { MOTIVO_DO_BLOQUEIO, motivoDoBloqueio } from './servico.js'
 
 type Ctx = { deps: PainelNfeDeps; db: Db; dono: { id: string; plan: string; limite: number }; empresas: { id: string; cnpj: string; razao_social: string; active: boolean }[]; agora: Date }
+
+/** A conta-mãe tem a NF-e entre os tipos de nota (nofiscal.tipos_nota_da_conta, migração 20261123210000). */
+async function contaEmiteNfe(db: Db, donoId: string): Promise<boolean> {
+  const { rows } = await db.query<{ tipos: string[] | null }>('select nofiscal.tipos_nota_da_conta($1) as tipos', [donoId])
+  return (rows[0]?.tipos ?? []).includes('nfe')
+}
 
 export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Promise<Response> {
   try {
@@ -81,6 +86,8 @@ export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Pr
     const dono = await donoDoUsuario(deps.db, userId)
     if (!dono) return errorResponse('CONTA_SEM_EMPRESA', 'Não achamos uma empresa nesta conta.')
     if (!planoDeEscritorio(dono.plan)) return errorResponse('SO_ESCRITORIO', 'A NF-e pelo painel é do plano Escritório.')
+    // Planos por módulo (23/11/2026): a conta só emite NF-e com 'nfe' em fiscal_tenants.tipos_nota (o checkout grava).
+    if (!(await contaEmiteNfe(deps.db, dono.id))) return errorResponse('NFE_NAO_CONTRATADA', 'A NF-e não está no seu plano. Para incluir, fale com a nó pelo WhatsApp.')
     const ctx: Ctx = { deps, db: deps.db, dono, empresas: await empresasDoDono(deps.db, dono.id), agora: (deps.now ?? (() => new Date()))() }
 
     if (request.method === 'GET') return baixar(ctx, new URL(request.url))
@@ -104,6 +111,12 @@ export async function handlePainelNfe(request: Request, deps: PainelNfeDeps): Pr
         return conferir(ctx, corpo)
       case 'listar':
         return listar(ctx, corpo)
+      case 'historico':
+        return historico(ctx, corpo)
+      case 'avulsa_conferir':
+        return avulsa(ctx, corpo, false)
+      case 'avulsa_emitir':
+        return avulsa(ctx, corpo, true)
       case 'cancelar':
       case 'corrigir':
       case 'inutilizar':
@@ -149,6 +162,119 @@ async function contexto(ctx: Ctx): Promise<Response> {
     })
   }
   return json(200, { empresas, franquia: { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) } })
+}
+
+async function historico(ctx: Ctx, b: Record<string, unknown>): Promise<Response> {
+  const empresa = daConta(ctx, texto(b.tenant_id))
+  if (!empresa) return errorResponse('NOT_FOUND', 'Esta empresa não é da sua conta.')
+  const h = await historicoNfe(ctx.db, empresa.id)
+  // Município como a pessoa escreve ("Campinas/SP"), para o campo do formulário.
+  const destinatarios = h.destinatarios.map((d) => {
+    const nome = MUNICIPIOS_IBGE[d.endereco?.codigoMunicipio ?? '']
+    return { ...d, municipio: nome ? `${nome}/${d.endereco.uf}` : null }
+  })
+  return json(200, { ...h, destinatarios })
+}
+
+/** Formas de pagamento do formulário avulso (as mesmas da planilha). */
+export const FORMAS_DO_PAINEL: Record<string, string> = {
+  '17': 'PIX', '15': 'Boleto', '01': 'Dinheiro', '03': 'Cartão de crédito', '04': 'Cartão de débito', '18': 'Transferência',
+  '90': 'Sem pagamento', '99': 'Outros',
+}
+const reais = (centavos: number) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+/**
+ * Nota avulsa do painel. Conferir devolve o resumo, os problemas (a nota não sai) e os avisos (sai, mas confira);
+ * emitir confere de novo e põe na fila, idempotente pela `chave` (uuid gerado pelo navegador a cada formulário).
+ * O pagamento é um só, no valor da nota (como na planilha).
+ */
+async function avulsa(ctx: Ctx, b: Record<string, unknown>, emitir: boolean): Promise<Response> {
+  const empresa = daConta(ctx, texto(b.tenant_id))
+  if (!empresa) return errorResponse('NOT_FOUND', 'Esta empresa não é da sua conta.')
+  if (typeof b.nota !== 'object' || b.nota === null || Array.isArray(b.nota)) return errorResponse('VALIDATION_FAILED', 'nota ausente')
+  // Forma vazia ("Automática"): resolvida depois de ler os itens (PIX na venda, sem pagamento na remessa).
+  const formaInformada = texto(b.forma_pagamento)
+  if (formaInformada && !FORMAS_DO_PAINEL[formaInformada]) return errorResponse('VALIDATION_FAILED', 'Forma de pagamento inválida.', { campo: 'forma_pagamento' })
+  const descricaoPagamento = texto(b.descricao_pagamento)
+  if (formaInformada === '99' && !descricaoPagamento) return errorResponse('VALIDATION_FAILED', 'Com a forma "Outros", descreva o pagamento.', { campo: 'descricao_pagamento' })
+  // O formulário manda o município como se escreve ("Campinas/SP") ou o código IBGE; a UF vem do município.
+  const nota = JSON.parse(JSON.stringify(b.nota)) as Record<string, unknown>
+  const dest = nota.destinatario as Record<string, unknown> | undefined
+  const end = dest && typeof dest.endereco === 'object' && dest.endereco !== null ? (dest.endereco as Record<string, unknown>) : null
+  if (end && typeof end.codigo_municipio === 'string' && end.codigo_municipio.trim()) {
+    const m = resolverMunicipio(end.codigo_municipio)
+    if (!m.ok) {
+      const msg = m.motivo === 'ambiguo'
+        ? `${m.nome} existe em mais de um estado (${m.opcoes.map((o) => o.uf).join(', ')}): escreva Cidade/UF.`
+        : `Município "${end.codigo_municipio}" não encontrado: escreva Cidade/UF, por exemplo Campinas/SP.`
+      return errorResponse('VALIDATION_FAILED', msg, { campo: 'municipio' })
+    }
+    end.codigo_municipio = m.municipio.ibge
+    if (!end.uf) end.uf = m.municipio.uf
+  }
+  const lido = lerPedidoNfe({ ...nota, external_id: 'painel' })
+  if (!lido.ok) return errorResponse('VALIDATION_FAILED', lido.mensagem)
+  const base = lido.valor.pedido
+  // Frete da nota (um valor só no formulário), rateado pelos itens como na planilha.
+  const freteTexto = texto(b.frete).replace(',', '.')
+  if (freteTexto) {
+    const frete = Number(freteTexto)
+    if (!/^\d+(\.\d{1,2})?$/.test(freteTexto) || !(frete >= 0)) return errorResponse('VALIDATION_FAILED', 'Frete inválido (valor em reais).', { campo: 'frete' })
+    if (frete > 0) ratearFrete(base.itens, frete)
+  }
+  const t = calcularTotais(base.itens)
+  const forma = formaInformada || formaPadrao(base.itens, '17')
+  const pedido: PedidoNfe = {
+    ...base,
+    pagamentos: [{ forma, valor: forma === '90' ? 0 : t.nota / 100, descricao: forma === '99' ? descricaoPagamento.slice(0, 60) : null }],
+  }
+
+  const bloqueio = await bloqueioNfe(ctx.db, empresa.id)
+  const dados = await empresaNfe(ctx.db, empresa.id)
+  const problemas = dados ? conferirPedido(dados, pedido, ctx.agora) : ['A empresa ainda não tem os dados de NF-e.']
+
+  if (emitir) {
+    const chave = texto(b.chave)
+    if (!UUID.test(chave)) return errorResponse('VALIDATION_FAILED', 'chave da emissão inválida')
+    if (bloqueio) return errorResponse('EMISSAO_BLOQUEADA', `Não dá para emitir: ${motivoDoBloqueio(bloqueio)}.`, { bloqueio })
+    if (problemas.length) return errorResponse('VALIDATION_FAILED', problemas.join(' '), { problemas })
+    const r = await criarNfe(ctx.db, { tenantId: empresa.id, externalId: `painel:${chave}`, origem: 'painel', pedido, agora: ctx.agora })
+    if (!r.ok) {
+      return r.codigo === 'BLOQUEADA'
+        ? errorResponse('EMISSAO_BLOQUEADA', `Não dá para emitir: ${motivoDoBloqueio(r.bloqueio)}.`, { bloqueio: r.bloqueio })
+        : errorResponse('VALIDATION_FAILED', r.problemas.join(' '), { problemas: r.problemas })
+    }
+    logEvent('nofiscal.nfe_avulsa_emitida', { tenant_id: empresa.id, nfe_id: r.nfeId, ja_existia: r.jaExistia })
+    return json(202, { nfe_id: r.nfeId, serie: r.serie, numero: r.numero, ja_existia: r.jaExistia })
+  }
+
+  const avisos = avisosNfe(pedido)
+  const noMes = await notasDoMes(ctx.db, ctx.dono.id, ctx.agora)
+  if (noMes + 1 > ctx.dono.limite) {
+    avisos.push(`Franquia: com esta nota, o mês chega a ${noMes + 1} notas, acima das ${ctx.dono.limite} do seu plano.`)
+  }
+  const d = pedido.destinatario
+  return json(200, {
+    resumo: {
+      empresa: { razao_social: empresa.razao_social, cnpj: empresa.cnpj },
+      destinatario: { documento: d.documento, nome: d.nome, ie: d.inscricaoEstadual ?? null, municipio_ibge: d.endereco.codigoMunicipio, uf: d.endereco.uf },
+      itens: pedido.itens.map((i) => ({
+        codigo: i.codigo, descricao: i.descricao, ncm: i.ncm, cfop: i.cfop, csosn: i.csosn, quantidade: i.quantidade, unidade: i.unidade,
+        total: reais(Math.round(i.quantidade * i.valorUnitario * 100)), desconto: i.desconto ? reais(Math.round(i.desconto * 100)) : null,
+      })),
+      totais: { produtos: reais(t.produtos), desconto: reais(t.desconto), frete: reais(t.frete), nota: reais(t.nota) },
+      natureza_operacao: naturezaDaNota(pedido.itens, pedido.naturezaOperacao).natureza,
+      transporte: resumoDoTransporte(pedido),
+      pagamento: FORMAS_DO_PAINEL[forma],
+      // Crédito do Simples (CSOSN 101) e o texto como vai à nota, já com a frase do crédito calculada.
+      credito_icms_sn: resumoCreditoSn(pedido.itens),
+      informacoes_complementares: informacoesComplementaresDaNota(pedido.informacoesComplementares, pedido.itens),
+      homologacao: dados?.ambiente !== 'producao',
+    },
+    problemas,
+    avisos,
+    bloqueio: bloqueio ? { codigo: bloqueio, motivo: motivoDoBloqueio(bloqueio) } : null,
+  })
 }
 
 async function conferir(ctx: Ctx, b: Record<string, unknown>): Promise<Response> {
@@ -283,6 +409,20 @@ async function baixar(ctx: Ctx, url: URL): Promise<Response> {
   })
 }
 
+/** Uma linha para o resumo da planilha: modalidade, transportador e volumes (null sem nada de transporte). */
+export function resumoDoTransporte(pedido: PedidoNfe): string | null {
+  const t = temTransportador(pedido.transportador) ? pedido.transportador : null
+  const vols = volumesDaNota(pedido)
+  if (!t && !vols.length && (pedido.modalidadeFrete ?? '9') === '9') return null
+  const partes = [MODALIDADES_FRETE[pedido.modalidadeFrete ?? '9'] ?? '']
+  if (t) partes.push(t.nome || t.documento || 'transportador')
+  for (const v of vols) {
+    const peso = [v.pesoLiquido != null ? `líq. ${kg(v.pesoLiquido)}` : '', v.pesoBruto != null ? `bruto ${kg(v.pesoBruto)}` : ''].filter(Boolean).join(', ')
+    partes.push([v.quantidade != null ? `${v.quantidade} vol.` : '', v.especie ?? '', peso].filter(Boolean).join(' '))
+  }
+  return partes.filter(Boolean).join(' · ')
+}
+
 async function planilha(ctx: Ctx, request: Request): Promise<Response> {
   const tamanho = Number(request.headers.get('content-length') ?? '0')
   if (tamanho > MAX_BYTES_DO_PAINEL + 64 * 1024) return errorResponse('PLANILHA_RECUSADA', 'A planilha passou de 4 MB. Divida em duas.')
@@ -351,11 +491,23 @@ async function planilha(ctx: Ctx, request: Request): Promise<Response> {
       [empresa.id, chave],
     )
     if (Number(antes[0]?.n ?? 0) > 0) chave = `${chave}:${antes[0].n}`
-    prontas.push({ nota, tenantId: empresa.id, valor: nota.pedido.pagamentos[0]?.valor ?? 0, chave })
+    // Valor da nota (vNF), não do pagamento: a remessa "sem pagamento" tem vPag 0 e vale o total dos produtos.
+    prontas.push({ nota, tenantId: empresa.id, valor: calcularTotais(nota.pedido.itens).nota / 100, chave })
   }
   const franquia = { limite: ctx.dono.limite, no_mes: await notasDoMes(ctx.db, ctx.dono.id, ctx.agora) }
   const resumo = {
-    notas: prontas.map((p) => ({ nota: p.nota.nota, cnpj: p.nota.cnpjEmitente, destinatario: p.nota.pedido.destinatario.nome, itens: p.nota.pedido.itens.length, valor: p.valor.toFixed(2) })),
+    notas: prontas.map((p) => ({
+      nota: p.nota.nota,
+      cnpj: p.nota.cnpjEmitente,
+      destinatario: p.nota.pedido.destinatario.nome,
+      itens: p.nota.pedido.itens.length,
+      valor: p.valor.toFixed(2),
+      natureza_operacao: naturezaDaNota(p.nota.pedido.itens, p.nota.pedido.naturezaOperacao).natureza,
+      pagamento: FORMAS_DO_PAINEL[p.nota.pedido.pagamentos[0]?.forma ?? ''] ?? p.nota.pedido.pagamentos[0]?.forma ?? null,
+      transporte: resumoDoTransporte(p.nota.pedido),
+      credito_icms_sn: resumoCreditoSn(p.nota.pedido.itens),
+      avisos: p.nota.avisos,
+    })),
     problemas,
     franquia,
   }

@@ -148,14 +148,25 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     <h2 class="nf-h2" id="fc-titulo-3">Pagamento</h2>
     <p class="nf-texto"><b id="fc-plano-pagamento">Plano Inicial · R$ 49/mês · 7 dias grátis</b>.<span id="fc-texto-cobranca"> A primeira cobrança só acontece depois dos <span id="fc-dias-cobranca">7 dias</span>; cancelando antes disso, nada é cobrado.<span id="fc-texto-anual" hidden> No anual, essa cobrança é o ano inteiro, de uma vez, com desconto; a franquia de notas continua mensal.</span> O cartão vai direto ao Pagar.me, e a Nó não vê o número.</span></p>
     <form id="fc-form-3" class="nf-form" novalidate>
-      <!-- Faixas do Escritório (Lucca, 05/11/2026): só no modo escritório (?tipo=escritorio); mensal ou anual desde 13/11/2026 -->
+      <!-- Planos por volume (Lucca, 23/11/2026): o Escritório escolhe os documentos por mês (empresas ilimitadas) e
+           marca o que emite. O primeiro tipo de nota vem no preço; o outro tipo e o Guias somam (precos.js). -->
       <fieldset class="nf-grupo nf-grupo--coluna nf-faixas" id="fc-faixas" hidden>
-        <legend>Quantas empresas o escritório vai atender?</legend>
-        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_5"><span><b>Até 5 empresas</b> · 500 notas/mês · R$ 297</span></label>
-        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_20"><span><b>Até 20 empresas</b> · 2.000 notas/mês · R$ 797</span></label>
-        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_50"><span><b>Até 50 empresas</b> · 5.000 notas/mês · R$ 1.497</span></label>
-        <small class="nf-dica" id="fc-faixas-dica">Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
+        <legend>Quantos documentos por mês?</legend>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_5"><span><b>500 documentos/mês</b> · R$ 297/mês</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_1000"><span><b>1.000 documentos/mês</b> · R$ 497/mês</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_20"><span><b>2.000 documentos/mês</b> · R$ 797/mês</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_50"><span><b>5.000 documentos/mês</b> · R$ 1.497/mês</span></label>
+        <label class="nf-opcao"><input type="radio" name="fc-faixa" value="escritorio_10000"><span><b>10.000 documentos/mês</b> · R$ 2.497/mês</span></label>
+        <small class="nf-dica" id="fc-faixas-dica">Empresas ilimitadas em todas as faixas. Cobrança mensal. Dá para trocar de faixa depois, em Minha conta.</small>
       </fieldset>
+      <fieldset class="nf-grupo nf-grupo--coluna nf-modulos" id="fc-modulos" hidden>
+        <legend>O que você vai emitir?</legend>
+        <label class="nf-opcao"><input type="checkbox" name="fc-modulo" value="nfse" checked><span class="nf-modulo-texto"><b>NFS-e</b><small>Nota de serviço, pelo WhatsApp.</small></span><em class="nf-modulo-preco" data-modulo-preco="nfse"></em></label>
+        <label class="nf-opcao"><input type="checkbox" name="fc-modulo" value="nfe"><span class="nf-modulo-texto"><b>NF-e</b><small>Nota de produto (modelo 55), por planilha no painel.</small></span><em class="nf-modulo-preco" data-modulo-preco="nfe">+R$ 197/mês</em></label>
+        <label class="nf-opcao"><input type="checkbox" name="fc-modulo" value="guias"><span class="nf-modulo-texto"><b>Guias</b><small>As guias de imposto vão aos seus clientes por WhatsApp e e-mail, com lembrete no vencimento.</small></span><em class="nf-modulo-preco" data-modulo-preco="guias">+R$ 197/mês</em></label>
+        <small class="nf-dica">O primeiro tipo de nota já vem no preço do plano. Notas e guias usam a mesma franquia de documentos.</small>
+      </fieldset>
+      <div class="nf-resumo-preco" id="fc-resumo-preco" aria-live="polite"></div>
       <div class="nf-cupom" id="fc-cupom">
         <button type="button" class="fi-link-btn" id="fc-cupom-abrir">Tem um cupom?</button>
         <div class="nf-campo" id="fc-cupom-campo" hidden>
@@ -370,8 +381,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 </footer>
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
-<script src="/agentes/fiscal/nofiscal.js?v=4"></script>
-<script src="/agentes/fiscal/medicao.js?v=7"></script>
-<script src="/agentes/fiscal/comecar/comecar.js?v=17"></script>
+<script src="/agentes/fiscal/nofiscal.js?v=6"></script>
+<script src="/agentes/fiscal/medicao.js?v=8"></script>
+<script src="/agentes/fiscal/precos.js?v=3"></script>
+<script src="/agentes/fiscal/comecar/comecar.js?v=21"></script>
 </body>
 </html>

@@ -88,7 +88,12 @@ describe('o arquivo que o agente manda', () => {
     const planilha = interpretarGrade(grade, { prestadorObrigatorio: true })
     expect(planilha.ok).toBe(true)
     if (!planilha.ok) return
-    expect(planilha.colunas).toEqual(['cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador', 'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico', 'municipio_prestacao'])
+    expect(planilha.colunas).toEqual([
+      'cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador',
+      'valor', 'descricao', 'iss_retido', 'inss_retido', 'codigo_servico', 'municipio_prestacao',
+      'obra_cep', 'obra_logradouro', 'obra_numero', 'obra_complemento', 'obra_bairro', 'obra_cno',
+      'tomador_cep', 'tomador_logradouro', 'tomador_numero', 'tomador_complemento', 'tomador_bairro', 'tomador_municipio_ibge',
+    ])
     expect(planilha.linhas).toHaveLength(2)
   })
 })

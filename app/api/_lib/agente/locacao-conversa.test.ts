@@ -117,15 +117,16 @@ describe('nota de locação pelo WhatsApp', () => {
     // A resposta completa o pedido, sem *corrigir*.
     await c.enviar(s.ownerPhone, resposta)
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Serviço: 99.03.01')
-    expect(resumo).toContain('Tipo: *locação de imóvel residencial* (99.03.01), sem ISS\nImóvel: Rua das Flores, 120 - Centro, CEP 13015-100, ')
-    expect(resumo).toContain('Valor: R$ 2.500,00')
+    expect(resumo).toContain('*Serviço:* 99.03.01')
+    expect(resumo).toContain('*Tipo:* locação de imóvel residencial (99.03.01), sem ISS\n*Imóvel:* Rua das Flores, 120 - Centro, CEP 13015-100, ')
+    expect(resumo).toContain('*Valor:* R$ 2.500,00')
     // Empresa do Simples: locação de imóvel próprio é atividade impeditiva (aviso, não bloqueio).
-    expect(resumo).toMatch(/Atenção: Locação de imóvel próprio é atividade impeditiva do Simples Nacional/)
+    expect(resumo).toMatch(/\*Atenção:\* Locação de imóvel próprio é atividade impeditiva do Simples Nacional/)
 
     await c.enviar(s.ownerPhone, 'confirmar')
     // O cliente salvo passa a sair com o código da locação (regra de 17/11/2026 para código trocado na nota).
     expect(c.novas(s.ownerPhone)).toEqual([`${TEXTOS.emitindo}
+
 Guardei o código 99.03.01 no cliente Fulano: as próximas notas para ele saem com esse código.`])
     const [payload] = await payloads(s.tenant.id)
     expect(payload.servico.codigo_servico_nacional).toBe('990301')
@@ -162,7 +163,7 @@ Guardei o código 99.03.01 no cliente Fulano: as próximas notas para ele saem c
     ])
     await c.enviar(s.ownerPhone, 'NCM 8474.31.00')
     const [resumo] = c.novas(s.ownerPhone)
-    expect(resumo).toContain('Tipo: *locação de bem móvel* (99.04.01), sem ISS\nBem: 2 × Betoneira 400 litros (NCM 8474.31.00)')
+    expect(resumo).toContain('*Tipo:* locação de bem móvel (99.04.01), sem ISS\n*Bem:* 2 × Betoneira 400 litros (NCM 8474.31.00)')
     expect(resumo).not.toContain('Atenção:')
     await c.enviar(s.ownerPhone, 'confirmar')
     const [payload] = await payloads(s.tenant.id)
@@ -174,6 +175,6 @@ Guardei o código 99.03.01 no cliente Fulano: as próximas notas para ele saem c
     await c.enviar(s.ownerPhone, 'CEP 13015-100, comercial')
     expect(c.novas(s.ownerPhone)[0]).toMatch(/faltou se é residencial ou comercial/)
     await c.enviar(s.ownerPhone, 'comercial')
-    expect(c.novas(s.ownerPhone)[0]).toContain('Tipo: *locação de imóvel não residencial* (99.03.01), sem ISS\nImóvel: Rua das Flores, 120, CEP 13015-100')
+    expect(c.novas(s.ownerPhone)[0]).toContain('*Tipo:* locação de imóvel não residencial (99.03.01), sem ISS\n*Imóvel:* Rua das Flores, 120, CEP 13015-100')
   })
 })

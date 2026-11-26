@@ -21,8 +21,9 @@ import {
 } from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
-export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50";
-const FAIXAS_ESCRITORIO = ["escritorio_5", "escritorio_20", "escritorio_50"];
+export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50" | "escritorio_1000" | "escritorio_10000";
+// Faixas por volume (23/11/2026): 500, 1.000, 2.000, 5.000 e 10.000 documentos (assinatura-fiscal/core.ts).
+const FAIXAS_ESCRITORIO = ["escritorio_5", "escritorio_1000", "escritorio_20", "escritorio_50", "escritorio_10000"];
 
 export type ArgsCriar = {
   user_id: string;
@@ -113,7 +114,13 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
   }
 
   const consultar = (cnpj: string, regimeDeclarado: RegimeNormal | null = null) =>
-    consultarCnpj(cnpj, { apiUrl: deps.env("CNPJ_API_URL"), fetch: deps.fetch, regimeConfirmado: deps.regimeConfirmado, regimeDeclarado });
+    consultarCnpj(cnpj, {
+      apiUrl: deps.env("CNPJ_API_URL"),
+      espelhoUrl: deps.env("CNPJ_API_ESPELHO_URL") || undefined,
+      fetch: deps.fetch,
+      regimeConfirmado: deps.regimeConfirmado,
+      regimeDeclarado,
+    });
 
   // Presumido/Real: situação da cidade no banco; fora do ar, valem as listas do código (situacaoDoMunicipio).
   const situacaoDe = async (c: Consulta): Promise<string | null> => {
@@ -142,7 +149,10 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     }
     const r = respostaConsulta(c, h, situacao);
     if (r || !c.ok) {
-      log("fiscal_cadastro_consulta", { motivo: av ? av.codigo.toLowerCase() : c.ok ? "ok" : c.motivo });
+      log("fiscal_cadastro_consulta", {
+        motivo: av ? av.codigo.toLowerCase() : c.ok ? "ok" : c.motivo,
+        ...(!c.ok && "tentativas" in c ? { tentativas: c.tentativas } : {}),
+      });
       return r!;
     }
     return json(200, { ok: true, ...c.dados, padrao_nacional: municipioAtendido(c.dados, await deps.municipios()) }, h);

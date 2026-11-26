@@ -11,6 +11,8 @@ export type MensagemEmail = {
   anexos?: AnexoEmail[]
   /** Chave de idempotência do provedor (Resend `Idempotency-Key`), para reenvio sem duplicar. */
   idempotencia?: string
+  /** Responder-para (módulo Guias: o e-mail do escritório; o remetente continua o da nó). */
+  responderPara?: string
 }
 
 export interface EnviaEmail {
@@ -20,13 +22,26 @@ export interface EnviaEmail {
 /** O que a Cloud API devolve de um envio aceito; os dublês e as camadas de cima podem não devolver nada. */
 export type Enviada = { wamid: string | null }
 
+/**
+ * Cabeçalho de documento (PDF já subido pela API de mídia, por `mediaId`) e parâmetros dos botões de um modelo
+ * (módulo Guias): `url` completa o sufixo dinâmico do botão de URL; `resposta` leva o payload do botão de resposta
+ * rápida, que volta no webhook em `messages[].button.payload`. `indice` é a posição do botão no modelo (0..9).
+ */
+export type ExtrasDoModelo = {
+  documento?: { mediaId: string; nome: string }
+  botoes?: ({ tipo: 'url'; indice: number; texto: string } | { tipo: 'resposta'; indice: number; payload: string })[]
+}
+
 export interface EnviaWhatsApp {
   /** `para` em E.164 (`+5511…`). */
   enviarTexto(para: string, texto: string): Promise<Enviada | void>
   /** Documento (o PDF da nota) com a legenda na mesma mensagem. */
   enviarDocumento(para: string, anexo: AnexoEmail, legenda: string): Promise<Enviada | void>
-  /** Modelo aprovado na Meta, o único envio aceito fora da janela de 24 h (Landing v2, lote C). */
-  enviarModelo(para: string, nome: string, parametros: string[]): Promise<Enviada | void>
+  /** Modelo aprovado na Meta, o único envio aceito fora da janela de 24 h (Landing v2, lote C). Os parâmetros são os
+   * do corpo; `extras` traz o cabeçalho de documento e os botões (módulo Guias). */
+  enviarModelo(para: string, nome: string, parametros: string[], extras?: ExtrasDoModelo): Promise<Enviada | void>
+  /** Sobe um arquivo pela API de mídia e devolve o `media id` (cabeçalho de documento de um modelo). */
+  subirMidia?(anexo: AnexoEmail): Promise<string>
 }
 
 export const TENTATIVAS_DE_ENVIO = 3
@@ -61,8 +76,8 @@ export function whatsappComRetentativa(whatsapp: EnviaWhatsApp): EnviaWhatsApp {
     async enviarDocumento(para, anexo, legenda) {
       await tentar('whatsapp', () => whatsapp.enviarDocumento(para, anexo, legenda))
     },
-    async enviarModelo(para, nome, parametros) {
-      await tentar('whatsapp', () => whatsapp.enviarModelo(para, nome, parametros))
+    async enviarModelo(para, nome, parametros, extras) {
+      await tentar('whatsapp', () => whatsapp.enviarModelo(para, nome, parametros, extras))
     },
   }
 }

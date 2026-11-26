@@ -35,6 +35,26 @@ export const MAX_ATTEMPTS = 5
 export const BACKOFF_MINUTES = [1, 5, 15, 60, 240] as const
 export const CLAIM_LEASE_MINUTES = 5
 export const DEFAULT_BATCH = 25
+/** Folga de relógio na conferência de dono: a DPS desta nota só é montada depois de `created_at`. */
+export const MARGEM_DONO_MS = 10 * 60_000
+/** Quantos números já usados por outro sistema o motor pula numa rodada antes de deixar para a próxima. */
+export const MAX_RENUMERACOES = 40
+
+/**
+ * A NFS-e que a Sefin devolveu para a nossa DPS (E0014 ou consulta por Id) é mesmo desta nota?
+ * O Id da DPS é município + CNPJ + série + número: se outro sistema da empresa (o da prefeitura, outro emissor)
+ * já usou a mesma série e número, a Sefin devolve a nota DELE. Caso real (LESLEI SPECIE, 23/11/2026): série 1
+ * nº 1 e 2 já usados em 20/08/2026; o motor gravou as notas de agosto como se fossem as novas. A DPS desta nota
+ * é montada depois de `created_at`, então `dhEmi` anterior a isso (com folga de relógio) é de outra nota.
+ * Sem `dhEmi` legível não dá para julgar: mantém o comportamento anterior (aceita).
+ */
+export function nfseDestaNota(xmlNfse: string, criadaEm: Date): boolean {
+  const m = /<(?:[A-Za-z0-9_]+:)?dhEmi>([^<]+)<\//.exec(xmlNfse)
+  if (!m) return true
+  const emitidaEm = Date.parse(m[1])
+  if (Number.isNaN(emitidaEm)) return true
+  return emitidaEm >= criadaEm.getTime() - MARGEM_DONO_MS
+}
 
 /** Estados que disparam o callback ao cliente (Landing, lotes 2a e 2b). */
 export type FinalStatus = 'issued' | 'rejected' | 'cancelled' | 'cancel_refused'
@@ -283,7 +303,8 @@ type Outcome = 'issued' | 'rejected' | 'retrying' | 'failed'
 
 async function processClaimed(deps: EmissionDeps, now: Date, claimed: Claimed & { id: string }): Promise<Outcome> {
   const { db, sefin } = deps
-  const invoice = claimed.invoice as SefinInvoice
+  // Muda quando o número da DPS já foi usado por outro sistema (renumerar).
+  let invoice = claimed.invoice as SefinInvoice
   try {
     const certificado = await readCertificate(db, claimed.tenant.id)
     if (!certificado) {
@@ -291,6 +312,10 @@ async function processClaimed(deps: EmissionDeps, now: Date, claimed: Claimed & 
       return 'failed'
     }
     const cert = certificado
+    const criada = await db.query<{ created_at: Date }>('select created_at from nofiscal.fiscal_invoices where id = $1', [
+      claimed.id,
+    ])
+    const criadaEm = new Date(criada.rows[0]?.created_at ?? now)
 
     const consultar = async (): Promise<ConsultaResultado> => {
       try {
@@ -306,6 +331,45 @@ async function processClaimed(deps: EmissionDeps, now: Date, claimed: Claimed & 
         return { kind: 'unavailable', reason: errorText(error) }
       }
     }
+    /** Número da DPS já usado por outro sistema: pega o próximo da série e grava na nota (que segue `sent`). */
+    const renumerar = async (): Promise<boolean> => {
+      const anterior = invoice.dps_numero
+      const novo = await db.transaction(async (tx) => {
+        const numero = await allocateDpsNumber(tx, claimed.tenant.id, invoice.dps_serie)
+        const idDps = sefin.idDps({ tenant: claimed.tenant, serie: invoice.dps_serie, numero })
+        const r = await tx.query(
+          `update nofiscal.fiscal_invoices set dps_numero = $2, id_dps = $3, updated_at = $4 where id = $1 and status = 'sent'`,
+          [claimed.id, numero, idDps, now],
+        )
+        return r.rowCount === 1 ? { numero, idDps } : null
+      })
+      if (!novo) return false
+      invoice = { ...invoice, dps_numero: novo.numero, id_dps: novo.idDps }
+      logEvent('nofiscal.dps_numero_em_uso', {
+        invoice_id: claimed.id,
+        serie: invoice.dps_serie,
+        numero_usado: anterior,
+        numero_novo: novo.numero,
+      })
+      return true
+    }
+    /** Transmite; se a Sefin devolver a nota de outro sistema (mesmo Id de DPS), renumera e transmite de novo. */
+    const transmitir = async (): Promise<Outcome> => {
+      for (let i = 0; i < MAX_RENUMERACOES; i++) {
+        const resultado = await emitir()
+        if (resultado.kind !== 'authorized' || nfseDestaNota(resultado.xmlNfse, criadaEm)) {
+          return await applyEmitir(db, now, claimed.id, resultado, cert)
+        }
+        if (!(await renumerar())) return 'failed'
+      }
+      return await markRetrying(
+        db,
+        now,
+        claimed.id,
+        `DPS_NUMERO_EM_USO: ${MAX_RENUMERACOES} números seguidos já usados por outro sistema; segue na próxima rodada`,
+        cert,
+      )
+    }
 
     if (claimed.plan === 'transmit') {
       const attempts = claimed.attempts + 1
@@ -315,18 +379,25 @@ async function processClaimed(deps: EmissionDeps, now: Date, claimed: Claimed & 
           where id = $1 and status = 'signing'`,
         [claimed.id, attempts, minutesFrom(now, BACKOFF_MINUTES[attempts - 1]), now],
       )
-      return await applyEmitir(db, now, claimed.id, await emitir(), cert)
+      return await transmitir()
     }
 
     const consulta = await consultar()
-    if (consulta.kind === 'found') return await markIssued(db, now, claimed.id, consulta.chaveAcesso, null, consulta.xmlNfse, cert)
+    if (consulta.kind === 'found') {
+      if (nfseDestaNota(consulta.xmlNfse, criadaEm)) {
+        return await markIssued(db, now, claimed.id, consulta.chaveAcesso, null, consulta.xmlNfse, cert)
+      }
+      // A DPS achada é de outro sistema: esta nota nunca saiu. Novo número e transmite.
+      if (!(await renumerar())) return 'failed'
+      return await transmitir()
+    }
 
     if (claimed.plan === 'final_consult') {
       const reason = consulta.kind === 'unavailable' ? consulta.reason : 'DPS não encontrada após 5 tentativas'
       return await markRejected(db, now, claimed.id, 'SEFIN_UNAVAILABLE', reason, cert)
     }
     if (consulta.kind === 'unavailable') return await markRetrying(db, now, claimed.id, consulta.reason, cert)
-    return await applyEmitir(db, now, claimed.id, await emitir(), cert)
+    return await transmitir()
   } catch (error) {
     logEvent('nofiscal.process_failed', {
       invoice_id: claimed.id,

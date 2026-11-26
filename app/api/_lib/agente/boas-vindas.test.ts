@@ -265,8 +265,8 @@ describe('boas-vindas', () => {
 
     const resumo = await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
     expect(resumo).not.toContain('EXEMPLO')
-    expect(resumo).toContain('Tomador: Prontia Saúde')
-    expect(resumo).toContain('Valor: R$ 150,00')
+    expect(resumo).toContain('*Tomador:* Prontia Saúde')
+    expect(resumo).toContain('*Valor:* R$ 150,00')
     expect(await contagens(s.tenant.id)).toEqual({ ...antes, pedidos: antes.pedidos + 1 })
   })
 
@@ -284,7 +284,7 @@ describe('boas-vindas', () => {
 
       const resumo = await c.enviar(s.ownerPhone, 'nota pra Prontia, 150 reais')
       expect(resumo).not.toContain('Antes de emitir')
-      expect(resumo).toContain('Tomador: Prontia Saúde')
+      expect(resumo).toContain('*Tomador:* Prontia Saúde')
       expect((await estadoDe(s)).etapa).toBe('concluido')
       expect(c.ia.chamadas).toEqual(['nota pra Prontia, 150 reais'])
       expect(await contagens(s.tenant.id)).toEqual({ ...antes, pedidos: antes.pedidos + 1 })

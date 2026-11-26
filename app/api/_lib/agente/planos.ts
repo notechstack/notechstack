@@ -1,7 +1,8 @@
 // Famílias de plano vistas pelo agente, as mesmas de `nofiscal.plano_completo` e `nofiscal.plano_de_escritorio`
 // (migration 20261105180000_agente_fiscal_escritorio.sql): o Escritório tem tudo o que o Pro tem (contador,
 // resumo, cópia ao tomador) e, além disso, várias empresas e o lote por planilha.
-export const PLANOS_DE_ESCRITORIO = ['escritorio_5', 'escritorio_20', 'escritorio_50'] as const
+// Faixas por volume (23/11/2026): 500, 1.000, 2.000, 5.000 e 10.000 documentos por mês, empresas ilimitadas.
+export const PLANOS_DE_ESCRITORIO = ['escritorio_5', 'escritorio_1000', 'escritorio_20', 'escritorio_50', 'escritorio_10000'] as const
 
 export const planoDeEscritorio = (plano: string | null | undefined): boolean =>
   (PLANOS_DE_ESCRITORIO as readonly string[]).includes(plano ?? '')

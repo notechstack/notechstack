@@ -375,7 +375,7 @@ const brl = (v: string) => {
 export function linhasDaLocacao(l: Locacao): string[] {
   if ('bens' in l) {
     return [
-      'Tipo: *locação de bem móvel* (99.04.01), sem ISS',
+      'Tipo: locação de bem móvel (99.04.01), sem ISS',
       ...l.bens.map((b) => `Bem: ${b.quantidade} × ${b.descricao} (NCM ${b.ncm.slice(0, 4)}.${b.ncm.slice(4, 6)}.${b.ncm.slice(6)})`),
     ]
   }
@@ -384,7 +384,7 @@ export function linhasDaLocacao(l: Locacao): string[] {
     ? `CIB ${i.cib}`
     : `${i.logradouro}, ${i.numero}${i.complemento ? `, ${i.complemento}` : ''}${i.bairro ? ` - ${i.bairro}` : ''}, CEP ${mascaraCep(i.cep as string)}`
   return [
-    `Tipo: *locação de imóvel ${i.residencial ? 'residencial' : 'não residencial'}* (99.03.01), sem ISS`,
+    `Tipo: locação de imóvel ${i.residencial ? 'residencial' : 'não residencial'} (99.03.01), sem ISS`,
     `Imóvel: ${endereco}, ${rotuloMunicipio(i.municipio_ibge)}`,
     ...(i.inscricao_imobiliaria ? [`Inscrição imobiliária: ${i.inscricao_imobiliaria}`] : []),
     ...(i.copropriedade !== '100.00' ? [`Sua parte: ${i.copropriedade.replace('.', ',')}% de ${brl(i.valor_total)}`] : []),

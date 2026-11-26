@@ -53,7 +53,7 @@ select ok(not has_function_privilege('anon', 'public.fiscal_empresa_adicionar(uu
   'adicionar empresa fechado ao anon');
 select ok(has_function_privilege('nofiscal_service', 'nofiscal.usuario_pode_tenant(uuid,uuid)', 'execute'), 'motor confere posse (PDF)');
 select is(nofiscal.limite_do_plano('escritorio_20'), 2000, 'franquia da faixa 20');
-select is(nofiscal.max_empresas_do_plano('escritorio_50'), 50, 'empresas da faixa 50');
+select is(nofiscal.max_empresas_do_plano('escritorio_50'), 100000, 'faixa 50: sem limite de empresas (planos por volume, 23/11/2026)');
 
 -- ---------------------------------------------------------------------------------------
 -- Adicionar empresa: só conta de escritório, dentro do limite, CNPJ novo.
@@ -77,6 +77,8 @@ select public.fiscal_empresa_adicionar('e5000000-0000-4000-8000-000000000001', c
   from (values ('94444777000161', '5'), ('95444777000161', '6'), ('96444777000161', '7')) v(c, n);
 select is((select count(*) from nofiscal.fiscal_tenants where escritorio_tenant_id = 'e7000000-0000-4000-8000-000000000001'),
   4::bigint, 'quatro empresas do escritório');
+-- A faixa não limita mais empresas; o limite que sobra é o pacote da conta (max_empresas_override). Com pacote de 5:
+select public.fiscal_definir_limite_empresas('e7000000-0000-4000-8000-000000000001', 5);
 select is(public.fiscal_empresa_adicionar('e5000000-0000-4000-8000-000000000001', '97444777000161', 'Sexta',
   '3550308', null, 'simples', repeat('8', 64), 'producao') ->> 'erro', 'EMPRESAS_ACIMA_DO_LIMITE', 'sexta empresa passa do limite');
 

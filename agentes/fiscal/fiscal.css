@@ -492,3 +492,34 @@
 .fi-caminho-ico--govbr .fi-gov{font-size:22px}
 .fi-oficial-ico--gov{width:auto;padding:0 8px}
 .fi-oficial-ico--gov .fi-gov{font-size:14px}
+
+/* Planos por volume (23/11/2026): caixas "O que você emite" e a conta do preço nos cards. */
+.fi-faixas--volume>span{flex-basis:100%;margin:0 0 4px}
+.fi-modulos{margin:0 0 14px;padding:0;border:0;display:grid;gap:6px;min-width:0}
+.fi-modulos legend{padding:0;margin:0 0 6px;font-size:12.5px;color:var(--fi-texto-sec)}
+.fi-modulos label{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--fi-borda);border-radius:10px;background:var(--fi-branco);font-size:14px;font-weight:600;line-height:1.2;color:var(--fi-texto);cursor:pointer}
+.fi-modulos label:has(input:checked){border-color:var(--fi-texto)}
+.fi-modulos label:has(input:focus-visible){outline:2px solid var(--fi-acento);outline-offset:2px}
+.fi-modulos input{flex:none;width:16px;height:16px;margin:0;accent-color:var(--fi-texto)}
+.fi-modulos small{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--fi-texto-sec);white-space:nowrap}
+.fi-modulos label:has(input:checked) small{color:var(--fi-texto)}
+.fi-plano-conta{margin:6px 0 0;font-size:12.5px;line-height:1.4;color:var(--fi-texto-sec);text-wrap:pretty}
+.fi-modulos legend small{display:block;margin:2px 0 0;font-weight:400;white-space:normal;font-size:11.5px;color:var(--fi-texto-sec);opacity:.85}
+.fi-modulos small:empty{display:none}
+.fi-faixas-emite{margin-left:10px}
+/* Desktop (Lucca, 23/11/2026): os três cards lado a lado, cada um com a própria altura, alinhados pelo topo. O
+   Escritório tem as escolhas (volume numa linha, caixas em três colunas) e fica mais alto; Inicial e Pro ficam do
+   tamanho do que têm, sem esticar e sem vão. No celular os cards ficam empilhados, como antes. */
+@media(min-width:900px){
+  .fi-planos--tres{align-items:start;max-width:1100px}
+  .fi-planos--tres .fi-plano{grid-row:auto;grid-template-rows:none}
+  .fi-faixas--volume{display:grid;grid-template-columns:repeat(6,auto);justify-content:space-between;gap:2px}
+  .fi-faixas--volume>span{grid-column:1/-1;margin:0 0 4px}
+  .fi-faixas--volume button{min-width:0;min-height:27px;padding:0 6px;font-size:11.5px;white-space:nowrap}
+  .fi-modulos{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .fi-modulos legend small{display:none}
+  .fi-modulos label{flex-wrap:wrap;align-content:center;gap:2px 5px;padding:7px 6px;min-height:52px;font-size:12.5px}
+  .fi-modulos input{width:14px;height:14px}
+  .fi-modulos label small{flex-basis:100%;margin-left:0;font-size:11.5px}
+}
+@media(min-width:900px) and (max-width:1179px){.fi-faixas--volume{gap:1px}.fi-faixas--volume button{padding:0 4px;font-size:11px;letter-spacing:-.01em}}

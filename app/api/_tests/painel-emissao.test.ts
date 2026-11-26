@@ -165,6 +165,7 @@ describe('nota avulsa', () => {
       valor_texto: 'R$ 1.234,50',
       retencao: null,
       endereco_tomador: null,
+      endereco_origem: null,
     })
     expect(conferido.corpo.bloqueio).toBeNull()
     expect(conferido.corpo.avisos).toEqual([])
@@ -351,7 +352,7 @@ describe('lote por planilha pelo painel', () => {
       { linha: 4, codigo: 'CERT_MISSING', motivo: 'Oficina Sem Certificado ainda não tem certificado A1' },
       { linha: 5, codigo: 'DOCUMENTO_INVALIDO', motivo: 'CPF ou CNPJ do tomador inválido' },
     ])
-    expect(lido.corpo.resumo_texto).toContain('Prontas para emitir: 2, total R$ 1.150,00.')
+    expect(lido.corpo.resumo_texto).toContain('*Prontas para emitir:* 2, total R$ 1.150,00.')
     const { rows: lotes } = await admin.db.query<{ phone_id: string | null; status: string }>(
       'select phone_id, status from nofiscal.fiscal_lotes where id = $1',
       [lido.corpo.lote_id],

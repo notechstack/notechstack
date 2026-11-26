@@ -58,11 +58,15 @@ describe('rotas do Nó Fiscal', () => {
     // A emissão pelo painel (16/11/2026) só cria a nota na fila, como o "confirmar" do agente: quem assina é o worker.
     // A NF-e pelo painel (17/11/2026, .design/agente-fiscal-nfe.md) também só cria a nota na fila e lê o XML autorizado;
     // o A1 da própria empresa é lido pelo worker por `read_certificate`, e a rota nunca recebe certificado.
+    // O módulo Guias (19/11/2026) assina URLs do Storage para os PDFs das guias e serve o link /g/<token>; nenhuma das
+    // duas rotas recebe arquivo nem toca no A1.
     const ONBOARDING_CERTIFICATE = 'api/v1/onboarding/certificate.ts'
     expect(functionFiles()).toEqual([
       'api/internal/nfse-worker.ts',
       'api/v1/fiscal/central.ts',
       'api/v1/fiscal/emissao.ts',
+      'api/v1/fiscal/guia-link.ts',
+      'api/v1/fiscal/guias.ts',
       'api/v1/fiscal/nfe.ts',
       'api/v1/fiscal/nota-pdf.ts',
       'api/v1/nfse.ts',

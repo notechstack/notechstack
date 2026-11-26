@@ -289,7 +289,7 @@ describe('pedido escrito no WhatsApp', () => {
       null,
       rotuloDoLocal(CAMPINAS, '171901'),
     )
-    expect(resumo).toContain('Local da prestação: Campinas/SP\n')
+    expect(resumo).toContain('*Local da prestação:* Campinas/SP\n')
     expect(rotuloDoLocal(CAMPINAS, '070901')).toBe('Campinas/SP (o ISS deste serviço é devido nessa cidade)')
     expect(textoDoResumo({ documento: '52998224725', nome: 'Maria', email: null }, { codigo: '171901', descricao: 'H' }, '1.00')).not.toContain('Local da prestação')
   })

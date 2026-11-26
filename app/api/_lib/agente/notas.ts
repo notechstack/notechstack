@@ -34,8 +34,8 @@ export type ServicoDoPedido = {
 }
 
 /**
- * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção, e `informacoes_complementares`
- * só quando há texto: sem eles, a nota tem o mesmo payload de antes.
+ * `retencao` entra apenas quando há retenção; `endereco` do tomador, sempre que houver (endereco-tomador.ts: o informado
+ * ou o da Receita, em toda nota, não só com ISS retido); `informacoes_complementares`, só quando há texto.
  */
 export function payloadDaNota(
   tomador: TomadorDoPedido,
@@ -49,7 +49,7 @@ export function payloadDaNota(
       [tipoDoDocumento(tomador.documento)]: tomador.documento,
       nome: tomador.nome,
       ...(tomador.email ? { email: tomador.email } : {}),
-      ...(retencao?.iss && extra.endereco ? { endereco: extra.endereco } : {}),
+      ...(extra.endereco ? { endereco: extra.endereco } : {}),
     },
     servico: {
       codigo_servico_nacional: servico.codigo,

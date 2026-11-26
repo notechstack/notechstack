@@ -116,7 +116,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
     await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.50' })
     await c.enviar(s.ownerPhone, 'corrigir')
     await c.enviar(s.ownerPhone, retencao)
-    expect(c.ultimaPara(s.ownerPhone)).toContain('Valor: R$ 1,00\nISS retido pelo tomador: 2,01% (R$ 0,02)\nValor líquido: R$ 0,98\nPosso emitir?')
+    expect(c.ultimaPara(s.ownerPhone)).toContain('*Valor:* R$ 1,00\n*ISS retido pelo tomador:* 2,01% (R$ 0,02)\n*Valor líquido:* R$ 0,98\n\nPosso emitir?')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toEqual({ iss: { aliquota: '2.01' } })
   })
@@ -140,7 +140,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
 
     await c.enviar(s.ownerPhone, PEDIDO)
     const resumo = c.ultimaPara(s.ownerPhone)
-    expect(resumo).toContain('Valor: R$ 1.500,00\nISS retido pelo tomador: 2% (R$ 30,00)\nINSS retido: R$ 165,00\nValor líquido: R$ 1.305,00\nPosso emitir?')
+    expect(resumo).toContain('*Valor:* R$ 1.500,00\n*ISS retido pelo tomador:* 2% (R$ 30,00)\n*INSS retido:* R$ 165,00\n*Valor líquido:* R$ 1.305,00\n\nPosso emitir?')
     expect(c.consultas).toEqual([CNPJ_TOMADOR])
     expect(await notasDoAgente(admin.db, s.tenant.id)).toHaveLength(0)
 
@@ -150,7 +150,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
     expect(payload.tomador.endereco).toEqual(ENDERECO)
   })
 
-  it('"sem retenção" no pedido desliga o padrão; a nota sai como antes', async () => {
+  it('"sem retenção" no pedido desliga o padrão; o endereço da Receita vai do mesmo jeito', async () => {
     const s = await cenario()
     await padraoDaEmpresa(s.tenant.id, { retem_inss: true, inss_percentual: '11.00' })
     await criarModelo(admin.db, s.tenant.id, modelo(CNPJ_TOMADOR))
@@ -162,8 +162,9 @@ describe('retenção no pedido pelo WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'confirmar')
     const payload = await payloadDaUnicaNota(s.tenant.id)
     expect(payload.retencao).toBeUndefined()
-    expect(payload.tomador.endereco).toBeUndefined()
-    expect(c.consultas).toEqual([])
+    // Bragantina, 24/11/2026: toda nota de CNPJ leva o endereço, com ou sem retenção.
+    expect(payload.tomador.endereco).toEqual(ENDERECO)
+    expect(c.consultas).toEqual([CNPJ_TOMADOR])
   })
 
   it('ISS retido de tomador CPF não emite; corrigir com "sem retenção de ISS" e "retém INSS 11%" libera', async () => {
@@ -185,7 +186,7 @@ describe('retenção no pedido pelo WhatsApp', () => {
     await c.enviar(s.ownerPhone, 'corrigir')
     await c.enviar(s.ownerPhone, correcao)
     const resumo = c.ultimaPara(s.ownerPhone)
-    expect(resumo).toContain('INSS retido: R$ 165,00')
+    expect(resumo).toContain('*INSS retido:* R$ 165,00')
     expect(resumo).not.toContain('ISS retido pelo tomador')
     await c.enviar(s.ownerPhone, 'confirmar')
     expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toEqual({ inss: { valor: '165.00' } })

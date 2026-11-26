@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { unzipSync } from 'fflate'
 import { readSheet } from 'read-excel-file/universal'
 import type { Db, Queryable } from '../db.js'
+import { lerEnderecoEscrito, registrarSemEndereco } from '../endereco-tomador.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
 import { exigeObra, lerObra, type Obra } from '../obra.js'
@@ -41,6 +42,7 @@ import {
 } from './conversa.js'
 import { lerCodigoServico, type CatalogoDeServicos } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido, formatarReais } from './documentos.js'
+import { blocos, campo, comRotulo, mensagem, topicos } from './formato.js'
 import { normalizarEmail } from './normalizacao.js'
 import { payloadDaNota } from './notas.js'
 import { MODELO_DA_PLANILHA, planoDeEscritorio } from './planos.js'
@@ -63,9 +65,12 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // 18/11/2026), opcional: o local da prestação (cLocPrestacao), por nome com UF ("Campinas/SP") ou código IBGE; vazia, o
 // município da empresa. O cabeçalho `ibge_prestacao` também vale. `obra_*` (Robson, Bragantina, 19/11/2026), opcionais:
 // o endereço (obra_cep, obra_logradouro, obra_numero, obra_complemento, obra_bairro) ou o obra_cno, obrigatórios nas
-// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `imovel_*` e `bem_*` (26/11/2026),
-// opcionais: os dados da locação (locacao.ts), obrigatórios nas linhas com código 99.03.01 (imóvel: cidade, CEP, rua,
-// número, residencial sim/não; ou o CIB) e 99.04.01 (bem: NCM, descrição, quantidade) e ignorados nas demais.
+// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `tomador_*` (Robson, Bragantina,
+// 24/11/2026), opcionais: o endereço do tomador, que prevalece sobre o da Receita; com CPF, é o único jeito de a nota
+// sair com endereço. `tomador_municipio_ibge` aceita o código IBGE ou "Cidade/UF" (cabeçalho `tomador_municipio` vale).
+// `imovel_*` e `bem_*` (26/11/2026), opcionais: os dados da locação (locacao.ts), obrigatórios nas linhas com código
+// 99.03.01 (imóvel: cidade, CEP, rua, número, residencial sim/não; ou o CIB) e 99.04.01 (bem: NCM, descrição,
+// quantidade) e ignorados nas demais.
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -83,6 +88,12 @@ export const CAMPOS = [
   'obra_complemento',
   'obra_bairro',
   'obra_cno',
+  'tomador_cep',
+  'tomador_logradouro',
+  'tomador_numero',
+  'tomador_complemento',
+  'tomador_bairro',
+  'tomador_municipio_ibge',
   'imovel_cidade',
   'imovel_cep',
   'imovel_logradouro',
@@ -120,6 +131,7 @@ export const CODIGOS_DE_PROBLEMA = [
   'MUNICIPIO_PRESTACAO_AMBIGUO',
   'OBRA_SEM_DADOS',
   'OBRA_INVALIDA',
+  'ENDERECO_TOMADOR_INVALIDO',
   'LOCACAO_INDISPONIVEL',
   'LOCACAO_SEM_DADOS',
   'LOCACAO_INVALIDA',
@@ -130,13 +142,18 @@ export const CODIGOS_DE_PROBLEMA = [
 
 export const TEXTOS_DO_LOTE = {
   soEscritorio: 'O envio por planilha é do plano Escritório. No seu plano, me mande cada nota por mensagem, por exemplo: nota pra Studio Lima, 350 reais.',
-  formatoNaoAceito: `Eu leio planilhas em .xlsx ou .csv (planilhas com macro, .xls antigo e .ods não). Salve como .xlsx ou .csv e mande de novo. Modelo: ${MODELO_DA_PLANILHA}`,
-  ilegivel: `Não consegui ler essa planilha. Confira se é um .xlsx ou .csv (UTF-8) e mande de novo. Modelo: ${MODELO_DA_PLANILHA}`,
+  formatoNaoAceito: blocos(
+    'Eu leio planilhas em .xlsx ou .csv (planilhas com macro, .xls antigo e .ods não). Salve como .xlsx ou .csv e mande de novo.',
+    `Modelo: ${MODELO_DA_PLANILHA}`,
+  ),
+  ilegivel: blocos('Não consegui ler essa planilha. Confira se é um .xlsx ou .csv (UTF-8) e mande de novo.', `Modelo: ${MODELO_DA_PLANILHA}`),
   grandeDemais: 'A planilha passou de 5 MB. Divida em duas e mande uma de cada vez.',
-  abaGrandeDemais:
-    'A primeira aba da planilha tem células usadas muito longe das notas (mais de 1.000 linhas ou de 50 colunas). Apague as linhas e colunas vazias abaixo e à direita das notas, ou salve só as notas em .csv, e mande de novo.',
+  abaGrandeDemais: blocos(
+    'A primeira aba da planilha tem células usadas muito longe das notas (mais de 1.000 linhas ou de 50 colunas).',
+    'Apague as linhas e colunas vazias abaixo e à direita das notas, ou salve só as notas em .csv, e mande de novo.',
+  ),
   semDownload: 'Não consegui baixar a planilha agora. Mande de novo em alguns minutos.',
-  vazia: `A planilha não tem linhas de nota abaixo do cabeçalho. Modelo: ${MODELO_DA_PLANILHA}`,
+  vazia: blocos('A planilha não tem linhas de nota abaixo do cabeçalho.', `Modelo: ${MODELO_DA_PLANILHA}`),
   linhasDemais: `A planilha passou de ${MAX_LINHAS.toLocaleString('pt-BR')} linhas. Divida em duas e mande uma de cada vez.`,
   expirou: 'Essa planilha expirou (24 horas sem *confirmar*) e nenhuma nota foi emitida. Mande a planilha de novo.',
   descartado: 'Ok, descartei a planilha. Nenhuma nota foi emitida.',
@@ -350,6 +367,7 @@ export const normalizarCabecalho = (texto: string) =>
 const CAMPO_DO_CABECALHO = new Map<string, Campo>([
   ...CAMPOS.map((campo): [string, Campo] => [normalizarCabecalho(campo), campo]),
   [normalizarCabecalho('ibge_prestacao'), 'municipio_prestacao'],
+  [normalizarCabecalho('tomador_municipio'), 'tomador_municipio_ibge'],
 ])
 
 export const textoDaCelula = (celula: Celula | undefined): string => {
@@ -416,16 +434,36 @@ export function interpretarGrade(grade: Celula[][], opcoes: { prestadorObrigator
 }
 
 export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[]; repetidas: string[] }): string {
-  return [
-    'Não reconheci as colunas da planilha, e nada foi gravado.',
+  const problemas = [
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa). Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno. Nas notas de locação (99.03.01 e 99.04.01), também imovel_cidade, imovel_cep, imovel_logradouro, imovel_numero, imovel_complemento, imovel_bairro, imovel_inscricao, imovel_cib, imovel_residencial, imovel_copropriedade, imovel_valor_total e imovel_vencimento, ou bem_ncm, bem_descricao e bem_quantidade.',
-    `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ].filter((linha): linha is string => Boolean(linha))
+  return mensagem({
+    titulo: 'Colunas da planilha',
+    blocos: [
+      'Não reconheci as colunas da planilha, e nada foi gravado.',
+      problemas.length ? topicos(problemas) : null,
+      [
+        'A primeira linha precisa ter estes nomes:',
+        topicos([
+          'cnpj_prestador (pode faltar se a conta tem uma só empresa ativa)',
+          'cpf_cnpj_tomador',
+          'nome_tomador',
+          'email_tomador (opcional)',
+          'valor',
+          'descricao (opcional)',
+          'iss_retido (opcional)',
+          'inss_retido (opcional)',
+          'codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa)',
+          'municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa)',
+        ]),
+      ],
+      'Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
+      'Nas notas de locação (99.03.01 e 99.04.01), também imovel_cep, imovel_logradouro, imovel_numero, imovel_residencial (sim ou não) e, se quiser, imovel_complemento, imovel_bairro, imovel_cidade, imovel_inscricao, imovel_cib, imovel_copropriedade, imovel_valor_total e imovel_vencimento; ou bem_ncm, bem_descricao e bem_quantidade.',
+    ],
+    acao: `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
+  })
 }
 
 // ---------------------------------------------------------------------------------------
@@ -549,6 +587,8 @@ export type ItemDoLote = {
   /** LINHA_REPETIDA: a primeira linha igual. */
   igualA?: number
   valor?: string
+  /** Tomador com CNPJ cujo endereço a Receita não deu agora: a nota sai sem endereço (só o resumo usa). */
+  semEndereco?: boolean
 }
 
 const lido = (celulas: LinhaLida['celulas']) =>
@@ -680,8 +720,20 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       locacao = lida.locacao
     }
     const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra, locacao }
-    // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
-    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: retencaoDaNota })
+    // Endereço do tomador escrito na planilha: prevalece sobre o da Receita (que entra depois, em `completarEnderecos`).
+    const enderecoEscrito = lerEnderecoEscrito({
+      cep: celulas.tomador_cep,
+      logradouro: celulas.tomador_logradouro,
+      numero: celulas.tomador_numero,
+      complemento: celulas.tomador_complemento,
+      bairro: celulas.tomador_bairro,
+      municipio: celulas.tomador_municipio_ibge,
+    })
+    if (!enderecoEscrito.ok) return falha('ENDERECO_TOMADOR_INVALIDO', empresa.id)
+    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, {
+      retencao: retencaoDaNota,
+      endereco: enderecoEscrito.endereco,
+    })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
       linha,
       tenantId: empresa.id,
@@ -737,21 +789,40 @@ export function lerRetencaoDaLinha(celulas: LinhaLida['celulas']): RetencaoDoPed
   return r
 }
 
+/** Consultas de endereço ao mesmo tempo, na planilha. */
+const CONSULTAS_EM_PARALELO = 6
+
 /**
- * ISS retido leva o endereço do tomador (E0237), da Receita. Um pedido por CNPJ; sem endereço, a linha fica com
- * `ENDERECO_TOMADOR`. Sem consulta configurada, toda linha com ISS retido fica de fora.
+ * Endereço do tomador com CNPJ em toda linha (Bragantina, 24/11/2026), da Receita, quando a planilha não trouxe as
+ * colunas `tomador_*`. Um pedido por CNPJ, até `CONSULTAS_EM_PARALELO` ao mesmo tempo. Sem endereço: com ISS retido a
+ * linha fica com `ENDERECO_TOMADOR` (E0237); sem, a nota sai sem endereço e a linha fica com `semEndereco`.
  */
 export async function completarEnderecos(itens: ItemDoLote[], consulta: EnderecoDoTomador | null | undefined): Promise<void> {
-  const cache = new Map<string, Promise<EnderecoNacional | null>>()
-  for (const item of itens) {
-    const p = item.payload as { tomador?: { cnpj?: string; endereco?: EnderecoNacional }; retencao?: Retencao }
-    if (!p.retencao?.iss || !p.tomador) continue
-    const cnpj = p.tomador.cnpj ?? ''
-    if (!cache.has(cnpj)) cache.set(cnpj, consulta ? consulta.endereco(cnpj).catch(() => null) : Promise.resolve(null))
-    const endereco = await (cache.get(cnpj) as Promise<EnderecoNacional | null>)
-    if (endereco) p.tomador.endereco = endereco
-    else if (!item.problema) item.problema = 'ENDERECO_TOMADOR'
+  type P = { tomador?: { cnpj?: string; endereco?: EnderecoNacional }; retencao?: Retencao }
+  const precisam = itens.filter((i) => {
+    const p = i.payload as P
+    return p.tomador?.cnpj && !p.tomador.endereco
+  })
+  const cnpjs = [...new Set(precisam.map((i) => (i.payload as P).tomador?.cnpj as string))]
+  const achados = new Map<string, EnderecoNacional | null>()
+  let proximo = 0
+  const trabalhador = async () => {
+    while (proximo < cnpjs.length) {
+      const cnpj = cnpjs[proximo++]
+      achados.set(cnpj, consulta ? await consulta.endereco(cnpj).catch(() => null) : null)
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(CONSULTAS_EM_PARALELO, cnpjs.length) }, trabalhador))
+  for (const item of precisam) {
+    const p = item.payload as P
+    const endereco = achados.get(p.tomador?.cnpj as string) ?? null
+    if (endereco) (p.tomador as { endereco?: EnderecoNacional }).endereco = endereco
+    else if (p.retencao?.iss) {
+      if (!item.problema) item.problema = 'ENDERECO_TOMADOR'
+    } else item.semEndereco = true
+  }
+  const sem = precisam.filter((i) => i.semEndereco).length
+  if (sem) registrarSemEndereco('planilha', { notas: sem })
 }
 
 /** O motivo que a pessoa lê, por código (o do `emission_block` nomeia a empresa). */
@@ -794,6 +865,8 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'municipio_prestacao não encontrado: escreva a cidade com a UF, como Campinas/SP, ou o código IBGE de 7 dígitos'
     case 'OBRA_SEM_DADOS':
       return 'o código de serviço é de construção civil, e a Sefin exige os dados da obra: preencha obra_cep, obra_logradouro, obra_numero e obra_bairro, ou obra_cno'
+    case 'ENDERECO_TOMADOR_INVALIDO':
+      return 'endereço do tomador incompleto ou inválido: preencha tomador_cep (8 dígitos), tomador_logradouro, tomador_bairro e tomador_municipio_ibge (código IBGE ou Cidade/UF), ou deixe todas as colunas tomador_* vazias'
     case 'LOCACAO_INDISPONIVEL':
       return 'nota de locação (99.03.01 ou 99.04.01): entra no sistema assim que a Receita liberar esses códigos no ambiente nacional; por enquanto, esta linha não é emitida'
     case 'LOCACAO_SEM_DADOS':
@@ -873,6 +946,14 @@ export function textoDosCodigos(prontas: ItemDoLote[]): string | null {
   return `Códigos de serviço: ${[...porCodigo].map(([c, n]) => `${formatar(c)} (${plural(n, 'nota', 'notas')})`).join(', ')}.`
 }
 
+/** Notas prontas de CNPJ cujo endereço a Receita não deu agora: saem sem o endereço do tomador. */
+export function textoSemEndereco(prontas: ItemDoLote[]): string | null {
+  const linhas = prontas.filter((i) => i.semEndereco).map((i) => i.linha)
+  if (!linhas.length) return null
+  const quais = linhas.length <= 10 ? ` (${linhas.length === 1 ? 'linha' : 'linhas'} ${linhas.join(', ')})` : ''
+  return `Sem endereço do cliente: ${plural(linhas.length, 'nota sai', 'notas saem')} sem o endereço${quais}, porque não achei o CNPJ na Receita agora. Para pôr o endereço, preencha as colunas tomador_* e mande de novo.`
+}
+
 export function textoDoResumoDoLote(dados: {
   arquivo: string | null
   itens: ItemDoLote[]
@@ -886,45 +967,52 @@ export function textoDoResumoDoLote(dados: {
   const porEmpresa = new Map<string, number>()
   for (const i of prontas) porEmpresa.set(i.tenantId as string, (porEmpresa.get(i.tenantId as string) ?? 0) + 1)
 
-  const linhas: string[] = [
-    `Li a planilha${dados.arquivo ? ` ${dados.arquivo}` : ''}: ${plural(dados.itens.length, 'linha', 'linhas')}.`,
-    prontas.length
-      ? `Prontas para emitir: ${prontas.length.toLocaleString('pt-BR')}, total ${formatarReais(reaisDeCentavos(total))}.`
-      : 'Nenhuma linha está pronta para emitir.',
+  // Números das notas prontas: quanto, por empresa, retenções e códigos (só o que houver).
+  const numeros: (string | null)[] = [
+    prontas.length ? campo('Prontas para emitir', `${prontas.length.toLocaleString('pt-BR')}, total ${formatarReais(reaisDeCentavos(total))}.`) : null,
+    porEmpresa.size
+      ? campo('Empresas', `${[...porEmpresa].map(([id, n]) => `${nomeDe.get(id) ?? id} (${plural(n, 'nota', 'notas')})`).join(', ')}.`)
+      : null,
   ]
-  if (porEmpresa.size) {
-    linhas.push(`Empresas: ${[...porEmpresa].map(([id, n]) => `${nomeDe.get(id) ?? id} (${plural(n, 'nota', 'notas')})`).join(', ')}.`)
-  }
   const retencoes = textoDasRetencoes(prontas)
-  if (retencoes) linhas.push(retencoes)
+  if (retencoes) numeros.push(comRotulo(retencoes))
   const codigos = textoDosCodigos(prontas)
-  if (codigos) linhas.push(codigos)
-  if (comProblema.length) {
-    linhas.push(`Com problema (ficam de fora): ${plural(comProblema.length, 'linha', 'linhas')}.`)
-    for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
-      const semPrestador = !String((item.payload.lido as Record<string, string> | undefined)?.cnpj_prestador ?? '').trim()
-      linhas.push(
-        `- Linha ${item.linha}: ${motivoDoProblema(item.problema as string, { empresa: item.tenantId ? nomeDe.get(item.tenantId) : null, igualA: item.igualA, semPrestador })}`,
-      )
-    }
-    if (comProblema.length > MAX_PROBLEMAS_NO_RESUMO) {
-      linhas.push(`- e mais ${plural(comProblema.length - MAX_PROBLEMAS_NO_RESUMO, 'linha', 'linhas')} com problema.`)
-    }
+  if (codigos) numeros.push(comRotulo(codigos))
+  const semEndereco = textoSemEndereco(prontas)
+  if (semEndereco) numeros.push(comRotulo(semEndereco))
+
+  const problemas: string[] = []
+  for (const item of comProblema.slice(0, MAX_PROBLEMAS_NO_RESUMO)) {
+    const semPrestador = !String((item.payload.lido as Record<string, string> | undefined)?.cnpj_prestador ?? '').trim()
+    problemas.push(
+      `Linha ${item.linha}: ${motivoDoProblema(item.problema as string, { empresa: item.tenantId ? nomeDe.get(item.tenantId) : null, igualA: item.igualA, semPrestador })}`,
+    )
   }
+  if (comProblema.length > MAX_PROBLEMAS_NO_RESUMO) {
+    problemas.push(`e mais ${plural(comProblema.length - MAX_PROBLEMAS_NO_RESUMO, 'linha', 'linhas')} com problema.`)
+  }
+
+  let franquia: string | null = null
   if (dados.franquia && prontas.length && dados.franquia.noMes + prontas.length > dados.franquia.limite) {
     const fica = dados.franquia.noMes + prontas.length
-    linhas.push(
-      `Franquia: com estas notas, o mês chega a ${fica.toLocaleString('pt-BR')} notas, ${(fica - dados.franquia.limite).toLocaleString('pt-BR')} acima das ${dados.franquia.limite.toLocaleString('pt-BR')} do seu plano. As notas saem normalmente.`,
+    franquia = campo(
+      'Franquia',
+      `com estas notas, o mês chega a ${fica.toLocaleString('pt-BR')} notas, ${(fica - dados.franquia.limite).toLocaleString('pt-BR')} acima das ${dados.franquia.limite.toLocaleString('pt-BR')} do seu plano. As notas saem normalmente.`,
     )
   }
-  if (prontas.length) {
-    linhas.push(
-      `Responda *confirmar* para emitir ${prontas.length === 1 ? 'a nota pronta' : `as ${prontas.length.toLocaleString('pt-BR')} notas prontas`}, ou *cancelar* para descartar. Vale por 24 horas.`,
-    )
-  } else {
-    linhas.push('Corrija a planilha e mande de novo.')
-  }
-  return linhas.join('\n')
+
+  return mensagem({
+    titulo: 'Resumo da planilha',
+    blocos: [
+      `Li a planilha${dados.arquivo ? ` ${dados.arquivo}` : ''}: ${plural(dados.itens.length, 'linha', 'linhas')}.`,
+      prontas.length ? numeros : 'Nenhuma linha está pronta para emitir.',
+      comProblema.length ? [campo('Com problema (ficam de fora)', `${plural(comProblema.length, 'linha', 'linhas')}.`), topicos(problemas)] : null,
+      franquia,
+    ],
+    acao: prontas.length
+      ? `Responda *confirmar* para emitir ${prontas.length === 1 ? 'a nota pronta' : `as ${prontas.length.toLocaleString('pt-BR')} notas prontas`}, ou *cancelar* para descartar. Vale por 24 horas.`
+      : 'Corrija a planilha e mande de novo.',
+  })
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1170,7 +1258,7 @@ export async function lerLoteDaPlanilha(
     conteudo: Uint8Array
     tipo: TipoDePlanilha
     agora: Date
-    /** Endereço do tomador na Receita, para as linhas com ISS retido. */
+    /** Endereço do tomador na Receita, para as linhas de CNPJ sem as colunas `tomador_*`. */
     consulta?: EnderecoDoTomador | null
     /** A lista nacional de serviços, para conferir a coluna `codigo_servico`. */
     catalogo?: CatalogoDeServicos | null
@@ -1470,19 +1558,22 @@ async function confirmarLote(ctx: Contexto, loteId: string, donoId: string): Pro
       ].join('; ')}.`
     : null
   if (!resultado.emitindo) {
-    await responder(ctx, [barradas, 'Nenhuma nota foi emitida. Corrija e mande a planilha de novo.'].filter(Boolean).join('\n'))
+    await responder(ctx, blocos(barradas, 'Nenhuma nota foi emitida. Corrija e mande a planilha de novo.'))
     return
   }
   await responder(
     ctx,
-    [
-      `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
-      barradas,
-      // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
-      'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui. Os PDFs também ficam em Minha conta → Relatórios.',
-    ]
-      .filter(Boolean)
-      .join('\n'),
+    mensagem({
+      titulo: 'Planilha confirmada',
+      blocos: [
+        `Confirmado. Emitindo ${plural(resultado.emitindo, 'nota', 'notas')} na Sefin.`,
+        barradas,
+        // O retorno (CSV e, se couber, o .zip) vai por e-mail à conta; aqui só o aviso (PR #101, lote-retorno.ts).
+        'Cada tomador com e-mail recebe a nota por e-mail. Quando todas fecharem, mando o retorno de cada linha para o e-mail da conta e te aviso aqui.',
+        'Os PDFs também ficam em Minha conta → Relatórios.',
+      ],
+    }),
+
   )
 }
 

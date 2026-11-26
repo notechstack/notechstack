@@ -10,6 +10,7 @@ import { logEvent } from '../log.js'
 import { abrirBoasVindas, ETAPAS_ANTES_DA_ATIVACAO } from './ativacao.js'
 import type { CatalogoDeServicos } from './catalogo-servicos.js'
 import { ehNao, ehSim, limpa, responder, formatarCodigoServico, type Contexto } from './conversa.js'
+import { blocos } from './formato.js'
 import { LINHA_DA_PLANILHA, planoDeEscritorio } from './planos.js'
 
 export const TEXTOS_BOAS_VINDAS = {
@@ -99,7 +100,8 @@ async function conferir(ctx: Contexto, texto: string): Promise<void> {
     const pronto = textoPronto(await clienteDeExemplo(db, ctx.tenantId))
     const { rows } = await db.query<{ plan: string }>('select plan from nofiscal.fiscal_tenants where id = $1', [ctx.tenantId])
     // Escritório: além do pedido avulso, a planilha com as notas do mês.
-    await responder(ctx, planoDeEscritorio(rows[0]?.plan) ? [pronto, LINHA_DA_PLANILHA].join('\n') : pronto)
+    await responder(ctx, planoDeEscritorio(rows[0]?.plan) ? blocos(pronto, LINHA_DA_PLANILHA) : pronto)
+
     return
   }
   if (ehNao(texto)) {

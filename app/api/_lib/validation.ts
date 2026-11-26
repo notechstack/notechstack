@@ -7,6 +7,7 @@
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
 
 import { normalizarEmail } from './agente/normalizacao.js'
+import { lerEnderecoEscrito } from './endereco-tomador.js'
 import { DpsInvalidError, parseNbs } from './dps-builder.js'
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import { lerMunicipioPrestacao } from './local-prestacao.js'
@@ -44,7 +45,8 @@ export type NewInvoice = { external_id: string; payload: InvoicePayload; origem?
 export type PedidoDaApi = {
   external_id: string
   cnpj_prestador: string | null
-  tomador: { documento: string; nome: string; email: string | null }
+  /** `endereco`: o informado (prevalece sobre o da Receita; com CPF, o único). Ausente = a Receita (CNPJ) ou nenhum. */
+  tomador: { documento: string; nome: string; email: string | null; endereco?: EnderecoNacional | null }
   servico: {
     codigo: string | null
     descricao: string | null
@@ -131,7 +133,10 @@ export function parseNewInvoice(body: unknown): ValidationResult {
 
   const extra =
     unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
-    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email'], 'tomador.') : null) ??
+    (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email', 'endereco'], 'tomador.') : null) ??
+    (isObject(body.tomador) && isObject(body.tomador.endereco)
+      ? unknownField(body.tomador.endereco, ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge'], 'tomador.endereco.')
+      : null) ??
     (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge', 'obra', 'locacao'], 'servico.') : null) ??
     (isObject(body.servico) && isObject(body.servico.obra) ? unknownField(body.servico.obra, ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro'], 'servico.obra.') : null) ??
     camposDaLocacao(body.servico) ??
@@ -162,6 +167,14 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   if (body.tomador.email !== undefined && body.tomador.email !== null && body.tomador.email !== '') {
     email = typeof body.tomador.email === 'string' ? normalizarEmail(body.tomador.email) : null
     if (!email) return fail('tomador.email inválido')
+  }
+  let endereco: EnderecoNacional | null = null
+  if (body.tomador.endereco !== undefined && body.tomador.endereco !== null) {
+    if (!isObject(body.tomador.endereco)) return fail('tomador.endereco deve ser um objeto')
+    const e = body.tomador.endereco
+    const lido = lerEnderecoEscrito({ cep: e.cep, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.municipio_ibge })
+    if (!lido.ok) return fail(`tomador.endereco: ${lido.erro} (cep, logradouro, bairro e municipio_ibge são obrigatórios)`)
+    endereco = lido.endereco
   }
   let codigo: string | null = null
   if (servico.codigo_servico_nacional !== undefined) {
@@ -231,7 +244,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     value: {
       external_id: externalId,
       cnpj_prestador: cnpjPrestador,
-      tomador: { documento: (cpf ?? cnpj) as string, nome, email },
+      tomador: { documento: (cpf ?? cnpj) as string, nome, email, ...(endereco ? { endereco } : {}) },
       servico: { codigo, descricao, ...rtc },
       valor,
       ...(retencao ? { retencao } : {}),
