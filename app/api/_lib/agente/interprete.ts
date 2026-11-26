@@ -5,6 +5,7 @@
 import { normalizarInfoComplementar } from '../info-complementar.js'
 import { lerCodigoServico } from './catalogo-servicos.js'
 import { cnpjValido, cpfValido } from './documentos.js'
+import { locacaoEscrita, type LocacaoEscrita } from './locacao-conversa.js'
 
 export type Intencao = 'emitir' | 'cancelar' | 'outro'
 
@@ -52,6 +53,8 @@ export type Parsed = {
    * Quem confere CEP, CNO e o que falta é obra.ts; `cidade` vira o local da prestação quando o pedido não diz outro.
    */
   obra?: ObraEscrita | null
+  /** Nota de aluguel (locacao-conversa.ts): tipo (imóvel ou bem móvel) e os dados como escritos. */
+  locacao?: LocacaoEscrita | null
   intencao: Intencao
 }
 
@@ -122,6 +125,7 @@ export function validarParsed(bruto: unknown): Parsed {
     informacoes_complementares: normalizarInfoComplementar(obj.informacoes_complementares),
     municipio_prestacao: texto(obj.municipio_prestacao, 80),
     obra: obraEscrita(obj.obra),
+    locacao: locacaoEscrita(obj.locacao),
     intencao,
   }
 }

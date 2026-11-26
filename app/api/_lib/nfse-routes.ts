@@ -35,6 +35,7 @@ import { ATRASO_MS, cancelarNotaSandbox, criarNotaSandbox, notaSandbox, notaSand
 import { motivoDaRetencao, resolverRetencao, SEM_RETENCAO_PADRAO, type EnderecoDoTomador, type EnderecoNacional } from './retencao.js'
 import { parseNewInvoice, type InvoicePayload } from './validation.js'
 import { exigeObra, MOTIVO_SEM_OBRA, problemaDaObra } from './obra.js'
+import { ehLocacao, lerLocacao, locacaoLigada, MENSAGEM_LOCACAO_DESLIGADA, MOTIVO_LOCACAO_DESLIGADA, motivoSemDados, type Locacao } from './locacao.js'
 
 export type Recurso = 'nfse' | 'nfe' | 'empresas' | 'sandbox'
 export type NfseAction = 'cancel' | 'pdf' | 'xml' | 'danfe'
@@ -121,6 +122,8 @@ export type NfseDeps = {
   fetch?: FetchLike
   /** Rodada do sandbox depois da resposta. Padrão: `waitUntil` da Vercel (sandbox/agenda.ts). */
   agendar?: Agendar
+  /** Variáveis lidas na hora (NOFISCAL_LOCACAO). Padrão: `process.env`. */
+  env?: Record<string, string | undefined>
 }
 
 export async function handleNfseRequest(request: Request, deps: NfseDeps): Promise<Response> {
@@ -311,8 +314,26 @@ async function prepararNfse(
     }
   }
 
+  // Locação (99.03.01, 99.04.01): enquanto a Sefin não aceita em produção, a flag fica desligada; o ISS não incide.
+  let locacao: Locacao | null = null
+  if (ehLocacao(codigo)) {
+    if (!locacaoLigada(ctx.deps.env)) {
+      return { ok: false, resposta: errorResponse('VALIDATION_FAILED', MENSAGEM_LOCACAO_DESLIGADA, { campo: 'servico.codigo_servico_nacional', motivo: MOTIVO_LOCACAO_DESLIGADA }) }
+    }
+    if (pedido.retencao?.iss === true) {
+      return { ok: false, resposta: errorResponse('VALIDATION_FAILED', 'locação não tem ISS (não incidência): retencao.retem_iss deve ser false', { campo: 'retencao.retem_iss' }) }
+    }
+    const lida = lerLocacao(pedido.servico.locacao, codigo, pedido.valor)
+    if (!lida.ok) {
+      const motivo = lida.faltando.length ? motivoSemDados(codigo) : `servico.locacao: ${lida.erro}`
+      return { ok: false, resposta: errorResponse('VALIDATION_FAILED', motivo, { campo: 'servico.locacao', motivo: 'LOCACAO_SEM_DADOS' }) }
+    }
+    locacao = lida.locacao
+  }
+
   const resolvida = resolverRetencao({
-    padrao: empresa.retencao ?? SEM_RETENCAO_PADRAO,
+    // O ISS retido do padrão da empresa não vale na locação (E0580).
+    padrao: locacao ? { ...(empresa.retencao ?? SEM_RETENCAO_PADRAO), retem_iss: false, aliquota_iss: null } : (empresa.retencao ?? SEM_RETENCAO_PADRAO),
     pedido: pedido.retencao,
     valor: pedido.valor,
     regime: empresa.regime ?? null,
@@ -352,6 +373,7 @@ async function prepararNfse(
       descricao: pedido.servico.descricao ?? DESCRICAO_PADRAO,
       municipio_prestacao_ibge: municipio_prestacao_ibge ?? null,
       obra: exigeObra(codigo) ? (pedido.servico.obra ?? null) : null,
+      locacao,
     },
     pedido.valor,
     { retencao: resolvida.retencao, endereco, informacoes_complementares: pedido.informacoes_complementares ?? null },

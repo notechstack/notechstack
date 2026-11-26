@@ -1176,7 +1176,7 @@
   var EMISSAO = '/v1/fiscal/emissao';
   var em = { carregado: false, empresas: [], modelos: {}, pedidoModelos: 0, seletor: null, pedido: null, chave: null, lote: null };
   var moldeSeletorAvulsa = $('fa-av-seletor').cloneNode(true);
-  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
+  var CAMPO_AVULSA = { tenant_id: 'fa-av-empresa', documento: 'fa-av-documento', nome: 'fa-av-nome', email: 'fa-av-email', valor: 'fa-av-valor', codigo: 'fa-av-codigo', descricao: 'fa-av-descricao', informacoes_complementares: 'fa-av-info', municipio_prestacao: 'fa-av-local', obra: 'fa-av-obra', locacao: 'fa-av-loc', aliquota_iss: 'fa-av-aliquota-iss', inss: 'fa-av-inss', retencao: 'fa-av-retem-iss' };
   var retAv = formRetencao('fa-av', { inssLivre: true, aoMudar: function () { if (!$('fa-av-resumo').hidden) fecharResumoAvulsa(); } });
   var BOTAO_RELATORIOS = ' <button type="button" class="fi-btn fi-btn--borda nf-btn-mini" data-ir-aba="relatorios">Ver em Relatórios</button>';
 
@@ -1201,6 +1201,16 @@
   function atualizarObraAvulsa(forcar) {
     var mostrar = forcar === true || CODIGOS_COM_OBRA.indexOf(codigoDaAvulsa()) >= 0;
     $('fa-av-obra').hidden = !mostrar;
+    atualizarLocacaoAvulsa();
+  }
+  /* Locação (locacao.ts): 99.03.01 pede o imóvel; 99.04.01, o bem móvel. A nota sai sem ISS. */
+  var CAMPOS_DO_IMOVEL = { cidade: 'cidade', cep: 'cep', logradouro: 'logradouro', numero: 'numero', complemento: 'complemento', bairro: 'bairro', residencial: 'residencial', inscricao: 'inscricao', copropriedade: 'copropriedade', valor_total: 'valor-total', vencimento: 'vencimento' };
+  var CAMPOS_DO_BEM = { bem_ncm: 'ncm', bem_descricao: 'bem', bem_quantidade: 'quantidade' };
+  function atualizarLocacaoAvulsa() {
+    var c = codigoDaAvulsa();
+    $('fa-av-loc').hidden = c !== '990301' && c !== '990401';
+    $('fa-av-loc-imovel').hidden = c !== '990301';
+    $('fa-av-loc-bem').hidden = c !== '990401';
   }
   function comQuebras(t) { return nf.esc(t || '').replace(/\n/g, '<br>'); }
   function centavosDoTexto(v) { return Math.round(Number(v || 0) * 100); }
@@ -1281,6 +1291,8 @@
     $('fa-av-info').value = '';
     $('fa-av-local').value = '';
     CAMPOS_DA_OBRA.forEach(function (k) { $('fa-av-obra-' + k).value = ''; });
+    Object.keys(CAMPOS_DO_IMOVEL).forEach(function (k) { $('fa-av-loc-' + CAMPOS_DO_IMOVEL[k]).value = ''; });
+    Object.keys(CAMPOS_DO_BEM).forEach(function (k) { $('fa-av-loc-' + CAMPOS_DO_BEM[k]).value = ''; });
     contarInfoAvulsa();
     prepararSeletorAvulsa(m ? m.codigo : (emp ? emp.codigo_servico_nacional : ''), emp && emp.tenant_id);
   }
@@ -1314,6 +1326,8 @@
       municipio_prestacao: $('fa-av-local').value
     };
     if (!$('fa-av-obra').hidden) CAMPOS_DA_OBRA.forEach(function (k) { corpo['obra_' + k] = $('fa-av-obra-' + k).value; });
+    if (!$('fa-av-loc-imovel').hidden) Object.keys(CAMPOS_DO_IMOVEL).forEach(function (k) { corpo['locacao_' + k] = $('fa-av-loc-' + CAMPOS_DO_IMOVEL[k]).value; });
+    if (!$('fa-av-loc-bem').hidden) Object.keys(CAMPOS_DO_BEM).forEach(function (k) { corpo[k] = $('fa-av-loc-' + CAMPOS_DO_BEM[k]).value; });
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     if (retAv.visivel()) {
       var r = retAv.ler();
@@ -1348,6 +1362,7 @@
       if (r.ok) { em.pedido = corpo; em.chave = novaChave(); desenharResumoAvulsa(r.dados); return; }
       if (r.status === 401) return;
       if (r.dados && r.dados.campo === 'obra') { atualizarObraAvulsa(true); erro('obra', r.mensagem || 'Confira os dados da obra.'); $('fa-av-obra-cep').focus(); return; }
+      if (r.dados && r.dados.campo === 'locacao') { atualizarLocacaoAvulsa(); erro('locacao', r.mensagem || 'Confira os dados da locação.'); var l = $(codigoDaAvulsa() === '990401' ? 'fa-av-loc-ncm' : 'fa-av-loc-cep'); if (l) l.focus(); return; }
       if (r.dados && CAMPO_AVULSA[r.dados.campo]) { erro(r.dados.campo, r.mensagem || 'Confira este campo.'); var c = $(CAMPO_AVULSA[r.dados.campo]); if (c) c.focus(); return; }
       nf.aviso($('fa-aviso-emitir'), nf.esc(r.mensagem || GENERICO), 'erro');
     });
@@ -1363,6 +1378,8 @@
       ['Descrição na nota', sv.descricao]
     ].concat(s.local_prestacao ? [['Local da prestação', s.local_prestacao.nome + (s.local_prestacao.iss_no_local ? ' (o ISS deste serviço é devido nessa cidade)' : '')]] : [])
       .concat(s.obra ? [['Obra', s.obra]] : [])
+      // Locação: "Tipo: locação de imóvel residencial (99.03.01), sem ISS", "Imóvel: …", "Bem: …".
+      .concat((s.locacao || []).map(function (l) { var i = l.indexOf(': '); return i > 0 ? [l.slice(0, i), l.slice(i + 2)] : ['Locação', l]; }))
       .concat([['Valor', s.valor_texto]])
       .concat(linhasRetencaoDoResumo(s)).concat(s.informacoes_complementares ? [['Informações complementares', s.informacoes_complementares]] : []));
     var avisos = (d.bloqueio ? ['<p class="nf-aviso nf-aviso--erro" role="status">' + nf.esc('Não dá para emitir: ' + d.bloqueio.motivo + '.') + '</p>'] : [])

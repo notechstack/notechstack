@@ -61,7 +61,12 @@ test('códigos de serviço', async () => {
     assert.ok(!item.descricao.includes('\uFFFD'), 'descrição UTF-8 íntegra')
   }
   if (dados.fonte.endsWith('/anexo_b-nbs2-lista_servico_nacional-snnfse-v1-01-20260122.xlsx')) {
-    assert.equal(dados.itens.length, 338, 'todas as linhas com cTribNac do Anexo B')
+    // Locação (NT 007, item 3.a; NT 009, item 2.15): códigos novos que o Anexo B de 22/01/2026 ainda não traz.
+    const locacao = { 990301: 'Locação de bens imóveis.', 990401: 'Locação de bens móveis.' }
+    for (const [codigo, descricao] of Object.entries(locacao)) {
+      assert.equal(dados.itens.find((item) => item.codigo === codigo)?.descricao, descricao)
+    }
+    assert.equal(dados.itens.filter((item) => !(item.codigo in locacao)).length, 338, 'todas as linhas com cTribNac do Anexo B')
     assert.equal(dados.itens.find((item) => item.codigo === '040101')?.descricao, 'Medicina.')
     assert.equal(dados.itens.find((item) => item.codigo === '010101')?.descricao, 'Análise e desenvolvimento de sistemas.')
     assert.ok(!dados.itens.some((item) => item.codigo.endsWith('00')), 'não incluir cabeçalhos de item/subitem')

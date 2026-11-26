@@ -1,6 +1,7 @@
 // Notas vistas pelo agente: o número que a pessoa lê e o que vai no payload do motor
 // (Landing, lote B - conversa: número exibido e payload gravado).
 import { parseNfseXml } from '../nfse-xml.js'
+import { locacaoNoPayload, type Locacao } from '../locacao.js'
 import { obraNoPayload, type Obra } from '../obra.js'
 import type { EnderecoNacional, Retencao } from '../retencao.js'
 import { tipoDoDocumento } from './documentos.js'
@@ -23,7 +24,14 @@ export type TomadorDoPedido = { documento: string; nome: string; email: string |
  * `municipio_prestacao_ibge`: local da prestação (local-prestacao.ts); ausente ou `null` = município da empresa.
  * `obra`: CNO ou endereço da obra (obra.ts), obrigatório nos códigos de construção civil (E0370).
  */
-export type ServicoDoPedido = { codigo: string; descricao: string; municipio_prestacao_ibge?: string | null; obra?: Obra | null }
+export type ServicoDoPedido = {
+  codigo: string
+  descricao: string
+  municipio_prestacao_ibge?: string | null
+  obra?: Obra | null
+  /** Imóvel ou bens móveis (locacao.ts), nos códigos de locação 99.03.01 e 99.04.01. */
+  locacao?: Locacao | null
+}
 
 /**
  * `retencao` e `endereco` (só com ISS retido, E0237) entram apenas quando há retenção, e `informacoes_complementares`
@@ -48,6 +56,7 @@ export function payloadDaNota(
       descricao: servico.descricao,
       ...(servico.municipio_prestacao_ibge ? { municipio_prestacao_ibge: servico.municipio_prestacao_ibge } : {}),
       ...(servico.obra ? { obra: obraNoPayload(servico.obra) } : {}),
+      ...(servico.locacao ? { locacao: locacaoNoPayload(servico.locacao) } : {}),
     },
     valor,
     ...(retencao ? { retencao } : {}),

@@ -17,6 +17,7 @@ import {
   ufDaResposta,
 } from '../local-prestacao.js'
 import { logEvent } from '../log.js'
+import { avisosDaLocacao, ehLocacao, linhasDaLocacao, locacaoLigada, MENSAGEM_LOCACAO_DESLIGADA } from '../locacao.js'
 import { exigeObra, lerObra, problemaDaObra, rotuloDaObra, type CampoDaObra, type Obra } from '../obra.js'
 import type { InvoicePayload } from '../validation.js'
 import {
@@ -49,6 +50,7 @@ import {
   type EmpresaDaConta,
 } from './emitente.js'
 import { validarParsed, type Interprete, type ObraEscrita, type Parsed } from './interprete.js'
+import { codigoDaLocacao, juntarLocacao, locacaoDoRascunho, textoDaLocacaoQueFalta, type LocacaoEscrita } from './locacao-conversa.js'
 import { linksDoSite, type Links } from './links.js'
 import { lerPayload, numeroDaNota, payloadDaNota, type ServicoDoPedido, type TomadorDoPedido } from './notas.js'
 import { registrarJanela } from './janela.js'
@@ -300,6 +302,13 @@ type Conversa = {
    * soma o que trouxe, e o endereço só vai para `servico.obra` quando tem CEP, rua, número e bairro (ou o CNO).
    */
   obra_rascunho?: ObraEscrita | null
+  /**
+   * Nota de locação (26/11/2026): o imóvel ou o bem escrito até aqui. Cada mensagem soma; o resumo monta o
+   * `servico.locacao` (locacao-conversa.ts) ou pergunta o que falta.
+   */
+  locacao_rascunho?: LocacaoEscrita | null
+  /** A última pergunta da locação (o que falta), repetida se a pessoa responder *confirmar* antes. */
+  locacao_pergunta?: string | null
 }
 
 type Pedido = {
@@ -445,6 +454,8 @@ export function textoDoResumo(
   informacoesComplementares?: string | null,
   /** "Campinas/SP": só quando o local da prestação é outro que não o município da empresa (ou o serviço é de obra). */
   localPrestacao?: string | null,
+  /** Avisos que não bloqueiam (ex.: locação de imóvel no Simples), antes da pergunta de emissão. */
+  avisos: string[] = [],
 ): string {
   return [
     'Resumo da nota:',
@@ -455,9 +466,11 @@ export function textoDoResumo(
     `Descrição na nota: ${servico.descricao}`,
     ...(localPrestacao ? [`Local da prestação: ${localPrestacao}`] : []),
     ...(servico.obra ? [`Obra: ${rotuloDaObra(servico.obra)}`] : []),
+    ...(servico.locacao ? linhasDaLocacao(servico.locacao) : []),
     `Valor: ${formatarReais(valor)}`,
     ...linhasDaRetencao(valor, retencao),
     ...(informacoesComplementares ? [`Informações complementares: ${informacoesComplementares}`] : []),
+    ...avisos.map((a) => `Atenção: ${a}`),
     PERGUNTA_DE_EMISSAO,
   ].join('\n')
 }
@@ -513,6 +526,19 @@ export function comCidadeDaObra(parsed: Parsed): Parsed {
   return { ...parsed, municipio_prestacao: parsed.obra.cidade }
 }
 
+/** A pergunta da locação de novo, pelo que ainda falta no rascunho do pedido. */
+function textoDaLocacaoQueFaltaNoPedido(c: Conversa): string {
+  const codigo = c.servico?.codigo ?? ''
+  const lida = locacaoDoRascunho(c.locacao_rascunho, codigo, c.valor ?? '0.01', null)
+  return lida.ok ? textoDaLocacaoQueFalta(codigo, [], null, null) : textoDaLocacaoQueFalta(codigo, lida.faltando, lida.erro, null)
+}
+
+/** Locação fora da flag (a Receita ainda não liberou) ou com ISS retido pedido (não há ISS na locação). */
+export function textoDaLocacaoRecusada(problema: 'LOCACAO_INDISPONIVEL' | 'LOCACAO_SEM_ISS'): string {
+  if (problema === 'LOCACAO_INDISPONIVEL') return `${MENSAGEM_LOCACAO_DESLIGADA} Responda *descartar* para encerrar este pedido.`
+  return 'Na locação não há ISS (a nota sai sem ISS), então não dá para reter ISS. Responda *corrigir* e me diga "sem retenção de ISS", ou *descartar*.'
+}
+
 export const TEXTO_SEM_RETENCAO_POSSIVEL =
   'Responda *corrigir* e me diga a retenção certa (por exemplo: ISS retido 2%, INSS 11%, ou sem retenção), ou *descartar*.'
 
@@ -559,7 +585,10 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   const local = servico.municipio_prestacao_ibge ?? null
   const padrao = linha ? padraoDaLinha(linha) : SEM_RETENCAO_PADRAO
   const regime = typeof linha?.regime === 'string' ? linha.regime : null
-  const resolvida = resolverRetencao({ padrao, pedido: conversa.retencao_pedido, valor, regime, tomadorTipo: tipoDoDocumento(tomador.documento) })
+  // Locação: o ISS não incide (E0532), então o ISS retido do padrão da empresa não vale nesta nota.
+  const naLocacao = ehLocacao(servico.codigo)
+  const padraoDaNota = naLocacao ? { ...padrao, retem_iss: false, aliquota_iss: null } : padrao
+  const resolvida = resolverRetencao({ padrao: padraoDaNota, pedido: conversa.retencao_pedido, valor, regime, tomadorTipo: tipoDoDocumento(tomador.documento) })
   let problema: string | null = resolvida.ok ? null : resolvida.problema
   // O tipo de retenção pedido precisa estar cadastrado no painel (o MEI cai antes, em RETENCAO_MEI).
   if (resolvida.ok && resolvida.retencao) {
@@ -573,6 +602,23 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   if (!exigeObra(servico.codigo) && servico.obra) servico = { ...servico, obra: null }
   const faltaObra = !problema && problemaDaObra({ codigo: servico.codigo, obra: servico.obra }) !== null
   if (faltaObra) problema = 'OBRA_SEM_DADOS'
+  // Locação (99.03.01, 99.04.01): fora da flag, a mensagem de que entra quando a Receita liberar; sem os dados do imóvel
+  // ou do bem, a pergunta guiada (a próxima mensagem completa o pedido).
+  let faltaLocacao: string | null = null
+  if (naLocacao) {
+    if (!locacaoLigada()) problema = 'LOCACAO_INDISPONIVEL'
+    else if (conversa.retencao_pedido?.iss) problema = 'LOCACAO_SEM_ISS'
+    else {
+      const lida = locacaoDoRascunho(conversa.locacao_rascunho, servico.codigo, valor, sede)
+      if (lida.ok) {
+        servico = { ...servico, locacao: lida.locacao }
+        if (problema === 'ISS_NAO_CADASTRADO') problema = null
+      } else {
+        faltaLocacao = textoDaLocacaoQueFalta(servico.codigo, lida.faltando, lida.erro, sede ? rotuloMunicipio(sede) : null)
+        problema = 'LOCACAO_SEM_DADOS'
+      }
+    }
+  } else if (servico.locacao) servico = { ...servico, locacao: null }
   let endereco: EnderecoNacional | null = null
   if (retencao?.iss) {
     const consulta = ctx.deps.consultaCnpj
@@ -587,8 +633,9 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     retencao,
     endereco,
     retencao_problema: problema,
-    // Sem os dados da obra, a próxima mensagem já é lida como a correção (o endereço ou o CNO).
-    corrigindo: faltaObra,
+    // Sem os dados da obra ou da locação, a próxima mensagem já é lida como a correção.
+    corrigindo: faltaObra || faltaLocacao !== null,
+    locacao_pergunta: faltaLocacao,
     info_perguntada: Boolean(conversa.info_perguntada || perguntar),
     info_aberta: perguntar,
   }
@@ -596,6 +643,14 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   if (faltaObra) {
     logEvent('agente.obra_pedida', { request_id: pedidoId, tenant_id: tenantId, parcial: Boolean(conversa.obra_rascunho) })
     return [textoDaObraQueFalta(conversa.obra_rascunho, sede ? rotuloMunicipio(sede) : null)]
+  }
+  if (faltaLocacao) {
+    logEvent('agente.locacao_pedida', { request_id: pedidoId, tenant_id: tenantId, parcial: Boolean(conversa.locacao_rascunho) })
+    return [faltaLocacao]
+  }
+  if (problema === 'LOCACAO_INDISPONIVEL' || problema === 'LOCACAO_SEM_ISS') {
+    logEvent('agente.locacao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
+    return [textoDaLocacaoRecusada(problema)]
   }
   if (problema) {
     logEvent('agente.retencao_recusada', { request_id: pedidoId, tenant_id: tenantId, problema })
@@ -612,6 +667,7 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
     conversa.informacoes_complementares,
     // Na obra, o local aparece sempre (é onde o ISS é devido), mesmo sendo a cidade da empresa.
     local ? rotuloDoLocal(local, servico.codigo) : servico.obra && sede ? rotuloDoLocal(sede, servico.codigo) : null,
+    naLocacao ? avisosDaLocacao(servico.codigo, regime) : [],
   )
   return perguntar ? [resumo, TEXTOS.perguntaInfoComplementar, TEXTOS.semInfoComplementar] : [resumo]
 }
@@ -1157,7 +1213,8 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     const informacoes_complementares = parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null
     const municipio_prestacao = parsed.municipio_prestacao ?? atual.servico?.municipio_prestacao_ibge ?? null
     const obra = juntarObra(atual.obra_rascunho, parsed.obra).rascunho
-    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null, informacoes_complementares, municipio_prestacao, obra }, tokens, {
+    const locacao = juntarLocacao(atual.locacao_rascunho, parsed.locacao)
+    await pedidoDeEmissao(ctx, { ...parsed, intencao: 'emitir', valor: parsed.valor ?? atual.valor ?? null, informacoes_complementares, municipio_prestacao, obra, locacao }, tokens, {
       emitenteId: parsed.prestador ? undefined : pedido.tenant_id,
     })
     return true
@@ -1190,6 +1247,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
           informacoes_complementares: parsed.informacoes_complementares ?? atual.informacoes_complementares ?? null,
           municipio_prestacao: parsed.municipio_prestacao ?? atual.servico?.municipio_prestacao_ibge ?? null,
           obra: juntarObra(atual.obra_rascunho, parsed.obra).rascunho,
+          locacao: juntarLocacao(atual.locacao_rascunho, parsed.locacao),
           intencao: 'emitir',
         },
         tokens,
@@ -1232,13 +1290,27 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, `Há ${ufs.length} cidades chamadas ${nome} (${ufs.join(', ')}). Me diga com a UF, por exemplo: prestado em ${nome}/${ufs[0]}.`)
     return true
   }
+  // Na locação, um endereço sozinho é o do imóvel, mesmo que a IA o leia como o da obra.
+  const naLocacao = Boolean(atual.servico && ehLocacao(atual.servico.codigo))
+  if (naLocacao && parsed.obra && !parsed.locacao) {
+    const { cep, logradouro, numero, complemento, bairro, cidade } = parsed.obra
+    parsed = { ...parsed, obra: null, locacao: { cep, logradouro, numero, complemento, bairro, cidade } }
+  }
   // Endereço ou CNO da obra na correção (ou como resposta à pergunta da obra): soma ao que já veio.
-  const obraNova = parsed.obra ? juntarObra(atual.obra_rascunho, parsed.obra) : null
-  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo || obraNova) && valor && atual.tomador && atual.servico) {
+  const obraNova = parsed.obra && !naLocacao ? juntarObra(atual.obra_rascunho, parsed.obra) : null
+  // Dados do imóvel ou do bem (ou a resposta à pergunta da locação): somam ao rascunho; o tipo pode trocar o código.
+  const locacaoNova = parsed.locacao ? juntarLocacao(atual.locacao_rascunho, parsed.locacao) : null
+  const codigoLocacao = codigoDaLocacao(parsed.locacao)
+  if (codigoLocacao && !locacaoLigada()) {
+    await responder(ctx, textoDaLocacaoRecusada('LOCACAO_INDISPONIVEL'))
+    return true
+  }
+  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo || obraNova || locacaoNova) && valor && atual.tomador && atual.servico) {
     const servico: ServicoDoPedido = {
       ...atual.servico,
       ...(parsed.descricao ? { descricao: parsed.descricao } : {}),
       ...(codigoNovo ? { codigo: codigoNovo.codigo } : {}),
+      ...(codigoLocacao ? { codigo: codigoLocacao } : {}),
       ...(localNovo ? { municipio_prestacao_ibge: localNovo.ibge } : {}),
       ...(obraNova ? { obra: obraNova.obra } : {}),
     }
@@ -1251,8 +1323,9 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
       corrigindo: false,
       ...(infoNova ? { informacoes_complementares: infoNova, info_aberta: false } : {}),
       ...(obraNova ? { obra_rascunho: obraNova.rascunho } : {}),
+      ...(locacaoNova ? { locacao_rascunho: locacaoNova } : {}),
     }
-    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo', infoNova && 'info_complementar', localNovo && 'local', obraNova && 'obra']
+    const mudou = [parsed.valor && 'valor', parsed.descricao && 'descricao', retencaoNova && 'retencao', codigoNovo && 'codigo', infoNova && 'info_complementar', localNovo && 'local', obraNova && 'obra', locacaoNova && 'locacao']
       .filter(Boolean)
       .join(' e ')
     logEvent('agente.pedido_corrigido', { request_id: pedido.id, mudou })
@@ -1293,8 +1366,17 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
         ctx,
         problema === 'OBRA_SEM_DADOS'
           ? textoDaObraQueFalta(pedido.conversa.obra_rascunho, null)
-          : textoDoProblemaDeRetencao(ctx, problema, pedido.conversa.emitente?.razao_social),
+          : problema === 'LOCACAO_SEM_DADOS'
+            ? (pedido.conversa.locacao_pergunta ?? textoDaLocacaoQueFaltaNoPedido(pedido.conversa))
+            : problema === 'LOCACAO_INDISPONIVEL' || problema === 'LOCACAO_SEM_ISS'
+              ? textoDaLocacaoRecusada(problema)
+              : textoDoProblemaDeRetencao(ctx, problema, pedido.conversa.emitente?.razao_social),
       )
+      return
+    }
+    // A flag pode ter sido desligada entre o resumo e o *confirmar*.
+    if (ehLocacao(servico.codigo) && !locacaoLigada()) {
+      await responder(ctx, textoDaLocacaoRecusada('LOCACAO_INDISPONIVEL'))
       return
     }
     const criada = await db.transaction(async (tx) => {
@@ -1742,6 +1824,17 @@ async function pedidoDeEmissao(
     return
   }
 
+  // Nota de aluguel: o tipo (imóvel ou bem móvel) escolhe o código 99.03.01 ou 99.04.01. Enquanto a Receita não liberar
+  // os códigos em produção (NOFISCAL_LOCACAO desligada), o pedido não segue.
+  const codigoLocacao = codigoDaLocacao(parsed.locacao)
+  if ((codigoLocacao || (codigoPedido && ehLocacao(codigoPedido.codigo))) && !locacaoLigada()) {
+    semPedido()
+    if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
+    logEvent('agente.locacao_recusada', { tenant_id: tenantId, problema: 'LOCACAO_INDISPONIVEL' })
+    await responder(ctx, MENSAGEM_LOCACAO_DESLIGADA)
+    return
+  }
+
   // Local da prestação escrito no pedido ("serviço prestado em Campinas"): sem ele, o município da empresa.
   const local = localDoPedido(parsed.municipio_prestacao)
   if (local && 'texto' in local) {
@@ -1768,13 +1861,16 @@ async function pedidoDeEmissao(
   // Dados da obra escritos no pedido: completos vão para o serviço; incompletos ficam no rascunho, e o resumo pede o resto.
   const daObra = juntarObra(null, parsed.obra)
   const naObra = { ...noLocal, ...(daObra.obra ? { obra: daObra.obra } : {}) }
-  const rascunhoDaObra = daObra.rascunho ? { obra_rascunho: daObra.rascunho } : {}
+  const rascunhoDaObra = {
+    ...(daObra.rascunho ? { obra_rascunho: daObra.rascunho } : {}),
+    ...(parsed.locacao ? { locacao_rascunho: parsed.locacao } : {}),
+  }
 
   if (modelo) {
     const tomador: TomadorDoPedido = { documento: modelo.tomador_documento, nome: modelo.tomador_nome, email: modelo.tomador_email }
     // A descrição escrita no pedido vale para esta nota; o modelo continua com a dele.
     const servico: ServicoDoPedido = {
-      codigo: codigoPedido?.codigo ?? modelo.codigo_servico_nacional,
+      codigo: codigoLocacao ?? codigoPedido?.codigo ?? modelo.codigo_servico_nacional,
       descricao: parsed.descricao ?? modelo.descricao,
       ...naObra,
     }
@@ -1803,7 +1899,7 @@ async function pedidoDeEmissao(
   )
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
-    servico: { codigo: codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...naObra },
+    servico: { codigo: codigoLocacao ?? codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...naObra },
     valor,
     modelo_id: null,
     modelo_nome: nome.slice(0, 60).trim(),

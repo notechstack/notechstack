@@ -5,7 +5,7 @@
 // assinado, com reenvio e espera; a nota da API não vai ao WhatsApp, e `emails_da_no = false` corta os e-mails da nó;
 // empresas entram e mostram a situação pela API, com o limite da conta e a procuração ao escritório.
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { closeSharedDb, type Db } from '../_lib/db.js'
 import { handleNfseRequest } from '../_lib/nfse-routes.js'
 import { handlePainelEmissao } from '../_lib/painel-emissao.js'
@@ -282,6 +282,61 @@ describe('chave do parceiro', () => {
 
     // Campo desconhecido continua recusado (nenhuma rota aceita certificado por engano).
     expect((await api(chave, 'POST', '/v1/nfse', venda('ret-4', { pfx: 'MIIK' }))).corpo.error.code).toBe('UNKNOWN_FIELD')
+  })
+
+  it('locação (99.03.01 e 99.04.01): desligada, 422 com a mensagem; ligada, o imóvel ou os bens no payload e sem o ISS do padrão', async () => {
+    const { dono, padaria } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    await admin.db.query(`update nofiscal.fiscal_tenants set retem_iss = true, aliquota_iss = 2 where id = $1`, [padaria.id])
+    const imovel = { municipio_ibge: '3509502', cep: '13015-100', logradouro: 'Rua das Flores', numero: '120', residencial: true }
+    const aluguel = (id: string, extra: Record<string, unknown> = {}) => ({
+      ...venda(id, { cnpj_prestador: padaria.cnpj }),
+      tomador: { cnpj: CNPJ_TOMADOR, nome: 'Inquilino Ltda' },
+      valor: '2500.00',
+      servico: { codigo_servico_nacional: '990301', descricao: 'Aluguel de dezembro', locacao: { imovel } },
+      ...extra,
+    })
+    try {
+      vi.stubEnv('NOFISCAL_LOCACAO', '')
+      const desligada = await api(chave, 'POST', '/v1/nfse', aluguel('loc-0'))
+      expect(desligada.status).toBe(422)
+      expect(desligada.corpo).toMatchObject({ motivo: 'LOCACAO_INDISPONIVEL' })
+      expect(desligada.corpo.error.message).toMatch(/assim que a Receita liberar/)
+
+      vi.stubEnv('NOFISCAL_LOCACAO', '1')
+      const ok = await api(chave, 'POST', '/v1/nfse', aluguel('loc-1'))
+      expect(ok.status).toBe(202)
+      const payload = (await readInvoice(admin.db, ok.corpo.id as string)).payload as Record<string, unknown>
+      expect(payload.servico).toMatchObject({
+        codigo_servico_nacional: '990301',
+        locacao: { imovel: { municipio_ibge: '3509502', cep: '13015100', residencial: true, copropriedade: '100.00', valor_total: '2500.00' } },
+      })
+      // O ISS retido do padrão da empresa não vai na locação (não incidência).
+      expect(payload.retencao).toBeUndefined()
+
+      const movel = await api(chave, 'POST', '/v1/nfse', aluguel('loc-2', {
+        servico: { codigo_servico_nacional: '990401', locacao: { bens: [{ ncm: '84743100', descricao: 'Betoneira', quantidade: 2 }] } },
+      }))
+      expect(movel.status).toBe(202)
+      expect(((await readInvoice(admin.db, movel.corpo.id as string)).payload as { servico: unknown }).servico).toMatchObject({
+        locacao: { bens: [{ ncm: '84743100', descricao: 'Betoneira', quantidade: 2 }] },
+      })
+
+      // Sem os dados, ISS retido pedido e campo desconhecido dentro da locação.
+      const semDados = await api(chave, 'POST', '/v1/nfse', aluguel('loc-3', { servico: { codigo_servico_nacional: '990301' } }))
+      expect(semDados.status).toBe(422)
+      expect(semDados.corpo).toMatchObject({ campo: 'servico.locacao', motivo: 'LOCACAO_SEM_DADOS' })
+      const comIss = await api(chave, 'POST', '/v1/nfse', aluguel('loc-4', { retencao: { retem_iss: true, aliquota_iss: 2 } }))
+      expect(comIss.status).toBe(422)
+      expect(comIss.corpo).toMatchObject({ campo: 'retencao.retem_iss' })
+      const estranho = await api(chave, 'POST', '/v1/nfse', aluguel('loc-5', {
+        servico: { codigo_servico_nacional: '990301', locacao: { imovel: { ...imovel, matricula: '123' } } },
+      }))
+      expect(estranho.corpo.error.code).toBe('UNKNOWN_FIELD')
+      expect(estranho.corpo.error.message).toContain('servico.locacao.imovel.matricula')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

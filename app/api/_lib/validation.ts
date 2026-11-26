@@ -28,6 +28,8 @@ export type InvoicePayload = {
     municipio_prestacao_ibge?: string
     /** `serv/obra` (obra.ts): `{ cno }` ou o endereço. Obrigatório nos códigos de construção civil (E0370). */
     obra?: Record<string, string>
+    /** `IBSCBS/imovel` ou `bensMoveis` (locacao.ts): `{ imovel }` ou `{ bens }`, nos códigos 99.03.01 e 99.04.01. */
+    locacao?: Record<string, unknown>
   }
   valor: string
   /** Resolvida por retencao.ts (agente, painel e API) a partir do padrão da empresa e do pedido. */
@@ -51,6 +53,8 @@ export type PedidoDaApi = {
     c_class_trib?: string
     municipio_prestacao_ibge?: string
     obra?: Obra
+    /** Como veio (locacao.ts): quem confere contra o código final, que pode vir da empresa, é a rota. */
+    locacao?: unknown
   }
   valor: string
   /** Ausente = o padrão de retenção da empresa. */
@@ -96,6 +100,31 @@ export function money(value: unknown): string | null {
 
 const decimalTexto = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : typeof v === 'string' ? v.trim() : null)
 
+const CAMPOS_DO_IMOVEL = [
+  'municipio_ibge', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'inscricao_imobiliaria', 'cib', 'residencial',
+  'copropriedade', 'valor_total', 'vencimento',
+]
+
+/** Campo desconhecido dentro de `servico.locacao` (imóvel ou cada bem). */
+function camposDaLocacao(servico: unknown): string | null {
+  if (!isObject(servico) || !isObject(servico.locacao)) return null
+  const l = servico.locacao
+  const extra = unknownField(l, ['imovel', 'bens'], 'servico.locacao.')
+  if (extra) return extra
+  if (isObject(l.imovel)) {
+    const e = unknownField(l.imovel, CAMPOS_DO_IMOVEL, 'servico.locacao.imovel.')
+    if (e) return e
+  }
+  if (Array.isArray(l.bens)) {
+    for (const [i, b] of l.bens.entries()) {
+      if (!isObject(b)) continue
+      const e = unknownField(b, ['ncm', 'descricao', 'quantidade'], `servico.locacao.bens[${i}].`)
+      if (e) return e
+    }
+  }
+  return null
+}
+
 export function parseNewInvoice(body: unknown): ValidationResult {
   const fail = (message: string): ValidationResult => ({ ok: false, code: 'VALIDATION_FAILED', message })
   if (!isObject(body)) return fail('o corpo deve ser um objeto JSON')
@@ -103,8 +132,9 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const extra =
     unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email'], 'tomador.') : null) ??
-    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge', 'obra'], 'servico.') : null) ??
+    (isObject(body.servico) ? unknownField(body.servico, ['codigo_servico_nacional', 'descricao', 'nbs', 'c_ind_op', 'c_class_trib', 'municipio_prestacao_ibge', 'obra', 'locacao'], 'servico.') : null) ??
     (isObject(body.servico) && isObject(body.servico.obra) ? unknownField(body.servico.obra, ['cno', 'cep', 'logradouro', 'numero', 'complemento', 'bairro'], 'servico.obra.') : null) ??
+    camposDaLocacao(body.servico) ??
     (isObject(body.retencao) ? unknownField(body.retencao, ['retem_iss', 'aliquota_iss', 'retem_inss', 'inss', 'irrf', 'csrf'], 'retencao.') : null)
   if (extra) return { ok: false, code: 'UNKNOWN_FIELD', message: `campo não aceito: ${extra}` }
 
@@ -152,7 +182,9 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     if (error instanceof DpsInvalidError) return fail(`servico.nbs: ${error.message}`)
     throw error
   }
-  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string; obra?: Obra } = nbs ? { nbs } : {}
+  const rtc: { nbs?: string; c_ind_op?: string; c_class_trib?: string; municipio_prestacao_ibge?: string; obra?: Obra; locacao?: unknown } = nbs
+    ? { nbs }
+    : {}
   for (const campo of ['c_ind_op', 'c_class_trib'] as const) {
     const v = servico[campo]
     if (v === undefined || v === null || v === '') continue
@@ -166,6 +198,10 @@ export function parseNewInvoice(body: unknown): ValidationResult {
   const obra = lerObra(servico.obra)
   if (!obra.ok) return fail(`servico.obra ${obra.erro}`)
   if (obra.obra) rtc.obra = obra.obra
+  if (servico.locacao !== undefined && servico.locacao !== null) {
+    if (!isObject(servico.locacao)) return fail('servico.locacao deve ser um objeto: { imovel } ou { bens }')
+    rtc.locacao = servico.locacao
+  }
 
   const bruta = body.informacoes_complementares
   if (bruta !== undefined && bruta !== null && typeof bruta !== 'string') return fail('informacoes_complementares deve ser texto')

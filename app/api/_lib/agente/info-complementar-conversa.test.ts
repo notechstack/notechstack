@@ -22,7 +22,7 @@ import {
 import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
-import { errosXsd } from '../../_tests/xsd.js'
+import { errosXsd, pacoteDaDps } from '../../_tests/xsd.js'
 import { createSefinClient } from '../sefin-client.js'
 import { pareceNovoPedido, processarMensagem, TEXTOS, textoDeInfoLonga, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
@@ -103,7 +103,7 @@ describe('informações complementares pelo WhatsApp', () => {
     await rodarWorker(servico.db, { sefin: createSefinClient({ transport: sefin.transport }), tenantId: s.tenant.id, canais: c.canais, now: () => new Date() })
     const [dps] = sefin.requests.filter((r) => r.method === 'POST' && r.path === '/nfse').map((r) => r.xml ?? '')
     expect(dps).toContain(`<infoCompl><xInfComp>${BANCO} - Favorecido: Contabilidade Modelo</xInfComp></infoCompl></serv>`)
-    expect(await errosXsd(dps, dps.includes('<finNFSe>') ? 'producao-restrita-20261020' : 'producao-v1.01-20260209')).toEqual([])
+    expect(await errosXsd(dps, pacoteDaDps(dps))).toEqual([])
   })
 
   it('*confirmar* logo depois da pergunta emite como antes, sem o campo', async () => {

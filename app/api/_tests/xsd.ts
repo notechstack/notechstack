@@ -21,6 +21,15 @@ function ler(pacote: PacoteXsd, arquivo: string): string {
   return texto.replace('<xs:pattern value="^0{0,4}\\d{1,5}$"/>', '<xs:pattern value="0{0,4}\\d{1,5}"/>')
 }
 
+/**
+ * O pacote do leiaute em que a DPS foi montada: sem `finNFSe`, produção (v1.01); com `indDest` logo depois de `toma`,
+ * o release 2 da NT 009; senão, o release 1.
+ */
+export function pacoteDaDps(xml: string): PacoteXsd {
+  if (!xml.includes('<finNFSe>')) return 'producao-v1.01-20260209'
+  return /<\/toma><indDest>/.test(xml) ? 'producao-restrita-20261124' : 'producao-restrita-20261020'
+}
+
 /** Lista de erros do xmllint (vazia = válido). */
 export async function errosXsd(xml: string, pacote: PacoteXsd): Promise<string[]> {
   const resultado = await validateXML({

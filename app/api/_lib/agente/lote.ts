@@ -11,6 +11,7 @@ import type { Db, Queryable } from '../db.js'
 import { createOrGetInvoice } from '../invoices.js'
 import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
 import { exigeObra, lerObra, type Obra } from '../obra.js'
+import { ehLocacao, lerLocacao, locacaoLigada, type Locacao } from '../locacao.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
 import {
@@ -62,7 +63,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // 18/11/2026), opcional: o local da prestação (cLocPrestacao), por nome com UF ("Campinas/SP") ou código IBGE; vazia, o
 // município da empresa. O cabeçalho `ibge_prestacao` também vale. `obra_*` (Robson, Bragantina, 19/11/2026), opcionais:
 // o endereço (obra_cep, obra_logradouro, obra_numero, obra_complemento, obra_bairro) ou o obra_cno, obrigatórios nas
-// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais.
+// linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `imovel_*` e `bem_*` (26/11/2026),
+// opcionais: os dados da locação (locacao.ts), obrigatórios nas linhas com código 99.03.01 (imóvel: cidade, CEP, rua,
+// número, residencial sim/não; ou o CIB) e 99.04.01 (bem: NCM, descrição, quantidade) e ignorados nas demais.
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -80,6 +83,21 @@ export const CAMPOS = [
   'obra_complemento',
   'obra_bairro',
   'obra_cno',
+  'imovel_cidade',
+  'imovel_cep',
+  'imovel_logradouro',
+  'imovel_numero',
+  'imovel_complemento',
+  'imovel_bairro',
+  'imovel_inscricao',
+  'imovel_cib',
+  'imovel_residencial',
+  'imovel_copropriedade',
+  'imovel_valor_total',
+  'imovel_vencimento',
+  'bem_ncm',
+  'bem_descricao',
+  'bem_quantidade',
 ] as const
 export type Campo = (typeof CAMPOS)[number]
 
@@ -102,6 +120,10 @@ export const CODIGOS_DE_PROBLEMA = [
   'MUNICIPIO_PRESTACAO_AMBIGUO',
   'OBRA_SEM_DADOS',
   'OBRA_INVALIDA',
+  'LOCACAO_INDISPONIVEL',
+  'LOCACAO_SEM_DADOS',
+  'LOCACAO_INVALIDA',
+  'LOCACAO_COM_ISS',
   ...PROBLEMAS_DE_LOCAL,
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
@@ -399,7 +421,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
     p.desconhecidas.length ? `Colunas que eu não conheço: ${p.desconhecidas.join(', ')}.` : null,
     p.faltando.length ? `Faltam as colunas: ${p.faltando.join(', ')}.` : null,
     p.repetidas.length ? `Colunas repetidas: ${p.repetidas.join(', ')}.` : null,
-    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa). Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
+    'A primeira linha precisa ter estes nomes: cnpj_prestador (pode faltar se a conta tem uma só empresa ativa), cpf_cnpj_tomador, nome_tomador, email_tomador (opcional), valor, descricao (opcional), iss_retido (opcional), inss_retido (opcional), codigo_servico (opcional: o código da lista nacional, como 04.03.01; vazio = o do cliente ou o da empresa) e municipio_prestacao (opcional: a cidade onde o serviço foi prestado, como Campinas/SP, ou o código IBGE; vazio = a cidade da empresa). Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno. Nas notas de locação (99.03.01 e 99.04.01), também imovel_cidade, imovel_cep, imovel_logradouro, imovel_numero, imovel_complemento, imovel_bairro, imovel_inscricao, imovel_cib, imovel_residencial, imovel_copropriedade, imovel_valor_total e imovel_vencimento, ou bem_ncm, bem_descricao e bem_quantidade.',
     `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   ]
     .filter(Boolean)
@@ -568,7 +590,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       regime: empresa.regime ?? null,
       tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
     })
-    if (!resolvida.ok) return falha(resolvida.problema, empresa.id)
+    // O problema da retenção só conta depois do código: na locação, a retenção é outra (sem ISS).
 
     // Código de serviço: o da linha, senão o do modelo do tomador, senão o da empresa (Lucca, 17/11/2026: uma clínica
     // emite psicologia, fisioterapia e nutrição pela mesma empresa). A descrição escrita na planilha vale para esta
@@ -579,6 +601,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     if (codigoDaLinha && ctx.codigosDaLista && !ctx.codigosDaLista.has(codigoDaLinha)) return falha('CODIGO_SERVICO_FORA_DA_LISTA', empresa.id)
     const modelo = ctx.modelos.get(`${empresa.id}:${documento}`)
     const codigo = codigoDaLinha ?? modelo?.codigo ?? empresa.codigo_servico_nacional ?? ''
+    if (!resolvida.ok && !ehLocacao(codigo)) return falha(resolvida.problema, empresa.id)
     if (!/^\d{6}$/.test(codigo)) return falha('CODIGO_SERVICO_FALTANDO', empresa.id)
     // Local da prestação: nome com UF ou código IBGE; o mesmo da sede fica de fora (a nota sai como antes).
     const localEscrito = textoDaCelula(celulas.municipio_prestacao)
@@ -607,9 +630,58 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       if (!lida.obra) return falha('OBRA_SEM_DADOS', empresa.id)
       obra = lida.obra
     }
-    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra }
+    // Dados da locação: só nas linhas com código 99.03.01 ou 99.04.01, onde são obrigatórios; com a flag desligada, a linha
+    // volta com o motivo (a nota entra quando a Receita liberar).
+    let locacao: Locacao | null = null
+    let retencaoDaNota = resolvida.ok ? resolvida.retencao : null
+    if (ehLocacao(codigo)) {
+      if (!locacaoLigada()) return falha('LOCACAO_INDISPONIVEL', empresa.id)
+      // Na locação o ISS não incide (E0532): pedido na linha, a linha volta; do padrão da empresa, não vale.
+      if (pedidoDeRetencao.iss) return falha('LOCACAO_COM_ISS', empresa.id)
+      const semIss = resolverRetencao({
+        padrao: { ...(empresa.retencao ?? SEM_RETENCAO_PADRAO), retem_iss: false, aliquota_iss: null },
+        pedido: pedidoDeRetencao,
+        valor,
+        regime: empresa.regime ?? null,
+        tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
+      })
+      if (!semIss.ok) return falha(semIss.problema, empresa.id)
+      retencaoDaNota = semIss.retencao
+      const cidade = textoDaCelula(celulas.imovel_cidade)
+      let municipioDoImovel: string | null = empresa.codigo_municipio_ibge ?? null
+      if (cidade) {
+        const r = resolverMunicipio(cidade)
+        if (!r.ok) return falha('LOCACAO_INVALIDA', empresa.id)
+        municipioDoImovel = r.municipio.ibge
+      }
+      const celula = (c: Campo) => textoDaCelula(celulas[c]) || undefined
+      const bruto = codigo === '990301'
+        ? {
+            imovel: {
+              municipio_ibge: municipioDoImovel,
+              cep: celula('imovel_cep'),
+              logradouro: celula('imovel_logradouro'),
+              numero: celula('imovel_numero'),
+              complemento: celula('imovel_complemento'),
+              bairro: celula('imovel_bairro'),
+              inscricao_imobiliaria: celula('imovel_inscricao'),
+              cib: celula('imovel_cib'),
+              residencial: celula('imovel_residencial'),
+              copropriedade: celula('imovel_copropriedade'),
+              valor_total: celula('imovel_valor_total'),
+              vencimento: celula('imovel_vencimento'),
+            },
+          }
+        : celula('bem_ncm') || celula('bem_descricao')
+          ? { bens: [{ ncm: celula('bem_ncm'), descricao: celula('bem_descricao'), quantidade: celula('bem_quantidade') }] }
+          : {}
+      const lida = lerLocacao(bruto, codigo, valor)
+      if (!lida.ok) return falha(lida.faltando.length ? 'LOCACAO_SEM_DADOS' : 'LOCACAO_INVALIDA', empresa.id)
+      locacao = lida.locacao
+    }
+    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra, locacao }
     // O endereço do tomador (ISS retido) entra depois, em `completarEnderecos`: a validação aqui é pura.
-    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: resolvida.retencao })
+    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, { retencao: retencaoDaNota })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
       linha,
       tenantId: empresa.id,
@@ -722,6 +794,14 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'municipio_prestacao não encontrado: escreva a cidade com a UF, como Campinas/SP, ou o código IBGE de 7 dígitos'
     case 'OBRA_SEM_DADOS':
       return 'o código de serviço é de construção civil, e a Sefin exige os dados da obra: preencha obra_cep, obra_logradouro, obra_numero e obra_bairro, ou obra_cno'
+    case 'LOCACAO_INDISPONIVEL':
+      return 'nota de locação (99.03.01 ou 99.04.01): entra no sistema assim que a Receita liberar esses códigos no ambiente nacional; por enquanto, esta linha não é emitida'
+    case 'LOCACAO_SEM_DADOS':
+      return 'nota de locação sem os dados que a Receita exige: no imóvel (99.03.01), imovel_cep, imovel_logradouro, imovel_numero e imovel_residencial (sim ou não), ou imovel_cib; no bem móvel (99.04.01), bem_ncm (8 dígitos) e bem_descricao'
+    case 'LOCACAO_INVALIDA':
+      return 'dados da locação inválidos: confira imovel_cidade (cidade com UF), imovel_cep (8 dígitos), imovel_copropriedade (até 100) com imovel_valor_total, imovel_vencimento (data), bem_ncm (8 dígitos) e bem_quantidade (1 a 999)'
+    case 'LOCACAO_COM_ISS':
+      return 'locação não tem ISS (não incidência): deixe iss_retido vazio ou "não"'
     case 'OBRA_INVALIDA':
       return 'dados da obra incompletos ou inválidos: o endereço precisa de obra_cep (8 dígitos), obra_logradouro, obra_numero e obra_bairro; o obra_cno, de 12 dígitos'
     case 'LOCAL_EXIGE_EVENTO':
