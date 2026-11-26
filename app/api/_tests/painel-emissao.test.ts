@@ -428,9 +428,15 @@ describe('retenção pelo painel (16/11/2026)', () => {
     })
     expect((conferido.corpo.resumo as Record<string, unknown>).endereco_tomador).toEqual(ENDERECO)
 
-    // Sem a consulta de endereço, o ISS retido não sai; tomador CPF com ISS retido também não.
+    // Sem a consulta de endereço, o ISS retido não sai; tomador CPF com ISS retido marcado também não.
     expect((await chamar(dono, { ...pedido, acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'retencao' })
-    expect((await chamar(dono, { ...pedido, documento: CPF, acao: 'avulsa_conferir' }, { enderecos })).corpo).toMatchObject({ campo: 'documento' })
+    expect((await chamar(dono, { ...pedido, documento: CPF, retem_iss: true, aliquota_iss: '2', acao: 'avulsa_conferir' }, { enderecos })).corpo).toMatchObject({
+      campo: 'documento',
+    })
+    // Tomador CPF sem caixas no pedido não herda o padrão da empresa (Bragantina, 26/11/2026).
+    const cpfSemCaixas = await chamar(dono, { ...pedido, documento: CPF, acao: 'avulsa_conferir' }, { enderecos })
+    expect(cpfSemCaixas.status).toBe(200)
+    expect((cpfSemCaixas.corpo.resumo as { retencao: unknown }).retencao).toBeNull()
     // As caixas do formulário mudam só esta nota.
     const soInss = await chamar(dono, { ...pedido, documento: CPF, retem_iss: false, retem_inss: true, inss: '100,00', acao: 'avulsa_conferir' }, { enderecos })
     expect((soInss.corpo.resumo as { retencao: unknown }).retencao).toMatchObject({ iss: null, inss: { valor: '100.00' } })

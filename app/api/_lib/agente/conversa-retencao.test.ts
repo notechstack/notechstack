@@ -192,6 +192,23 @@ describe('retenção no pedido pelo WhatsApp', () => {
     expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toEqual({ inss: { valor: '165.00' } })
   })
 
+  // Caso real (Bragantina, 26/11/2026): Leslei Specie tem ISS retido 2,01% no cadastro; toda nota para cliente CPF
+  // parava em "ISS retido só para cliente com CNPJ", e o *corrigir* não saía do lugar.
+  it('empresa com retenção padrão emite para tomador CPF sem retenção, sem precisar dizer nada', async () => {
+    const s = await cenario()
+    await padraoDaEmpresa(s.tenant.id, { retem_iss: true, aliquota_iss: '2.01', retem_inss: true, inss_percentual: '11.00' })
+    await criarModelo(admin.db, s.tenant.id, modelo('52998224725'))
+    const c = conversa({ [PEDIDO]: pedido() })
+
+    await c.enviar(s.ownerPhone, PEDIDO)
+    const resumo = c.ultimaPara(s.ownerPhone)
+    expect(resumo).toContain('Posso emitir?')
+    expect(resumo).not.toContain('retido')
+    await c.enviar(s.ownerPhone, 'confirmar')
+    expect((await payloadDaUnicaNota(s.tenant.id)).retencao).toBeUndefined()
+    expect(c.consultas).toEqual([])
+  })
+
   it('MEI não tem retenção; sem endereço na Receita, o ISS retido também para', async () => {
     const mei = await cenario({ regime: 'mei' })
     await criarModelo(admin.db, mei.tenant.id, modelo(CNPJ_TOMADOR))

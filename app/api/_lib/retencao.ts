@@ -152,14 +152,17 @@ export function resolverRetencao(dados: {
 }): { ok: true; retencao: Retencao | null } | { ok: false; problema: ProblemaDeRetencao } {
   const p = dados.pedido ?? {}
   const falha = (problema: ProblemaDeRetencao) => ({ ok: false as const, problema })
+  // Pessoa física não retém ISS nem INSS: o padrão da empresa vale só para tomador com CNPJ. Com CPF, só o que o
+  // pedido disser (Bragantina, 26/11/2026: Leslei Specie, ISS retido no cadastro, travava toda nota de cliente CPF).
+  const padrao = dados.tomadorTipo === 'cnpj' ? dados.padrao : SEM_RETENCAO_PADRAO
 
   const aliquotaEscrita = p.aliquotaIss ? lerAliquotaIss(p.aliquotaIss) : null
   if (p.aliquotaIss && !aliquotaEscrita) return falha('ALIQUOTA_ISS_INVALIDA')
-  const temIss = p.iss ?? (aliquotaEscrita ? true : dados.padrao.retem_iss)
+  const temIss = p.iss ?? (aliquotaEscrita ? true : padrao.retem_iss)
 
   const inssEscrito = p.inssTexto ? lerInssEscrito(p.inssTexto, dados.valor) : null
   if (p.inssTexto && !inssEscrito) return falha('INSS_INVALIDO')
-  const temInss = p.inss ?? (inssEscrito ? true : dados.padrao.retem_inss)
+  const temInss = p.inss ?? (inssEscrito ? true : padrao.retem_inss)
 
   if (!temIss && !temInss) return { ok: true, retencao: null }
   if (dados.regime === 'mei') return falha('RETENCAO_MEI')
@@ -167,7 +170,7 @@ export function resolverRetencao(dados: {
   const retencao: Retencao = {}
   if (temIss) {
     if (dados.tomadorTipo !== 'cnpj') return falha('ISS_RETIDO_CPF')
-    const aliquota = aliquotaEscrita ?? (dados.padrao.aliquota_iss ? lerAliquotaIss(dados.padrao.aliquota_iss) : null)
+    const aliquota = aliquotaEscrita ?? (padrao.aliquota_iss ? lerAliquotaIss(padrao.aliquota_iss) : null)
     if (!aliquota) return falha('ALIQUOTA_ISS_FALTANDO')
     retencao.iss = { aliquota }
   }
