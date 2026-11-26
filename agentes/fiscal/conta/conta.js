@@ -1295,7 +1295,10 @@
     if (!$('fa-av-obra').hidden) CAMPOS_DA_OBRA.forEach(function (k) { corpo['obra_' + k] = $('fa-av-obra-' + k).value; });
     CAMPOS_DO_ENDERECO.forEach(function (k) { corpo['tomador_' + k] = $('fa-av-end-' + k).value; });
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
-    if (retAv.visivel()) {
+    // Tomador CPF com as caixas intocadas: não manda nada, e a API aplica a regra (pessoa física não herda a
+    // retenção padrão da empresa; Bragantina, 26/11/2026).
+    var cpf = String(corpo.documento).replace(/\D/g, '').length === 11;
+    if (retAv.visivel() && !(cpf && !retAv.mudou())) {
       var r = retAv.ler();
       corpo.retem_iss = r.retem_iss; corpo.retem_inss = r.retem_inss;
       if (r.retem_iss) corpo.aliquota_iss = r.aliquota_iss;
