@@ -6,7 +6,7 @@
 // Reforma Tributária (pesquisa de 17/11/2026; XSD oficiais em `_tests/xsd/`):
 // - Dois leiautes com o mesmo `versao="1.01"`. `v1.01` é o de produção (XSD de 09/02/2026, NT 004).
 //   `nt009` é o release 1 da NT 009, em produção restrita desde 20/10/2026 e previsto para produção em
-//   01/12/2026: `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
+//   07/12/2026 (cronograma da CGNFS-e de 25/11/2026): `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
 //   e CST/cClassTrib sobem de `gIBSCBS` para `IBSCBS/valores/trib`.
 // - `cNBS` (0-1): `servico.nbs` da nota > NBS padrão da empresa (`tenant.nbs_padrao`) > Anexo VIII pelo código.
 //   As duas primeiras vão sempre; a da tabela, só com o IBSCBS ligado.
@@ -343,15 +343,19 @@ export type OpcoesDps = {
 const LEIAUTES: readonly LeiauteDps[] = ['v1.01', 'nt009', 'nt009r2']
 const ehNt009 = (l: LeiauteDps) => l !== 'v1.01'
 
-/** Entrada da NT 009 em produção (notícia da CGNFS-e de 20/10/2026): 01/12/2026, 00:00 em Brasília. */
-export const VIRADA_NT009 = new Date('2026-12-01T00:00:00-03:00')
+/**
+ * Entrada da NT 009 em produção: 07/12/2026, 00:00 em Brasília. A notícia de 20/10/2026 previa 01/12; o cronograma
+ * formal da CGNFS-e (notícia de 25/11/2026) levou os releases 1 e 2 (e o 3) para 07/12/2026, juntos.
+ */
+export const VIRADA_NT009 = new Date('2026-12-07T00:00:00-03:00')
 
 /**
  * Leiaute da DPS (virada da NT 009, Lucca, 19/11/2026; method `nofiscal-virada-nt009`):
  * - produção restrita: sempre `nt009r2` (release 2 no ar desde 24/11/2026, XSD 20261124);
- * - produção: `nt009` a partir de `VIRADA_NT009`, `v1.01` antes;
+ * - produção: `nt009r2` (releases 1 e 2 juntos) a partir de `VIRADA_NT009`, `v1.01` antes;
  * - `NOFISCAL_DPS_LEIAUTE` manda sobre a data, nos dois sentidos: `v1.01` é o rollback (a Sefin adiou ou rejeita o
- *   leiaute novo), `nt009` e `nt009r2` antecipam. Outro valor é ignorado.
+ *   leiaute novo), `nt009r2` antecipa e `nt009` usa só o release 1 (se a Sefin levar o release 2 para depois).
+ *   Outro valor é ignorado.
  * IBSCBS só com `NOFISCAL_DPS_IBSCBS=1` (opcional em 2026 para todos os regimes: a ausência não rejeita).
  * Locação só com `NOFISCAL_LOCACAO=1` (locacao.ts).
  */
@@ -362,7 +366,7 @@ export function opcoesDpsDoAmbiente(
 ): OpcoesDps {
   const forcado = (LEIAUTES as readonly string[]).includes(env.NOFISCAL_DPS_LEIAUTE ?? '') ? (env.NOFISCAL_DPS_LEIAUTE as LeiauteDps) : null
   const leiaute: LeiauteDps =
-    tenant.ambiente === 'producao_restrita' ? 'nt009r2' : (forcado ?? (agora.getTime() >= VIRADA_NT009.getTime() ? 'nt009' : 'v1.01'))
+    tenant.ambiente === 'producao_restrita' ? 'nt009r2' : (forcado ?? (agora.getTime() >= VIRADA_NT009.getTime() ? 'nt009r2' : 'v1.01'))
   return { leiaute, ibscbs: env.NOFISCAL_DPS_IBSCBS === '1', locacao: locacaoLigada(env) }
 }
 

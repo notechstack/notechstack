@@ -1,7 +1,7 @@
 // Homologação do leiaute da NT 009 na PRODUÇÃO RESTRITA da Sefin Nacional, por regime (Lucca, 19/11/2026).
 // Quem roda é o Lucca, na máquina dele, com o A1 de uma empresa de teste de cada regime (MEI, Simples, Presumido ou
 // Real). Para cada regime, transmite pelo cliente real do motor:
-//   (1) a DPS no leiaute NT 009 sem IBSCBS (o que vai para produção em 01/12/2026);
+//   (1) a DPS no leiaute NT 009 sem IBSCBS (releases 1 e 2 em produção em 07/12/2026);
 //   (2) a mesma com o grupo IBSCBS e NBS, se --nbs vier (o que liga com NOFISCAL_DPS_IBSCBS=1);
 //   (3) Presumido/Real com tomador CNPJ: IRRF 1,5% e PIS/COFINS/CSLL 4,65% retidos (tribFed);
 //   (4) com --locacao (26/11/2026): locação de imóvel (99.03.01) no município do prestador e locação de bem móvel

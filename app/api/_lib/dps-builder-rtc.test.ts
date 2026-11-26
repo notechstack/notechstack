@@ -66,7 +66,7 @@ describe('DPS sem opções: a nota de produção de antes desta mudança', () =>
   })
 })
 
-describe('leiaute nt009 (produção restrita desde 20/10/2026; produção prevista para 01/12/2026)', () => {
+describe('leiaute nt009 (release 1; produção restrita de 20/10 a 23/11/2026)', () => {
   it('põe finNFSe 0 depois de tpEmit e valida no XSD da produção restrita', async () => {
     const { xml } = gerar(NT009)
     expect(filhos(xml, 'infDPS').slice(6, 9)).toEqual(['tpEmit', 'finNFSe', 'cLocEmi'])

@@ -8,6 +8,8 @@
 --   (Lei 12.741/2012) em três colunas novas. O estadual é 0 para quem só presta serviço.
 -- - As funções abaixo são as da produção em 19/11/2026 (pg_get_functiondef, md5 conferido com as migrations), com a
 --   troca mínima: aceitar os regimes novos e conferir os percentuais certos de cada regime.
+--   `fiscal_cadastro_criar` leva também a lista de planos de 20261123210000 (planos por volume: escritorio_1000 e
+--   escritorio_10000), que alterou a função no lugar depois de 19/11; sem isso, esta migração desfaria aquela.
 -- - Cidades do Presumido (Lucca, 19/11/2026): `fiscal_municipios_presumido` guarda o que já se sabe de cada cidade
 --   (aceita/recusada) e de onde veio (norma, nota autorizada, recusa da Sefin). Cidade sem registro entra "a conferir":
 --   a primeira nota de Presumido/Real autorizada lá marca `aceita`; recusa de convênio (E0037/E0038/E0039) marca
@@ -160,7 +162,7 @@ declare
   v_tenant_id uuid;
 begin
   if p_user_id is null or p_cnpj !~ '^[0-9]{14}$' or p_telefone !~ '^\+[1-9][0-9]{7,14}$'
-     or p_plano not in ('inicial', 'pro', 'escritorio_5', 'escritorio_20', 'escritorio_50') or p_codigo_municipio_ibge !~ '^[0-9]{7}$'
+     or p_plano not in ('inicial', 'pro', 'escritorio_5', 'escritorio_20', 'escritorio_50', 'escritorio_1000', 'escritorio_10000') or p_codigo_municipio_ibge !~ '^[0-9]{7}$'
      or (p_cnae is not null and p_cnae !~ '^[0-9]{7}$')
      or length(btrim(coalesce(p_razao_social, ''))) not between 1 and 150
      or length(btrim(coalesce(p_responsavel, ''))) not between 2 and 120

@@ -1,4 +1,4 @@
-// Lucro Presumido e Real na DPS (Lucca, 19/11/2026) e a virada da NT 009 (01/12/2026). Fontes oficiais em
+// Lucro Presumido e Real na DPS (Lucca, 19/11/2026) e a virada da NT 009 (07/12/2026, cronograma de 25/11/2026). Fontes oficiais em
 // side-session-notes/…/presumido-nt009-fontes.md (Anexo I prodrest 20261020 e Anexo VI-NT009 v1.04.01). Todo XML é
 // validado contra os dois XSD oficiais; MEI, Simples e Presumido saem válidos no leiaute da NT 009.
 import { DOMParser } from '@xmldom/xmldom'
@@ -165,13 +165,28 @@ describe('virada da NT 009: MEI, Simples e Presumido no leiaute novo', () => {
       expect(await errosXsd(xml, PR)).toEqual([])
     }
   })
+  it.each(casos)('%s: release 2 (o que entra em produção em 07/12/2026), válida no XSD 20261124, com indDest depois de toma', async (_n, t) => {
+    for (const ibscbs of [false, true]) {
+      const xml = gerar(t, { leiaute: 'nt009r2', ibscbs }, payload({ servico: { codigo_servico_nacional: '100401', descricao: 'Agenciamento', nbs: '1.1502.10.00' } }))
+      const filhos = doc(xml).filhos('infDPS')
+      expect(filhos[filhos.indexOf('toma') + 1]).toBe('indDest')
+      if (ibscbs) expect(doc(xml).filhos('IBSCBS')).not.toContain('indDest')
+      expect(await errosXsd(xml, 'producao-restrita-20261124')).toEqual([])
+      // O release 1 recusa o indDest em infDPS: um leiaute não serve no lugar do outro.
+      expect((await errosXsd(xml, PR)).length).toBeGreaterThan(0)
+    }
+  })
 
-  it('produção vira sozinha em 01/12/2026 00:00 de Brasília; NOFISCAL_DPS_LEIAUTE manda nos dois sentidos', () => {
+  it('produção vira sozinha em 07/12/2026 00:00 de Brasília, já no release 2; NOFISCAL_DPS_LEIAUTE manda nos dois sentidos', () => {
     const antes = new Date(VIRADA_NT009.getTime() - 1)
     const depois = VIRADA_NT009
     expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, antes).leiaute).toBe('v1.01')
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, depois).leiaute).toBe('nt009')
-    expect(VIRADA_NT009.toISOString()).toBe('2026-12-01T03:00:00.000Z')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, depois).leiaute).toBe('nt009r2')
+    expect(VIRADA_NT009.toISOString()).toBe('2026-12-07T03:00:00.000Z')
+    // 01/12 a 06/12: a produção da Sefin segue na NT 004; a DPS também.
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, new Date('2026-12-03T12:00:00-03:00')).leiaute).toBe('v1.01')
+    // Release 2 adiado: `nt009` fica só no release 1.
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }, depois).leiaute).toBe('nt009')
     // Rollback: a Sefin adiou ou recusa o leiaute novo.
     expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'v1.01' }, depois).leiaute).toBe('v1.01')
     // Antecipar (teste).
