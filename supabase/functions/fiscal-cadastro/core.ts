@@ -6,7 +6,19 @@
 // únicos). As demais empresas do escritório entram depois, em Minha conta.
 
 import { corsFiscal, json } from "../_shared/fiscal/cors.ts";
-import { cnpjValido, type Consulta, consultarCnpj, type ListaMunicipios, municipioAtendido, type Regime, soDigitos } from "../_shared/fiscal/cnpj.ts";
+import {
+  avaliarRegime,
+  ibgeDaConsulta,
+  cnpjValido,
+  type Consulta,
+  consultarCnpj,
+  lerRegimeNormal,
+  type ListaMunicipios,
+  municipioAtendido,
+  type Regime,
+  type RegimeNormal,
+  soDigitos,
+} from "../_shared/fiscal/cnpj.ts";
 import { comNonoDigito, normalizarTelefone } from "../assinatura-fiscal/teste-gratis.ts";
 
 export type PlanoDoCadastro = "inicial" | "pro" | "escritorio_5" | "escritorio_20" | "escritorio_50" | "escritorio_1000" | "escritorio_10000";
@@ -37,6 +49,8 @@ export type CadastroDeps = {
   municipios: () => Promise<ListaMunicipios>;
   /** Regime confirmado à mão (public.fiscal_regime_confirmado), quando a base pública nega o Simples. */
   regimeConfirmado?: (cnpj: string) => Promise<"mei" | "simples" | null>;
+  /** Presumido/Real: o que se sabe da cidade (public.fiscal_municipio_presumido): aceita, recusada ou null. */
+  situacaoMunicipio?: (ibge: string) => Promise<string | null>;
   criar: (args: ArgsCriar) => Promise<RespostaCriar>;
   /** 32 bytes aleatórios; o sha256 deles vira api_key_hash e eles são descartados. */
   bytesAleatorios?: () => Uint8Array<ArrayBuffer>;
@@ -54,18 +68,20 @@ const MSG_NAO_ENCONTRADO = "Não encontramos este CNPJ na Receita Federal.";
 const MSG_INDISPONIVEL = "Não conseguimos confirmar o CNPJ na Receita Federal agora. Tente de novo em alguns minutos.";
 const MSG_FORA_DO_PADRAO =
   "Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional";
-const MSG_FORA_DO_SIMPLES =
-  "O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples";
-
 // Nenhum caminho cria empresa sem a Receita confirmar o CNPJ: fora do ar também bloqueia (Lucca, 22/10/2026).
-function respostaConsulta(c: Consulta, h: H): Response | null {
+// Fora do Simples (Lucca, 19/11/2026): Presumido/Real só em cidade de emissor nacional pleno (avaliarRegime).
+function respostaConsulta(c: Consulta, h: H, situacao: string | null): Response | null {
+  const regime = avaliarRegime(c, situacao);
+  if (regime) {
+    const { codigo, mensagem, ...extra } = regime;
+    return json(422, { ok: false, error_code: codigo, mensagem, ...extra }, h);
+  }
   if (c.ok) return null;
   if (c.motivo === "nao_encontrado") return erro(404, "CNPJ_NAO_ENCONTRADO", MSG_NAO_ENCONTRADO, h);
   if (c.motivo === "inativo") {
     const situacao = c.situacao.toLowerCase();
     return erro(422, "CNPJ_INATIVO", `Este CNPJ está com situação ${situacao} na Receita Federal. Só empresas ativas podem emitir notas.`, h);
   }
-  if (c.motivo === "fora_do_simples") return erro(422, "CNPJ_FORA_DO_SIMPLES", MSG_FORA_DO_SIMPLES, h);
   return erro(503, "CONSULTA_INDISPONIVEL", MSG_INDISPONIVEL, h);
 }
 
@@ -97,21 +113,46 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     return erro(400, "DADOS_INVALIDOS", "Não recebemos os dados. Recarregue a página e tente de novo.", h);
   }
 
-  const consultar = (cnpj: string) =>
+  const consultar = (cnpj: string, regimeDeclarado: RegimeNormal | null = null) =>
     consultarCnpj(cnpj, {
       apiUrl: deps.env("CNPJ_API_URL"),
       espelhoUrl: deps.env("CNPJ_API_ESPELHO_URL") || undefined,
       fetch: deps.fetch,
       regimeConfirmado: deps.regimeConfirmado,
+      regimeDeclarado,
     });
+
+  // Presumido/Real: situação da cidade no banco; fora do ar, valem as listas do código (situacaoDoMunicipio).
+  const situacaoDe = async (c: Consulta): Promise<string | null> => {
+    const ibge = ibgeDaConsulta(c);
+    return ibge && deps.situacaoMunicipio ? await deps.situacaoMunicipio(ibge).catch(() => null) : null;
+  };
 
   if (b.acao === "consultar_cnpj") {
     const cnpj = soDigitos(b.cnpj);
     if (!cnpjValido(cnpj)) return erro(422, "CNPJ_INVALIDO", MSG_CNPJ_INVALIDO, h);
     const c = await consultar(cnpj);
-    const r = respostaConsulta(c, h);
+    // Fora do Simples numa cidade de emissor pleno: a página mostra a escolha entre Presumido e Real.
+    const situacao = await situacaoDe(c);
+    const av = avaliarRegime(c, situacao);
+    if (av?.codigo === "REGIME_A_DECLARAR") {
+      log("fiscal_cadastro_consulta", { motivo: "regime_a_declarar", a_conferir: av.a_conferir });
+      return json(200, {
+        ok: true,
+        ...av.dados,
+        regime: null,
+        regimes_possiveis: ["presumido", "real"],
+        municipio_a_conferir: av.a_conferir,
+        mensagem_regime: av.mensagem,
+        padrao_nacional: true,
+      }, h);
+    }
+    const r = respostaConsulta(c, h, situacao);
     if (r || !c.ok) {
-      if (!c.ok) log("fiscal_cadastro_consulta", { motivo: c.motivo, ...("tentativas" in c ? { tentativas: c.tentativas } : {}) });
+      log("fiscal_cadastro_consulta", {
+        motivo: av ? av.codigo.toLowerCase() : c.ok ? "ok" : c.motivo,
+        ...(!c.ok && "tentativas" in c ? { tentativas: c.tentativas } : {}),
+      });
       return r!;
     }
     return json(200, { ok: true, ...c.dados, padrao_nacional: municipioAtendido(c.dados, await deps.municipios()) }, h);
@@ -145,9 +186,10 @@ export async function handle(req: Request, deps: CadastroDeps): Promise<Response
     plano = b.plano === "pro" ? "pro" : "inicial";
   }
 
-  // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3).
-  const c = await consultar(cnpj);
-  const r = respostaConsulta(c, h);
+  // Município, IBGE, CNAE e regime vêm sempre da consulta, nunca do corpo (critério 3). A exceção é Presumido ou Real,
+  // que a Receita não distingue: o corpo declara (`regime`), e só vale se a base disser "fora do Simples".
+  const c = await consultar(cnpj, lerRegimeNormal(b.regime));
+  const r = respostaConsulta(c, h, await situacaoDe(c));
   if (r || !c.ok) return r!;
   if (!municipioAtendido(c.dados, await deps.municipios())) {
     return erro(422, "MUNICIPIO_FORA_DO_PADRAO", MSG_FORA_DO_PADRAO, h);

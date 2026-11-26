@@ -353,7 +353,7 @@ components:
               enum: [INVALID_JSON, UNAUTHORIZED, TENANT_INACTIVE, SO_ESCRITORIO, NOT_FOUND, EMPRESA_NAO_ENCONTRADA,
                      METHOD_NOT_ALLOWED, EMISSAO_BLOQUEADA, EMPRESA_INATIVA, NOT_ISSUED, CNPJ_JA_CADASTRADO,
                      EMPRESAS_ACIMA_DO_LIMITE, PROCURACAO_RECUSADA, NFE_NAO_CANCELAVEL, VALIDATION_FAILED, UNKNOWN_FIELD,
-                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, INTERNAL, RECEITA_INDISPONIVEL,
+                     CNPJ_NAO_ENCONTRADO, CNPJ_INATIVO, FORA_DO_SIMPLES, REGIME_A_DECLARAR, INTERNAL, RECEITA_INDISPONIVEL,
                      SO_SANDBOX, SANDBOX_SOMENTE_LEITURA, SANDBOX_SEM_NFE]
             message: { type: string }
         campo: { type: string }
@@ -378,7 +378,16 @@ components:
       properties:
         cnpj: { type: string, pattern: '^\d{14}$' }
         codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
+        regime: { type: string, enum: [presumido, real], description: 'Só para CNPJ fora do Simples; cidade recusada vai à lista de espera, cidade nova é conferida na primeira nota' }
         simples_percentual: { type: string, description: 'Obrigatório no Simples (ME/EPP); 0 a 100, até 2 casas' }
+        tributos_aproximados:
+          type: object
+          additionalProperties: false
+          description: 'Lucro Presumido e Real: percentuais da Lei 12.741 (pTotTrib); estadual ausente = 0'
+          properties:
+            federal: { type: [string, number] }
+            estadual: { type: [string, number] }
+            municipal: { type: [string, number] }
         retencao: { $ref: '#/components/schemas/Retencao' }
         procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
 
@@ -388,6 +397,14 @@ components:
       properties:
         codigo_servico_nacional: { type: string, pattern: '^\d{6}$' }
         simples_percentual: { type: string }
+        tributos_aproximados:
+          type: object
+          additionalProperties: false
+          description: 'Lucro Presumido e Real: percentuais da Lei 12.741 (pTotTrib); estadual ausente = 0'
+          properties:
+            federal: { type: [string, number] }
+            estadual: { type: [string, number] }
+            municipal: { type: [string, number] }
         retencao: { $ref: '#/components/schemas/Retencao' }
         procuracao: { $ref: '#/components/schemas/DeclaracaoProcuracao' }
 
@@ -442,6 +459,7 @@ components:
           properties:
             codigo_servico_nacional: { type: [string, 'null'] }
             simples_percentual: { type: [string, 'null'] }
+            tributos_aproximados: { type: [object, 'null'], description: 'Presumido e Real: { federal, estadual, municipal }' }
         retencao: { $ref: '#/components/schemas/Retencao' }
         nfe:
           type: object
@@ -499,6 +517,41 @@ components:
                 numero: { type: string, maxLength: 60 }
                 complemento: { type: string, maxLength: 156 }
                 bairro: { type: string, maxLength: 60 }
+            locacao:
+              type: object
+              additionalProperties: false
+              description: 'Nota de locação, obrigatório nos códigos 99.03.01 (imóvel) e 99.04.01 (bem móvel); ignorado nos outros. A nota sai sem ISS. Enquanto a Receita não liberar os códigos em produção, 422 LOCACAO_INDISPONIVEL.'
+              properties:
+                imovel:
+                  type: object
+                  additionalProperties: false
+                  description: '99.03.01. CEP, logradouro e número (ou o cib), e residencial, são obrigatórios.'
+                  properties:
+                    municipio_ibge: { type: string, pattern: '^\d{7}$', description: 'IBGE do município do imóvel. Ausente = o da empresa.' }
+                    cep: { type: string, description: '8 dígitos (aceita 13015-100)' }
+                    logradouro: { type: string, maxLength: 255 }
+                    numero: { type: string, maxLength: 60 }
+                    complemento: { type: string, maxLength: 156 }
+                    bairro: { type: string, maxLength: 60 }
+                    inscricao_imobiliaria: { type: string, maxLength: 30, description: 'Inscrição imobiliária (do IPTU)' }
+                    cib: { type: string, description: 'Cadastro Imobiliário Brasileiro, 8 caracteres; dispensa o endereço' }
+                    residencial: { type: [boolean, string], description: 'true (residencial, NBS 1.1002.10.00) ou false (não residencial, 1.1002.20.00)' }
+                    copropriedade: { type: [string, number], description: 'Percentual do locador (0,01 a 100). Ausente = 100.' }
+                    valor_total: { type: [string, number], description: 'O aluguel inteiro; obrigatório com copropriedade abaixo de 100. valor = copropriedade × valor_total (E0433).' }
+                    vencimento: { type: string, format: date, description: 'Vencimento original do aluguel' }
+                bens:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  description: '99.04.01: os bens alugados.'
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [ncm, descricao]
+                    properties:
+                      ncm: { type: string, description: 'NCM, 8 dígitos (aceita com pontos)' }
+                      descricao: { type: string, maxLength: 150 }
+                      quantidade: { type: [integer, string], minimum: 1, maximum: 999, description: 'Ausente = 1' }
         valor: { type: [string, number], pattern: '^\d{1,12}(\.\d{1,2})?$', description: 'No sandbox, 1.11, 2.22 e 3.33 provocam erros (README, seção 15).' }
         informacoes_complementares: { type: string, maxLength: 2000 }
         retencao:
@@ -509,6 +562,8 @@ components:
             aliquota_iss: { type: [string, number] }
             retem_inss: { type: boolean }
             inss: { type: [string, number], description: 'percentual ("11%") ou valor em reais ("165.00")' }
+            irrf: { type: [string, number], description: 'Só Lucro Presumido e Real: IRRF retido, percentual ("1,5%") ou valor ("15.00")' }
+            csrf: { type: [string, number], description: 'Só Lucro Presumido e Real: PIS + COFINS + CSLL retidos, somados, percentual ("4,65%") ou valor ("46.50")' }
 
     WebhookSandbox:
       type: object

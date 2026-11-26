@@ -17,6 +17,17 @@ import { errorResponse, json } from './http.js'
 import { createOrGetInvoice } from './invoices.js'
 import { issNoLocalDaPrestacao, motivoDoLocal, problemaDoLocal, resolverMunicipio, rotuloMunicipio } from './local-prestacao.js'
 import { exigeObra, lerObra, rotuloDaObra, type Obra } from './obra.js'
+import {
+  avisosDaLocacao,
+  ehLocacao,
+  ehLocacaoDeImovel,
+  lerLocacao,
+  linhasDaLocacao,
+  locacaoLigada,
+  MENSAGEM_LOCACAO_DESLIGADA,
+  motivoSemDados,
+  type Locacao,
+} from './locacao.js'
 import { logEvent } from './log.js'
 import type { CatalogoDeServicos } from './agente/catalogo-servicos.js'
 import { DESCRICAO_PADRAO } from './agente/conversa.js'
@@ -142,6 +153,8 @@ export type PedidoDoPainel = {
   municipio_prestacao_ibge: string | null
   /** "Dados da obra": só nos códigos de construção civil (E0370), onde são obrigatórios; `null` nos demais. */
   obra: Obra | null
+  /** "Dados da locação": imóvel (99.03.01) ou bem móvel (99.04.01), obrigatórios nesses códigos; `null` nos demais. */
+  locacao?: Locacao | null
   /** As caixas de retenção do formulário (vêm marcadas com o padrão da empresa). Ausente = o padrão da empresa. */
   retencao?: RetencaoDoPedido
   /** "Endereço do cliente (opcional)": prevalece sobre o da Receita; com CPF, só ele. `null` = não informado. */
@@ -159,6 +172,7 @@ export type CampoDoPainel =
   | 'informacoes_complementares'
   | 'municipio_prestacao'
   | 'obra'
+  | 'locacao'
   | 'endereco'
   | 'aliquota_iss'
   | 'inss'
@@ -231,6 +245,43 @@ export function lerPedido(
     if (!lida.obra) return falha('obra', 'Este código é de construção civil: a Sefin exige o endereço da obra (CEP, rua, número e bairro) ou o CNO.')
     obra = lida.obra
   }
+  // Dados da locação (campos locacao_* e bem_*): obrigatórios nos códigos 99.03.01 e 99.04.01; fora da flag, a nota
+  // ainda não sai (a Receita não liberou os códigos em produção).
+  let locacao: Locacao | null = null
+  if (ehLocacao(codigo)) {
+    if (!locacaoLigada()) return falha('codigo', MENSAGEM_LOCACAO_DESLIGADA)
+    if (corpo.retem_iss === true) return falha('retencao', 'Locação não tem ISS (não incidência): desmarque o ISS retido.')
+    let municipio = empresa?.codigo_municipio_ibge ?? null
+    const cidade = texto(corpo.locacao_cidade)
+    if (cidade) {
+      const r = resolverMunicipio(cidade)
+      if (!r.ok) return falha('locacao', 'Cidade do imóvel não encontrada: escreva com a UF, por exemplo Campinas/SP.')
+      municipio = r.municipio.ibge
+    }
+    const bruto = ehLocacaoDeImovel(codigo)
+      ? {
+          imovel: {
+            municipio_ibge: municipio,
+            cep: corpo.locacao_cep,
+            logradouro: corpo.locacao_logradouro,
+            numero: corpo.locacao_numero,
+            complemento: corpo.locacao_complemento,
+            bairro: corpo.locacao_bairro,
+            inscricao_imobiliaria: corpo.locacao_inscricao,
+            cib: corpo.locacao_cib,
+            residencial: corpo.locacao_residencial,
+            copropriedade: corpo.locacao_copropriedade,
+            valor_total: corpo.locacao_valor_total,
+            vencimento: corpo.locacao_vencimento,
+          },
+        }
+      : texto(corpo.bem_ncm) || texto(corpo.bem_descricao)
+        ? { bens: [{ ncm: corpo.bem_ncm, descricao: corpo.bem_descricao, quantidade: texto(corpo.bem_quantidade) || 1 }] }
+        : {}
+    const lida = lerLocacao(bruto, codigo, valor)
+    if (!lida.ok) return falha('locacao', lida.faltando.length ? `${motivoSemDados(codigo)[0].toUpperCase()}${motivoSemDados(codigo).slice(1)}.` : `Dados da locação: ${lida.erro}.`)
+    locacao = lida.locacao
+  }
 
   // Endereço do cliente (campos tomador_*): todos vazios = o da Receita (CNPJ) ou nenhum (CPF).
   const enderecoLido = lerEnderecoEscrito({
@@ -271,6 +322,7 @@ export function lerPedido(
       informacoes_complementares: info.texto,
       municipio_prestacao_ibge,
       obra,
+      locacao,
       retencao,
       endereco: enderecoLido.endereco,
     },
@@ -278,7 +330,7 @@ export function lerPedido(
 }
 
 const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
-  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge, obra: p.obra }, p.valor, {
+  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge, obra: p.obra, locacao: p.locacao ?? null }, p.valor, {
     retencao,
     endereco,
     informacoes_complementares: p.informacoes_complementares,
@@ -416,8 +468,10 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
   }
 
   // Retenção: as caixas do formulário (ou o padrão da empresa) e, com ISS retido, o endereço do tomador na Receita.
+  // Na locação o ISS não incide: o ISS retido do padrão da empresa não vale.
+  const padrao = emp.retencao ?? SEM_RETENCAO_PADRAO
   const resolvida = resolverRetencao({
-    padrao: emp.retencao ?? SEM_RETENCAO_PADRAO,
+    padrao: pedido.locacao ? { ...padrao, retem_iss: false, aliquota_iss: null } : padrao,
     pedido: pedido.retencao,
     valor: pedido.valor,
     regime: emp.regime ?? null,
@@ -454,6 +508,7 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
   }
   if (!pedido.email) avisos.push('Sem e-mail, o cliente não recebe a nota por e-mail. Ela fica em Relatórios.')
   if (achado.consultaFalhou) avisos.push(AVISO_SEM_ENDERECO)
+  if (pedido.locacao) avisos.push(...avisosDaLocacao(pedido.codigo, emp.regime ?? null))
 
   const nomeDoServico = ctx.deps.catalogo ? await ctx.deps.catalogo.descricao(pedido.codigo).catch(() => null) : null
   return json(200, {
@@ -466,6 +521,8 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
         ? { ibge: pedido.municipio_prestacao_ibge, nome: rotuloMunicipio(pedido.municipio_prestacao_ibge), iss_no_local: issNoLocalDaPrestacao(pedido.codigo) }
         : null,
       obra: pedido.obra ? rotuloDaObra(pedido.obra) : null,
+      // Linhas do resumo que dizem que é locação (tipo, imóvel ou bem), sem os asteriscos do WhatsApp.
+      locacao: pedido.locacao ? linhasDaLocacao(pedido.locacao).map((l) => l.replace(/\*/g, '')) : null,
       valor: pedido.valor,
       valor_texto: formatarReais(pedido.valor),
       retencao: visaoDaRetencao(pedido.valor, resolvida.retencao),

@@ -22,7 +22,7 @@ import {
 import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
-import { errosXsd } from '../../_tests/xsd.js'
+import { errosXsd, pacoteDaDps } from '../../_tests/xsd.js'
 import { createSefinClient } from '../sefin-client.js'
 import { processarMensagem, TEXTOS, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
@@ -107,7 +107,7 @@ describe('obra pelo WhatsApp (E0370)', () => {
     const [dps] = sefin.requests.filter((r) => r.method === 'POST' && r.path === '/nfse').map((r) => r.xml ?? '')
     expect(dps).toContain('<obra><end><CEP>12900000</CEP><xLgr>Rua das Flores</xLgr><nro>120</nro><xBairro>Centro</xBairro></end></obra>')
     expect(dps).toContain('<cLocPrestacao>3509502</cLocPrestacao>')
-    expect(await errosXsd(dps, dps.includes('<finNFSe>') ? 'producao-restrita-20261020' : 'producao-v1.01-20260209')).toEqual([])
+    expect(await errosXsd(dps, pacoteDaDps(dps))).toEqual([])
   })
 
   it('endereço no próprio pedido: o resumo sai direto; endereço incompleto pede só o que falta', async () => {

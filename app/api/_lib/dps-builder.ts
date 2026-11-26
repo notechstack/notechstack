@@ -6,7 +6,7 @@
 // Reforma Tributária (pesquisa de 17/11/2026; XSD oficiais em `_tests/xsd/`):
 // - Dois leiautes com o mesmo `versao="1.01"`. `v1.01` é o de produção (XSD de 09/02/2026, NT 004).
 //   `nt009` é o release 1 da NT 009, em produção restrita desde 20/10/2026 e previsto para produção em
-//   01/12/2026: `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
+//   07/12/2026 (cronograma da CGNFS-e de 25/11/2026): `finNFSe` sai do IBSCBS e vira obrigatório em toda DPS, `cNBS` vem antes de `xDescServ`,
 //   e CST/cClassTrib sobem de `gIBSCBS` para `IBSCBS/valores/trib`.
 // - `cNBS` (0-1): `servico.nbs` da nota > NBS padrão da empresa (`tenant.nbs_padrao`) > Anexo VIII pelo código.
 //   As duas primeiras vão sempre; a da tabela, só com o IBSCBS ligado.
@@ -16,11 +16,30 @@
 // - `servico.municipio_prestacao_ibge` (local-prestacao.ts) vira `serv/locPrest/cLocPrestacao`; sem ele, o município da
 //   empresa, como sempre. A Sefin calcula a incidência do ISS pelo código (E1317); com o local informado, o IBSCBS só
 //   sai se o `cIndOp` vier na nota.
+// - Lucro Presumido e Real (Lucca, 19/11/2026; pesquisa em side-session-notes/…/presumido-nt009-fontes.md): `opSimpNac 1`,
+//   sem `regApTribSN` (E0162), `regEspTrib 0`; `totTrib/pTotTrib` (E0713 proíbe indTotTrib e pTotTribSN); sem `pAliq`
+//   mesmo com ISS retido (E0617: só municípios de convênio ativo e emissor nacional pleno são atendidos). IRRF e
+//   PIS/COFINS/CSLL retidos vão em `tribFed` (vRetIRRF; piscofins CST 01 + tpRetPisCofins 3 + vRetCSLL com a soma).
 // - `informacoes_complementares` do payload vira `serv/infoCompl/xInfComp` (info-complementar.ts), o último filho
 //   de `serv` nos dois leiautes. Sem o campo, a DPS sai igual à de antes, byte a byte.
 // - `servico.obra` (obra.ts) vira `serv/obra`, com o CNO (`cObra`) ou o endereço (`end`). Nos 13 códigos de construção
 //   civil (E0370) ele é obrigatório: sem ele, a DPS nem é montada. Nos demais, é ignorado se vier.
+// - Release 2 da NT 009 (`nt009r2`, XSD de produção restrita 20261124; produção em 07/12/2026 pelo cronograma da CGNFS-e
+//   de 25/11/2026): `indDest` sai de IBSCBS e vira obrigatório em infDPS, logo depois de `toma`.
+// - Locação (locacao.ts): 99.03.01 e 99.04.01, só nos leiautes da NT 009 e com `NOFISCAL_LOCACAO=1`. ISS não incide
+//   (tribISSQN 4, E0532) e o grupo IBSCBS vai sempre, com `imovel` ou `bensMoveis` (E0937, E0963).
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
+import {
+  ehLocacao,
+  gruposDaLocacao,
+  lerLocacao,
+  locacaoLigada,
+  MENSAGEM_LOCACAO_DESLIGADA,
+  motivoSemDados,
+  nbsDaLocacao,
+  rtcDaLocacao,
+  type Locacao,
+} from './locacao.js'
 import { lerMunicipioPrestacao } from './local-prestacao.js'
 import { exigeObra, grupoObra, lerObra, MOTIVO_SEM_OBRA, type Obra } from './obra.js'
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
@@ -50,10 +69,20 @@ export type DpsPayload = {
     municipio_prestacao_ibge: string | null
     /** `serv/obra` (obra.ts); `null` = sem o grupo. */
     obra: Obra | null
+    /** `IBSCBS/imovel` ou `IBSCBS/bensMoveis` (locacao.ts), só nos códigos 99.03.01 e 99.04.01. */
+    locacao: Locacao | null
   }
   valor: string
-  /** Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. */
-  retencao: { iss: { aliquota: string } | null; inss: { valor: string } | null }
+  /**
+   * Retenção (retencao.ts): ISS retido pelo tomador com a alíquota; INSS retido (vRetCP) em reais. Só Presumido e Real:
+   * IRRF retido (vRetIRRF) e PIS/COFINS/CSLL retidos (`csrf`, a soma das três, em vRetCSLL), em reais.
+   */
+  retencao: {
+    iss: { aliquota: string } | null
+    inss: { valor: string } | null
+    irrf: { valor: string } | null
+    csrf: { valor: string } | null
+  }
   /** `xInfComp` (TSDescInfCompl), já normalizado; `null` = sem o grupo `infoCompl`. */
   informacoes_complementares: string | null
 }
@@ -117,6 +146,7 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
       c_class_trib: codigo6(payload.servico.c_class_trib, 'c_class_trib (cClassTrib)'),
       municipio_prestacao_ibge: parseMunicipioPrestacao(payload.servico.municipio_prestacao_ibge),
       obra: parseObra(payload.servico.obra, codigo),
+      locacao: parseLocacao(payload.servico.locacao, codigo, valor),
     },
     valor,
     retencao: parseRetencao(payload.retencao, valor),
@@ -137,6 +167,12 @@ function parseObra(bruto: unknown, codigo: string): Obra | null {
   if (!exigeObra(codigo)) return null
   if (!lida.obra) throw new DpsInvalidError(MOTIVO_SEM_OBRA)
   return lida.obra
+}
+
+function parseLocacao(bruto: unknown, codigo: string, valor: string): Locacao | null {
+  const lida = lerLocacao(bruto, codigo, valor)
+  if (!lida.ok) throw new DpsInvalidError(lida.faltando.length ? motivoSemDados(codigo) : `locacao: ${lida.erro}`)
+  return lida.locacao
 }
 
 function parseInfoComplementar(bruto: unknown): string | null {
@@ -168,9 +204,20 @@ const centavos = (v: string) => {
   return BigInt(i) * 100n + BigInt(f.padEnd(2, '0').slice(0, 2))
 }
 
+function valorRetido(bruto: unknown, valor: string, campo: string): { valor: string } | null {
+  if (bruto === undefined || bruto === null) return null
+  const v = isObject(bruto) ? bruto.valor : undefined
+  if (typeof v !== 'string' || !/^\d{1,13}\.\d{2}$/.test(v) || Number(v) <= 0) {
+    throw new DpsInvalidError(`${campo} deve ser decimal positivo com 2 casas`)
+  }
+  // E0699, E0700, E0701: maior que zero e menor que o valor do serviço.
+  if (centavos(v) >= centavos(valor)) throw new DpsInvalidError(`${campo} deve ser menor que o valor do serviço`)
+  return { valor: v }
+}
+
 /** `retencao` do payload: ausente = sem retenção. Formatos do leiaute (TSDec1V2 e TSDec15V2), E0595, E0699, E0428. */
 function parseRetencao(bruto: unknown, valor: string): DpsPayload['retencao'] {
-  if (bruto === undefined || bruto === null) return { iss: null, inss: null }
+  if (bruto === undefined || bruto === null) return { iss: null, inss: null, irrf: null, csrf: null }
   if (!isObject(bruto)) throw new DpsInvalidError('retencao deve ser um objeto')
   let iss: { aliquota: string } | null = null
   if (bruto.iss !== undefined && bruto.iss !== null) {
@@ -192,10 +239,13 @@ function parseRetencao(bruto: unknown, valor: string): DpsPayload['retencao'] {
     if (centavos(v) >= centavos(valor)) throw new DpsInvalidError('INSS retido (vRetCP) deve ser menor que o valor do serviço')
     inss = { valor: v }
   }
-  // E0428: o serviço cobre o ISS retido mais o INSS retido.
+  const irrf = valorRetido(bruto.irrf, valor, 'IRRF retido (vRetIRRF)')
+  const csrf = valorRetido(bruto.csrf, valor, 'PIS/COFINS/CSLL retidos (vRetCSLL)')
+  // E0428/E1506: o serviço cobre todas as retenções.
   const iss$ = iss ? (centavos(valor) * centavos(iss.aliquota) + 5000n) / 10000n : 0n
-  if (iss$ + (inss ? centavos(inss.valor) : 0n) > centavos(valor)) throw new DpsInvalidError('retenções passam do valor do serviço')
-  return { iss, inss }
+  const soma = [inss, irrf, csrf].reduce((t, r) => t + (r ? centavos(r.valor) : 0n), iss$)
+  if (soma > centavos(valor)) throw new DpsInvalidError('retenções passam do valor do serviço')
+  return { iss, inss, irrf, csrf }
 }
 
 function checkSerie(serie: string): number {
@@ -232,6 +282,42 @@ export function formatDhSaoPaulo(date: Date): string {
 
 export const tpAmbOf = (tenant: Pick<SefinTenant, 'ambiente'>): '1' | '2' => (tenant.ambiente === 'producao' ? '1' : '2')
 
+/** Presumido ou Real: prestador não optante do Simples (`opSimpNac 1`). */
+export const regimeNaoOptante = (regime: string | null | undefined): boolean => regime === 'presumido' || regime === 'real'
+
+/**
+ * A empresa tem os percentuais que a DPS do regime dela exige? MEI não informa nenhum (indTotTrib 0); Simples, o
+ * pTotTribSN; Presumido e Real, o federal e o municipal do pTotTrib (o estadual, sem valor, é 0). Mesma regra de
+ * `nofiscal.dados_fiscais_completos` no banco.
+ */
+export function tributosConfigurados(
+  t: Pick<SefinTenant, 'regime' | 'p_tot_trib_sn' | 'p_tot_trib'>,
+): boolean {
+  if (t.regime === 'mei') return true
+  if (regimeNaoOptante(t.regime)) return Boolean(t.p_tot_trib && t.p_tot_trib.fed !== null && t.p_tot_trib.mun !== null)
+  return t.p_tot_trib_sn !== null && t.p_tot_trib_sn !== undefined
+}
+
+/** Linha de `fiscal_tenants` (colunas `p_tot_trib_fed/est/mun`, texto) → `SefinTenant.p_tot_trib`. */
+export function pTotTribDaLinha(row: {
+  p_tot_trib_fed?: string | null
+  p_tot_trib_est?: string | null
+  p_tot_trib_mun?: string | null
+}): SefinTenant['p_tot_trib'] {
+  if (row.p_tot_trib_fed === null || row.p_tot_trib_fed === undefined) return null
+  return { fed: row.p_tot_trib_fed, est: row.p_tot_trib_est ?? null, mun: row.p_tot_trib_mun ?? null }
+}
+
+/** `pTotTrib` (TSDec3V2): percentual de 0 a 100 com 2 casas. */
+function percentualTotTrib(value: string | null | undefined, esfera: string): string {
+  if (value === null || value === undefined || value === '') {
+    throw new DpsInvalidError(`percentual aproximado dos tributos ${esfera} (Lei 12.741/2012) não configurado`)
+  }
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0 || n > 100) throw new DpsInvalidError(`percentual aproximado dos tributos ${esfera} fora de 0–100`)
+  return n.toFixed(2)
+}
+
 function formatPercent(value: string | number | null): string {
   if (value === null || value === undefined || value === '') {
     throw new DpsInvalidError('percentual aproximado dos tributos do Simples (p_tot_trib_sn) não configurado')
@@ -241,24 +327,47 @@ function formatPercent(value: string | number | null): string {
   return n.toFixed(2)
 }
 
-export type LeiauteDps = 'v1.01' | 'nt009'
+export type LeiauteDps = 'v1.01' | 'nt009' | 'nt009r2'
 export type OpcoesDps = {
-  /** `v1.01`: produção (XSD 09/02/2026). `nt009`: NT 009 release 1 (produção restrita desde 20/10/2026). */
+  /**
+   * `v1.01`: produção (XSD 09/02/2026). `nt009`: NT 009 release 1 (produção restrita de 20/10 a 23/11/2026).
+   * `nt009r2`: NT 009 release 2 (produção restrita desde 24/11/2026, XSD 20261124): `indDest` em infDPS.
+   */
   leiaute: LeiauteDps
   /** Monta o grupo IBSCBS (e o cNBS da tabela). Desligado: só o cNBS informado na nota. */
   ibscbs: boolean
+  /** Nota de locação (99.03.01, 99.04.01) liberada: `NOFISCAL_LOCACAO=1`. Ausente = desligada. */
+  locacao?: boolean
 }
 
+const LEIAUTES: readonly LeiauteDps[] = ['v1.01', 'nt009', 'nt009r2']
+const ehNt009 = (l: LeiauteDps) => l !== 'v1.01'
+
 /**
- * Produção restrita já roda a NT 009 (XSD de 20/10/2026). Produção troca quando
- * `NOFISCAL_DPS_LEIAUTE=nt009` (data prevista: 01/12/2026). IBSCBS só com `NOFISCAL_DPS_IBSCBS=1`.
+ * Entrada da NT 009 em produção: 07/12/2026, 00:00 em Brasília. A notícia de 20/10/2026 previa 01/12; o cronograma
+ * formal da CGNFS-e (notícia de 25/11/2026) levou os releases 1 e 2 (e o 3) para 07/12/2026, juntos.
+ */
+export const VIRADA_NT009 = new Date('2026-12-07T00:00:00-03:00')
+
+/**
+ * Leiaute da DPS (virada da NT 009, Lucca, 19/11/2026; method `nofiscal-virada-nt009`):
+ * - produção restrita: sempre `nt009r2` (release 2 no ar desde 24/11/2026, XSD 20261124);
+ * - produção: `nt009r2` (releases 1 e 2 juntos) a partir de `VIRADA_NT009`, `v1.01` antes;
+ * - `NOFISCAL_DPS_LEIAUTE` manda sobre a data, nos dois sentidos: `v1.01` é o rollback (a Sefin adiou ou rejeita o
+ *   leiaute novo), `nt009r2` antecipa e `nt009` usa só o release 1 (se a Sefin levar o release 2 para depois).
+ *   Outro valor é ignorado.
+ * IBSCBS só com `NOFISCAL_DPS_IBSCBS=1` (opcional em 2026 para todos os regimes: a ausência não rejeita).
+ * Locação só com `NOFISCAL_LOCACAO=1` (locacao.ts).
  */
 export function opcoesDpsDoAmbiente(
   tenant: Pick<SefinTenant, 'ambiente'>,
   env: Record<string, string | undefined> = process.env,
+  agora: Date = new Date(),
 ): OpcoesDps {
-  const nt009 = tenant.ambiente === 'producao_restrita' || env.NOFISCAL_DPS_LEIAUTE === 'nt009'
-  return { leiaute: nt009 ? 'nt009' : 'v1.01', ibscbs: env.NOFISCAL_DPS_IBSCBS === '1' }
+  const forcado = (LEIAUTES as readonly string[]).includes(env.NOFISCAL_DPS_LEIAUTE ?? '') ? (env.NOFISCAL_DPS_LEIAUTE as LeiauteDps) : null
+  const leiaute: LeiauteDps =
+    tenant.ambiente === 'producao_restrita' ? 'nt009r2' : (forcado ?? (agora.getTime() >= VIRADA_NT009.getTime() ? 'nt009r2' : 'v1.01'))
+  return { leiaute, ibscbs: env.NOFISCAL_DPS_IBSCBS === '1', locacao: locacaoLigada(env) }
 }
 
 export type BuildDpsInput = {
@@ -274,13 +383,33 @@ export type BuildDpsInput = {
 
 const OPCOES_PADRAO: OpcoesDps = { leiaute: 'v1.01', ibscbs: false }
 
-/** `infDPS/IBSCBS` de prestador do Simples ou MEI, serviço no país, tomador = destinatário. */
-function grupoIbsCbs(leiaute: LeiauteDps, g: { cIndOp: string; cst: string; cClassTrib: string }): string {
+/** NBS e classificação da locação (locacao.ts), no formato do `resolverRtc`. NBS ou cIndOp incoerentes: a DPS não sai. */
+function rtcLocacao(locacao: Locacao, nbs: string | null, cIndOp: string | null, cClassTrib: string | null): Rtc {
+  const n = nbsDaLocacao('', locacao, nbs)
+  if ('erro' in n) throw new DpsInvalidError(n.erro)
+  const c = rtcDaLocacao(locacao, { cIndOp, cClassTrib })
+  if ('erro' in c) throw new DpsInvalidError(c.erro)
+  return {
+    nbs: { codigo: n.nbs, origem: nbs ? 'nota' : 'tabela' },
+    ibscbs: { cIndOp: c.cIndOp, cst: c.cClassTrib.slice(0, 3), cClassTrib: c.cClassTrib },
+  }
+}
+
+/**
+ * `infDPS/IBSCBS` de prestador do Simples ou MEI, serviço no país, tomador = destinatário. `locacao` (só NT 009) entra
+ * entre `indDest` e `valores`, na ordem do XSD.
+ */
+function grupoIbsCbs(leiaute: LeiauteDps, g: { cIndOp: string; cst: string; cClassTrib: string }, locacao: Locacao | null = null): string {
   const classif = [leaf('CST', g.cst), leaf('cClassTrib', g.cClassTrib)]
-  // indDest 0: o destinatário é o próprio tomador. indFinal (0-1) fica de fora: o motor não sabe se é
-  // uso ou consumo pessoal (art. 57 da LC 214/2025). Alíquotas e valores quem calcula é a Sefin.
-  return leiaute === 'nt009'
-    ? el('IBSCBS', [leaf('cIndOp', g.cIndOp), leaf('indDest', '0'), el('valores', el('trib', classif))])
+  // indDest 0: o destinatário é o próprio tomador (no release 2, fora do grupo, em infDPS). indFinal (0-1) fica de
+  // fora: o motor não sabe se é uso ou consumo pessoal (art. 57 da LC 214/2025). Alíquotas e valores quem calcula é a Sefin.
+  return ehNt009(leiaute)
+    ? el('IBSCBS', [
+        leaf('cIndOp', g.cIndOp),
+        leiaute === 'nt009' ? leaf('indDest', '0') : null,
+        locacao ? gruposDaLocacao(locacao) : null,
+        el('valores', el('trib', classif)),
+      ])
     : el('IBSCBS', [
         leaf('finNFSe', '0'),
         leaf('cIndOp', g.cIndOp),
@@ -308,14 +437,37 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   // MEI (Anexo I v1.01): opSimpNac 2, sem regApTribSN (E0162), regEspTrib 0 (E0174) e sem pTotTribSN
   // (E0710); no lugar, indTotTrib 0 (não informar tributos aproximados, Decreto 8.264/2014).
   const mei = tenant.regime === 'mei'
+  const naoOptante = regimeNaoOptante(tenant.regime)
+  if (!mei && !naoOptante && tenant.regime !== 'simples') throw new DpsInvalidError(`regime ${tenant.regime} não atendido`)
   const regTrib = mei
     ? [leaf('opSimpNac', '2'), leaf('regEspTrib', '0')]
-    : [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]
-  const totTrib = mei ? leaf('indTotTrib', '0') : leaf('pTotTribSN', formatPercent(tenant.p_tot_trib_sn))
+    : naoOptante
+      ? [leaf('opSimpNac', '1'), leaf('regEspTrib', '0')]
+      : [leaf('opSimpNac', '3'), leaf('regApTribSN', '1'), leaf('regEspTrib', '0')]
+  const totTrib = mei
+    ? leaf('indTotTrib', '0')
+    : naoOptante
+      ? el('pTotTrib', [
+          leaf('pTotTribFed', percentualTotTrib(tenant.p_tot_trib?.fed, 'federais')),
+          leaf('pTotTribEst', percentualTotTrib(tenant.p_tot_trib?.est ?? '0', 'estaduais')),
+          leaf('pTotTribMun', percentualTotTrib(tenant.p_tot_trib?.mun, 'municipais')),
+        ])
+      : leaf('pTotTribSN', formatPercent(tenant.p_tot_trib_sn))
 
-  const { iss, inss } = data.retencao
+  const { iss, inss, irrf, csrf } = data.retencao
+  const codigo = data.servico.codigo_servico_nacional
+  const locacao = ehLocacao(codigo)
+  if (locacao) {
+    if (!opcoes.locacao) throw new DpsInvalidError(MENSAGEM_LOCACAO_DESLIGADA)
+    // O grupo da locação só existe no IBSCBS da NT 009 (E0937, E0963).
+    if (!ehNt009(opcoes.leiaute)) throw new DpsInvalidError('nota de locação só no leiaute da NT 009 (produção a partir de 07/12/2026)')
+    // E0580: sem incidência de ISS, não há retenção dele.
+    if (iss) throw new DpsInvalidError('locação não tem ISS (não incidência): não dá para reter ISS')
+  }
   // MEI não tem retenção: nem ISS (E0583) nem o grupo tribFed (E0676).
-  if (mei && (iss || inss)) throw new DpsInvalidError('MEI não tem retenção de ISS nem de INSS')
+  if (mei && (iss || inss || irrf || csrf)) throw new DpsInvalidError('MEI não tem retenção de ISS nem de INSS')
+  // IRRF e PIS/COFINS/CSLL retidos na fonte são do Presumido e do Real (o Simples recolhe pelo DAS).
+  if (!naoOptante && (irrf || csrf)) throw new DpsInvalidError('IRRF e PIS/COFINS/CSLL retidos só para Lucro Presumido ou Real')
   const end = data.tomador.endereco
   if (iss) {
     // E0237: ISS retido pelo tomador exige o endereço nacional dele. Tomador CPF: E0667 (decisão de 16/11/2026).
@@ -331,31 +483,55 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
         leaf('xBairro', end.bairro),
       ])
     : null
-  // Sem retenção, pAliq fica de fora (E0625); com ISS retido de ME/EPP, é obrigatório (E0621/E0628).
-  const tribMun = iss
-    ? el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '2'), leaf('pAliq', iss.aliquota)])
+  // Sem retenção, pAliq fica de fora (E0625); com ISS retido de ME/EPP, é obrigatório (E0621/E0628). Não optante nunca
+  // leva pAliq: o convênio dos municípios atendidos está ativo e a Sefin usa a alíquota municipal (E0617).
+  const tribMun = locacao
+    ? // E0532: 99.XX.XX é não incidência; sem retenção (E0580) nem alíquota (E0602).
+      el('tribMun', [leaf('tribISSQN', '4'), leaf('tpRetISSQN', '1')])
+    : iss
+    ? el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '2'), naoOptante ? null : leaf('pAliq', iss.aliquota)])
     : el('tribMun', [leaf('tribISSQN', '1'), leaf('tpRetISSQN', '1')])
-  const tribFed = inss ? el('tribFed', leaf('vRetCP', inss.valor)) : null
+  // TCTribFederal: piscofins, vRetCP, vRetIRRF, vRetCSLL. PIS/COFINS/CSLL retidos: CST 01 (tributável, alíquota básica),
+  // tpRetPisCofins 3 e a soma das três em vRetCSLL (E0724; nota do Anexo I). Sem base nem alíquotas: são 0-1 e nenhuma
+  // regra as exige com CST 01; informadas, teriam de bater com E0694/E0696.
+  const piscofins = csrf ? el('piscofins', [leaf('CST', '01'), leaf('tpRetPisCofins', '3')]) : null
+  const tribFed =
+    inss || irrf || csrf
+      ? el('tribFed', [piscofins, leaf('vRetCP', inss?.valor ?? null), leaf('vRetIRRF', irrf?.valor ?? null), leaf('vRetCSLL', csrf?.valor ?? null)])
+      : null
 
   const { leiaute } = opcoes
   // NBS padrão da empresa fora da lista atual (a lista mudou depois de gravada) fica de fora, sem travar a nota.
   const nbsEmpresa = tenant.nbs_padrao && nbsExiste(tenant.nbs_padrao) ? tenant.nbs_padrao : null
-  const rtc = resolverRtc(data.servico.codigo_servico_nacional, {
-    nbs: data.servico.nbs,
-    nbsEmpresa,
-    cIndOp: data.servico.c_ind_op,
-    cClassTrib: data.servico.c_class_trib,
-  })
-  // A NBS informada (na nota ou como padrão da empresa) vai sempre; a da tabela, só junto do IBSCBS.
-  const cNBS = rtc.nbs && (rtc.nbs.origem !== 'tabela' || opcoes.ibscbs) ? leaf('cNBS', rtc.nbs.codigo) : null
+  const rtc = data.servico.locacao
+    ? rtcLocacao(data.servico.locacao, data.servico.nbs, data.servico.c_ind_op, data.servico.c_class_trib)
+    : resolverRtc(codigo, {
+        nbs: data.servico.nbs,
+        nbsEmpresa,
+        cIndOp: data.servico.c_ind_op,
+        cClassTrib: data.servico.c_class_trib,
+      })
+  // A NBS informada (na nota ou como padrão da empresa) vai sempre; a da tabela, só junto do IBSCBS. Na locação, sempre
+  // (E0322: IBSCBS exige NBS).
+  const cNBS = rtc.nbs && (rtc.nbs.origem !== 'tabela' || opcoes.ibscbs || locacao) ? leaf('cNBS', rtc.nbs.codigo) : null
   // Outro local da prestação: o cIndOp da tabela supõe o local padrão, e o local muda a localidade do IBS/CBS (E1521,
   // Anexo B). Sem o cIndOp informado na nota, a DPS sai sem o grupo, que é opcional para Simples e MEI em 2026.
   const local = data.servico.municipio_prestacao_ibge
   const ibscbsPermitido = !local || data.servico.c_ind_op !== null
-  const ibscbs = opcoes.ibscbs && ibscbsPermitido && 'cst' in rtc.ibscbs ? grupoIbsCbs(leiaute, rtc.ibscbs) : null
+  if (data.servico.locacao && 'cst' in rtc.ibscbs && rtc.ibscbs.cIndOp === '010103' && !data.tomador.endereco) {
+    // E0243: incidência no endereço do destinatário (o próprio tomador) exige o endereço dele.
+    throw new DpsInvalidError('com entrega do bem no endereço do cliente (cIndOp 010103), informe o endereço do tomador')
+  }
+  const ibscbs = data.servico.locacao
+    ? 'cst' in rtc.ibscbs
+      ? grupoIbsCbs(leiaute, rtc.ibscbs, data.servico.locacao)
+      : null
+    : opcoes.ibscbs && ibscbsPermitido && 'cst' in rtc.ibscbs
+      ? grupoIbsCbs(leiaute, rtc.ibscbs)
+      : null
   const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
   const xDescServ = leaf('xDescServ', data.servico.descricao)
-  const cServ = el('cServ', leiaute === 'nt009' ? [cTribNac, cNBS, xDescServ] : [cTribNac, xDescServ, cNBS])
+  const cServ = el('cServ', ehNt009(leiaute) ? [cTribNac, cNBS, xDescServ] : [cTribNac, xDescServ, cNBS])
   // TCServ: locPrest, cServ, comExt, obra, atvEvento, infoCompl (igual nos dois XSD). Em TCInfoCompl, xInfComp é o
   // último (depois de idDocTec, docRef, xPed e gItemPed, que a nó não usa).
   const infoCompl = data.informacoes_complementares ? el('infoCompl', leaf('xInfComp', data.informacoes_complementares)) : null
@@ -370,7 +546,7 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
       leaf('nDPS', String(numero)),
       leaf('dCompet', dhEmi.slice(0, 10)),
       leaf('tpEmit', '1'),
-      leiaute === 'nt009' ? leaf('finNFSe', '0') : null,
+      ehNt009(leiaute) ? leaf('finNFSe', '0') : null,
       leaf('cLocEmi', ibge),
       el('prest', [
         leaf('CNPJ', tenant.cnpj),
@@ -378,6 +554,8 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
         el('regTrib', regTrib),
       ]),
       el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]),
+      // Release 2: indDest 1-1 em infDPS (0 = o destinatário é o próprio tomador; sem o grupo dest, E0908).
+      leiaute === 'nt009r2' ? leaf('indDest', '0') : null,
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', local ?? ibge)),
         cServ,

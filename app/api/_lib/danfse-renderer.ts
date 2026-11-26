@@ -89,6 +89,24 @@ const TP_EMIT: Record<string, string> = { '1': 'Prestador do serviço', '2': 'To
 const AMB_GER: Record<string, string> = { '1': 'Prefeitura', '2': 'Sefin Nacional' }
 const label = (map: Record<string, string>, code: string | null) => (code ? (map[code] ?? code) : '-')
 
+/** `tpRetPisCofins` (TSTipoRetPISCofins, igual nos XSD v1.01 e NT 009): o que foi retido entre PIS, COFINS e CSLL. */
+export function retencaoPisCofinsCsll(tp: string | null): { pis: boolean; cofins: boolean; csll: boolean } {
+  const tabela: Record<string, [boolean, boolean, boolean]> = {
+    '0': [false, false, false],
+    '1': [true, true, false],
+    '2': [false, false, false],
+    '3': [true, true, true],
+    '4': [true, true, false],
+    '5': [true, false, false],
+    '6': [false, true, false],
+    '7': [false, true, true],
+    '8': [false, false, true],
+    '9': [true, false, true],
+  }
+  const [pis, cofins, csll] = (tp && tabela[tp]) || [false, false, false]
+  return { pis, cofins, csll }
+}
+
 function nomeDoMunicipio(cMun: string | null, uf: string | null): string {
   const m = cMun ? municipioIbge(cMun) : null
   return m ? `${m.nome}/${uf || m.uf} / ` : ''
@@ -286,6 +304,13 @@ function drawQr(p: Painter, doc: PDFDocument, chave: string) {
   lines.forEach((line, i) => p.text(line, QR_COLUMN_X + 2, top + QR_BOX.size + 7 + i * 7, 6, { width: RIGHT - QR_COLUMN_X - 4, center: true }))
 }
 
+/** IBS + CBS calculados pela Sefin, quando vieram na NFS-e. */
+function totalIbsCbs(calc: NfseData['ibscbsNfse']): string {
+  if (!calc || (!calc.vIBSTot && !calc.vCBS)) return '-'
+  const soma = Number(calc.vIBSTot ?? 0) + Number(calc.vCBS ?? 0)
+  return Number.isFinite(soma) ? fmtMoney(soma.toFixed(2)) : '-'
+}
+
 export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {}): Promise<Uint8Array> {
   const nfse: NfseData = parseNfseXml(xmlNfse)
   const doc = await PDFDocument.create()
@@ -391,6 +416,40 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   y += 10 + descricao.length * LINE_H + 2
   p.hline(y)
 
+  // Locação (99.03.01 e 99.04.01, novos fatos geradores do IBS/CBS). A NT 008 v1.02 ainda não tem o bloco: o DANFSe
+  // especial dos novos fatos geradores sai numa nova NT 008 (release 3 da NT 009). Até lá, os dados do XML aqui.
+  const ib = d.ibscbs
+  if (ib?.imovel) {
+    const im = ib.imovel
+    y = blockTitle(p, y, 'Locação de bem imóvel')
+    y = row(p, y, [
+      { label: 'Município do imóvel', value: dash(im.cMun) },
+      { label: 'Percentual de copropriedade', value: fmtPercent(im.pCopropriedade) },
+      { label: 'Valor total da operação', value: fmtMoney(im.vTotOper) },
+      { label: 'Vencimento original', value: fmtDate(im.dVencOrig) },
+    ])
+    for (const u of im.unidades.slice(0, 3)) {
+      const e = u.endereco
+      const endereco = e
+        ? [e.xLgr, e.nro, e.xCpl].filter(Boolean).join(', ') + (e.xBairro ? ` - ${e.xBairro}` : '') + (e.CEP ? ` - CEP ${digits(e.CEP, (c) => `${c.slice(0, 5)}-${c.slice(5)}`, 8)}` : '')
+        : '-'
+      y = row(p, y, [
+        { label: u.cCIB ? 'CIB do imóvel' : 'Endereço do imóvel', value: u.cCIB ?? endereco, span: 3 },
+        { label: 'Inscrição imobiliária', value: dash(u.inscImobFisc) },
+      ])
+    }
+  } else if (ib && ib.bensMoveis.length) {
+    y = blockTitle(p, y, 'Locação de bem móvel')
+    for (const b of ib.bensMoveis.slice(0, 5)) {
+      y = row(p, y, [
+        { label: 'NCM', value: dash(b.cNCMBemMovel) },
+        { label: 'Descrição do bem', value: dash(b.xNCMBemMovel), span: 2 },
+        { label: 'Quantidade', value: dash(b.qtdNCMBemMovel) },
+      ])
+    }
+    if (ib.bensMoveis.length > 5) y = noticeLine(p, y, `E MAIS ${ib.bensMoveis.length - 5} BEM(NS) NO XML DA NFS-e`)
+  }
+
   // Tributação municipal (ISSQN).
   y = blockTitle(p, y, 'Tributação municipal (ISSQN)')
   y = row(p, y, [
@@ -406,19 +465,36 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   ])
 
   y = blockTitle(p, y, 'Tributação federal (exceto CBS)')
-  // Retenções federais da DPS (tribFed). O INSS retido (vRetCP) já entrava no total das retenções,
-  // mas o campo ficava "-" e o contador não via a retenção na nota (Robson, 25/11/2026).
+  // Retenções federais da DPS (tribFed): IRRF, CP e CSLL (o INSS retido, vRetCP, aparece aqui; Robson, 25/11/2026)
+  // e PIS/COFINS, com a marca de retido do tpRetPisCofins (Presumido e Real).
   const fed = d.tribFed
+  const pc = fed?.piscofins ?? null
+  const ret = retencaoPisCofinsCsll(pc?.tpRetPisCofins ?? null)
+  const comRetido = (valor: string | null | undefined, retido: boolean) => (valor ? `${fmtMoney(valor)}${retido ? ' (retido)' : ''}` : '-')
   y = row(p, y, [
-    { label: 'IRRF retido', value: fmtMoney(fed.vRetIRRF) },
-    { label: 'Contribuição previdenciária retida', value: fmtMoney(fed.vRetCP), span: 1.4 },
-    { label: 'Contribuições sociais retidas', value: fmtMoney(fed.vRetCSLL), span: 1.2 },
-    { label: 'PIS', value: '-' },
-    { label: 'COFINS', value: '-' },
+    { label: 'IRRF retido', value: fed?.vRetIRRF ? fmtMoney(fed.vRetIRRF) : '-' },
+    { label: 'Contribuição previdenciária retida', value: fed?.vRetCP ? fmtMoney(fed.vRetCP) : '-', span: 1.4 },
+    { label: 'Contribuições sociais retidas', value: fed?.vRetCSLL ? fmtMoney(fed.vRetCSLL) : '-', span: 1.2 },
+    { label: 'PIS', value: comRetido(pc?.vPis, ret.pis) },
+    { label: 'COFINS', value: comRetido(pc?.vCofins, ret.cofins) },
   ])
 
   y = blockTitle(p, y, 'Tributação IBS / CBS')
-  y = noticeLine(p, y, 'IBS/CBS NÃO INFORMADOS NA NFS-e')
+  const calc = nfse.ibscbsNfse
+  if (ib && (ib.CST || calc)) {
+    y = row(p, y, [
+      { label: 'Indicador da operação', value: dash(ib.cIndOp) },
+      { label: 'CST / Classificação', value: ib.CST || ib.cClassTrib ? `${dash(ib.CST)} / ${dash(ib.cClassTrib)}` : '-' },
+      { label: 'Localidade de incidência', value: dash(calc?.xLocalidadeIncid ?? null) },
+    ])
+    y = row(p, y, [
+      { label: 'Base de cálculo IBS/CBS', value: fmtMoney(calc?.vBC ?? null) },
+      { label: 'IBS', value: fmtMoney(calc?.vIBSTot ?? null) },
+      { label: 'CBS', value: fmtMoney(calc?.vCBS ?? null) },
+    ])
+  } else {
+    y = noticeLine(p, y, 'IBS/CBS NÃO INFORMADOS NA NFS-e')
+  }
 
   // Valor total.
   y = blockTitle(p, y, 'Valor total da NFS-e')
@@ -430,8 +506,8 @@ export async function renderDanfse(xmlNfse: string, options: DanfseOptions = {})
   ])
   y = row(p, y, [
     { label: 'Valor líquido da NFS-e', value: fmtMoney(nfse.valoresNfse.vLiq) },
-    { label: 'Total IBS/CBS', value: '-' },
-    { label: 'Valor líquido da NFS-e + IBS/CBS', value: fmtMoney(nfse.valoresNfse.vLiq), shaded: true, span: 2 },
+    { label: 'Total IBS/CBS', value: totalIbsCbs(calc) },
+    { label: 'Valor líquido da NFS-e + IBS/CBS', value: fmtMoney(calc?.vTotNF ?? nfse.valoresNfse.vLiq), shaded: true, span: 2 },
   ])
 
   // Informações complementares, com os totais aproximados da Lei 12.741/2012.

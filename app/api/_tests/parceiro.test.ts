@@ -5,7 +5,7 @@
 // assinado, com reenvio e espera; a nota da API não vai ao WhatsApp, e `emails_da_no = false` corta os e-mails da nó;
 // empresas entram e mostram a situação pela API, com o limite da conta e a procuração ao escritório.
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { closeSharedDb, type Db } from '../_lib/db.js'
 import { handleNfseRequest } from '../_lib/nfse-routes.js'
 import { handlePainelEmissao } from '../_lib/painel-emissao.js'
@@ -81,7 +81,12 @@ async function painel(userId: string, corpo: Record<string, unknown>, fetch?: Fe
 }
 
 const RECEITA: Record<string, Consulta> = {}
-const receita = async (cnpj: string): Promise<Consulta> => RECEITA[cnpj] ?? { ok: false, motivo: 'nao_encontrado' }
+// Como a consulta real: Presumido/Real declarado só vale quando a Receita diz "fora do Simples" (com os dados).
+const receita = async (cnpj: string, regimeDeclarado?: 'presumido' | 'real' | null): Promise<Consulta> => {
+  const r = RECEITA[cnpj] ?? { ok: false, motivo: 'nao_encontrado' }
+  if (!r.ok && r.motivo === 'fora_do_simples' && r.dados && regimeDeclarado) return { ok: true, dados: { ...r.dados, regime: regimeDeclarado } }
+  return r
+}
 const enderecos: EnderecoDoTomador = {
   endereco: async () => ({ cMun: '3550308', cep: '01001000', logradouro: 'Praça da Sé', numero: '1', complemento: null, bairro: 'Sé' }),
 }
@@ -277,6 +282,61 @@ describe('chave do parceiro', () => {
 
     // Campo desconhecido continua recusado (nenhuma rota aceita certificado por engano).
     expect((await api(chave, 'POST', '/v1/nfse', venda('ret-4', { pfx: 'MIIK' }))).corpo.error.code).toBe('UNKNOWN_FIELD')
+  })
+
+  it('locação (99.03.01 e 99.04.01): desligada, 422 com a mensagem; ligada, o imóvel ou os bens no payload e sem o ISS do padrão', async () => {
+    const { dono, padaria } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    await admin.db.query(`update nofiscal.fiscal_tenants set retem_iss = true, aliquota_iss = 2 where id = $1`, [padaria.id])
+    const imovel = { municipio_ibge: '3509502', cep: '13015-100', logradouro: 'Rua das Flores', numero: '120', residencial: true }
+    const aluguel = (id: string, extra: Record<string, unknown> = {}) => ({
+      ...venda(id, { cnpj_prestador: padaria.cnpj }),
+      tomador: { cnpj: CNPJ_TOMADOR, nome: 'Inquilino Ltda' },
+      valor: '2500.00',
+      servico: { codigo_servico_nacional: '990301', descricao: 'Aluguel de dezembro', locacao: { imovel } },
+      ...extra,
+    })
+    try {
+      vi.stubEnv('NOFISCAL_LOCACAO', '')
+      const desligada = await api(chave, 'POST', '/v1/nfse', aluguel('loc-0'))
+      expect(desligada.status).toBe(422)
+      expect(desligada.corpo).toMatchObject({ motivo: 'LOCACAO_INDISPONIVEL' })
+      expect(desligada.corpo.error.message).toMatch(/assim que a Receita liberar/)
+
+      vi.stubEnv('NOFISCAL_LOCACAO', '1')
+      const ok = await api(chave, 'POST', '/v1/nfse', aluguel('loc-1'))
+      expect(ok.status).toBe(202)
+      const payload = (await readInvoice(admin.db, ok.corpo.id as string)).payload as Record<string, unknown>
+      expect(payload.servico).toMatchObject({
+        codigo_servico_nacional: '990301',
+        locacao: { imovel: { municipio_ibge: '3509502', cep: '13015100', residencial: true, copropriedade: '100.00', valor_total: '2500.00' } },
+      })
+      // O ISS retido do padrão da empresa não vai na locação (não incidência).
+      expect(payload.retencao).toBeUndefined()
+
+      const movel = await api(chave, 'POST', '/v1/nfse', aluguel('loc-2', {
+        servico: { codigo_servico_nacional: '990401', locacao: { bens: [{ ncm: '84743100', descricao: 'Betoneira', quantidade: 2 }] } },
+      }))
+      expect(movel.status).toBe(202)
+      expect(((await readInvoice(admin.db, movel.corpo.id as string)).payload as { servico: unknown }).servico).toMatchObject({
+        locacao: { bens: [{ ncm: '84743100', descricao: 'Betoneira', quantidade: 2 }] },
+      })
+
+      // Sem os dados, ISS retido pedido e campo desconhecido dentro da locação.
+      const semDados = await api(chave, 'POST', '/v1/nfse', aluguel('loc-3', { servico: { codigo_servico_nacional: '990301' } }))
+      expect(semDados.status).toBe(422)
+      expect(semDados.corpo).toMatchObject({ campo: 'servico.locacao', motivo: 'LOCACAO_SEM_DADOS' })
+      const comIss = await api(chave, 'POST', '/v1/nfse', aluguel('loc-4', { retencao: { retem_iss: true, aliquota_iss: 2 } }))
+      expect(comIss.status).toBe(422)
+      expect(comIss.corpo).toMatchObject({ campo: 'retencao.retem_iss' })
+      const estranho = await api(chave, 'POST', '/v1/nfse', aluguel('loc-5', {
+        servico: { codigo_servico_nacional: '990301', locacao: { imovel: { ...imovel, matricula: '123' } } },
+      }))
+      expect(estranho.corpo.error.code).toBe('UNKNOWN_FIELD')
+      expect(estranho.corpo.error.message).toContain('servico.locacao.imovel.matricula')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 
@@ -501,6 +561,53 @@ describe('empresas pela API', () => {
     const acima = await api(chave, 'POST', '/v1/empresas', { cnpj: sexta, codigo_servico_nacional: '040101' })
     expect(acima.status).toBe(409)
     expect(acima.corpo).toMatchObject({ limite: 5, error: { code: 'EMPRESAS_ACIMA_DO_LIMITE' } })
+  })
+})
+
+describe('empresas do Lucro Presumido pela API (19/11/2026)', () => {
+  it('pede o regime no Rio, recusa fora das cidades de emissor pleno e grava os percentuais da Lei 12.741', async () => {
+    const { e, dono } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    const rio = cnpjNovo()
+    RECEITA[rio] = {
+      ok: false,
+      motivo: 'fora_do_simples',
+      dados: { cnpj: rio, razao_social: 'Consultoria Rio Ltda', municipio: 'RIO DE JANEIRO', uf: 'RJ', codigo_municipio_ibge: '3304557', cnae: null },
+    }
+    const semRegime = await api(chave, 'POST', '/v1/empresas', { cnpj: rio, codigo_servico_nacional: '170201' })
+    expect(semRegime.status).toBe(422)
+    expect(semRegime.corpo).toMatchObject({ campo: 'regime', error: { code: 'REGIME_A_DECLARAR' } })
+    const semTributos = await api(chave, 'POST', '/v1/empresas', { cnpj: rio, regime: 'presumido', codigo_servico_nacional: '170201' })
+    expect(semTributos.corpo).toMatchObject({ campo: 'tributos_aproximados' })
+    const criada = await api(chave, 'POST', '/v1/empresas', {
+      cnpj: rio,
+      regime: 'presumido',
+      codigo_servico_nacional: '170201',
+      tributos_aproximados: { federal: '13.45', municipal: 5 },
+    })
+    expect(criada.status).toBe(201)
+    expect(criada.corpo.empresa).toMatchObject({
+      regime: 'presumido',
+      situacao: 'falta_a1',
+      dados_fiscais: { codigo_servico_nacional: '170201', simples_percentual: null, tributos_aproximados: { federal: '13.45', estadual: '0.00', municipal: '5.00' } },
+    })
+    const { rows } = await admin.db.query<{ id: string }>('select id from nofiscal.fiscal_tenants where cnpj = $1', [rio])
+    e.empresas.push({ id: rows[0].id } as TestTenant)
+    const patch = await api(chave, 'PATCH', `/v1/empresas/${rio}`, { tributos_aproximados: { federal: '14', municipal: '2' } })
+    expect(patch.status).toBe(200)
+    expect((patch.corpo.empresa as { dados_fiscais: { tributos_aproximados: unknown } }).dados_fiscais.tributos_aproximados).toEqual({ federal: '14.00', estadual: '0.00', municipal: '2.00' })
+
+    const sp = cnpjNovo()
+    RECEITA[sp] = {
+      ok: false,
+      motivo: 'fora_do_simples',
+      dados: { cnpj: sp, razao_social: 'Consultoria SP Ltda', municipio: 'SAO PAULO', uf: 'SP', codigo_municipio_ibge: '3550308', cnae: null },
+    }
+    const fora = await api(chave, 'POST', '/v1/empresas', { cnpj: sp, regime: 'presumido', codigo_servico_nacional: '170201' })
+    expect(fora.status).toBe(422)
+    expect(fora.corpo).toMatchObject({ lista_espera: true, error: { code: 'FORA_DO_SIMPLES' } })
+    expect(fora.corpo.error.message).toMatch(/Lucro Presumido e Real/)
+    expect((await api(chave, 'POST', '/v1/empresas', { cnpj: sp, regime: 'arbitrado', codigo_servico_nacional: '170201' })).corpo).toMatchObject({ campo: 'regime' })
   })
 })
 

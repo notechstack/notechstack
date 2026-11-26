@@ -1353,6 +1353,14 @@
     {
       "codigo": "990101",
       "descricao": "Serviços sem a incidência de ISSQN e ICMS"
+    },
+    {
+      "codigo": "990301",
+      "descricao": "Locação de bens imóveis."
+    },
+    {
+      "codigo": "990401",
+      "descricao": "Locação de bens móveis."
     }
   ]
 }

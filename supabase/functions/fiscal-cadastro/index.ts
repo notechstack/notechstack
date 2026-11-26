@@ -19,6 +19,11 @@ Deno.serve((req: Request) =>
       return error || !data?.user?.id ? null : data.user.id;
     },
     municipios: async () => LISTA_MUNICIPIOS,
+    situacaoMunicipio: async (ibge) => {
+      const { data, error } = await admin.rpc("fiscal_municipio_presumido", { p_ibge: ibge });
+      if (error) throw error;
+      return typeof data === "string" ? data : null;
+    },
     regimeConfirmado: async (cnpj) => {
       const { data, error } = await admin.rpc("fiscal_regime_confirmado", { p_cnpj: cnpj });
       return !error && (data === "mei" || data === "simples") ? data : null;

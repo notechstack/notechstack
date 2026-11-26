@@ -23,8 +23,12 @@ export type EnderecoNacional = {
   bairro: string
 }
 
-/** O grupo do payload da nota. `iss.aliquota` em "2.00"; `inss.valor` em reais ("38.50"). */
-export type Retencao = { iss?: { aliquota: string }; inss?: { valor: string } }
+/**
+ * O grupo do payload da nota. `iss.aliquota` em "2.00"; `inss.valor`, `irrf.valor` e `csrf.valor` em reais ("38.50").
+ * IRRF e CSRF (PIS + COFINS + CSLL retidos, somados) são só do Lucro Presumido e do Real (19/11/2026), e por enquanto só
+ * pela API do parceiro: não há padrão por empresa nem campo no WhatsApp, no painel ou na planilha.
+ */
+export type Retencao = { iss?: { aliquota: string }; inss?: { valor: string }; irrf?: { valor: string }; csrf?: { valor: string } }
 
 /** O padrão da empresa cliente (colunas de `fiscal_tenants`). */
 export type RetencaoPadrao = {
@@ -44,6 +48,10 @@ export type RetencaoDoPedido = {
   inss?: boolean | null
   /** Valor ("38,50") ou percentual ("11%") escrito no pedido. */
   inssTexto?: string | null
+  /** Presumido/Real: IRRF retido, valor ("15,00") ou percentual ("1,5%"). */
+  irrfTexto?: string | null
+  /** Presumido/Real: PIS + COFINS + CSLL retidos, somados, valor ou percentual ("4,65%"). */
+  csrfTexto?: string | null
 }
 
 export const PROBLEMAS_DE_RETENCAO = [
@@ -55,6 +63,9 @@ export const PROBLEMAS_DE_RETENCAO = [
   'INSS_INVALIDO',
   'RETENCOES_ACIMA_DO_VALOR',
   'ENDERECO_TOMADOR',
+  'RETENCAO_FEDERAL_SO_LUCRO',
+  'IRRF_INVALIDO',
+  'CSRF_INVALIDO',
 ] as const
 export type ProblemaDeRetencao = (typeof PROBLEMAS_DE_RETENCAO)[number]
 
@@ -123,6 +134,8 @@ export function valorLiquido(valor: string, r: Retencao): string {
   let c = centavos(valor)
   if (r.iss) c -= centavos(issRetido(valor, r.iss.aliquota))
   if (r.inss) c -= centavos(r.inss.valor)
+  if (r.irrf) c -= centavos(r.irrf.valor)
+  if (r.csrf) c -= centavos(r.csrf.valor)
   return reais(c)
 }
 
@@ -164,7 +177,14 @@ export function resolverRetencao(dados: {
   if (p.inssTexto && !inssEscrito) return falha('INSS_INVALIDO')
   const temInss = p.inss ?? (inssEscrito ? true : padrao.retem_inss)
 
-  if (!temIss && !temInss) return { ok: true, retencao: null }
+  const irrf = p.irrfTexto ? lerInssEscrito(p.irrfTexto, dados.valor) : null
+  if (p.irrfTexto && (!irrf || centavos(irrf) >= centavos(dados.valor))) return falha('IRRF_INVALIDO')
+  const csrf = p.csrfTexto ? lerInssEscrito(p.csrfTexto, dados.valor) : null
+  if (p.csrfTexto && (!csrf || centavos(csrf) >= centavos(dados.valor))) return falha('CSRF_INVALIDO')
+  if ((irrf || csrf) && dados.regime === 'mei') return falha('RETENCAO_MEI')
+  if ((irrf || csrf) && dados.regime !== 'presumido' && dados.regime !== 'real') return falha('RETENCAO_FEDERAL_SO_LUCRO')
+
+  if (!temIss && !temInss && !irrf && !csrf) return { ok: true, retencao: null }
   if (dados.regime === 'mei') return falha('RETENCAO_MEI')
 
   const retencao: Retencao = {}
@@ -180,6 +200,8 @@ export function resolverRetencao(dados: {
     if (valor === '0.00' || centavos(valor) >= centavos(dados.valor)) return falha('INSS_INVALIDO')
     retencao.inss = { valor }
   }
+  if (irrf) retencao.irrf = { valor: irrf }
+  if (csrf) retencao.csrf = { valor: csrf }
   if (centavos(valorLiquido(dados.valor, retencao)) < 0n) return falha('RETENCOES_ACIMA_DO_VALOR')
   return { ok: true, retencao }
 }
@@ -211,6 +233,12 @@ export function motivoDaRetencao(problema: string): string {
       return 'INSS retido inválido: escreva o valor (38,50) ou o percentual (11%), menor que o valor da nota'
     case 'RETENCOES_ACIMA_DO_VALOR':
       return 'as retenções passam do valor da nota'
+    case 'RETENCAO_FEDERAL_SO_LUCRO':
+      return 'IRRF e PIS/COFINS/CSLL retidos na nota são só do Lucro Presumido e do Real (o Simples recolhe pelo DAS)'
+    case 'IRRF_INVALIDO':
+      return 'IRRF retido inválido: escreva o valor (15,00) ou o percentual (1,5%), menor que o valor da nota'
+    case 'CSRF_INVALIDO':
+      return 'PIS/COFINS/CSLL retidos inválidos: escreva o valor somado (46,50) ou o percentual (4,65%), menor que o valor da nota'
     case 'ENDERECO_TOMADOR':
       return 'com ISS retido, a nota leva o endereço do cliente, e não achei o endereço deste CNPJ na Receita'
     default:
@@ -224,20 +252,24 @@ const pct = (v: string) => `${v.replace(/\.?0+$/, '').replace('.', ',')}%`
 
 /** As linhas da retenção no resumo antes do *confirmar* (vazio sem retenção). */
 export function linhasDaRetencao(valor: string, r: Retencao | null | undefined): string[] {
-  if (!r || (!r.iss && !r.inss)) return []
+  if (!r || (!r.iss && !r.inss && !r.irrf && !r.csrf)) return []
   return [
     ...(r.iss ? [`ISS retido pelo tomador: ${pct(r.iss.aliquota)} (${brl(issRetido(valor, r.iss.aliquota))})`] : []),
     ...(r.inss ? [`INSS retido: ${brl(r.inss.valor)}`] : []),
+    ...(r.irrf ? [`IRRF retido: ${brl(r.irrf.valor)}`] : []),
+    ...(r.csrf ? [`PIS/COFINS/CSLL retidos: ${brl(r.csrf.valor)}`] : []),
     `Valor líquido: ${brl(valorLiquido(valor, r))}`,
   ]
 }
 
 /** A visão da retenção para o painel (JSON). */
 export function visaoDaRetencao(valor: string, r: Retencao | null | undefined) {
-  if (!r || (!r.iss && !r.inss)) return null
+  if (!r || (!r.iss && !r.inss && !r.irrf && !r.csrf)) return null
   return {
     iss: r.iss ? { aliquota: r.iss.aliquota, valor: issRetido(valor, r.iss.aliquota) } : null,
     inss: r.inss ? { valor: r.inss.valor } : null,
+    ...(r.irrf ? { irrf: { valor: r.irrf.valor } } : {}),
+    ...(r.csrf ? { csrf: { valor: r.csrf.valor } } : {}),
     liquido: valorLiquido(valor, r),
     linhas: linhasDaRetencao(valor, r),
   }

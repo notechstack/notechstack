@@ -197,7 +197,8 @@ x-api-key: nfk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | `certificado.vence_em` | Validade do A1 da própria empresa, se houver. |
 | `procuracao.status` | `declarada` (o escritório disse que fez), `confirmada` (a Receita mostrou ou uma nota saiu), `invalida`, `revogada`. |
 | `procurador` | A quem a empresa dá a procuração: sempre o escritório. `null` na própria conta. |
-| `dados_fiscais.simples_percentual` | Percentual aproximado de tributos do Simples na nota (`pTotTribSN`). `null` no MEI. |
+| `dados_fiscais.simples_percentual` | Percentual aproximado de tributos do Simples na nota (`pTotTribSN`). `null` no MEI, no Presumido e no Real. |
+| `dados_fiscais.tributos_aproximados` | Lucro Presumido e Real: `{ "federal", "estadual", "municipal" }`, percentuais da Lei 12.741 na nota (`pTotTrib`). `null` nos outros regimes. |
 | `retencao` | Padrão de retenção da empresa. Toda nota usa este padrão, salvo se o pedido disser outra coisa. |
 | `nfe.bloqueio` | `null` quando a empresa pode emitir NF-e; senão o código (ver [7.6](#76-situação-da-empresa-para-nf-e)). |
 
@@ -211,9 +212,10 @@ x-api-key: nfk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 | `procuracao_pendente` | A Receita ainda não mostra a procuração. Confira o cadastro no Portal de Serviços da Receita (serviço NFS-e, procurador = CNPJ do escritório). |
 | `procuracao_vencida` | Renovar a procuração e declarar de novo com a nova `valida_ate`. |
 | `a1_do_escritorio_invalido` | O A1 do escritório (que assina pelas procurações) venceu ou falta. Painel. |
-| `falta_dados_fiscais` | `codigo_servico_nacional` e, no Simples, `simples_percentual` (`PATCH`). |
+| `falta_dados_fiscais` | `codigo_servico_nacional` e, no Simples, `simples_percentual`; no Presumido e no Real, `tributos_aproximados` (`PATCH`). |
 | `desativada` | A empresa foi desativada no painel. |
 | `assinatura_inativa` | A assinatura da conta não está ativa. |
+| `municipio_sem_presumido` | Presumido/Real numa cidade que não aceita esses regimes no Emissor Nacional (a Sefin recusou). Lista de espera. |
 | `bloqueada` | Outro motivo; veja `bloqueio.motivo`. |
 
 ### 5.2 `GET /v1/empresas`
@@ -230,9 +232,11 @@ Cadastra uma empresa cliente na conta. Só no plano **Escritório**.
 
 | Campo | Tipo | Obrigatório | Regra |
 |---|---|---|---|
-| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**. |
+| `cnpj` | string | sim | 14 dígitos com dígito verificador. Empresa **ativa** na Receita, **Simples ou MEI**; **Lucro Presumido ou Real** onde a prefeitura usa o Emissor Nacional para todas as empresas. Cidade recusada (norma ou recusa da Sefin, como São Paulo e DF) devolve `FORA_DO_SIMPLES` com `lista_espera`; cidade onde ainda ninguém emitiu entra com `"municipio_a_conferir": true`, e a primeira nota confirma. |
+| `regime` | string | no Presumido/Real | `"presumido"` ou `"real"`. A Receita só diz "fora do Simples", então quem cadastra informa. Ignorado se a Receita disser MEI ou Simples. |
 | `codigo_servico_nacional` | string | sim | 6 dígitos da lista nacional (cTribNac), por exemplo `"040101"`. Vira o código padrão das notas. |
 | `simples_percentual` | string | no Simples | `"0"` a `"100"`, até 2 casas. Ignorado no MEI. |
+| `tributos_aproximados` | objeto | no Presumido/Real | `{ "federal": "13.45", "estadual": "0", "municipal": "5" }`, de 0 a 100 com até 2 casas; `estadual` ausente vale 0. |
 | `retencao` | objeto | não | `{ "retem_iss": bool, "aliquota_iss": "2" a "5", "retem_inss": bool, "inss_percentual": ">0 e <100" }`. MEI não tem retenção. |
 | `procuracao` | objeto | não | `{ "valida_ate": "AAAA-MM-DD" ou null }`: declara que a empresa já deu procuração ao escritório. |
 
@@ -244,14 +248,16 @@ Respostas:
 - `201` com `aviso` — a empresa foi criada, mas a retenção ou a procuração foram recusadas (o `aviso` traz o erro).
 - `409 CNPJ_JA_CADASTRADO` — o CNPJ está em outra conta do nó.fiscal.
 - `409 EMPRESAS_ACIMA_DO_LIMITE` — o plano já tem o máximo de empresas ativas (`limite` na resposta).
-- `422 CNPJ_NAO_ENCONTRADO`, `CNPJ_INATIVO`, `FORA_DO_SIMPLES` — resposta da Receita.
+- `422 CNPJ_NAO_ENCONTRADO`, `CNPJ_INATIVO`, `FORA_DO_SIMPLES` — resposta da Receita. Fora do Simples numa cidade sem emissor nacional para todos, `FORA_DO_SIMPLES` vem com `"lista_espera": true`.
+- `422 REGIME_A_DECLARAR` — CNPJ fora do Simples: repita com `regime`. `municipio_a_conferir: true` quando ninguém emitiu Presumido na cidade ainda.
+- `201` com `"municipio_a_conferir": true` — criada numa cidade a conferir. Se a Sefin recusar a primeira nota por convênio (E0037/E0038/E0039), a cidade passa a recusada e a `situacao` das empresas Presumido/Real dela vira `municipio_sem_presumido`.
 - `503 RECEITA_INDISPONIVEL` — a consulta à Receita falhou; tente de novo em alguns minutos.
 
 ### 5.4 `GET /v1/empresas/{cnpj}` e `PATCH /v1/empresas/{cnpj}`
 
 `GET` devolve `{ "empresa": { ... } }` ou `404 EMPRESA_NAO_ENCONTRADA`.
 
-`PATCH` aceita qualquer subconjunto de `codigo_servico_nacional`, `simples_percentual`, `retencao` e `procuracao`
+`PATCH` aceita qualquer subconjunto de `codigo_servico_nacional`, `simples_percentual`, `tributos_aproximados`, `retencao` e `procuracao`
 (mesmas regras do `POST`) e devolve `{ "empresa": { ... } }`. Recusas da procuração voltam como
 `409 PROCURACAO_RECUSADA` com `motivo`:
 
@@ -316,6 +322,7 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 | `servico.c_ind_op` / `servico.c_class_trib` | string | não | Reforma Tributária (IBS/CBS): 6 dígitos cada. |
 | `servico.municipio_prestacao_ibge` | string | não | Código IBGE (7 dígitos) do município onde o serviço foi prestado. Ausente = o da empresa. |
 | `servico.obra` | objeto | nos códigos de obra | Dados da obra, obrigatórios nos 13 códigos de construção civil (07.02.01, 07.02.02, 07.04.01, 07.05.01, 07.05.02, 07.06.01, 07.06.02, 07.07.01, 07.08.01, 07.17.01, 07.19.01, 14.14.03, 14.14.04); sem eles, `422` com `motivo: "OBRA_SEM_DADOS"`. Ou `{ "cno": "12.345.67890/12" }` (CNO ou CEI, 12 dígitos), ou o endereço `{ "cep", "logradouro", "numero", "complemento" (opcional), "bairro" }`. A cidade da obra é a de `municipio_prestacao_ibge`. Ignorado nos outros códigos. |
+| `servico.locacao` | objeto | nos códigos de locação | Nota de locação (aluguel), códigos 99.03.01 (bem imóvel) e 99.04.01 (bem móvel). A nota sai sem ISS (não incidência): `retencao.retem_iss: true` é recusado, e o ISS retido do padrão da empresa não vale. **Imóvel**: `{ "imovel": { "cep", "logradouro", "numero", "complemento", "bairro", "municipio_ibge" (ausente = o da empresa), "residencial" (true/false), "inscricao_imobiliaria", "cib" (dispensa o endereço), "copropriedade" (ausente = 100), "valor_total" (o aluguel inteiro, com copropriedade), "vencimento" } }`. **Bem móvel**: `{ "bens": [{ "ncm", "descricao", "quantidade" }] }` (até 1.000). Sem os dados, `422` com `motivo: "LOCACAO_SEM_DADOS"`. **Enquanto a Receita não liberar esses códigos em produção, `422` com `motivo: "LOCACAO_INDISPONIVEL"`.** |
 | `informacoes_complementares` | string | não | Até 2.000 caracteres (dados bancários, observações). Vai no campo de informações complementares da NFS-e. |
 | `valor` | string | sim | Valor do serviço, positivo, até 2 casas. |
 | `retencao` | objeto | não | Ver abaixo. Ausente = padrão da empresa. |
@@ -329,6 +336,7 @@ A **NF-e não aceita procuração**: para emitir NF-e, a empresa precisa do pró
 - `retem_iss` / `retem_inss`: `true` ou `false`. Campo ausente = padrão da empresa para aquele imposto.
 - `aliquota_iss`: de 2 a 5 (%). Obrigatória com ISS retido se a empresa não tiver alíquota padrão.
 - `inss`: percentual (`"11%"`) ou valor em reais (`"165.00"`).
+- `irrf` e `csrf` (só **Lucro Presumido e Real**): IRRF retido e PIS + COFINS + CSLL retidos (somados), em percentual (`"1,5%"`, `"4,65%"`) ou valor (`"15.00"`). Na DPS viram `vRetIRRF` e `vRetCSLL` (com `tpRetPisCofins` 3). Não há padrão por empresa: vão no pedido.
 - ISS retido só para **tomador CNPJ**; o endereço do tomador (obrigatório na Sefin com ISS retido) é o de `tomador.endereco` ou o da Receita. MEI não tem retenção.
 
 Respostas:
@@ -657,6 +665,7 @@ Campos extras (`campo`, `bloqueio`, `motivo`, `limite`, `problemas`) ficam **for
 | 422 | `VALIDATION_FAILED` | Campo inválido (`campo`, às vezes `motivo` ou `problemas`). |
 | 422 | `UNKNOWN_FIELD` | Campo não aceito. |
 | 422 | `CNPJ_NAO_ENCONTRADO` / `CNPJ_INATIVO` / `FORA_DO_SIMPLES` | Resposta da Receita no cadastro. |
+| 422 | `REGIME_A_DECLARAR` | CNPJ fora do Simples: informe `regime` (`presumido` ou `real`). |
 | 500 | `INTERNAL` | Erro do nó.fiscal. Pode repetir (idempotente). |
 | 501 | `SANDBOX_SEM_NFE` | NF-e com a chave sandbox (ainda sem sandbox de NF-e). |
 | 503 | `RECEITA_INDISPONIVEL` | Consulta de CNPJ fora do ar. Tente de novo. |

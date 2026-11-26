@@ -5,7 +5,7 @@
 // Relatórios; a empresa por procuração assina com o A1 do escritório (a nó nunca assina); a planilha tem a mesma
 // leitura, validação, franquia e confirmação do WhatsApp, sem telefone, e o retorno vai ao e-mail da conta.
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ConferenciaProcuracao, DistribuicaoAdn } from '../_lib/adn.js'
 import type { CatalogoDeServicos } from '../_lib/agente/catalogo-servicos.js'
 import { closeSharedDb } from '../_lib/db.js'
@@ -160,6 +160,7 @@ describe('nota avulsa', () => {
       informacoes_complementares: null,
       local_prestacao: null,
       obra: null,
+      locacao: null,
       valor: '1234.50',
       valor_texto: 'R$ 1.234,50',
       retencao: null,
@@ -214,6 +215,42 @@ describe('nota avulsa', () => {
     expect((daNota?.entregas ?? []).map((x) => [x.canal, x.destino]).sort()).toEqual(
       [['email', 'maria@tomador.test'], ['email', e.mae.ownerEmail], ['whatsapp', e.mae.ownerPhone]].sort(),
     )
+  })
+
+  it('locação (99.03.01): desligada, o campo do código explica; ligada, o resumo diz que é locação e o payload leva o imóvel, sem ISS', async () => {
+    const { dono, cliente } = await novoEscritorio()
+    await admin.db.query(`update nofiscal.fiscal_tenants set retem_iss = true, aliquota_iss = 2 where id = $1`, [cliente.id])
+    const pedido = {
+      tenant_id: cliente.id, documento: CNPJ_TOMADOR, nome: 'Inquilino Ltda', email: '', valor: '2.500,00', codigo: '99.03.01', descricao: 'Aluguel de dezembro',
+      locacao_cep: '13015-100', locacao_logradouro: 'Rua das Flores', locacao_numero: '120', locacao_bairro: 'Centro', locacao_cidade: 'Campinas/SP', locacao_residencial: 'nao',
+    }
+    try {
+      vi.stubEnv('NOFISCAL_LOCACAO', '')
+      const desligada = await chamar(dono, { ...pedido, acao: 'avulsa_conferir' })
+      expect(desligada.status).toBe(422)
+      expect(desligada.corpo).toMatchObject({ campo: 'codigo', error: { message: expect.stringMatching(/assim que a Receita liberar/) } })
+
+      vi.stubEnv('NOFISCAL_LOCACAO', '1')
+      const semDados = await chamar(dono, { ...pedido, locacao_residencial: '', acao: 'avulsa_conferir' })
+      expect(semDados.corpo).toMatchObject({ campo: 'locacao' })
+      const conferido = await chamar(dono, { ...pedido, acao: 'avulsa_conferir' })
+      expect(conferido.status).toBe(200)
+      expect((conferido.corpo.resumo as Record<string, unknown>).locacao).toEqual([
+        'Tipo: locação de imóvel não residencial (99.03.01), sem ISS',
+        'Imóvel: Rua das Flores, 120 - Centro, CEP 13015-100, Campinas/SP',
+      ])
+      // ISS retido do padrão da empresa não vale na locação.
+      expect((conferido.corpo.resumo as Record<string, unknown>).retencao).toBeNull()
+      const emitida = await chamar(dono, { ...pedido, acao: 'avulsa_emitir', chave: randomUUID() })
+      expect(emitida.status).toBe(200)
+      const nota = (await notasDoTenant(cliente.id)).find((n) => n.id === emitida.corpo.invoice_id)
+      expect(nota?.payload).toMatchObject({
+        servico: { codigo_servico_nacional: '990301', locacao: { imovel: { municipio_ibge: '3509502', cep: '13015100', residencial: false } } },
+      })
+      expect((nota?.payload as Record<string, unknown>).retencao).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('empresa bloqueada não emite (mesmo emission_block do WhatsApp), e empresa de outra conta nem é aceita', async () => {

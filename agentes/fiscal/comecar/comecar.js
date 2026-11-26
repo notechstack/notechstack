@@ -14,7 +14,9 @@
   var MSG = {
     cnpj: 'CNPJ inválido',
     municipio: 'Seu município ainda não emite pelo padrão nacional. Para empresas do Simples, só atendemos cidades que já usam o Emissor Nacional',
-    foraDoSimples: 'O nó.fiscal atende MEI e empresas do Simples Nacional. Na Receita Federal, este CNPJ não está no Simples',
+    foraDoSimples: 'O nó.fiscal atende MEI, Simples Nacional e, em algumas cidades, Lucro Presumido e Real. Na Receita Federal, este CNPJ não está no Simples',
+    regime: 'Escolha o regime da empresa: Lucro Presumido ou Lucro Real.',
+    listaEspera: 'Quer ser avisado quando atendermos o Lucro Presumido na sua cidade? <a data-lead="presumido" href="https://wa.me/5511939289413?text=Ol%C3%A1!%20Minha%20empresa%20%C3%A9%20do%20Lucro%20Presumido%20e%20quero%20ser%20avisado%20quando%20o%20n%C3%B3.fiscal%20atender.%20Minha%20cidade%20%C3%A9%3A%20" target="_blank" rel="noopener noreferrer">Fale com a nó pelo WhatsApp</a>.',
     codigoIncorreto: 'Código incorreto',
     codigoNovo: 'Peça um código novo',
     cnpjComConta: 'Este CNPJ já tem conta. <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>',
@@ -405,6 +407,7 @@
   function validarEtapa1(d) {
     var erros = {};
     if (!nf.cnpjValido(d.cnpj)) erros['fc-cnpj'] = MSG.cnpj;
+    if (!$('fc-regime').hidden && !regimeEscolhido()) erros['fc-regime'] = MSG.regime;
     if (d.empresa.length < 2) erros['fc-empresa'] = st.escritorio ? 'Informe o nome do escritório.' : 'Informe o nome da empresa.';
     if (d.responsavel.length < 3) erros['fc-responsavel'] = 'Informe o nome do responsável.';
     if (!nf.emailValido(d.email)) erros['fc-email'] = 'Informe um e-mail válido.';
@@ -413,7 +416,16 @@
     return erros;
   }
   // Sem o regime na resposta (fiscal-cadastro anterior ao MEI), a dica fica como antes.
-  var ROTULO_REGIME = { mei: 'MEI', simples: 'Simples Nacional' };
+  var ROTULO_REGIME = { mei: 'MEI', simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' };
+  /** Fora do Simples numa cidade de emissor nacional pleno: fiscal-cadastro devolve `regimes_possiveis` e a pessoa escolhe. */
+  function regimeEscolhido() {
+    var r = document.querySelector('input[name="fc-regime"]:checked');
+    return r ? r.value : '';
+  }
+  function mostrarRegime(possiveis) {
+    $('fc-regime').hidden = !possiveis;
+    if (!possiveis) { var r = document.querySelector('input[name="fc-regime"]:checked'); if (r) r.checked = false; nf.erroCampo('fc-regime', ''); }
+  }
   function municipioBloqueado() { return !!(st.consulta && st.consulta.cnpj === st.cnpjConsultado && st.consulta.padrao_nacional === false); }
 
   function consultarCnpj() {
@@ -423,13 +435,19 @@
     if (cnpj === st.cnpjConsultado && st.consultando) return st.consultando;
     st.cnpjConsultado = cnpj;
     st.consulta = null;
+    mostrarRegime(false);
     nf.erroCampo('fc-cnpj', '');
     nf.aviso($('fc-aviso-1'), '');
     $('fc-cnpj-dica').textContent = 'Consultando o CNPJ…';
     st.consultando = nf.funcao('fiscal-cadastro', { acao: 'consultar_cnpj', cnpj: cnpj }, { auth: false }).then(function (r) {
       if (cnpj !== st.cnpjConsultado) return;
       if (r.ok) {
-        st.consulta = { cnpj: cnpj, razao_social: r.dados.razao_social, municipio: r.dados.municipio, uf: r.dados.uf, cnae: r.dados.cnae, regime: r.dados.regime, padrao_nacional: r.dados.padrao_nacional };
+        st.consulta = { cnpj: cnpj, razao_social: r.dados.razao_social, municipio: r.dados.municipio, uf: r.dados.uf, cnae: r.dados.cnae, regime: r.dados.regime, padrao_nacional: r.dados.padrao_nacional, regimes_possiveis: r.dados.regimes_possiveis || null };
+        mostrarRegime(!!st.consulta.regimes_possiveis);
+        // Cidade onde ninguém emitiu Presumido ainda: a primeira nota confirma (mensagem do fiscal-cadastro).
+        if (st.consulta.regimes_possiveis) $('fc-regime-dica').textContent = r.dados.municipio_a_conferir && r.dados.mensagem_regime
+          ? r.dados.mensagem_regime + '.'
+          : 'Este CNPJ não está no Simples. Na sua cidade, a prefeitura usa o Emissor Nacional para todas as empresas, e o nó.fiscal emite também para Lucro Presumido e Real.';
         if (r.dados.razao_social) $('fc-empresa').value = r.dados.razao_social;
         $('fc-cnpj-dica').textContent = [r.dados.municipio && (r.dados.municipio + (r.dados.uf ? '/' + r.dados.uf : '')), r.dados.cnae && ('CNAE ' + r.dados.cnae), ROTULO_REGIME[r.dados.regime]].filter(Boolean).join(' · ');
         if (r.dados.padrao_nacional === false) nf.aviso($('fc-aviso-1'), MSG.municipio, 'erro');
@@ -444,6 +462,7 @@
         $('fc-cnpj-dica').textContent = '';
         st.cnpjConsultado = ''; // ao enviar, consulta de novo e mostra o erro outra vez
         nf.erroCampo('fc-cnpj', r.mensagem || (r.codigo === 'CNPJ_INATIVO' ? 'Este CNPJ não está ativo na Receita Federal.' : MSG.foraDoSimples));
+        if (r.dados && r.dados.lista_espera) nf.aviso($('fc-aviso-1'), MSG.listaEspera, 'erro');
       } else {
         // Consulta fora do ar (503) ou sem rede: sem a Receita confirmar, não segue (Lucca, 22/10/2026).
         $('fc-cnpj-dica').textContent = '';
@@ -471,7 +490,8 @@
       if (!st.consulta || st.consulta.cnpj !== d.cnpj) return;
       d.empresa = nf.texto($('fc-empresa').value);
       nf.cadastro.gravar(d);
-      if (medir) medir.a1(d.a1, st.consulta.regime, st.plano);
+      if (st.consulta.regimes_possiveis) st.regimeDeclarado = regimeEscolhido();
+      if (medir) medir.a1(d.a1, st.consulta.regime || st.regimeDeclarado, st.plano);
       return nf.sessao.token().then(function (token) {
         if (token) return criar();
         return pedirCodigo(d.email, $('fc-aviso-1'));
@@ -524,6 +544,8 @@
     return nf.funcao('fiscal-cadastro', {
       acao: 'criar', cnpj: d.cnpj, razao_social: d.empresa, responsavel: d.responsavel,
       telefone: nf.telefoneE164(d.telefone), plano: st.plano,
+      // Presumido ou Real: só vale se a Receita disser "fora do Simples" (fiscal-cadastro confere).
+      regime: st.regimeDeclarado || undefined,
       // Escritório: fiscal-cadastro exige a faixa no plano quando vem o tipo.
       tipo: st.escritorio ? 'escritorio' : undefined
     }).then(function (r) {
@@ -539,7 +561,11 @@
       else if (r.codigo === 'TELEFONE_DE_OUTRA_EMPRESA') { aviso = MSG.telefoneOutra; campo = ['fc-telefone', MSG.telefoneOutra]; }
       else if (r.codigo === 'CONTA_JA_TEM_EMPRESA') aviso = (st.escritorio ? 'Este e-mail já tem uma conta no nó.fiscal.' : 'Este e-mail já tem uma empresa cadastrada.') + ' <a href="/agentes/fiscal/conta/">Entre pela sua conta</a>';
       else if (r.codigo === 'MUNICIPIO_FORA_DO_PADRAO') aviso = MSG.municipio;
-      else if (r.codigo === 'CNPJ_FORA_DO_SIMPLES') campo = ['fc-cnpj', MSG.foraDoSimples];
+      else if (r.codigo === 'CNPJ_FORA_DO_SIMPLES') {
+        campo = ['fc-cnpj', r.mensagem || MSG.foraDoSimples];
+        if (r.dados && r.dados.lista_espera) aviso = MSG.listaEspera;
+      }
+      else if (r.codigo === 'REGIME_A_DECLARAR') { mostrarRegime(true); campo = ['fc-regime', MSG.regime]; }
       else if (r.codigo === 'CNPJ_INVALIDO') campo = ['fc-cnpj', MSG.cnpj];
       else if (r.codigo === 'CNPJ_NAO_ENCONTRADO') campo = ['fc-cnpj', 'Não encontramos este CNPJ nos dados públicos. Confira os números.'];
       else aviso = nf.esc(r.mensagem || MSG.generico);
@@ -848,20 +874,28 @@
 
   /* ---------- 5 · Dados fiscais ---------- */
   /** MEI não informa o percentual do Simples na nota (a Sefin recusa, regra E0710). */
-  function ehMei() {
+  function regimeAtual() {
     var empresa = st.estado && st.estado.empresa;
-    return ((empresa && empresa.regime) || (st.consulta && st.consulta.regime)) === 'mei';
+    return (empresa && empresa.regime) || (st.consulta && (st.consulta.regime || st.regimeDeclarado)) || '';
   }
+  function ehMei() { return regimeAtual() === 'mei'; }
+  /** Lucro Presumido e Real: pTotTrib federal e municipal no lugar do percentual do Simples (E0713). */
+  function ehNaoOptante() { var r = regimeAtual(); return r === 'presumido' || r === 'real'; }
   /** Contador e resumo: Pro e Escritório (nofiscal.plano_completo, migração 20261105180000). */
   function planoCompleto() { return st.plano === 'pro' || ehFaixa(st.plano); }
   function abrirFiscal() {
     var pro = planoCompleto();
     $('fc-pro').hidden = !pro;
-    $('fc-campo-percentual').hidden = ehMei();
+    $('fc-campo-percentual').hidden = ehMei() || ehNaoOptante();
+    $('fc-campo-tottrib').hidden = !ehNaoOptante();
     var dia = $('fc-resumo-dia-mes');
     if (dia.options.length === 0) for (var i = 1; i <= 28; i++) { var o = document.createElement('option'); o.value = String(i); o.textContent = String(i); dia.appendChild(o); }
     var f = (st.estado && st.estado.fiscal) || {};
     if (f.p_tot_trib_sn != null && !$('fc-percentual').value) $('fc-percentual').value = String(f.p_tot_trib_sn).replace('.', ',');
+    if (f.p_tot_trib && !$('fc-pct-fed').value) {
+      $('fc-pct-fed').value = String(f.p_tot_trib.fed).replace('.', ',');
+      $('fc-pct-mun').value = String(f.p_tot_trib.mun).replace('.', ',');
+    }
     if (f.contador_email && !$('fc-contador').value) $('fc-contador').value = f.contador_email;
     if (f.resumo && f.resumo.frequencia) {
       marcarResumo(f.resumo.frequencia);
@@ -885,19 +919,25 @@
     }
     return null;
   }
-  var CAMPO_FISCAL = { codigo_servico_nacional: 'fc-codigo-servico', p_tot_trib_sn: 'fc-percentual', contador_email: 'fc-contador' };
+  var CAMPO_FISCAL = { codigo_servico_nacional: 'fc-codigo-servico', p_tot_trib_sn: 'fc-percentual', p_tot_trib: 'fc-pct-fed', contador_email: 'fc-contador' };
   function enviarFiscal(ev) {
     ev.preventDefault();
     Object.keys(CAMPO_FISCAL).forEach(function (k) { nf.erroCampo(CAMPO_FISCAL[k], ''); });
     nf.aviso($('fc-aviso-5'), '');
     var codigo = st.seletor ? st.seletor.valor() : '';
-    var mei = ehMei();
-    var pct = mei ? null : nf.percentual($('fc-percentual').value);
+    var mei = ehMei(), normal = ehNaoOptante();
+    var pct = mei || normal ? null : nf.percentual($('fc-percentual').value);
     var falhou = false;
+    nf.erroCampo('fc-pct-mun', '');
     if (!/^\d{6}$/.test(codigo)) { nf.erroCampo('fc-codigo-servico', 'Escolha o código de serviço.'); falhou = true; }
-    if (!mei && pct === null) { nf.erroCampo('fc-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+    if (!mei && !normal && pct === null) { nf.erroCampo('fc-percentual', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
     var corpo = { acao: 'configurar', codigo_servico_nacional: codigo };
-    if (!mei) corpo.p_tot_trib_sn = pct;
+    if (normal) {
+      var fed = nf.percentual($('fc-pct-fed').value), mun = nf.percentual($('fc-pct-mun').value);
+      if (fed === null) { nf.erroCampo('fc-pct-fed', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+      if (mun === null) { nf.erroCampo('fc-pct-mun', 'Use um número de 0 a 100, com até 2 casas.'); falhou = true; }
+      corpo.p_tot_trib = { fed: fed, est: '0', mun: mun };
+    } else if (!mei) corpo.p_tot_trib_sn = pct;
     if (planoCompleto()) {
       var contador = nf.texto($('fc-contador').value);
       if (contador && !nf.emailValido(contador)) { nf.erroCampo('fc-contador', 'Informe um e-mail válido ou deixe em branco.'); falhou = true; }

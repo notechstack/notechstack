@@ -21,7 +21,7 @@ import {
 import { sharedTestCertificate } from '../../_tests/certs.js'
 import { openTestDb } from '../../_tests/fixtures.js'
 import { fakeSefin } from '../../_tests/sefin-fake.js'
-import { errosXsd } from '../../_tests/xsd.js'
+import { errosXsd, pacoteDaDps } from '../../_tests/xsd.js'
 import { createSefinClient } from '../sefin-client.js'
 import { processarMensagem, TEXTOS, type ConversaDeps } from './conversa.js'
 import type { Parsed } from './interprete.js'
@@ -93,7 +93,7 @@ describe('local da prestação pelo WhatsApp', () => {
     const [dps] = sefin.requests.filter((r) => r.method === 'POST' && r.path === '/nfse').map((r) => r.xml ?? '')
     expect(dps).toContain('<serv><locPrest><cLocPrestacao>3509502</cLocPrestacao></locPrest>')
     expect(dps).toContain(`<cLocEmi>${s.sede}</cLocEmi>`)
-    expect(await errosXsd(dps, dps.includes('<finNFSe>') ? 'producao-restrita-20261020' : 'producao-v1.01-20260209')).toEqual([])
+    expect(await errosXsd(dps, pacoteDaDps(dps))).toEqual([])
   })
 
   it('cidade homônima: pergunta a UF; com a resposta, o resumo sai com Cidade/UF', async () => {

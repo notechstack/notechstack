@@ -169,6 +169,7 @@
           <small class="nf-erro" id="fa-codigo-servico-erro" hidden></small>
         </fieldset>
         <div class="nf-campo" id="fa-campo-percentual"><label for="fa-percentual">Percentual de tributos do Simples (%)</label><input id="fa-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-percentual-erro" hidden></small></div>
+        <div class="nf-campo" id="fa-campo-tottrib" hidden><label for="fa-pct-fed">Tributos federais aproximados (%)</label><input id="fa-pct-fed" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-pct-fed-erro" hidden></small><label for="fa-pct-mun">Tributos municipais aproximados (%)</label><input id="fa-pct-mun" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-pct-mun-erro" hidden></small><small class="nf-dica">Lucro Presumido e Real (Lei 12.741): percentuais aproximados da tabela do IBPT ou da contabilidade. O estadual fica em 0.</small></div>
         <div class="nf-campo"><label for="fa-nbs">NBS padrão (opcional)</label><input id="fa-nbs" inputmode="decimal" autocomplete="off" maxlength="14" placeholder="1.1502.10.00" aria-describedby="fa-nbs-dica"><small class="nf-dica" id="fa-nbs-dica">Código da NBS 2.0 (9 números) que vai nas notas quando o pedido não traz outro. Na dúvida, pergunte ao seu contador ou deixe em branco.</small><small class="nf-erro" id="fa-nbs-erro" hidden></small></div>
         <div class="nf-pro" id="fa-pro" hidden>
           <div class="nf-campo nf-campo--largo"><label for="fa-contador">E-mail do contador (opcional)</label><input id="fa-contador" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-contador-erro" hidden></small></div>
@@ -226,7 +227,13 @@
         <div class="nf-acoes"><button type="button" class="fi-btn fi-btn--tinta" id="fa-abrir-adicionar" aria-expanded="false" aria-controls="fa-form-adicionar">Adicionar empresa</button></div>
         <form id="fa-form-adicionar" class="nf-form nf-bloco" novalidate hidden>
           <div class="nf-campo"><label for="fa-add-cnpj">CNPJ da empresa</label><input id="fa-add-cnpj" inputmode="numeric" autocomplete="off" maxlength="18" placeholder="00.000.000/0000-00"><small class="nf-erro" id="fa-add-cnpj-erro" hidden></small></div>
-          <p class="nf-dica nf-campo--largo">Razão social, município e regime vêm da Receita Federal. A empresa precisa ser MEI ou do Simples Nacional.</p>
+          <p class="nf-dica nf-campo--largo">Razão social, município e regime vêm da Receita Federal. A empresa precisa ser MEI ou do Simples Nacional; Lucro Presumido e Real, nas cidades que usam o Emissor Nacional para todas as empresas (cidade nova é conferida na primeira nota).</p>
+          <fieldset class="nf-grupo nf-campo--largo" id="fa-add-regime" hidden>
+            <legend>Regime tributário da empresa</legend>
+            <label class="nf-opcao"><input type="radio" name="fa-add-regime" value="presumido"><span>Lucro Presumido</span></label>
+            <label class="nf-opcao"><input type="radio" name="fa-add-regime" value="real"><span>Lucro Real</span></label>
+            <small class="nf-erro" id="fa-add-regime-erro" hidden></small>
+          </fieldset>
           <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-add-retencao">
             <legend>Retenção nas notas desta empresa</legend>
             <label class="nf-aceite"><input type="checkbox" id="fa-add-retem-iss" aria-controls="fa-add-campo-iss" aria-expanded="false"> <span>Tem retenção de ISS? O cliente que recebe a nota retém o ISS.</span></label>
@@ -276,6 +283,7 @@
               <small class="nf-erro" id="fa-emp-codigo-servico-erro" hidden></small>
             </fieldset>
             <div class="nf-campo" id="fa-emp-campo-percentual"><label for="fa-emp-percentual">Percentual de tributos do Simples (%)</label><input id="fa-emp-percentual" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-percentual-erro" hidden></small></div>
+            <div class="nf-campo" id="fa-emp-campo-tottrib" hidden><label for="fa-emp-pct-fed">Tributos federais aproximados (%)</label><input id="fa-emp-pct-fed" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-pct-fed-erro" hidden></small><label for="fa-emp-pct-mun">Tributos municipais aproximados (%)</label><input id="fa-emp-pct-mun" inputmode="decimal" maxlength="6"><small class="nf-erro" id="fa-emp-pct-mun-erro" hidden></small><small class="nf-dica">Lucro Presumido e Real (Lei 12.741): percentuais aproximados da tabela do IBPT ou da contabilidade. O estadual fica em 0.</small></div>
             <div class="nf-campo"><label for="fa-emp-nbs">NBS padrão (opcional)</label><input id="fa-emp-nbs" inputmode="decimal" autocomplete="off" maxlength="14" placeholder="1.1502.10.00" aria-describedby="fa-emp-nbs-dica"><small class="nf-dica" id="fa-emp-nbs-dica">Código da NBS 2.0 (9 números) que vai nas notas desta empresa quando o pedido não traz outro. Deixe em branco se não usar.</small><small class="nf-erro" id="fa-emp-nbs-erro" hidden></small></div>
             <fieldset class="nf-grupo nf-grupo--coluna nf-retencao" id="fa-emp-retencao">
               <legend>Retenção nas notas desta empresa</legend>
@@ -348,6 +356,21 @@
             <div class="nf-campo"><label for="fa-av-obra-cep">CEP</label><input id="fa-av-obra-cep" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="12900-000"></div><div class="nf-campo"><label for="fa-av-obra-logradouro">Rua</label><input id="fa-av-obra-logradouro" autocomplete="off" maxlength="255" placeholder="Rua das Flores"></div><div class="nf-campo"><label for="fa-av-obra-numero">Número</label><input id="fa-av-obra-numero" autocomplete="off" maxlength="60" placeholder="120 ou s/n"></div><div class="nf-campo"><label for="fa-av-obra-complemento">Complemento (opcional)</label><input id="fa-av-obra-complemento" autocomplete="off" maxlength="156" placeholder="Lote 3, quadra B"></div><div class="nf-campo"><label for="fa-av-obra-bairro">Bairro</label><input id="fa-av-obra-bairro" autocomplete="off" maxlength="60" placeholder="Centro"></div><div class="nf-campo"><label for="fa-av-obra-cno">Ou o CNO da obra</label><input id="fa-av-obra-cno" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="12.345.67890/12"></div>
             <small class="nf-erro" id="fa-av-obra-erro" style="grid-column:1/-1" hidden></small>
           </fieldset>
+          <div class="nf-campo--largo" id="fa-av-loc" hidden>
+            <fieldset class="nf-grupo" id="fa-av-loc-imovel" hidden>
+            <legend>Dados do imóvel alugado</legend>
+            <small class="nf-dica" style="grid-column:1/-1">Nota de locação de imóvel (99.03.01): sai sem ISS, e a Receita exige o endereço e o tipo do imóvel.</small>
+              <div class="nf-campo"><label for="fa-av-loc-cep">CEP do imóvel</label><input id="fa-av-loc-cep" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="13015-100"></div><div class="nf-campo"><label for="fa-av-loc-logradouro">Rua</label><input id="fa-av-loc-logradouro" autocomplete="off" maxlength="255" placeholder="Rua das Flores"></div><div class="nf-campo"><label for="fa-av-loc-numero">Número</label><input id="fa-av-loc-numero" autocomplete="off" maxlength="60" placeholder="120"></div><div class="nf-campo"><label for="fa-av-loc-complemento">Complemento (opcional)</label><input id="fa-av-loc-complemento" autocomplete="off" maxlength="156" placeholder="Apto 32"></div><div class="nf-campo"><label for="fa-av-loc-bairro">Bairro (opcional)</label><input id="fa-av-loc-bairro" autocomplete="off" maxlength="60" placeholder="Centro"></div><div class="nf-campo"><label for="fa-av-loc-cidade">Cidade do imóvel (opcional)</label><input id="fa-av-loc-cidade" autocomplete="off" maxlength="80" placeholder="Em branco, a cidade da empresa"></div>
+              <div class="nf-campo"><label for="fa-av-loc-residencial">Tipo do imóvel</label><select id="fa-av-loc-residencial"><option value="">Escolha</option><option value="sim">Residencial</option><option value="nao">Comercial (não residencial)</option></select></div><div class="nf-campo"><label for="fa-av-loc-inscricao">Inscrição imobiliária (opcional)</label><input id="fa-av-loc-inscricao" autocomplete="off" maxlength="30" placeholder="A do IPTU"></div><div class="nf-campo"><label for="fa-av-loc-vencimento">Vencimento do aluguel (opcional)</label><input id="fa-av-loc-vencimento" type="date"></div>
+              <div class="nf-campo"><label for="fa-av-loc-copropriedade">Sua parte no imóvel (opcional)</label><input id="fa-av-loc-copropriedade" inputmode="decimal" autocomplete="off" maxlength="7" placeholder="100%"></div><div class="nf-campo"><label for="fa-av-loc-valor-total">Aluguel inteiro (com copropriedade)</label><input id="fa-av-loc-valor-total" inputmode="decimal" autocomplete="off" maxlength="20" placeholder="5.000,00"></div>
+            </fieldset>
+            <fieldset class="nf-grupo" id="fa-av-loc-bem" hidden>
+            <legend>Bem alugado</legend>
+            <small class="nf-dica" style="grid-column:1/-1">Nota de locação de bem móvel (99.04.01): sai sem ISS, e a Receita exige o NCM do bem.</small>
+              <div class="nf-campo"><label for="fa-av-loc-bem">Bem alugado</label><input id="fa-av-loc-bem" autocomplete="off" maxlength="150" placeholder="Betoneira 400 litros"></div><div class="nf-campo"><label for="fa-av-loc-ncm">NCM do bem</label><input id="fa-av-loc-ncm" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="8474.31.00" aria-describedby="fa-av-loc-ncm-dica"><small class="nf-dica" id="fa-av-loc-ncm-dica">8 dígitos, está na nota de compra do bem.</small></div><div class="nf-campo"><label for="fa-av-loc-quantidade">Quantidade</label><input id="fa-av-loc-quantidade" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="1"></div>
+            </fieldset>
+            <small class="nf-erro" id="fa-av-loc-erro" hidden></small>
+          </div>
           <div class="nf-campo nf-campo--largo"><label for="fa-av-info">Informações complementares (opcional)</label><textarea id="fa-av-info" rows="3" maxlength="2000" aria-describedby="fa-av-info-contador" placeholder="Dados bancários, observações"></textarea><small class="nf-contador" id="fa-av-info-contador" aria-live="polite">0/2.000</small><small class="nf-erro" id="fa-av-info-erro" hidden></small></div>
           <div class="nf-acoes"><button type="submit" class="fi-btn fi-btn--tinta" id="fa-av-conferir">Conferir a nota</button></div>
         </form>

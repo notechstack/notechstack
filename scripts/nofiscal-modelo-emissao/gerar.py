@@ -154,6 +154,34 @@ regras = [
 for k, r in enumerate(regras):
     c = guia.cell(row=REGRAS + 1 + k, column=1, value=f'{k + 1}. {r}')
     c.font = Font(name='Calibri', size=11)
+
+# Locação (26/11/2026): códigos 99.03.01 (imóvel) e 99.04.01 (bem móvel), sem ISS. As colunas não entram na aba
+# "Notas" (a maioria não emite locação); quem emite acrescenta as que precisar. Ficam atrás de NOFISCAL_LOCACAO.
+LOC = REGRAS + 2 + len(regras)
+titulo(LOC, 'Notas de locação (aluguel)')
+guia.cell(row=LOC + 1, column=1, value='A nota de locação entra no sistema assim que a Receita liberar os códigos 99.03.01 e 99.04.01 no ambiente nacional. Para emitir, use o código na coluna codigo_servico e acrescente à aba "Notas" as colunas abaixo.').font = Font(name='Calibri', color=CINZA)
+cabecalho(LOC + 2, ['coluna', 'obrigatória?', 'o que colocar', 'exemplo'])
+locacao = [
+    ['imovel_cep', 'sim (99.03.01)', 'CEP do imóvel alugado.', '13015-100'],
+    ['imovel_logradouro', 'sim (99.03.01)', 'Rua do imóvel.', 'Rua das Flores'],
+    ['imovel_numero', 'sim (99.03.01)', 'Número do imóvel.', '120'],
+    ['imovel_complemento', 'não', 'Apartamento, sala, bloco.', 'apto 32'],
+    ['imovel_bairro', 'não', 'Bairro do imóvel.', 'Centro'],
+    ['imovel_cidade', 'não', 'Cidade do imóvel com a UF. Em branco, vale a cidade da empresa.', 'Campinas/SP'],
+    ['imovel_residencial', 'sim (99.03.01)', 'sim (casa, apartamento) ou não (sala, loja, galpão).', 'sim'],
+    ['imovel_inscricao', 'não', 'Inscrição imobiliária (a do IPTU).', '3423.12.345.0001'],
+    ['imovel_cib', 'não', 'Código do Cadastro Imobiliário Brasileiro (8 caracteres). Com ele, o endereço pode ficar em branco.', 'ABC12345'],
+    ['imovel_copropriedade', 'não', 'Parte do locador no imóvel, quando há mais de um dono. Em branco, 100%.', '50%'],
+    ['imovel_valor_total', 'com copropriedade', 'O aluguel inteiro; a coluna valor é a parte do locador (valor = copropriedade × valor total).', '5.000,00'],
+    ['imovel_vencimento', 'não', 'Data de vencimento do aluguel.', '10/12/2026'],
+    ['bem_ncm', 'sim (99.04.01)', 'NCM do bem alugado, 8 dígitos (está na nota de compra do bem).', '8474.31.00'],
+    ['bem_descricao', 'sim (99.04.01)', 'O que é o bem.', 'Betoneira 400 litros'],
+    ['bem_quantidade', 'não', 'Quantidade de bens. Em branco, 1.', '2'],
+]
+for k, linha in enumerate(locacao):
+    linha_tabela(LOC + 3 + k, linha)
+    guia.row_dimensions[LOC + 3 + k].height = 30
+guia.cell(row=LOC + 3 + len(locacao), column=1, value='Locação não tem ISS: deixe iss_retido em branco ou "não".').font = Font(name='Calibri', italic=True, color=CINZA)
 guia.sheet_view.showGridLines = False
 
 wb.properties.creator = 'nó.fiscal'

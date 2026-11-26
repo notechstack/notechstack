@@ -12,6 +12,7 @@ import { lerEnderecoEscrito, registrarSemEndereco } from '../endereco-tomador.js
 import { createOrGetInvoice } from '../invoices.js'
 import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio } from '../local-prestacao.js'
 import { exigeObra, lerObra, type Obra } from '../obra.js'
+import { ehLocacao, lerLocacao, locacaoLigada, type Locacao } from '../locacao.js'
 import { logEvent } from '../log.js'
 import type { InvoicePayload } from '../validation.js'
 import {
@@ -67,6 +68,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `tomador_*` (Robson, Bragantina,
 // 24/11/2026), opcionais: o endereço do tomador, que prevalece sobre o da Receita; com CPF, é o único jeito de a nota
 // sair com endereço. `tomador_municipio_ibge` aceita o código IBGE ou "Cidade/UF" (cabeçalho `tomador_municipio` vale).
+// `imovel_*` e `bem_*` (26/11/2026), opcionais: os dados da locação (locacao.ts), obrigatórios nas linhas com código
+// 99.03.01 (imóvel: cidade, CEP, rua, número, residencial sim/não; ou o CIB) e 99.04.01 (bem: NCM, descrição,
+// quantidade) e ignorados nas demais.
 export const CAMPOS = [
   'cnpj_prestador',
   'cpf_cnpj_tomador',
@@ -90,6 +94,21 @@ export const CAMPOS = [
   'tomador_complemento',
   'tomador_bairro',
   'tomador_municipio_ibge',
+  'imovel_cidade',
+  'imovel_cep',
+  'imovel_logradouro',
+  'imovel_numero',
+  'imovel_complemento',
+  'imovel_bairro',
+  'imovel_inscricao',
+  'imovel_cib',
+  'imovel_residencial',
+  'imovel_copropriedade',
+  'imovel_valor_total',
+  'imovel_vencimento',
+  'bem_ncm',
+  'bem_descricao',
+  'bem_quantidade',
 ] as const
 export type Campo = (typeof CAMPOS)[number]
 
@@ -113,6 +132,10 @@ export const CODIGOS_DE_PROBLEMA = [
   'OBRA_SEM_DADOS',
   'OBRA_INVALIDA',
   'ENDERECO_TOMADOR_INVALIDO',
+  'LOCACAO_INDISPONIVEL',
+  'LOCACAO_SEM_DADOS',
+  'LOCACAO_INVALIDA',
+  'LOCACAO_COM_ISS',
   ...PROBLEMAS_DE_LOCAL,
   ...PROBLEMAS_DE_RETENCAO,
 ] as const
@@ -437,6 +460,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
         ]),
       ],
       'Nas notas de construção civil, também obra_cep, obra_logradouro, obra_numero, obra_complemento (opcional) e obra_bairro, ou obra_cno.',
+      'Nas notas de locação (99.03.01 e 99.04.01), também imovel_cep, imovel_logradouro, imovel_numero, imovel_residencial (sim ou não) e, se quiser, imovel_complemento, imovel_bairro, imovel_cidade, imovel_inscricao, imovel_cib, imovel_copropriedade, imovel_valor_total e imovel_vencimento; ou bem_ncm, bem_descricao e bem_quantidade.',
     ],
     acao: `Modelo para baixar: ${MODELO_DA_PLANILHA}`,
   })
@@ -606,7 +630,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       regime: empresa.regime ?? null,
       tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
     })
-    if (!resolvida.ok) return falha(resolvida.problema, empresa.id)
+    // O problema da retenção só conta depois do código: na locação, a retenção é outra (sem ISS).
 
     // Código de serviço: o da linha, senão o do modelo do tomador, senão o da empresa (Lucca, 17/11/2026: uma clínica
     // emite psicologia, fisioterapia e nutrição pela mesma empresa). A descrição escrita na planilha vale para esta
@@ -617,6 +641,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     if (codigoDaLinha && ctx.codigosDaLista && !ctx.codigosDaLista.has(codigoDaLinha)) return falha('CODIGO_SERVICO_FORA_DA_LISTA', empresa.id)
     const modelo = ctx.modelos.get(`${empresa.id}:${documento}`)
     const codigo = codigoDaLinha ?? modelo?.codigo ?? empresa.codigo_servico_nacional ?? ''
+    if (!resolvida.ok && !ehLocacao(codigo)) return falha(resolvida.problema, empresa.id)
     if (!/^\d{6}$/.test(codigo)) return falha('CODIGO_SERVICO_FALTANDO', empresa.id)
     // Local da prestação: nome com UF ou código IBGE; o mesmo da sede fica de fora (a nota sai como antes).
     const localEscrito = textoDaCelula(celulas.municipio_prestacao)
@@ -645,6 +670,56 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       if (!lida.obra) return falha('OBRA_SEM_DADOS', empresa.id)
       obra = lida.obra
     }
+    // Dados da locação: só nas linhas com código 99.03.01 ou 99.04.01, onde são obrigatórios; com a flag desligada, a linha
+    // volta com o motivo (a nota entra quando a Receita liberar).
+    let locacao: Locacao | null = null
+    let retencaoDaNota = resolvida.ok ? resolvida.retencao : null
+    if (ehLocacao(codigo)) {
+      if (!locacaoLigada()) return falha('LOCACAO_INDISPONIVEL', empresa.id)
+      // Na locação o ISS não incide (E0532): pedido na linha, a linha volta; do padrão da empresa, não vale.
+      if (pedidoDeRetencao.iss) return falha('LOCACAO_COM_ISS', empresa.id)
+      const semIss = resolverRetencao({
+        padrao: { ...(empresa.retencao ?? SEM_RETENCAO_PADRAO), retem_iss: false, aliquota_iss: null },
+        pedido: pedidoDeRetencao,
+        valor,
+        regime: empresa.regime ?? null,
+        tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
+      })
+      if (!semIss.ok) return falha(semIss.problema, empresa.id)
+      retencaoDaNota = semIss.retencao
+      const cidade = textoDaCelula(celulas.imovel_cidade)
+      let municipioDoImovel: string | null = empresa.codigo_municipio_ibge ?? null
+      if (cidade) {
+        const r = resolverMunicipio(cidade)
+        if (!r.ok) return falha('LOCACAO_INVALIDA', empresa.id)
+        municipioDoImovel = r.municipio.ibge
+      }
+      const celula = (c: Campo) => textoDaCelula(celulas[c]) || undefined
+      const bruto = codigo === '990301'
+        ? {
+            imovel: {
+              municipio_ibge: municipioDoImovel,
+              cep: celula('imovel_cep'),
+              logradouro: celula('imovel_logradouro'),
+              numero: celula('imovel_numero'),
+              complemento: celula('imovel_complemento'),
+              bairro: celula('imovel_bairro'),
+              inscricao_imobiliaria: celula('imovel_inscricao'),
+              cib: celula('imovel_cib'),
+              residencial: celula('imovel_residencial'),
+              copropriedade: celula('imovel_copropriedade'),
+              valor_total: celula('imovel_valor_total'),
+              vencimento: celula('imovel_vencimento'),
+            },
+          }
+        : celula('bem_ncm') || celula('bem_descricao')
+          ? { bens: [{ ncm: celula('bem_ncm'), descricao: celula('bem_descricao'), quantidade: celula('bem_quantidade') }] }
+          : {}
+      const lida = lerLocacao(bruto, codigo, valor)
+      if (!lida.ok) return falha(lida.faltando.length ? 'LOCACAO_SEM_DADOS' : 'LOCACAO_INVALIDA', empresa.id)
+      locacao = lida.locacao
+    }
+    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra, locacao }
     // Endereço do tomador escrito na planilha: prevalece sobre o da Receita (que entra depois, em `completarEnderecos`).
     const enderecoEscrito = lerEnderecoEscrito({
       cep: celulas.tomador_cep,
@@ -655,9 +730,8 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       municipio: celulas.tomador_municipio_ibge,
     })
     if (!enderecoEscrito.ok) return falha('ENDERECO_TOMADOR_INVALIDO', empresa.id)
-    const servico = { codigo, descricao: descricaoEscrita || modelo?.descricao || DESCRICAO_PADRAO, municipio_prestacao_ibge: municipioPrestacao, obra }
     const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, {
-      retencao: resolvida.retencao,
+      retencao: retencaoDaNota,
       endereco: enderecoEscrito.endereco,
     })
     const pronta = (problema: string | null, igualA?: number): ItemDoLote => ({
@@ -793,6 +867,14 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'o código de serviço é de construção civil, e a Sefin exige os dados da obra: preencha obra_cep, obra_logradouro, obra_numero e obra_bairro, ou obra_cno'
     case 'ENDERECO_TOMADOR_INVALIDO':
       return 'endereço do tomador incompleto ou inválido: preencha tomador_cep (8 dígitos), tomador_logradouro, tomador_bairro e tomador_municipio_ibge (código IBGE ou Cidade/UF), ou deixe todas as colunas tomador_* vazias'
+    case 'LOCACAO_INDISPONIVEL':
+      return 'nota de locação (99.03.01 ou 99.04.01): entra no sistema assim que a Receita liberar esses códigos no ambiente nacional; por enquanto, esta linha não é emitida'
+    case 'LOCACAO_SEM_DADOS':
+      return 'nota de locação sem os dados que a Receita exige: no imóvel (99.03.01), imovel_cep, imovel_logradouro, imovel_numero e imovel_residencial (sim ou não), ou imovel_cib; no bem móvel (99.04.01), bem_ncm (8 dígitos) e bem_descricao'
+    case 'LOCACAO_INVALIDA':
+      return 'dados da locação inválidos: confira imovel_cidade (cidade com UF), imovel_cep (8 dígitos), imovel_copropriedade (até 100) com imovel_valor_total, imovel_vencimento (data), bem_ncm (8 dígitos) e bem_quantidade (1 a 999)'
+    case 'LOCACAO_COM_ISS':
+      return 'locação não tem ISS (não incidência): deixe iss_retido vazio ou "não"'
     case 'OBRA_INVALIDA':
       return 'dados da obra incompletos ou inválidos: o endereço precisa de obra_cep (8 dígitos), obra_logradouro, obra_numero e obra_bairro; o obra_cno, de 12 dígitos'
     case 'LOCAL_EXIGE_EVENTO':
@@ -821,6 +903,8 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return `a procuração de ${empresa} venceu`
     case 'PROCURADOR_CERT_INVALIDO':
       return `o certificado A1 do escritório, que assina por procuração, não está valendo`
+    case 'MUNICIPIO_SEM_PRESUMIDO':
+      return `a prefeitura de ${empresa} não aceita Lucro Presumido/Real no Emissor Nacional (a Sefin recusou); a empresa está na lista de espera`
     case 'FISCAL_CONFIG_MISSING':
       return `faltam os dados fiscais de ${empresa} (código de serviço e percentual do Simples)`
     case 'TENANT_INACTIVE':
@@ -1043,7 +1127,9 @@ export function chaveDoPayload(tenantId: string, payload: unknown): string | nul
 
 /**
  * Notas do mês de todas as empresas da conta-mãe, para a franquia (emitidas no mês e as que estão na fila). A NF-e
- * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia.
+ * (nota de produto, `nofiscal.nfe_do_mes`) soma na mesma franquia. Nota recusada pela Sefin não consome a franquia —
+ * inclusive a do Presumido/Real recusada porque a cidade não aceita o regime (E0037/E0038/E0039; Lucca, 19/11/2026):
+ * ela sai da fila como `rejected`, sem `issued_at`.
  */
 export async function notasDoMes(db: Queryable, donoId: string, agora: Date): Promise<number> {
   const local = partesLocais(agora)

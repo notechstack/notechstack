@@ -47,7 +47,11 @@ export type TestTenantOptions = {
   /** `fiscal_tenants.p_tot_trib_sn`; `null` = não configurado. Padrão: '6.00'. */
   pTotTribSn?: string | null
   /** `fiscal_tenants.regime`. Padrão: 'simples'. */
-  regime?: 'simples' | 'mei'
+  regime?: 'simples' | 'mei' | 'presumido' | 'real'
+  /** Presumido/Real: `p_tot_trib_fed/est/mun` (DPS pTotTrib). */
+  /** `fiscal_tenants.codigo_municipio_ibge`. Padrão: '3550308'. */
+  codigoMunicipioIbge?: string
+  pTotTrib?: { fed: string; est: string; mun: string } | null
   ambiente?: 'producao_restrita' | 'producao'
   /** A1 a gravar no Supabase Vault (um PFX de verdade, de `certs.ts`); padrão: texto aleatório. */
   certificado?: Certificado
@@ -64,8 +68,8 @@ export async function createTestTenant(db: Db, options: TestTenantOptions = {}):
   const { rows } = await db.query<{ id: string }>(
     `insert into nofiscal.fiscal_tenants
        (cnpj, razao_social, codigo_municipio_ibge, api_key_hash, plan, monthly_note_limit, active, webhook_url,
-        p_tot_trib_sn, ambiente, regime)
-     values ($1, $2, '3550308', $3, 'pro', $4, $5, $6, $7, $8, $9)
+        p_tot_trib_sn, ambiente, regime, p_tot_trib_fed, p_tot_trib_est, p_tot_trib_mun)
+     values ($1, $2, $13, $3, 'pro', $4, $5, $6, $7, $8, $9, $10, $11, $12)
      returning id`,
     [
       cnpj,
@@ -77,6 +81,10 @@ export async function createTestTenant(db: Db, options: TestTenantOptions = {}):
       options.pTotTribSn === undefined ? '6.00' : options.pTotTribSn,
       options.ambiente ?? 'producao_restrita',
       options.regime ?? 'simples',
+      options.pTotTrib?.fed ?? null,
+      options.pTotTrib?.est ?? null,
+      options.pTotTrib?.mun ?? null,
+      options.codigoMunicipioIbge ?? '3550308',
     ],
   )
   const id = rows[0].id

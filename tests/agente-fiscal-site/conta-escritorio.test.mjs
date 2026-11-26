@@ -747,3 +747,64 @@ test('obra (E0370): o bloco "Dados da obra" aparece só nos códigos de constru�
   );
   assert.ok(p.texto('fa-av-resumo').includes('Rua das Flores, 120 - Centro, CEP 12900-000'), 'a obra no resumo');
 });
+
+test('locação: o bloco do imóvel aparece no 99.03.01 e o do bem no 99.04.01; os dados vão no pedido e o resumo diz que é locação', async () => {
+  const semRetencao = { retem_iss: false, aliquota_iss: null, retem_inss: false, inss_percentual: null };
+  const contexto = {
+    empresas: [
+      { tenant_id: TENANT, razao_social: 'CONTABIL SANDRA LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '170201', bloqueio: null, regime: 'simples', retencao: semRetencao },
+      { tenant_id: EMP_MEI, razao_social: 'IMOBILIARIA MODELO', cnpj: '04252011000110', principal: false, codigo_servico_nacional: '990301', bloqueio: null, regime: 'presumido', retencao: semRetencao }
+    ],
+    franquia: { limite: 500, no_mes: 3 }
+  };
+  const resumo = {
+    resumo: {
+      empresa: { tenant_id: EMP_MEI, razao_social: 'IMOBILIARIA MODELO', cnpj: '04252011000110' },
+      tomador: { documento: '11222333000181', tipo: 'cnpj', nome: 'Inquilino Ltda', email: null },
+      servico: { codigo: '990301', nome: 'Locação de bens imóveis.', descricao: 'Aluguel de dezembro' },
+      locacao: ['Tipo: locação de imóvel residencial (99.03.01), sem ISS', 'Imóvel: Rua das Flores, 120 - Centro, CEP 13015-100, Campinas/SP'],
+      valor: '2500.00', valor_texto: 'R$ 2.500,00', retencao: null, endereco_tomador: null
+    },
+    bloqueio: null,
+    avisos: []
+  };
+  let primeira = true;
+  const p = await painel({
+    'app:emissao:contexto': r(200, contexto),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:avulsa_conferir': () => {
+      if (primeira) { primeira = false; return { status: 422, corpo: { error: { code: 'VALIDATION_FAILED', message: 'Nota de locação de imóvel exige os dados do imóvel.' }, campo: 'locacao' } }; }
+      return { status: 200, corpo: resumo };
+    }
+  }, '/agentes/fiscal/conta/#emitir');
+
+  await p.clicar('fa-aba-emitir');
+  await p.preencher('fa-av-empresa', TENANT);
+  assert.equal(p.visivel('fa-av-loc'), false, 'código 17.02.01: sem o bloco da locação');
+  await p.preencher('fa-av-empresa', EMP_MEI);
+  assert.ok(p.visivel('fa-av-loc'), 'código 99.03.01: o bloco da locação aparece');
+  assert.ok(p.visivel('fa-av-loc-imovel'), 'com os dados do imóvel');
+  assert.equal(p.visivel('fa-av-loc-bem'), false, 'e sem os do bem');
+
+  await p.preencher('fa-av-documento', '11.222.333/0001-81');
+  await p.preencher('fa-av-nome', 'Inquilino Ltda');
+  await p.preencher('fa-av-valor', '2500');
+  await p.preencher('fa-av-loc-cep', '13015-100');
+  await p.preencher('fa-av-loc-logradouro', 'Rua das Flores');
+  await p.preencher('fa-av-loc-numero', '120');
+  await p.enviar('fa-form-avulsa');
+  assert.equal(p.texto('fa-av-loc-erro'), 'Nota de locação de imóvel exige os dados do imóvel.');
+
+  await p.preencher('fa-av-loc-bairro', 'Centro');
+  await p.preencher('fa-av-loc-residencial', 'sim');
+  await p.enviar('fa-form-avulsa');
+  const corpo = p.rede.de('app:emissao:avulsa_conferir')[1].corpo;
+  assert.deepEqual(
+    [corpo.locacao_cep, corpo.locacao_logradouro, corpo.locacao_numero, corpo.locacao_bairro, corpo.locacao_residencial, corpo.locacao_cidade],
+    ['13015-100', 'Rua das Flores', '120', 'Centro', 'sim', '']
+  );
+  assert.equal(corpo.bem_ncm, undefined, 'campos do bem não vão na locação de imóvel');
+  const texto = p.texto('fa-av-resumo');
+  assert.ok(texto.includes('locação de imóvel residencial (99.03.01), sem ISS'), 'o resumo diz que é locação');
+  assert.ok(texto.includes('Rua das Flores, 120 - Centro, CEP 13015-100, Campinas/SP'), 'o imóvel no resumo');
+});

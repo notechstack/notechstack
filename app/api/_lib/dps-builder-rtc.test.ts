@@ -66,7 +66,7 @@ describe('DPS sem opções: a nota de produção de antes desta mudança', () =>
   })
 })
 
-describe('leiaute nt009 (produção restrita desde 20/10/2026; produção prevista para 01/12/2026)', () => {
+describe('leiaute nt009 (release 1; produção restrita de 20/10 a 23/11/2026)', () => {
   it('põe finNFSe 0 depois de tpEmit e valida no XSD da produção restrita', async () => {
     const { xml } = gerar(NT009)
     expect(filhos(xml, 'infDPS').slice(6, 9)).toEqual(['tpEmit', 'finNFSe', 'cLocEmi'])
@@ -227,12 +227,15 @@ describe('grupo IBSCBS (Simples e MEI, opcional em 2026)', () => {
 })
 
 describe('opções pelo ambiente', () => {
-  it('produção restrita usa nt009; produção só com NOFISCAL_DPS_LEIAUTE=nt009; IBSCBS só com NOFISCAL_DPS_IBSCBS=1', () => {
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {})).toEqual({ leiaute: 'v1.01', ibscbs: false })
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, {})).toEqual({ leiaute: 'nt009', ibscbs: false })
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }).leiaute).toBe('nt009')
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: '1' }).ibscbs).toBe(true)
-    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: 'true' }).ibscbs).toBe(false)
+  it('produção restrita usa nt009r2; produção só com NOFISCAL_DPS_LEIAUTE=nt009 antes da virada; IBSCBS só com NOFISCAL_DPS_IBSCBS=1', () => {
+    const antes = new Date('2026-11-30T23:59:59-03:00')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, {}, antes)).toEqual({ leiaute: 'v1.01', ibscbs: false, locacao: false })
+    // Release 2 da NT 009 na produção restrita desde 24/11/2026 (indDest em infDPS).
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao_restrita' }, {}, antes)).toEqual({ leiaute: 'nt009r2', ibscbs: false, locacao: false })
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009r2' }, antes).leiaute).toBe('nt009r2')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_LEIAUTE: 'nt009' }, antes).leiaute).toBe('nt009')
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: '1' }, antes).ibscbs).toBe(true)
+    expect(opcoesDpsDoAmbiente({ ambiente: 'producao' }, { NOFISCAL_DPS_IBSCBS: 'true' }, antes).ibscbs).toBe(false)
   })
 })
 
