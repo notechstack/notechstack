@@ -321,6 +321,7 @@
           <div class="nf-campo nf-campo--largo"><label for="fa-av-empresa">Empresa que emite</label><select id="fa-av-empresa"></select><small class="nf-erro" id="fa-av-empresa-erro" hidden></small></div>
           <p class="nf-aviso nf-aviso--erro nf-campo--largo" id="fa-av-bloqueio" role="status" hidden></p>
           <div class="nf-campo nf-campo--largo"><label for="fa-av-modelo">Cliente</label><select id="fa-av-modelo"><option value="">Cliente novo</option></select><small class="nf-dica">Os clientes salvos pelo WhatsApp aparecem aqui.</small></div>
+          <label class="nf-aceite nf-campo--largo"><input type="checkbox" id="fa-av-sem-tomador"> <span>Tomador não informado (consumidor não identificado). A nota sai sem CPF/CNPJ do cliente, sem retenção e sem e-mail ao cliente; não vira cliente salvo.</span></label>
           <div class="nf-campo"><label for="fa-av-documento">CPF ou CNPJ do cliente</label><input id="fa-av-documento" inputmode="numeric" autocomplete="off" maxlength="18"><small class="nf-erro" id="fa-av-documento-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-nome">Nome ou razão social</label><input id="fa-av-nome" autocomplete="off" maxlength="150"><small class="nf-erro" id="fa-av-nome-erro" hidden></small></div>
           <div class="nf-campo"><label for="fa-av-email">E-mail do cliente (opcional)</label><input id="fa-av-email" type="email" autocomplete="off" maxlength="160"><small class="nf-erro" id="fa-av-email-erro" hidden></small></div>
@@ -799,7 +800,7 @@
 <!-- site-footer:end -->
 <script src="/agentes/fiscal/config.js"></script>
 <script src="/agentes/fiscal/nofiscal.js?v=6"></script>
-<script src="/agentes/fiscal/conta/conta.js?v=16"></script>
+<script src="/agentes/fiscal/conta/conta.js?v=17"></script>
 <script src="/agentes/fiscal/conta/nfe.js?v=3"></script>
 <script src="/agentes/fiscal/conta/nfe-avulsa.js?v=2"></script>
 <script src="/agentes/fiscal/conta/integracao.js?v=2"></script>

@@ -28,6 +28,8 @@ LINHAS_FORMATADAS = 200  # linhas já prontas para digitar (o limite do agente �
 # obra_* (19/11/2026): obrigatórias só nos códigos de construção civil (E0370).
 # tomador_* (24/11/2026, Robson, Bragantina): endereço de quem recebe a nota. Em branco, a nota de CNPJ sai com o endereço
 # da Receita; a de CPF, sem endereço. Preenchido, vale o da planilha.
+# Tomador não informado (27/11/2026, Robson, Bragantina): cpf_cnpj_tomador em branco e nome_tomador NAO INFORMADO
+# (consumidor não identificado). Sem e-mail, endereço nem retenção; o terceiro exemplo mostra a linha.
 COLUNAS = [
     'cnpj_prestador', 'cpf_cnpj_tomador', 'nome_tomador', 'email_tomador',
     'tomador_cep', 'tomador_logradouro', 'tomador_numero', 'tomador_complemento', 'tomador_bairro', 'tomador_municipio_ibge',
@@ -45,6 +47,10 @@ EXEMPLOS = [
     ['12.345.678/0001-95', '529.982.247-25', 'Maria Exemplo da Silva', 'maria@exemplo.com.br',
      '12900-000', 'Rua das Flores', '120', 'Apto 12', 'Centro', 'Bragança Paulista/SP',
      350, None],
+    # Tomador não informado: consumidor que não se identificou.
+    ['12.345.678/0001-95', None, 'NAO INFORMADO', None,
+     None, None, None, None, None, None,
+     150, 'Consulta avulsa'],
 ]
 
 fino = Side(style='thin', color='D9D9D4')
@@ -110,8 +116,8 @@ titulo(4, 'As colunas')
 cabecalho(5, ['coluna', 'obrigatória?', 'o que colocar', 'exemplo'])
 tabela = [
     ['cnpj_prestador', 'sim*', 'CNPJ da empresa que emite a nota: o escritório ou uma empresa cliente cadastrada em Minhas empresas, com a situação Pronta.', '12.345.678/0001-95'],
-    ['cpf_cnpj_tomador', 'sim', 'CPF ou CNPJ de quem recebe a nota (o tomador), com ou sem pontuação.', '529.982.247-25'],
-    ['nome_tomador', 'sim', 'Nome ou razão social de quem recebe a nota.', 'Maria Exemplo da Silva'],
+    ['cpf_cnpj_tomador', 'sim***', 'CPF ou CNPJ de quem recebe a nota (o tomador), com ou sem pontuação. Em branco só na nota sem tomador (consumidor não identificado), com NAO INFORMADO em nome_tomador.', '529.982.247-25'],
+    ['nome_tomador', 'sim', 'Nome ou razão social de quem recebe a nota. NAO INFORMADO (com cpf_cnpj_tomador em branco) para a nota sem tomador.', 'Maria Exemplo da Silva'],
     ['email_tomador', 'não', 'E-mail de quem recebe a nota. Com e-mail, o tomador recebe a nota por e-mail.', 'maria@exemplo.com.br'],
     ['tomador_cep', 'não**', 'CEP do endereço de quem recebe a nota (8 dígitos, com ou sem traço).', '12900-000'],
     ['tomador_logradouro', 'não**', 'Rua, avenida etc. do endereço de quem recebe a nota.', 'Rua das Flores'],
@@ -134,19 +140,21 @@ for k, linha in enumerate(tabela):
 NOTA = 6 + len(tabela)
 guia.cell(row=NOTA, column=1, value='* cnpj_prestador pode ficar em branco só quando a conta tem uma única empresa ativa.').font = Font(name='Calibri', italic=True, color=CINZA)
 guia.cell(row=NOTA + 1, column=1, value='** Endereço do tomador: deixe todas as colunas tomador_* em branco, ou preencha ao menos CEP, rua, bairro e cidade. Tomador com CNPJ e colunas em branco: vai o endereço da Receita.').font = Font(name='Calibri', italic=True, color=CINZA)
+guia.cell(row=NOTA + 2, column=1, value='*** Nota sem tomador (consumidor não identificado): cpf_cnpj_tomador em branco e NAO INFORMADO em nome_tomador; email_tomador, tomador_* e retenção em branco.').font = Font(name='Calibri', italic=True, color=CINZA)
 
-REGRAS = NOTA + 3
+REGRAS = NOTA + 4
 titulo(REGRAS, 'Regras')
 regras = [
     'Uma linha por nota. Para emitir uma nota só, a planilha tem uma linha só.',
     'Não mude o nome das colunas e não crie colunas novas: a planilha inteira é recusada.',
-    'Apague as duas linhas de exemplo antes de mandar.',
+    'Apague as três linhas de exemplo antes de mandar.',
     'Até 1.000 notas por planilha. Salve em .xlsx ou .csv.',
     'CPF e CNPJ ficam como texto, para o zero à esquerda não sumir (as colunas deste modelo já estão assim).',
     'Linha com problema fica de fora e o motivo vem no resumo; as outras seguem.',
     'Retenção: o contador informa a alíquota e o percentual; o nó.fiscal não calcula regra tributária, só confere o que a Sefin recusa.',
     'Endereço do tomador: toda nota de tomador com CNPJ sai com o endereço da Receita; se você preencher as colunas tomador_*, vale o da planilha. Tomador com CPF só sai com endereço se você preencher. Se a Receita não responder na hora, a nota sai sem o endereço e o resumo avisa (com ISS retido, a linha fica de fora, porque a Sefin exige o endereço).',
     'Local da prestação: em obras, eventos e outros serviços da LC 116 (art. 3º), o ISS é devido na cidade da prestação; quem decide é a Sefin, pelo código de serviço. Serviços de eventos (item 12) com outra cidade ficam de fora, porque exigem dados do evento que o nó.fiscal ainda não envia.',
+    'Nota sem tomador (Tomador/Adquirente não informado, para consumidor que não se identifica): deixe cpf_cnpj_tomador em branco e escreva NAO INFORMADO em nome_tomador. Ela não tem retenção (quem retém é o tomador), não vai por e-mail ao cliente e não vira cliente salvo. O código 17.05.01 (fornecimento de mão de obra) não aceita nota sem tomador. Notas iguais sem tomador não contam como repetidas. CPF ou CNPJ em branco sem NAO INFORMADO deixa a linha de fora, para nenhuma nota sair sem tomador por engano.',
     'Código de serviço fora da lista nacional (https://www.notechstack.com.br/agentes/fiscal/dados/codigos-servico.json) deixa a linha de fora.',
     'Depois de mandar, você recebe o resumo. Nada é emitido antes de você responder confirmar. O resumo vale por 24 horas.',
     'No fim, o retorno de cada linha e os PDFs vão para o e-mail da conta e ficam em Minha conta → Relatórios.',
@@ -186,7 +194,7 @@ guia.sheet_view.showGridLines = False
 
 wb.properties.creator = 'nó.fiscal'
 wb.properties.title = 'Modelo de emissão por planilha'
-wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 24, 12, 0, 0)
+wb.properties.created = wb.properties.modified = datetime.datetime(2026, 11, 27, 12, 0, 0)
 SAIDA.parent.mkdir(parents=True, exist_ok=True)
 wb.save(SAIDA)
 print(SAIDA, SAIDA.stat().st_size, 'bytes')

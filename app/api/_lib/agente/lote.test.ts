@@ -115,10 +115,16 @@ describe('arquivo da planilha', () => {
       const planilha = interpretarGrade(grade, { prestadorObrigatorio: true })
       expect(planilha.ok).toBe(true)
       if (!planilha.ok) continue
-      expect(planilha.linhas).toHaveLength(2)
+      // O terceiro exemplo é a nota sem tomador (cpf_cnpj_tomador em branco, NAO INFORMADO), de 27/11/2026.
+      expect(planilha.linhas).toHaveLength(3)
       const itens = validarLinhas(planilha.linhas, contexto())
-      expect(itens.map((i) => i.problema)).toEqual([null, null])
-      expect(itens.map((i) => i.valor)).toEqual(['1500.00', '350.00'])
+      expect(itens.map((i) => i.problema)).toEqual([null, null, null])
+      expect(itens.map((i) => i.valor)).toEqual(['1500.00', '350.00', '150.00'])
+      expect(itens[2].payload).toEqual({
+        tomador_nao_informado: true,
+        servico: { codigo_servico_nacional: '171901', descricao: 'Consulta avulsa' },
+        valor: '150.00',
+      })
     }
   })
 
@@ -377,6 +383,47 @@ describe('códigos de problema por linha', () => {
     expect(itens[0].tenantId).toBe('e1')
     // Linha que não chegou a ser lida guarda o que veio na planilha.
     expect(itens[2].payload).toEqual({ lido: { cnpj_prestador: '12345678000195', cpf_cnpj_tomador: '123', nome_tomador: 'Maria', valor: '100' } })
+  })
+
+  it('tomador não informado: cpf_cnpj_tomador vazio + NAO INFORMADO; sem e-mail, endereço, retenção nem modelo', () => {
+    const SEM = { cnpj_prestador: '12345678000195', cpf_cnpj_tomador: '', valor: '150,00' }
+    const ctx = contexto({
+      // Padrão de ISS retido da empresa: não vale sem tomador.
+      empresas: [{ ...ESCRITORIO, retencao: { retem_iss: true, aliquota_iss: '2.00', retem_inss: false, inss_percentual: null } }, CLIENTE],
+      // Modelo com documento vazio nunca existe, e a nota igual no mês não conta.
+      jaEmitidas: new Set([`e1::15000:171901`]),
+    })
+    const itens = validarLinhas(
+      [
+        linha(2, { ...SEM, nome_tomador: 'NAO INFORMADO' }),
+        linha(3, { ...SEM, nome_tomador: 'Consumidor não identificado' }),
+        linha(4, { ...SEM, nome_tomador: 'Maria' }),
+        linha(5, { ...SEM, cpf_cnpj_tomador: CPF, nome_tomador: 'NAO INFORMADO' }),
+        linha(6, { ...SEM, nome_tomador: 'NAO INFORMADO', email_tomador: 'x@y.test' }),
+        linha(7, { ...SEM, nome_tomador: 'NAO INFORMADO', tomador_cep: '12900000', tomador_logradouro: 'Rua A', tomador_bairro: 'Centro', tomador_municipio_ibge: '3507605' }),
+        linha(8, { ...SEM, nome_tomador: 'NAO INFORMADO', iss_retido: '2%' }),
+        linha(9, { ...SEM, nome_tomador: 'NAO INFORMADO', codigo_servico: '17.05.01' }),
+        linha(10, { ...SEM, cpf_cnpj_tomador: '12345678000195', nome_tomador: 'Escritório Toledo' }),
+      ],
+      ctx,
+    )
+    expect(itens.map((i) => [i.linha, i.problema])).toEqual([
+      [2, null],
+      [3, null],
+      [4, 'DOCUMENTO_FALTANDO'],
+      [5, 'NAO_INFORMADO_COM_DOCUMENTO'],
+      [6, 'EMAIL_SEM_TOMADOR'],
+      [7, 'ENDERECO_SEM_TOMADOR'],
+      [8, 'RETENCAO_SEM_TOMADOR'],
+      [9, 'CODIGO_EXIGE_TOMADOR'],
+      [10, 'TOMADOR_E_O_PRESTADOR'],
+    ])
+    // Duas notas iguais sem tomador na mesma planilha não são "repetidas": são dois consumidores.
+    expect(itens[0].payload).toEqual({ tomador_nao_informado: true, servico: { codigo_servico_nacional: '171901', descricao: 'Prestação de serviços' }, valor: '150.00' })
+    expect(itens[1].payload).toEqual(itens[0].payload)
+    expect(motivoDoProblema('DOCUMENTO_FALTANDO', {})).toContain('NAO INFORMADO em nome_tomador')
+    expect(motivoDoProblema('RETENCAO_SEM_TOMADOR', {})).toContain('E0204')
+    expect(motivoDoProblema('TOMADOR_E_O_PRESTADOR', { empresa: 'Escritório Toledo' })).toContain('própria Escritório Toledo')
   })
 
   it('sem cnpj_prestador, a única empresa ativa emite; modelo do tomador dá código, descrição e e-mail', () => {

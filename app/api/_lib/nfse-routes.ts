@@ -36,6 +36,7 @@ import { registrarSemEndereco, resolverEnderecoDoTomador } from './endereco-toma
 import { motivoDaRetencao, resolverRetencao, SEM_RETENCAO_PADRAO, type EnderecoDoTomador, type EnderecoNacional } from './retencao.js'
 import { parseNewInvoice, type InvoicePayload } from './validation.js'
 import { exigeObra, MOTIVO_SEM_OBRA, problemaDaObra } from './obra.js'
+import { problemaDoCodigoSemTomador } from './tomador-nao-informado.js'
 import { ehLocacao, lerLocacao, locacaoLigada, MENSAGEM_LOCACAO_DESLIGADA, MOTIVO_LOCACAO_DESLIGADA, motivoSemDados, type Locacao } from './locacao.js'
 
 export type Recurso = 'nfse' | 'nfe' | 'empresas' | 'sandbox'
@@ -261,6 +262,7 @@ const CAMPO_DA_RETENCAO: Record<string, string> = {
   RETENCAO_FEDERAL_SO_LUCRO: 'retencao',
   IRRF_INVALIDO: 'retencao.irrf',
   CSRF_INVALIDO: 'retencao.csrf',
+  RETENCAO_SEM_TOMADOR: 'tomador_nao_informado',
 }
 
 const AVISO_SEM_ENDERECO_API =
@@ -341,7 +343,7 @@ async function prepararNfse(
     pedido: pedido.retencao,
     valor: pedido.valor,
     regime: empresa.regime ?? null,
-    tomadorTipo: tipoDoDocumento(pedido.tomador.documento),
+    tomadorTipo: pedido.tomador ? tipoDoDocumento(pedido.tomador.documento) : null,
   })
   if (!resolvida.ok) {
     return {
@@ -352,8 +354,25 @@ async function prepararNfse(
       }),
     }
   }
+  // Tomador não informado: o código precisa permitir (17.05.01 não, E0234), e não há endereço a buscar.
+  const semTomador = pedido.tomador === null
+  const motivoSemTomador = semTomador ? problemaDoCodigoSemTomador(codigo) : null
+  if (motivoSemTomador) {
+    return {
+      ok: false,
+      resposta: errorResponse('VALIDATION_FAILED', `tomador_nao_informado: ${motivoSemTomador}`, { campo: 'tomador_nao_informado', motivo: 'CODIGO_EXIGE_TOMADOR' }),
+    }
+  }
+  if (semTomador && locacao) {
+    return {
+      ok: false,
+      resposta: errorResponse('VALIDATION_FAILED', 'nota de locação exige o tomador (o inquilino) identificado', { campo: 'tomador_nao_informado', motivo: 'LOCACAO_EXIGE_TOMADOR' }),
+    }
+  }
   // Endereço do tomador: o informado em `tomador.endereco`, senão o da Receita (CNPJ). Sem ele, só o ISS retido trava.
-  const achado = await resolverEnderecoDoTomador({ documento: pedido.tomador.documento, informado: pedido.tomador.endereco ?? null, consulta: ctx.deps.enderecos })
+  const achado = pedido.tomador
+    ? await resolverEnderecoDoTomador({ documento: pedido.tomador.documento, informado: pedido.tomador.endereco ?? null, consulta: ctx.deps.enderecos })
+    : { endereco: null, consultaFalhou: false }
   const endereco: EnderecoNacional | null = achado.endereco
   if (resolvida.retencao?.iss && !endereco) {
     return { ok: false, resposta: errorResponse('VALIDATION_FAILED', motivoDaRetencao('ENDERECO_TOMADOR'), { campo: 'tomador.cnpj', motivo: 'ENDERECO_TOMADOR' }) }

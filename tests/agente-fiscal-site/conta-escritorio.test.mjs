@@ -524,7 +524,7 @@ test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com conf
   // Conferir: sem documento válido nem chama o servidor.
   await p.preencher('fa-av-documento', '123');
   await p.enviar('fa-form-avulsa');
-  assert.equal(p.texto('fa-av-documento-erro'), 'CPF ou CNPJ inválido. Confira os números.');
+  assert.equal(p.texto('fa-av-documento-erro'), 'CPF ou CNPJ inválido. Confira os números. Para consumidor que não se identifica, marque "Tomador não informado".');
   assert.equal(p.rede.de('app:emissao:avulsa_conferir').length, 0);
 
   await p.preencher('fa-av-documento', '529.982.247-25');
@@ -583,6 +583,53 @@ test('Emitir: nota avulsa conferida antes de emitir e lote por planilha com conf
   await p.clicar(p.$('fa-aviso-lote').querySelector('[data-ir-aba]'));
   assert.equal(p.window.location.hash, '#relatorios');
   assert.equal(p.rede.de('fiscal-conta:relatorio').length, 1);
+  assert.deepEqual(p.erros, []);
+});
+
+test('Emitir: "Tomador não informado" esconde cliente, endereço e retenção e manda só a marca', async () => {
+  const p = await painel({
+    'app:emissao:contexto': r(200, { empresas: [{ tenant_id: TENANT, razao_social: 'CLINICA BEM ESTAR LTDA', cnpj: '11222333000181', principal: true, codigo_servico_nacional: '040101', bloqueio: null, regime: 'simples', retencao: { retem_iss: true, aliquota_iss: '2.00', retem_inss: false, inss_percentual: null } }], franquia: { limite: 500, no_mes: 0 } }),
+    'app:emissao:modelos': r(200, { modelos: [] }),
+    'app:emissao:avulsa_conferir': r(200, {
+      resumo: {
+        empresa: { tenant_id: TENANT, razao_social: 'CLINICA BEM ESTAR LTDA', cnpj: '11222333000181' },
+        tomador: null, tomador_nao_informado: true, tomador_rotulo: 'não informado (consumidor não identificado)',
+        servico: { codigo: '040101', nome: 'Medicina', descricao: 'Consulta avulsa' }, valor: '150.00', valor_texto: 'R$ 150,00', retencao: null
+      },
+      bloqueio: null,
+      avisos: ['Nota sem tomador (Tomador/Adquirente não informado): sai sem CPF/CNPJ do cliente, sem retenção e não vira cliente salvo.']
+    }),
+    'app:emissao:avulsa_emitir': r(200, { invoice_id: NOTA, status: 'queued' })
+  }, '/agentes/fiscal/conta/#emitir');
+  await p.preencher('fa-av-documento', '529.982.247-25');
+  await p.preencher('fa-av-end-cep', '12900-000');
+  await p.clicar('fa-av-sem-tomador');
+  assert.equal(p.$('fa-av-sem-tomador').checked, true);
+  for (const id of ['fa-av-documento', 'fa-av-nome', 'fa-av-email']) assert.equal(p.$(id).closest('.nf-campo').style.display, 'none', id);
+  assert.equal(p.$('fa-av-end').style.display, 'none');
+  assert.equal(p.$('fa-av-retencao').style.display, 'none');
+  assert.equal(p.$('fa-av-modelo').disabled, true);
+  assert.equal(p.$('fa-av-documento').value, '');
+
+  await p.preencher('fa-av-valor', '150');
+  await p.preencher('fa-av-descricao', 'Consulta avulsa');
+  await p.enviar('fa-form-avulsa');
+  const corpo = p.rede.de('app:emissao:avulsa_conferir')[0].corpo;
+  assert.equal(corpo.tomador_nao_informado, true);
+  for (const k of ['documento', 'nome', 'email', 'retem_iss', 'retem_inss', 'tomador_cep']) assert.equal(k in corpo, false, k);
+  const doResumo = p.texto('fa-av-resumo');
+  assert.ok(doResumo.includes('Não informado (consumidor não identificado)'));
+  assert.ok(!doResumo.includes('Cliente'));
+  assert.ok(doResumo.includes('Nota sem tomador'));
+  await p.clicar('fa-av-emitir');
+  assert.equal(p.rede.de('app:emissao:avulsa_emitir')[0].corpo.tomador_nao_informado, true);
+  assert.match(p.texto('fa-aviso-emitir'), /^Nota sem tomador na fila da Sefin\./);
+  assert.equal(p.$('fa-av-sem-tomador').checked, true, 'fica marcada para a próxima');
+
+  // Desmarcar devolve os campos.
+  await p.clicar('fa-av-sem-tomador');
+  assert.equal(p.$('fa-av-documento').closest('.nf-campo').style.display, '');
+  assert.equal(p.$('fa-av-modelo').disabled, false);
   assert.deepEqual(p.erros, []);
 });
 

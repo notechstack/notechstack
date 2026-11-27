@@ -55,7 +55,8 @@ type NotaAchada = {
 // O mesmo número que `numeroDaNota` mostra: o nNFSe do XML (com ou sem prefixo de namespace), senão o da DPS.
 const NUMERO_SQL = `coalesce(substring(i.xml_nfse from '<(?:[A-Za-z0-9_]+:)?nNFSe>([0-9]+)</'), i.dps_numero::text)`
 const COLUNAS = `i.id, i.tenant_id, ${NUMERO_SQL} as numero, i.status, i.issued_at,
-                 i.payload->'tomador'->>'nome' as nome, i.payload->>'valor' as valor,
+                 coalesce(i.payload->'tomador'->>'nome', case when i.payload->>'tomador_nao_informado' = 'true' then 'consumidor não identificado' end) as nome,
+                 i.payload->>'valor' as valor,
                  t.razao_social, t.cnpj, t.escritorio_tenant_id is not null as do_escritorio`
 
 type Escopo = { tenantIds: string[]; escritorio: boolean; empresas: { id: string; cnpj: string; razao_social: string }[] }

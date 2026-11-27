@@ -28,6 +28,9 @@
 //   de 25/11/2026): `indDest` sai de IBSCBS e vira obrigatório em infDPS, logo depois de `toma`.
 // - Locação (locacao.ts): 99.03.01 e 99.04.01, só nos leiautes da NT 009 e com `NOFISCAL_LOCACAO=1`. ISS não incide
 //   (tribISSQN 4, E0532) e o grupo IBSCBS vai sempre, com `imovel` ou `bensMoveis` (E0937, E0963).
+// - Tomador não informado (tomador-nao-informado.ts, 27/11/2026): `tomador_nao_informado: true` no payload e a DPS sai
+//   sem `toma` (0-1 nos três XSD). Sem retenção (E0204), sem 17.05.01 (E0234), sem IBSCBS fora da locação (E0187/E0243)
+//   e, no release 2, `indDest 0` sem `dest` (E0908).
 import { lerInfoComplementar, MAX_INFO_COMPLEMENTAR } from './info-complementar.js'
 import {
   ehLocacao,
@@ -45,6 +48,7 @@ import { exigeObra, grupoObra, lerObra, MOTIVO_SEM_OBRA, type Obra } from './obr
 import { ALIQUOTA_ISS_MAX, ALIQUOTA_ISS_MIN, enderecoValido, type EnderecoNacional } from './retencao.js'
 import { nbsExiste, resolverRtc, type Rtc } from './rtc/resolver.js'
 import type { SefinTenant } from './sefin.js'
+import { MOTIVO_RETENCAO_SEM_TOMADOR, problemaDoCodigoSemTomador } from './tomador-nao-informado.js'
 import { el, leaf } from './xml.js'
 
 export const NFSE_NAMESPACE = 'http://www.sped.fazenda.gov.br/nfse'
@@ -56,8 +60,8 @@ export const VER_APLIC = 'EmissorNFSe-1.0'
 export const DH_EMI_SKEW_MS = 60_000
 
 export type DpsPayload = {
-  /** `tag` é o elemento do leiaute: `<CPF>` ou `<CNPJ>`. */
-  tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string; endereco: EnderecoNacional | null }
+  /** `tag` é o elemento do leiaute: `<CPF>` ou `<CNPJ>`. `null` = tomador não informado (`tomador_nao_informado: true`). */
+  tomador: { tag: 'CPF' | 'CNPJ'; documento: string; nome: string; endereco: EnderecoNacional | null } | null
   /** `nbs`, `c_ind_op` e `c_class_trib` são opcionais: informados, mandam sobre a tabela (rtc/resolver.ts). */
   servico: {
     codigo_servico_nacional: string
@@ -107,11 +111,22 @@ function textField(value: unknown, field: string, max: number): string {
 
 /** Valida o `payload` gravado pela API contra os limites do leiaute (os da API são mais largos). */
 export function parseDpsPayload(payload: unknown): DpsPayload {
-  if (!isObject(payload) || !isObject(payload.tomador) || !isObject(payload.servico)) {
-    throw new DpsInvalidError('payload sem tomador ou serviço')
+  if (!isObject(payload) || !isObject(payload.servico)) throw new DpsInvalidError('payload sem tomador ou serviço')
+  const naoInformado = payload.tomador_nao_informado
+  if (naoInformado !== undefined && naoInformado !== true && naoInformado !== false) {
+    throw new DpsInvalidError('tomador_nao_informado deve ser true ou false')
   }
-  const { cpf, cnpj } = payload.tomador
-  if ((cpf === undefined) === (cnpj === undefined)) throw new DpsInvalidError('tomador deve ter CPF ou CNPJ, exatamente um')
+  // Sem tomador só com a marca explícita; marca com tomador junto é contradição.
+  if (naoInformado === true) {
+    if (payload.tomador !== undefined && payload.tomador !== null) {
+      throw new DpsInvalidError('tomador_nao_informado: true não pode vir com tomador')
+    }
+  } else if (!isObject(payload.tomador)) {
+    throw new DpsInvalidError('payload sem tomador ou serviço (sem tomador, informe tomador_nao_informado: true)')
+  }
+  const tomadorBruto = isObject(payload.tomador) ? payload.tomador : null
+  const { cpf, cnpj } = tomadorBruto ?? {}
+  if (tomadorBruto && (cpf === undefined) === (cnpj === undefined)) throw new DpsInvalidError('tomador deve ter CPF ou CNPJ, exatamente um')
   if (cpf !== undefined && (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf))) {
     throw new DpsInvalidError('CPF do tomador deve ter 11 dígitos')
   }
@@ -127,17 +142,19 @@ export function parseDpsPayload(payload: unknown): DpsPayload {
     throw new DpsInvalidError('valor deve ser decimal positivo com 2 casas')
   }
   let endereco: EnderecoNacional | null = null
-  if (payload.tomador.endereco !== undefined && payload.tomador.endereco !== null) {
-    endereco = enderecoValido(payload.tomador.endereco)
+  if (tomadorBruto && tomadorBruto.endereco !== undefined && tomadorBruto.endereco !== null) {
+    endereco = enderecoValido(tomadorBruto.endereco)
     if (!endereco) throw new DpsInvalidError('endereço do tomador inválido')
   }
   return {
-    tomador: {
-      tag: cnpj === undefined ? 'CPF' : 'CNPJ',
-      documento: (cnpj ?? cpf) as string,
-      nome: textField(payload.tomador.nome, 'nome do tomador', 150),
-      endereco,
-    },
+    tomador: tomadorBruto
+      ? {
+          tag: cnpj === undefined ? 'CPF' : 'CNPJ',
+          documento: (cnpj ?? cpf) as string,
+          nome: textField(tomadorBruto.nome, 'nome do tomador', 150),
+          endereco,
+        }
+      : null,
     servico: {
       codigo_servico_nacional: codigo,
       descricao: textField(payload.servico.descricao, 'descrição do serviço', 2000),
@@ -427,7 +444,7 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   const data = parseDpsPayload(payload)
   const id = buildIdDps(tenant, serie, numero)
   // E0202: o tomador não pode ser o próprio prestador.
-  if (data.tomador.tag === 'CNPJ' && data.tomador.documento === tenant.cnpj) {
+  if (data.tomador?.tag === 'CNPJ' && data.tomador.documento === tenant.cnpj) {
     throw new DpsInvalidError('tomador é o próprio prestador')
   }
   const im = tenant.inscricao_municipal?.trim() || null
@@ -468,10 +485,16 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   if (mei && (iss || inss || irrf || csrf)) throw new DpsInvalidError('MEI não tem retenção de ISS nem de INSS')
   // IRRF e PIS/COFINS/CSLL retidos na fonte são do Presumido e do Real (o Simples recolhe pelo DAS).
   if (!naoOptante && (irrf || csrf)) throw new DpsInvalidError('IRRF e PIS/COFINS/CSLL retidos só para Lucro Presumido ou Real')
-  const end = data.tomador.endereco
+  if (!data.tomador) {
+    // E0204: retenção pelo tomador exige o tomador identificado; as federais, também (quem retém é ele).
+    if (iss || inss || irrf || csrf) throw new DpsInvalidError(MOTIVO_RETENCAO_SEM_TOMADOR)
+    const motivo = problemaDoCodigoSemTomador(codigo)
+    if (motivo) throw new DpsInvalidError(motivo)
+  }
+  const end = data.tomador?.endereco ?? null
   if (iss) {
     // E0237: ISS retido pelo tomador exige o endereço nacional dele. Tomador CPF: E0667 (decisão de 16/11/2026).
-    if (data.tomador.tag !== 'CNPJ') throw new DpsInvalidError('ISS retido só para tomador com CNPJ')
+    if (data.tomador?.tag !== 'CNPJ') throw new DpsInvalidError('ISS retido só para tomador com CNPJ')
     if (!end) throw new DpsInvalidError('ISS retido exige o endereço do tomador')
   }
   const tomaEnd = end
@@ -518,7 +541,11 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
   // Anexo B). Sem o cIndOp informado na nota, a DPS sai sem o grupo, que é opcional para Simples e MEI em 2026.
   const local = data.servico.municipio_prestacao_ibge
   const ibscbsPermitido = !local || data.servico.c_ind_op !== null
-  if (data.servico.locacao && 'cst' in rtc.ibscbs && rtc.ibscbs.cIndOp === '010103' && !data.tomador.endereco) {
+  if (data.servico.locacao && !data.tomador) {
+    // E0187/E0243: a locação leva sempre o IBSCBS, e o local do fornecimento depende do adquirente.
+    throw new DpsInvalidError('nota de locação exige o tomador (o inquilino) identificado')
+  }
+  if (data.servico.locacao && 'cst' in rtc.ibscbs && rtc.ibscbs.cIndOp === '010103' && !data.tomador?.endereco) {
     // E0243: incidência no endereço do destinatário (o próprio tomador) exige o endereço dele.
     throw new DpsInvalidError('com entrega do bem no endereço do cliente (cIndOp 010103), informe o endereço do tomador')
   }
@@ -526,7 +553,8 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
     ? 'cst' in rtc.ibscbs
       ? grupoIbsCbs(leiaute, rtc.ibscbs, data.servico.locacao)
       : null
-    : opcoes.ibscbs && ibscbsPermitido && 'cst' in rtc.ibscbs
+    : // Sem tomador, sem o grupo (opcional em 2026): o cIndOp da tabela pode pôr o local no adquirente (E0187, E0243).
+      opcoes.ibscbs && ibscbsPermitido && data.tomador && 'cst' in rtc.ibscbs
       ? grupoIbsCbs(leiaute, rtc.ibscbs)
       : null
   const cTribNac = leaf('cTribNac', data.servico.codigo_servico_nacional)
@@ -553,8 +581,10 @@ export function buildDps({ tenant, serie, numero, payload, now, opcoes = OPCOES_
         leaf('IM', im),
         el('regTrib', regTrib),
       ]),
-      el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]),
-      // Release 2: indDest 1-1 em infDPS (0 = o destinatário é o próprio tomador; sem o grupo dest, E0908).
+      // Tomador não informado: o grupo `toma` (0-1) fica de fora inteiro.
+      data.tomador ? el('toma', [leaf(data.tomador.tag, data.tomador.documento), leaf('xNome', data.tomador.nome), tomaEnd]) : null,
+      // Release 2: indDest 1-1 em infDPS (0 = o destinatário é o próprio tomador; sem o grupo dest, E0908). Sem tomador,
+      // também 0: com 1, a Sefin exigiria o grupo dest (E0910).
       leiaute === 'nt009r2' ? leaf('indDest', '0') : null,
       el('serv', [
         el('locPrest', leaf('cLocPrestacao', local ?? ibge)),

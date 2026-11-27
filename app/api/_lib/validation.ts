@@ -5,6 +5,8 @@
 // ou senha por engano (critério 31) e que um erro de digitação da Prontia aparece logo.
 // Tomador: `cpf` (11 dígitos) ou `cnpj` (14 dígitos), exatamente um dos dois (Landing de
 // .checks/agente-fiscal-whatsapp.md, lote B2 - tomador pessoa jurídica).
+// Tomador não informado (consumidor não identificado, 27/11/2026; tomador-nao-informado.ts): `"tomador_nao_informado": true`
+// e nenhum `tomador`. Sem os dois, o pedido é recusado (ninguém emite sem tomador por esquecimento).
 
 import { normalizarEmail } from './agente/normalizacao.js'
 import { lerEnderecoEscrito } from './endereco-tomador.js'
@@ -17,7 +19,9 @@ import type { EnderecoNacional, Retencao, RetencaoDoPedido } from './retencao.js
 export type TomadorPayload = { cpf: string; nome: string } | { cnpj: string; nome: string }
 
 export type InvoicePayload = {
-  tomador: TomadorPayload & { email?: string; endereco?: EnderecoNacional }
+  /** Ausente só com `tomador_nao_informado: true`. */
+  tomador?: TomadorPayload & { email?: string; endereco?: EnderecoNacional }
+  tomador_nao_informado?: true
   /** `nbs`, `c_ind_op` e `c_class_trib`: Reforma Tributária (IBS/CBS), opcionais; ver dps-builder.ts. */
   servico: {
     codigo_servico_nacional: string
@@ -46,7 +50,8 @@ export type PedidoDaApi = {
   external_id: string
   cnpj_prestador: string | null
   /** `endereco`: o informado (prevalece sobre o da Receita; com CPF, o único). Ausente = a Receita (CNPJ) ou nenhum. */
-  tomador: { documento: string; nome: string; email: string | null; endereco?: EnderecoNacional | null }
+  /** `null` = tomador não informado (`tomador_nao_informado: true` no corpo). */
+  tomador: { documento: string; nome: string; email: string | null; endereco?: EnderecoNacional | null } | null
   servico: {
     codigo: string | null
     descricao: string | null
@@ -127,12 +132,44 @@ function camposDaLocacao(servico: unknown): string | null {
   return null
 }
 
+type TomadorLido = { ok: true; tomador: PedidoDaApi['tomador'] } | { ok: false; erro: string }
+
+/** `tomador` do corpo; não objeto (só com `tomador_nao_informado: true`, conferido antes) = sem tomador. */
+function lerTomador(bruto: unknown): TomadorLido {
+  if (!isObject(bruto)) return { ok: true, tomador: null }
+  const t = bruto
+  const falha = (erro: string): TomadorLido => ({ ok: false, erro })
+  const temCpf = t.cpf !== undefined
+  const temCnpj = t.cnpj !== undefined
+  if (temCpf === temCnpj) return falha('tomador deve ter cpf ou cnpj, exatamente um dos dois')
+  const cpf = typeof t.cpf === 'string' && /^\d{11}$/.test(t.cpf) ? t.cpf : null
+  if (temCpf && !cpf) return falha('tomador.cpf deve ter 11 dígitos')
+  const cnpj = typeof t.cnpj === 'string' && /^\d{14}$/.test(t.cnpj) ? t.cnpj : null
+  if (temCnpj && !cnpj) return falha('tomador.cnpj deve ter 14 dígitos, só números')
+  const nome = text(t.nome, 1, 150)
+  if (!nome) return falha('tomador.nome deve ter de 1 a 150 caracteres')
+  let email: string | null = null
+  if (t.email !== undefined && t.email !== null && t.email !== '') {
+    email = typeof t.email === 'string' ? normalizarEmail(t.email) : null
+    if (!email) return falha('tomador.email inválido')
+  }
+  let endereco: EnderecoNacional | null = null
+  if (t.endereco !== undefined && t.endereco !== null) {
+    if (!isObject(t.endereco)) return falha('tomador.endereco deve ser um objeto')
+    const e = t.endereco
+    const lido = lerEnderecoEscrito({ cep: e.cep, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.municipio_ibge })
+    if (!lido.ok) return falha(`tomador.endereco: ${lido.erro} (cep, logradouro, bairro e municipio_ibge são obrigatórios)`)
+    endereco = lido.endereco
+  }
+  return { ok: true, tomador: { documento: (cpf ?? cnpj) as string, nome, email, ...(endereco ? { endereco } : {}) } }
+}
+
 export function parseNewInvoice(body: unknown): ValidationResult {
   const fail = (message: string): ValidationResult => ({ ok: false, code: 'VALIDATION_FAILED', message })
   if (!isObject(body)) return fail('o corpo deve ser um objeto JSON')
 
   const extra =
-    unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
+    unknownField(body, ['external_id', 'cnpj_prestador', 'tomador', 'tomador_nao_informado', 'servico', 'valor', 'retencao', 'informacoes_complementares'], '') ??
     (isObject(body.tomador) ? unknownField(body.tomador, ['cpf', 'cnpj', 'nome', 'email', 'endereco'], 'tomador.') : null) ??
     (isObject(body.tomador) && isObject(body.tomador.endereco)
       ? unknownField(body.tomador.endereco, ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge'], 'tomador.endereco.')
@@ -150,32 +187,22 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     cnpjPrestador = typeof body.cnpj_prestador === 'string' && /^\d{14}$/.test(body.cnpj_prestador) ? body.cnpj_prestador : null
     if (!cnpjPrestador) return fail('cnpj_prestador deve ter 14 dígitos, só números')
   }
-  if (!isObject(body.tomador)) return fail('tomador é obrigatório')
+  const naoInformado = body.tomador_nao_informado
+  if (naoInformado !== undefined && naoInformado !== null && typeof naoInformado !== 'boolean') {
+    return fail('tomador_nao_informado deve ser true ou false')
+  }
+  const semTomador = naoInformado === true
+  if (semTomador && body.tomador !== undefined && body.tomador !== null) {
+    return fail('tomador_nao_informado: true não aceita tomador; para identificar o cliente, mande só o tomador')
+  }
+  if (!semTomador && !isObject(body.tomador)) {
+    return fail('tomador é obrigatório (para consumidor não identificado, envie "tomador_nao_informado": true)')
+  }
   if (body.servico !== undefined && !isObject(body.servico)) return fail('servico deve ser um objeto')
   const servico: Obj = isObject(body.servico) ? body.servico : {}
 
-  const temCpf = body.tomador.cpf !== undefined
-  const temCnpj = body.tomador.cnpj !== undefined
-  if (temCpf === temCnpj) return fail('tomador deve ter cpf ou cnpj, exatamente um dos dois')
-  const cpf = typeof body.tomador.cpf === 'string' && /^\d{11}$/.test(body.tomador.cpf) ? body.tomador.cpf : null
-  if (temCpf && !cpf) return fail('tomador.cpf deve ter 11 dígitos')
-  const cnpj = typeof body.tomador.cnpj === 'string' && /^\d{14}$/.test(body.tomador.cnpj) ? body.tomador.cnpj : null
-  if (temCnpj && !cnpj) return fail('tomador.cnpj deve ter 14 dígitos, só números')
-  const nome = text(body.tomador.nome, 1, 150)
-  if (!nome) return fail('tomador.nome deve ter de 1 a 150 caracteres')
-  let email: string | null = null
-  if (body.tomador.email !== undefined && body.tomador.email !== null && body.tomador.email !== '') {
-    email = typeof body.tomador.email === 'string' ? normalizarEmail(body.tomador.email) : null
-    if (!email) return fail('tomador.email inválido')
-  }
-  let endereco: EnderecoNacional | null = null
-  if (body.tomador.endereco !== undefined && body.tomador.endereco !== null) {
-    if (!isObject(body.tomador.endereco)) return fail('tomador.endereco deve ser um objeto')
-    const e = body.tomador.endereco
-    const lido = lerEnderecoEscrito({ cep: e.cep, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro, municipio: e.municipio_ibge })
-    if (!lido.ok) return fail(`tomador.endereco: ${lido.erro} (cep, logradouro, bairro e municipio_ibge são obrigatórios)`)
-    endereco = lido.endereco
-  }
+  const tomador = lerTomador(body.tomador)
+  if (!tomador.ok) return fail(tomador.erro)
   let codigo: string | null = null
   if (servico.codigo_servico_nacional !== undefined) {
     codigo = text(servico.codigo_servico_nacional, 1, 20)
@@ -244,7 +271,7 @@ export function parseNewInvoice(body: unknown): ValidationResult {
     value: {
       external_id: externalId,
       cnpj_prestador: cnpjPrestador,
-      tomador: { documento: (cpf ?? cnpj) as string, nome, email, ...(endereco ? { endereco } : {}) },
+      tomador: tomador.tomador,
       servico: { codigo, descricao, ...rtc },
       valor,
       ...(retencao ? { retencao } : {}),
