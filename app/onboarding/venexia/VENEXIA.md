@@ -64,6 +64,11 @@ Alternativa: redefinir no painel do Supabase e entregar fora do chat.
 
 1. Merge desta branch para publicar o protótipo. Até lá a aba Protótipo mostra 404 em produção.
 2. Login real no navegador com a conta da Venexia e troca da senha.
-3. Painel (código, afeta todos os clientes de agência): a aba Etapas leva ao WhatsApp da nó, não ao da
-   agência; a moldura do protótipo só cresce (não encolhe ao fechar um bloco "ler mais").
+3. Painel (código, afeta todos os clientes de agência) — corrigido em 06/11/2026, aguardando merge:
+   a aba Etapas e o botão "Falar com a equipe" passam a ler `presentation.contact_href` e
+   `contact_label` do roadmap (só `https://` ou `mailto:`; padrão WhatsApp da nó), e a moldura do
+   protótipo volta a encolher (mede o `<body>`, zera ao trocar de dispositivo). **Passo de dados
+   pendente, a pedir ao Lucca depois do merge:** gravar `contact_href` com o WhatsApp do Thomas
+   (+55 11 99715-1833) nos roadmaps da Venexia, da Conexão Equestre e da Gazeta; até lá os dois
+   botões continuam no WhatsApp da nó.
 4. Definir prazo e suporte por pacote e se o Pacote 3 inclui a loja.
