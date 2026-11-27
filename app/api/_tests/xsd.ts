@@ -22,12 +22,13 @@ function ler(pacote: PacoteXsd, arquivo: string): string {
 }
 
 /**
- * O pacote do leiaute em que a DPS foi montada: sem `finNFSe`, produção (v1.01); com `indDest` logo depois de `toma`,
+ * O pacote do leiaute em que a DPS foi montada: sem `finNFSe`, produção (v1.01); com `indDest` logo depois de `toma`
+ * (ou de `prest`, na nota sem tomador),
  * o release 2 da NT 009; senão, o release 1.
  */
 export function pacoteDaDps(xml: string): PacoteXsd {
   if (!xml.includes('<finNFSe>')) return 'producao-v1.01-20260209'
-  return /<\/toma><indDest>/.test(xml) ? 'producao-restrita-20261124' : 'producao-restrita-20261020'
+  return /<\/(toma|prest)><indDest>/.test(xml) ? 'producao-restrita-20261124' : 'producao-restrita-20261020'
 }
 
 /** Lista de erros do xmllint (vazia = válido). */

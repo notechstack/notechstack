@@ -156,6 +156,8 @@ describe('nota avulsa', () => {
     expect(conferido.corpo.resumo).toEqual({
       empresa: { tenant_id: cliente.id, razao_social: 'Padaria Cliente Ltda', cnpj: cliente.cnpj },
       tomador: { documento: CPF, tipo: 'cpf', nome: 'Maria Tomadora', email: 'maria@tomador.test' },
+      tomador_nao_informado: false,
+      tomador_rotulo: null,
       servico: { codigo: '010701', nome: 'Suporte técnico em informática', descricao: 'Prestação de serviços' },
       informacoes_complementares: null,
       local_prestacao: null,
@@ -215,6 +217,56 @@ describe('nota avulsa', () => {
     expect((daNota?.entregas ?? []).map((x) => [x.canal, x.destino]).sort()).toEqual(
       [['email', 'maria@tomador.test'], ['email', e.mae.ownerEmail], ['whatsapp', e.mae.ownerPhone]].sort(),
     )
+  })
+
+  it('tomador não informado: resumo sem cliente, sem retenção do padrão, sem e-mail ao cliente e sem cliente salvo', async () => {
+    const { e, dono, cliente } = await novoEscritorio()
+    // ISS retido no padrão da empresa: sem tomador, não vale.
+    await chamar(dono, { acao: 'empresa_retencao', tenant_id: cliente.id, retem_iss: true, aliquota_iss: '2', retem_inss: false })
+    const pedido = { tenant_id: cliente.id, tomador_nao_informado: true, valor: '150,00', codigo: '', descricao: 'Consulta avulsa' }
+
+    // E-mail ou endereço junto da caixa marcada é contradição; 17.05.01 exige o tomador.
+    expect((await chamar(dono, { ...pedido, email: 'x@y.test', acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'email' })
+    expect((await chamar(dono, { ...pedido, tomador_cep: '12900000', tomador_logradouro: 'Rua A', tomador_bairro: 'Centro', tomador_municipio: 'Bragança Paulista/SP', acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'endereco' })
+    expect((await chamar(dono, { ...pedido, codigo: '17.05.01', acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'codigo' })
+    // Sem a caixa, documento em branco continua erro; o CNPJ da própria empresa também (E0202).
+    expect((await chamar(dono, { ...pedido, tomador_nao_informado: false, documento: '', nome: 'x', acao: 'avulsa_conferir' })).corpo).toMatchObject({ campo: 'documento' })
+    expect((await chamar(dono, { ...pedido, tomador_nao_informado: false, documento: cliente.cnpj, nome: 'Padaria', acao: 'avulsa_conferir' })).corpo).toMatchObject({
+      campo: 'documento',
+    })
+
+    const conferido = await chamar(dono, { ...pedido, acao: 'avulsa_conferir' })
+    expect(conferido.status).toBe(200)
+    expect(conferido.corpo.resumo).toMatchObject({
+      tomador: null,
+      tomador_nao_informado: true,
+      tomador_rotulo: 'não informado (consumidor não identificado)',
+      retencao: null,
+      endereco_tomador: null,
+      valor: '150.00',
+    })
+    expect(conferido.corpo.avisos).toEqual([
+      'Nota sem tomador (Tomador/Adquirente não informado): sai sem CPF/CNPJ do cliente, sem retenção e não vira cliente salvo.',
+    ])
+
+    await chamar(dono, { ...pedido, acao: 'avulsa_emitir', chave: randomUUID() })
+    const [nota] = await notasDoTenant(cliente.id)
+    expect(nota.payload).toEqual({
+      tomador_nao_informado: true,
+      servico: { codigo_servico_nacional: '010701', descricao: 'Consulta avulsa' },
+      valor: '150.00',
+    })
+
+    // O worker de sempre autoriza; o e-mail vai só à conta do escritório (não há cliente).
+    const canais = canaisDouble()
+    const sefin = fakeSefin()
+    await rodarWorker(servico.db, { sefin: createSefinClient({ transport: sefin.transport }), tenantId: cliente.id, canais, now: () => new Date() })
+    expect((await readInvoice(admin.db, nota.id)).status).toBe('issued')
+    const [dps] = sefin.requests.filter((r) => r.method === 'POST' && r.path === '/nfse').map((r) => r.xml ?? '')
+    expect(dps).not.toContain('<toma>')
+    expect(canais.emails.filter((m) => m.assunto.startsWith('NFS-e')).map((m) => m.para)).toEqual([e.mae.ownerEmail])
+    const { rows } = await admin.db.query<{ n: number }>('select count(*)::int as n from nofiscal.fiscal_models where tenant_id = $1', [cliente.id])
+    expect(rows[0].n).toBe(0)
   })
 
   it('locação (99.03.01): desligada, o campo do código explica; ligada, o resumo diz que é locação e o payload leva o imóvel, sem ISS', async () => {

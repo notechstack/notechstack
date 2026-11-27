@@ -12,6 +12,7 @@
 // - vRetCP > 0 e menor que o valor do serviço (E0699); vServ ≥ ISS retido + vRetCP (E0428).
 
 import { formatarReais } from './agente/documentos.js'
+import { MOTIVO_RETENCAO_SEM_TOMADOR } from './tomador-nao-informado.js'
 
 export type EnderecoNacional = {
   /** Código IBGE do município (7 dígitos). */
@@ -66,6 +67,7 @@ export const PROBLEMAS_DE_RETENCAO = [
   'RETENCAO_FEDERAL_SO_LUCRO',
   'IRRF_INVALIDO',
   'CSRF_INVALIDO',
+  'RETENCAO_SEM_TOMADOR',
 ] as const
 export type ProblemaDeRetencao = (typeof PROBLEMAS_DE_RETENCAO)[number]
 
@@ -161,7 +163,8 @@ export function resolverRetencao(dados: {
   pedido?: RetencaoDoPedido
   valor: string
   regime: string | null
-  tomadorTipo: 'cpf' | 'cnpj'
+  /** `null` = tomador não informado: nada de retenção (E0204), nem a do padrão da empresa. */
+  tomadorTipo: 'cpf' | 'cnpj' | null
 }): { ok: true; retencao: Retencao | null } | { ok: false; problema: ProblemaDeRetencao } {
   const p = dados.pedido ?? {}
   const falha = (problema: ProblemaDeRetencao) => ({ ok: false as const, problema })
@@ -185,6 +188,8 @@ export function resolverRetencao(dados: {
   if ((irrf || csrf) && dados.regime !== 'presumido' && dados.regime !== 'real') return falha('RETENCAO_FEDERAL_SO_LUCRO')
 
   if (!temIss && !temInss && !irrf && !csrf) return { ok: true, retencao: null }
+  // Sem tomador, ninguém retém: o pedido que pede retenção é recusado (o padrão da empresa já não vale, acima).
+  if (dados.tomadorTipo === null) return falha('RETENCAO_SEM_TOMADOR')
   if (dados.regime === 'mei') return falha('RETENCAO_MEI')
 
   const retencao: Retencao = {}
@@ -239,6 +244,8 @@ export function motivoDaRetencao(problema: string): string {
       return 'IRRF retido inválido: escreva o valor (15,00) ou o percentual (1,5%), menor que o valor da nota'
     case 'CSRF_INVALIDO':
       return 'PIS/COFINS/CSLL retidos inválidos: escreva o valor somado (46,50) ou o percentual (4,65%), menor que o valor da nota'
+    case 'RETENCAO_SEM_TOMADOR':
+      return MOTIVO_RETENCAO_SEM_TOMADOR
     case 'ENDERECO_TOMADOR':
       return 'com ISS retido, a nota leva o endereço do cliente, e não achei o endereço deste CNPJ na Receita'
     default:

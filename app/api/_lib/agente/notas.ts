@@ -34,23 +34,28 @@ export type ServicoDoPedido = {
 }
 
 /**
- * `retencao` entra apenas quando há retenção; `endereco` do tomador, sempre que houver (endereco-tomador.ts: o informado
+ * `tomador` `null` = tomador não informado (tomador-nao-informado.ts): o payload leva `tomador_nao_informado: true` e
+ * nenhum tomador (nem endereço). `retencao` entra apenas quando há retenção; `endereco` do tomador, sempre que houver (endereco-tomador.ts: o informado
  * ou o da Receita, em toda nota, não só com ISS retido); `informacoes_complementares`, só quando há texto.
  */
 export function payloadDaNota(
-  tomador: TomadorDoPedido,
+  tomador: TomadorDoPedido | null,
   servico: ServicoDoPedido,
   valor: string,
   extra: { retencao?: Retencao | null; endereco?: EnderecoNacional | null; informacoes_complementares?: string | null } = {},
 ) {
   const retencao = extra.retencao && (extra.retencao.iss || extra.retencao.inss) ? extra.retencao : null
   return {
-    tomador: {
-      [tipoDoDocumento(tomador.documento)]: tomador.documento,
-      nome: tomador.nome,
-      ...(tomador.email ? { email: tomador.email } : {}),
-      ...(extra.endereco ? { endereco: extra.endereco } : {}),
-    },
+    ...(tomador
+      ? {
+          tomador: {
+            [tipoDoDocumento(tomador.documento)]: tomador.documento,
+            nome: tomador.nome,
+            ...(tomador.email ? { email: tomador.email } : {}),
+            ...(extra.endereco ? { endereco: extra.endereco } : {}),
+          },
+        }
+      : { tomador_nao_informado: true as const }),
     servico: {
       codigo_servico_nacional: servico.codigo,
       descricao: servico.descricao,
@@ -64,13 +69,32 @@ export function payloadDaNota(
   }
 }
 
-type PayloadLido = { tomador?: { cpf?: string; cnpj?: string; nome?: string; email?: string }; valor?: string }
+type PayloadLido = {
+  tomador?: { cpf?: string; cnpj?: string; nome?: string; email?: string }
+  tomador_nao_informado?: boolean
+  valor?: string
+}
 
-export function lerPayload(payload: unknown): { documento: string | null; nome: string; email: string | null; valor: string | null } {
+/** Nome que a pessoa lê para a nota sem tomador (mensagens, e-mail, lista de notas). */
+export const NOME_DA_NOTA_SEM_TOMADOR = 'consumidor não identificado'
+
+/** Nota do payload sem tomador (`tomador_nao_informado: true`). */
+export const semTomadorNoPayload = (payload: unknown): boolean =>
+  typeof payload === 'object' && payload !== null && (payload as PayloadLido).tomador_nao_informado === true
+
+export function lerPayload(payload: unknown): {
+  documento: string | null
+  nome: string
+  email: string | null
+  valor: string | null
+  semTomador: boolean
+} {
   const p = (typeof payload === 'object' && payload !== null ? payload : {}) as PayloadLido
+  const semTomador = p.tomador_nao_informado === true
   return {
+    semTomador,
     documento: p.tomador?.cpf ?? p.tomador?.cnpj ?? null,
-    nome: p.tomador?.nome ?? 'tomador',
+    nome: p.tomador?.nome ?? (semTomador ? NOME_DA_NOTA_SEM_TOMADOR : 'tomador'),
     email: p.tomador?.email ?? null,
     valor: typeof p.valor === 'string' ? p.valor : null,
   }

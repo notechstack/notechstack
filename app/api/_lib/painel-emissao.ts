@@ -54,6 +54,7 @@ import { lerInfoComplementar } from './info-complementar.js'
 import { planoDeEscritorio } from './agente/planos.js'
 import type { InvoicePayload } from './validation.js'
 import type { SessionVerifier } from './session.js'
+import { MOTIVO_CODIGO_EXIGE_TOMADOR, problemaDoCodigoSemTomador, ROTULO_TOMADOR_NAO_INFORMADO } from './tomador-nao-informado.js'
 import {
   emailsDaNo,
   estadoDaIntegracao,
@@ -141,6 +142,11 @@ const visao = (e: Empresa) => ({ tenant_id: e.id, razao_social: e.razao_social, 
 
 export type PedidoDoPainel = {
   tenantId: string
+  /**
+   * Caixa "Tomador não informado (consumidor não identificado)" (27/11/2026; tomador-nao-informado.ts): `documento` e
+   * `nome` vazios, sem e-mail, endereço nem retenção.
+   */
+  tomadorNaoInformado?: boolean
   documento: string
   nome: string
   email: string | null
@@ -189,26 +195,41 @@ const texto = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').tr
  */
 export function lerPedido(
   corpo: Record<string, unknown>,
-  empresa: (Pick<Empresa, 'codigo_servico_nacional'> & Partial<Pick<Empresa, 'codigo_municipio_ibge'>>) | null,
+  empresa: (Pick<Empresa, 'codigo_servico_nacional'> & Partial<Pick<Empresa, 'codigo_municipio_ibge' | 'cnpj'>>) | null,
 ): LeituraDoPedido {
   const falha = (campo: CampoDoPainel, mensagem: string): LeituraDoPedido => ({ ok: false, campo, mensagem })
   const tenantId = texto(corpo.tenant_id)
   if (!UUID.test(tenantId) || !empresa) return falha('tenant_id', 'Escolha a empresa que emite a nota.')
 
-  const documento = texto(corpo.documento).replace(/\D/g, '')
-  if (!(documento.length === 11 ? cpfValido(documento) : documento.length === 14 ? cnpjValido(documento) : false)) {
-    return falha('documento', 'CPF ou CNPJ inválido. Confira os números.')
+  // Tomador não informado: só com a caixa marcada (nunca por documento em branco).
+  const semTomador = corpo.tomador_nao_informado === true
+  let documento = ''
+  let nome = ''
+  let email: string | null = null
+  if (semTomador) {
+    if (texto(corpo.email)) return falha('email', 'Nota sem tomador não tem e-mail do cliente. Apague o e-mail ou desmarque "Tomador não informado".')
+  } else {
+    documento = texto(corpo.documento).replace(/\D/g, '')
+    if (!(documento.length === 11 ? cpfValido(documento) : documento.length === 14 ? cnpjValido(documento) : false)) {
+      return falha('documento', 'CPF ou CNPJ inválido. Confira os números. Para consumidor que não se identifica, marque "Tomador não informado".')
+    }
+    // E0202: a própria empresa não é tomadora da nota dela.
+    if (empresa.cnpj && documento === empresa.cnpj) {
+      return falha('documento', 'Este é o CNPJ da própria empresa que emite, e a Sefin não aceita. Para consumidor que não se identifica, marque "Tomador não informado".')
+    }
+    nome = texto(corpo.nome)
+    if (!nome) return falha('nome', 'Informe o nome do cliente.')
+    if (nome.length > 150) return falha('nome', 'O nome passa de 150 caracteres.')
+    const emailEscrito = texto(corpo.email)
+    email = emailEscrito ? normalizarEmail(emailEscrito) : null
+    if (emailEscrito && !email) return falha('email', 'E-mail inválido. Confira ou deixe em branco.')
   }
-  const nome = texto(corpo.nome)
-  if (!nome) return falha('nome', 'Informe o nome do cliente.')
-  if (nome.length > 150) return falha('nome', 'O nome passa de 150 caracteres.')
-  const emailEscrito = texto(corpo.email)
-  const email = emailEscrito ? normalizarEmail(emailEscrito) : null
-  if (emailEscrito && !email) return falha('email', 'E-mail inválido. Confira ou deixe em branco.')
   const valor = lerValor(typeof corpo.valor === 'number' ? corpo.valor : texto(corpo.valor), { pontoEhMilhar: true })
   if (!valor) return falha('valor', 'Valor inválido. Escreva, por exemplo, 1.234,56.')
   const codigo = texto(corpo.codigo).replace(/\D/g, '') || empresa.codigo_servico_nacional || ''
   if (!/^\d{6}$/.test(codigo)) return falha('codigo', 'Escolha o código de serviço (6 dígitos da lista nacional).')
+  if (semTomador && problemaDoCodigoSemTomador(codigo)) return falha('codigo', `Sem tomador não dá: ${MOTIVO_CODIGO_EXIGE_TOMADOR}.`)
+  if (semTomador && ehLocacao(codigo)) return falha('codigo', 'Nota de locação exige o tomador (o inquilino) identificado.')
   const descricao = typeof corpo.descricao === 'string' ? corpo.descricao.trim() : ''
   if (descricao.length > 2000) return falha('descricao', 'A descrição passa de 2.000 caracteres.')
   const info = lerInfoComplementar(corpo.informacoes_complementares)
@@ -292,6 +313,9 @@ export function lerPedido(
     bairro: corpo.tomador_bairro,
     municipio: corpo.tomador_municipio,
   })
+  if (semTomador && (!enderecoLido.ok || enderecoLido.endereco)) {
+    return falha('endereco', 'Nota sem tomador não tem endereço do cliente. Deixe o endereço em branco.')
+  }
   if (!enderecoLido.ok) return falha('endereco', `Endereço do cliente: ${enderecoLido.erro}. Preencha CEP, rua, bairro e cidade, ou deixe tudo em branco.`)
 
   let retencao: RetencaoDoPedido | undefined
@@ -313,6 +337,7 @@ export function lerPedido(
     ok: true,
     pedido: {
       tenantId,
+      ...(semTomador ? { tomadorNaoInformado: true } : {}),
       documento,
       nome,
       email,
@@ -330,7 +355,7 @@ export function lerPedido(
 }
 
 const payloadDoPedido = (p: PedidoDoPainel, retencao: Retencao | null = null, endereco: EnderecoNacional | null = null) =>
-  payloadDaNota({ documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge, obra: p.obra, locacao: p.locacao ?? null }, p.valor, {
+  payloadDaNota(p.tomadorNaoInformado ? null : { documento: p.documento, nome: p.nome, email: p.email }, { codigo: p.codigo, descricao: p.descricao, municipio_prestacao_ibge: p.municipio_prestacao_ibge, obra: p.obra, locacao: p.locacao ?? null }, p.valor, {
     retencao,
     endereco,
     informacoes_complementares: p.informacoes_complementares,
@@ -344,6 +369,7 @@ const CAMPO_DA_RETENCAO: Record<string, CampoDoPainel> = {
   INSS_INVALIDO: 'inss',
   RETENCOES_ACIMA_DO_VALOR: 'inss',
   ISS_RETIDO_CPF: 'documento',
+  RETENCAO_SEM_TOMADOR: 'retencao',
 }
 
 // ---------------------------------------------------------------------------------------
@@ -475,13 +501,15 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
     pedido: pedido.retencao,
     valor: pedido.valor,
     regime: emp.regime ?? null,
-    tomadorTipo: tipoDoDocumento(pedido.documento),
+    tomadorTipo: pedido.tomadorNaoInformado ? null : tipoDoDocumento(pedido.documento),
   })
   if (!resolvida.ok) {
     return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao(resolvida.problema)}.`, { campo: CAMPO_DA_RETENCAO[resolvida.problema] ?? 'retencao' })
   }
   // Endereço do tomador: o informado, senão o da Receita (CNPJ). Sem ele, só o ISS retido trava (E0237).
-  const achado = await resolverEnderecoDoTomador({ documento: pedido.documento, informado: pedido.endereco ?? null, consulta: ctx.deps.enderecos })
+  const achado = pedido.tomadorNaoInformado
+    ? { endereco: null, consultaFalhou: false, origem: null }
+    : await resolverEnderecoDoTomador({ documento: pedido.documento, informado: pedido.endereco ?? null, consulta: ctx.deps.enderecos })
   const endereco = achado.endereco
   if (resolvida.retencao?.iss && !endereco) return errorResponse('VALIDATION_FAILED', `${motivoDaRetencao('ENDERECO_TOMADOR')}.`, { campo: 'retencao' })
   if (emitir && achado.consultaFalhou) registrarSemEndereco('painel', { tenant_id: emp.id })
@@ -506,7 +534,9 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
       `Franquia: com esta nota, o mês chega a ${(noMes + 1).toLocaleString('pt-BR')} notas, acima das ${ctx.dono.limite.toLocaleString('pt-BR')} do seu plano. A nota sai normalmente.`,
     )
   }
-  if (!pedido.email) avisos.push('Sem e-mail, o cliente não recebe a nota por e-mail. Ela fica em Relatórios.')
+  if (pedido.tomadorNaoInformado) {
+    avisos.push('Nota sem tomador (Tomador/Adquirente não informado): sai sem CPF/CNPJ do cliente, sem retenção e não vira cliente salvo.')
+  } else if (!pedido.email) avisos.push('Sem e-mail, o cliente não recebe a nota por e-mail. Ela fica em Relatórios.')
   if (achado.consultaFalhou) avisos.push(AVISO_SEM_ENDERECO)
   if (pedido.locacao) avisos.push(...avisosDaLocacao(pedido.codigo, emp.regime ?? null))
 
@@ -514,7 +544,12 @@ async function avulsa(ctx: Contexto, b: Record<string, unknown>, emitir: boolean
   return json(200, {
     resumo: {
       empresa: visao(emp),
-      tomador: { documento: pedido.documento, tipo: tipoDoDocumento(pedido.documento), nome: pedido.nome, email: pedido.email },
+      // Sem tomador: `tomador` null e o rótulo para o resumo.
+      tomador: pedido.tomadorNaoInformado
+        ? null
+        : { documento: pedido.documento, tipo: tipoDoDocumento(pedido.documento), nome: pedido.nome, email: pedido.email },
+      tomador_nao_informado: pedido.tomadorNaoInformado === true,
+      tomador_rotulo: pedido.tomadorNaoInformado ? ROTULO_TOMADOR_NAO_INFORMADO : null,
       servico: { codigo: pedido.codigo, nome: nomeDoServico, descricao: pedido.descricao },
       informacoes_complementares: pedido.informacoes_complementares,
       local_prestacao: pedido.municipio_prestacao_ibge

@@ -7,6 +7,7 @@
 //   janela de 24 h, com a contagem, para onde o retorno foi e o comando *nota* (ver-nota.ts);
 // - passadas 6 h do "confirmar" sem fechar → um aviso parcial (`aviso_parcial_em`).
 // Só quem muda o estado (update condicional) envia: duas rodadas do worker não mandam o retorno duas vezes.
+import { NOME_TOMADOR_NAO_INFORMADO } from '../tomador-nao-informado.js'
 import { zipSync, type Zippable } from 'fflate'
 import { renderDanfse } from '../danfse-renderer.js'
 import type { Queryable } from '../db.js'
@@ -47,7 +48,7 @@ export type ItemDoRetorno = {
 }
 
 type Lido = Partial<Record<'cnpj_prestador' | 'cpf_cnpj_tomador' | 'nome_tomador' | 'valor', string>>
-type PayloadDaNota = { tomador?: { cpf?: string; cnpj?: string; nome?: string }; valor?: string; lido?: Lido }
+type PayloadDaNota = { tomador?: { cpf?: string; cnpj?: string; nome?: string }; tomador_nao_informado?: boolean; valor?: string; lido?: Lido }
 
 const SITUACAO: Record<string, string> = {
   issued: 'emitida',
@@ -119,7 +120,7 @@ export function retornoCsv(itens: ItemDoRetorno[]): string {
   for (const item of [...itens].sort((a, b) => a.linha - b.linha)) {
     const p = item.payload as PayloadDaNota
     const documento = p.tomador?.cpf ?? p.tomador?.cnpj ?? p.lido?.cpf_cnpj_tomador ?? ''
-    const nome = p.tomador?.nome ?? p.lido?.nome_tomador ?? ''
+    const nome = p.tomador?.nome ?? p.lido?.nome_tomador ?? (p.tomador_nao_informado ? NOME_TOMADOR_NAO_INFORMADO : '')
     const prestador = item.cnpj ? `${item.razao_social ?? ''} (${formatarDocumento(item.cnpj)})` : (p.lido?.cnpj_prestador ?? '')
     const tomador = /^\d{11}$|^\d{14}$/.test(documento) ? `${nome} (${formatarDocumento(documento)})` : [nome, documento].filter(Boolean).join(' ')
     linhas.push([

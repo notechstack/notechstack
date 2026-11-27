@@ -1298,6 +1298,21 @@
       }).join('');
     });
   }
+  /* Tomador não informado (consumidor não identificado): some com os dados do cliente, o endereço e a retenção. */
+  var CAMPOS_DO_CLIENTE = ['fa-av-documento', 'fa-av-nome', 'fa-av-email'];
+  function semTomadorAvulsa() { return $('fa-av-sem-tomador').checked; }
+  function atualizarSemTomador() {
+    var sem = semTomadorAvulsa();
+    CAMPOS_DO_CLIENTE.forEach(function (id) { $(id).closest('.nf-campo').style.display = sem ? 'none' : ''; if (sem) $(id).value = ''; });
+    // display, não hidden: o hidden da retenção é do regime (MEI), e preencher() o refaz ao trocar de empresa.
+    $('fa-av-end').style.display = sem ? 'none' : '';
+    $('fa-av-retencao').style.display = sem ? 'none' : '';
+    if (sem) {
+      CAMPOS_DO_ENDERECO.forEach(function (k) { $('fa-av-end-' + k).value = ''; });
+      $('fa-av-modelo').value = '';
+    }
+    $('fa-av-modelo').disabled = sem;
+  }
   function escolherModelo() {
     var emp = empresaDaEmissao($('fa-av-empresa').value);
     var m = emp && $('fa-av-modelo').value !== '' ? (em.modelos[emp.tenant_id] || [])[Number($('fa-av-modelo').value)] : null;
@@ -1349,6 +1364,13 @@
     if (!$('fa-av-loc-imovel').hidden) Object.keys(CAMPOS_DO_IMOVEL).forEach(function (k) { corpo['locacao_' + k] = $('fa-av-loc-' + CAMPOS_DO_IMOVEL[k]).value; });
     if (!$('fa-av-loc-bem').hidden) Object.keys(CAMPOS_DO_BEM).forEach(function (k) { corpo[k] = $('fa-av-loc-' + CAMPOS_DO_BEM[k]).value; });
     CAMPOS_DO_ENDERECO.forEach(function (k) { corpo['tomador_' + k] = $('fa-av-end-' + k).value; });
+    // Sem tomador: só a marca; nada de documento, nome, e-mail, endereço nem retenção.
+    if (semTomadorAvulsa()) {
+      corpo.tomador_nao_informado = true;
+      delete corpo.documento; delete corpo.nome; delete corpo.email;
+      CAMPOS_DO_ENDERECO.forEach(function (k) { delete corpo['tomador_' + k]; });
+      return corpo;
+    }
     // As caixas valem para esta nota (vêm marcadas com o padrão da empresa). MEI: sem caixas, sem retenção.
     // Tomador CPF com as caixas intocadas: não manda nada, e a API aplica a regra (pessoa física não herda a
     // retenção padrão da empresa; Bragantina, 26/11/2026).
@@ -1372,11 +1394,13 @@
     var corpo = lerAvulsa(), falhou = null;
     function erro(campo, msg) { nf.erroCampo(CAMPO_AVULSA[campo], msg); if (!falhou) falhou = campo; }
     if (!corpo.tenant_id) erro('tenant_id', 'Escolha a empresa que emite a nota.');
-    if (!nf.documentoValido(corpo.documento)) erro('documento', 'CPF ou CNPJ inválido. Confira os números.');
-    if (!nf.texto(corpo.nome)) erro('nome', 'Informe o nome do cliente.');
-    if (nf.texto(corpo.email) && !nf.emailValido(nf.texto(corpo.email))) erro('email', 'E-mail inválido. Confira ou deixe em branco.');
+    if (!corpo.tomador_nao_informado) {
+      if (!nf.documentoValido(corpo.documento)) erro('documento', 'CPF ou CNPJ inválido. Confira os números. Para consumidor que não se identifica, marque "Tomador não informado".');
+      if (!nf.texto(corpo.nome)) erro('nome', 'Informe o nome do cliente.');
+      if (nf.texto(corpo.email) && !nf.emailValido(nf.texto(corpo.email))) erro('email', 'E-mail inválido. Confira ou deixe em branco.');
+    }
     if (!nf.texto(corpo.valor)) erro('valor', 'Informe o valor.');
-    var erroRet = retAv.validar();
+    var erroRet = corpo.tomador_nao_informado ? null : retAv.validar();
     if (falhou || erroRet) { var f = $(falhou ? CAMPO_AVULSA[falhou] : erroRet); if (f) f.focus(); return; }
     corpo.acao = 'avulsa_conferir';
     var botao = $('fa-av-conferir');
@@ -1394,15 +1418,20 @@
   }
   function desenharResumoAvulsa(d) {
     var s = d.resumo || {}, t = s.tomador || {}, sv = s.servico || {}, emp = s.empresa || {};
+    var cliente = s.tomador_nao_informado
+      ? [['Tomador', 'Não informado (consumidor não identificado)']]
+      : [
+        ['Cliente', t.nome],
+        [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
+        ['Endereço' + (s.endereco_origem === 'receita' ? ' (Receita)' : ''), s.endereco_tomador ? textoDoEndereco(s.endereco_tomador) : (t.tipo === 'cnpj' ? 'Não achei na Receita agora; a nota sai sem endereço' : 'Sem endereço')],
+        ['E-mail', t.email || 'Sem e-mail']
+      ];
     $('fa-av-resumo-dados').innerHTML = linhas([
-      ['Empresa', (emp.razao_social || '') + ' · ' + nf.formatarCnpj(emp.cnpj || '')],
-      ['Cliente', t.nome],
-      [t.tipo === 'cnpj' ? 'CNPJ' : 'CPF', nf.formatarDocumento(t.documento || '')],
-      ['Endereço' + (s.endereco_origem === 'receita' ? ' (Receita)' : ''), s.endereco_tomador ? textoDoEndereco(s.endereco_tomador) : (t.tipo === 'cnpj' ? 'Não achei na Receita agora; a nota sai sem endereço' : 'Sem endereço')],
-      ['E-mail', t.email || 'Sem e-mail'],
+      ['Empresa', (emp.razao_social || '') + ' · ' + nf.formatarCnpj(emp.cnpj || '')]
+    ].concat(cliente).concat([
       ['Serviço', nf.formatarCodigo(sv.codigo || '') + (sv.nome ? ' ' + sv.nome : '')],
       ['Descrição na nota', sv.descricao]
-    ].concat(s.local_prestacao ? [['Local da prestação', s.local_prestacao.nome + (s.local_prestacao.iss_no_local ? ' (o ISS deste serviço é devido nessa cidade)' : '')]] : [])
+    ]).concat(s.local_prestacao ? [['Local da prestação', s.local_prestacao.nome + (s.local_prestacao.iss_no_local ? ' (o ISS deste serviço é devido nessa cidade)' : '')]] : [])
       .concat(s.obra ? [['Obra', s.obra]] : [])
       // Locação: "Tipo: locação de imóvel residencial (99.03.01), sem ISS", "Imóvel: …", "Bem: …".
       .concat((s.locacao || []).map(function (l) { var i = l.indexOf(': '); return i > 0 ? [l.slice(0, i), l.slice(i + 2)] : ['Locação', l]; }))
@@ -1451,7 +1480,10 @@
         var empAtual = empresaDaEmissao($('fa-av-empresa').value);
         retAv.preencher(empAtual && empAtual.retencao, !empAtual || empAtual.regime === 'mei');
         ec.relCarregado = false; // Relatórios busca de novo na próxima visita
-        nf.aviso($('fa-aviso-emitir'), nf.esc('Nota de ' + nf.texto(pedido.nome) + ' na fila da Sefin. Em instantes ela é autorizada, e o cliente com e-mail recebe a nota.') + BOTAO_RELATORIOS, 'ok');
+        // Sem tomador, a caixa fica marcada para a próxima (a clínica emite várias seguidas).
+        nf.aviso($('fa-aviso-emitir'), nf.esc(pedido.tomador_nao_informado
+          ? 'Nota sem tomador na fila da Sefin. Em instantes ela é autorizada.'
+          : 'Nota de ' + nf.texto(pedido.nome) + ' na fila da Sefin. Em instantes ela é autorizada, e o cliente com e-mail recebe a nota.') + BOTAO_RELATORIOS, 'ok');
         var aviso = $('fa-aviso-emitir');
         if (typeof aviso.scrollIntoView === 'function') aviso.scrollIntoView({ block: 'nearest' });
         return;
@@ -1557,6 +1589,7 @@
   $('fa-av-empresa').addEventListener('change', trocarEmpresaDaEmissao);
   $('fa-av-modelo').addEventListener('change', escolherModelo);
   $('fa-form-avulsa').addEventListener('submit', conferirAvulsa);
+  $('fa-av-sem-tomador').addEventListener('change', function () { fecharResumoAvulsa(); atualizarSemTomador(); });
   $('fa-av-info').addEventListener('input', contarInfoAvulsa);
   $('fa-av-local').addEventListener('focus', carregarMunicipios);
   $('fa-av-end-municipio').addEventListener('focus', carregarMunicipios);

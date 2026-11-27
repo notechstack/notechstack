@@ -284,6 +284,40 @@ describe('chave do parceiro', () => {
     expect((await api(chave, 'POST', '/v1/nfse', venda('ret-4', { pfx: 'MIIK' }))).corpo.error.code).toBe('UNKNOWN_FIELD')
   })
 
+  it('tomador não informado: "tomador_nao_informado": true sai sem tomador e sem a retenção do padrão; retenção, 17.05.01 e falta da marca recusam', async () => {
+    const { dono, padaria } = await novoEscritorio()
+    const chave = await chaveDoPainel(dono)
+    await admin.db.query(`update nofiscal.fiscal_tenants set retem_iss = true, aliquota_iss = 2, retem_inss = true, inss_percentual = 11 where id = $1`, [padaria.id])
+    const semTomador = (externalId: string, extra: Record<string, unknown> = {}) => ({
+      external_id: externalId,
+      cnpj_prestador: padaria.cnpj,
+      tomador_nao_informado: true,
+      valor: '150.00',
+      ...extra,
+    })
+
+    const ok = await api(chave, 'POST', '/v1/nfse', semTomador('sem-1'))
+    expect(ok.status).toBe(202)
+    expect((await readInvoice(admin.db, ok.corpo.id as string)).payload).toEqual({
+      tomador_nao_informado: true,
+      servico: { codigo_servico_nacional: '010701', descricao: 'Prestação de serviços' },
+      valor: '150.00',
+    })
+
+    const comIss = await api(chave, 'POST', '/v1/nfse', semTomador('sem-2', { retencao: { retem_iss: true, aliquota_iss: '2' } }))
+    expect(comIss.status).toBe(422)
+    expect(comIss.corpo).toMatchObject({ motivo: 'RETENCAO_SEM_TOMADOR', campo: 'tomador_nao_informado' })
+
+    const maoDeObra = await api(chave, 'POST', '/v1/nfse', semTomador('sem-3', { servico: { codigo_servico_nacional: '170501', descricao: 'Mão de obra' } }))
+    expect(maoDeObra.status).toBe(422)
+    expect(maoDeObra.corpo).toMatchObject({ motivo: 'CODIGO_EXIGE_TOMADOR' })
+
+    const semMarca = await api(chave, 'POST', '/v1/nfse', { external_id: 'sem-4', cnpj_prestador: padaria.cnpj, valor: '150.00' })
+    expect(semMarca.status).toBe(422)
+    expect(semMarca.corpo.error.message).toMatch(/tomador_nao_informado/)
+    expect((await api(chave, 'POST', '/v1/nfse', semTomador('sem-5', { tomador: { cpf: CPF, nome: 'Maria' } }))).status).toBe(422)
+  })
+
   it('locação (99.03.01 e 99.04.01): desligada, 422 com a mensagem; ligada, o imóvel ou os bens no payload e sem o ISS do padrão', async () => {
     const { dono, padaria } = await novoEscritorio()
     const chave = await chaveDoPainel(dono)

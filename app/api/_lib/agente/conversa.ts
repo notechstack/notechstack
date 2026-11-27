@@ -22,6 +22,13 @@ import { avisosDaLocacao, ehLocacao, linhasDaLocacao, locacaoLigada, MENSAGEM_LO
 import { exigeObra, lerObra, problemaDaObra, rotuloDaObra, type CampoDaObra, type Obra } from '../obra.js'
 import type { InvoicePayload } from '../validation.js'
 import {
+  marcaSemTomador,
+  MOTIVO_CODIGO_EXIGE_TOMADOR,
+  NOME_TOMADOR_NAO_INFORMADO,
+  problemaDoCodigoSemTomador,
+  ROTULO_TOMADOR_NAO_INFORMADO,
+} from '../tomador-nao-informado.js'
+import {
   COLUNAS_DA_RETENCAO,
   linhasDaRetencao,
   motivoDaRetencao,
@@ -343,6 +350,11 @@ function ehCertificado(arquivo: MensagemRecebida['arquivo']): boolean {
 
 type Conversa = {
   tomador?: Partial<TomadorDoPedido>
+  /**
+   * Tomador não informado (consumidor não identificado, Bragantina, 27/11/2026; tomador-nao-informado.ts): a nota sai
+   * sem `toma`, sem retenção e sem virar cliente salvo. Só com o pedido dizendo isso, nunca por falta de dado.
+   */
+  tomador_nao_informado?: boolean
   servico?: ServicoDoPedido
   valor?: string
   modelo_id?: string | null
@@ -524,7 +536,8 @@ export const PERGUNTA_DE_EMISSAO = 'Posso emitir? Responda *confirmar* para emit
 
 /** `nomeDoServico` = a descrição do código na lista nacional (catálogo), quando há. */
 export function textoDoResumo(
-  tomador: TomadorDoPedido,
+  /** `null` = tomador não informado: o resumo diz "Tomador: não informado". */
+  tomador: TomadorDoPedido | null,
   servico: ServicoDoPedido,
   valor: string,
   nomeDoServico?: string | null,
@@ -544,8 +557,8 @@ export function textoDoResumo(
     blocos: [
       [
         emitente && comRotulo(linhaDoEmitente(emitente)),
-        campo('Tomador', tomador.nome),
-        campo(tipoDoDocumento(tomador.documento).toUpperCase(), formatarDocumento(tomador.documento)),
+        campo('Tomador', tomador ? tomador.nome : ROTULO_TOMADOR_NAO_INFORMADO),
+        tomador && campo(tipoDoDocumento(tomador.documento).toUpperCase(), formatarDocumento(tomador.documento)),
         enderecoTomador ? campo('Endereço', rotuloDoEndereco(enderecoTomador)) : semEndereco && campo('Endereço', TEXTO_SEM_ENDERECO_NO_RESUMO),
       ],
       [
@@ -644,6 +657,14 @@ export const TEXTO_SEM_RETENCAO_POSSIVEL =
 export const NAO_CADASTRADA = { ISS_NAO_CADASTRADO: 'ISS', INSS_NAO_CADASTRADO: 'INSS' } as const
 
 function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: string, empresa?: string | null): string {
+  if (problema === 'CODIGO_EXIGE_TOMADOR' || problema === 'LOCACAO_EXIGE_TOMADOR') {
+    const motivo = problema === 'CODIGO_EXIGE_TOMADOR' ? MOTIVO_CODIGO_EXIGE_TOMADOR : 'a nota de aluguel exige o inquilino identificado'
+    return mensagem({
+      titulo: 'Tomador',
+      blocos: [`Não dá para emitir esta nota sem tomador: ${motivo}. Nada foi emitido.`],
+      acao: 'Responda *corrigir* e me mande o nome e o CPF ou CNPJ do cliente, ou *descartar*.',
+    })
+  }
   if ((PROBLEMAS_DE_LOCAL as readonly string[]).includes(problema)) {
     return mensagem({
       titulo: 'Local da prestação',
@@ -675,7 +696,7 @@ function textoDoProblemaDeRetencao(ctx: Pick<Contexto, 'links'>, problema: strin
  * (com a descrição do código buscada no catálogo) ou o problema; com problema, o *confirmar* não emite.
  */
 async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string, conversa: Conversa): Promise<string[]> {
-  const tomador = conversa.tomador as TomadorDoPedido
+  const tomador = conversa.tomador_nao_informado ? null : (conversa.tomador as TomadorDoPedido)
   const valor = conversa.valor as string
   const { rows } = await ctx.deps.db.query<Record<string, unknown>>(
     `select regime, razao_social, codigo_municipio_ibge, ${COLUNAS_DA_RETENCAO} from nofiscal.fiscal_tenants where id = $1`,
@@ -693,8 +714,17 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   // Locação: o ISS não incide (E0532), então o ISS retido do padrão da empresa não vale nesta nota.
   const naLocacao = ehLocacao(servico.codigo)
   const padraoDaNota = naLocacao ? { ...padrao, retem_iss: false, aliquota_iss: null } : padrao
-  const resolvida = resolverRetencao({ padrao: padraoDaNota, pedido: conversa.retencao_pedido, valor, regime, tomadorTipo: tipoDoDocumento(tomador.documento) })
+  const resolvida = resolverRetencao({
+    padrao: padraoDaNota,
+    pedido: conversa.retencao_pedido,
+    valor,
+    regime,
+    tomadorTipo: tomador ? tipoDoDocumento(tomador.documento) : null,
+  })
   let problema: string | null = resolvida.ok ? null : resolvida.problema
+  // Sem tomador: 17.05.01 (E0234) e locação (E0187/E0243) exigem o tomador; a nota não sai.
+  if (!tomador && problemaDoCodigoSemTomador(servico.codigo)) problema = 'CODIGO_EXIGE_TOMADOR'
+  else if (!tomador && naLocacao) problema = 'LOCACAO_EXIGE_TOMADOR'
   // O tipo de retenção pedido precisa estar cadastrado no painel (o MEI cai antes, em RETENCAO_MEI).
   if (resolvida.ok && resolvida.retencao) {
     if (resolvida.retencao.iss && !padrao.retem_iss) problema = 'ISS_NAO_CADASTRADO'
@@ -710,7 +740,7 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   // Locação (99.03.01, 99.04.01): fora da flag, a mensagem de que entra quando a Receita liberar; sem os dados do imóvel
   // ou do bem, a pergunta guiada (a próxima mensagem completa o pedido).
   let faltaLocacao: string | null = null
-  if (naLocacao) {
+  if (naLocacao && problema !== 'LOCACAO_EXIGE_TOMADOR') {
     if (!locacaoLigada()) problema = 'LOCACAO_INDISPONIVEL'
     else if (conversa.retencao_pedido?.iss) problema = 'LOCACAO_SEM_ISS'
     else {
@@ -727,7 +757,7 @@ async function resumoDoPedido(ctx: Contexto, pedidoId: string, tenantId: string,
   // Endereço do tomador em toda nota de CNPJ (Bragantina, 24/11/2026): sem ele, só o ISS retido trava (E0237).
   let endereco: EnderecoNacional | null = null
   let semEndereco = false
-  if (!problema) {
+  if (!problema && tomador) {
     const consulta = ctx.deps.consultaCnpj
     const r = await resolverEnderecoDoTomador({
       documento: tomador.documento,
@@ -870,6 +900,19 @@ export function localNoTexto(texto: string): string | null {
 }
 
 const FRASE_DO_LOCAL = /[,;\s-]*\b(?:servi[cç]o\s+)?(?:prestad|realizad|executad)[oa]s?\s+(?:em|no munic[ií]pio de|na cidade de)\s+[^,;]+/i
+
+/**
+ * Pedido sem tomador escrito ("nota de 150 pra consumidor não identificado", "sem tomador", "consumidor final"): a IA
+ * pode ler a frase como o nome do cliente ou deixar o cliente vazio. Sem CPF/CNPJ e sem modelo, vale a marca, e o
+ * tomador vira `NOME_TOMADOR_NAO_INFORMADO` (o pedido segue sem tomador, sem perguntar documento).
+ */
+export function comSemTomadorDoTexto(parsed: Parsed, texto: string): Parsed {
+  if (parsed.documento || (parsed.modelo && !marcaSemTomador(parsed.modelo))) return parsed
+  if (marcaSemTomador(parsed.tomador) || (!parsed.tomador && marcaSemTomador(texto))) {
+    return { ...parsed, tomador: NOME_TOMADOR_NAO_INFORMADO, modelo: null }
+  }
+  return parsed
+}
 
 /** `parsed` com o local escrito no texto, quando a IA não leu; a frase do local não fica na descrição. */
 function comLocalDoTexto(parsed: Parsed, texto: string): Parsed {
@@ -1336,7 +1379,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(paraIa)
-    parsed = comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa))
+    parsed = comSemTomadorDoTexto(comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa)), paraIa)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1348,6 +1391,8 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     return true
   }
   const atual = pedido.conversa
+  // "sem tomador" de novo num pedido que já é sem tomador não muda o cliente.
+  if (atual.tomador_nao_informado && marcaSemTomador(parsed.tomador)) parsed = { ...parsed, tomador: null }
   const nomeAtual = (atual.tomador?.nome ?? '').toLowerCase()
   const outroCliente = Boolean(
     (parsed.tomador && parsed.tomador.toLowerCase() !== nomeAtual && parsed.tomador.toLowerCase() !== (atual.modelo_nome ?? '').toLowerCase()) ||
@@ -1373,7 +1418,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
   }
   // "emitente Studio Lima" / "pela Studio Lima": o mesmo cliente e valor, por outra empresa. Os clientes salvos são
   // por empresa, então o pedido recomeça nela (pode pedir o e-mail de novo).
-  if (parsed.prestador && atual.tomador?.nome) {
+  if (parsed.prestador && (atual.tomador?.nome || atual.tomador_nao_informado)) {
     const empresas = await empresasParaEscolher(ctx.deps.db, ctx.tenantId)
     const achadas = empresas.length ? empresasQueBatem(empresas, parsed.prestador) : []
     if (achadas.length === 1 && achadas[0].id !== pedido.tenant_id) {
@@ -1388,8 +1433,8 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
       await pedidoDeEmissao(
         ctx,
         {
-          tomador: atual.tomador.nome,
-          documento: atual.tomador.documento ?? null,
+          tomador: atual.tomador_nao_informado ? NOME_TOMADOR_NAO_INFORMADO : (atual.tomador?.nome ?? null),
+          documento: atual.tomador_nao_informado ? null : (atual.tomador?.documento ?? null),
           valor: parsed.valor ?? atual.valor ?? null,
           modelo: null,
           descricao,
@@ -1471,7 +1516,7 @@ async function corrigirPedido(ctx: Contexto, pedido: Pedido, texto: string): Pro
     await responder(ctx, textoDaLocacaoRecusada('LOCACAO_INDISPONIVEL'))
     return true
   }
-  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo || obraNova || locacaoNova) && valor && atual.tomador && atual.servico) {
+  if ((parsed.valor || parsed.descricao || retencaoNova || codigoNovo || infoNova || localNovo || obraNova || locacaoNova) && valor && (atual.tomador || atual.tomador_nao_informado) && atual.servico) {
     const servico: ServicoDoPedido = {
       ...atual.servico,
       ...(parsed.descricao ? { descricao: parsed.descricao } : {}),
@@ -1524,7 +1569,8 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
       return
     }
     const { tomador, servico, valor } = pedido.conversa
-    if (!tomador?.documento || !tomador.nome || !servico || !valor) throw new Error('pedido sem os dados do resumo')
+    const semTomador = pedido.conversa.tomador_nao_informado === true
+    if ((!semTomador && (!tomador?.documento || !tomador.nome)) || !servico || !valor) throw new Error('pedido sem os dados do resumo')
     if (pedido.conversa.retencao_problema) {
       // Sem os dados da obra, a pergunta de novo: o pedido continua esperando o endereço ou o CNO.
       const problema = pedido.conversa.retencao_problema
@@ -1555,7 +1601,7 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
       )
       if (rowCount !== 1) return null
       const payload = payloadDaNota(
-        { documento: tomador.documento as string, nome: tomador.nome as string, email: tomador.email ?? null },
+        semTomador || !tomador ? null : { documento: tomador.documento as string, nome: tomador.nome as string, email: tomador.email ?? null },
         servico,
         valor,
         {
@@ -1620,9 +1666,86 @@ async function confirmar(ctx: Contexto, pedido: Pedido): Promise<void> {
   }
 }
 
+const SUFIXOS_DE_EMPRESA = /\b(ltda|me|epp|eireli|s ?a|mei|slu|ss|cia)\b/g
+
+/** Razão social comparável: sem acento, pontuação, sufixo (LTDA, ME, EIRELI…) e espaço repetido. */
+export const nomeDeEmpresaComparavel = (nome: string) =>
+  semAcento(nome)
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(SUFIXOS_DE_EMPRESA, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/**
+ * O tomador escrito é a própria empresa que emite (mesmo CNPJ ou mesma razão social)? A Sefin recusa (E0202), e foi
+ * assim que a Bragantina recebeu "tomador é o próprio prestador" numa nota que era para consumidor não identificado.
+ */
+async function propriaEmpresaComoTomador(
+  db: Queryable,
+  tenantId: string,
+  nome: string | null | undefined,
+  documento: string | null | undefined,
+): Promise<{ razao_social: string; por: 'cnpj' | 'nome' } | null> {
+  if (!nome && !documento) return null
+  const { rows } = await db.query<{ razao_social: string | null; cnpj: string | null }>(
+    'select razao_social, cnpj from nofiscal.fiscal_tenants where id = $1',
+    [tenantId],
+  )
+  const empresa = rows[0]
+  if (!empresa) return null
+  const razao = empresa.razao_social ?? 'a empresa'
+  if (documento && empresa.cnpj && documento === empresa.cnpj) return { razao_social: razao, por: 'cnpj' }
+  const escrito = nome ? nomeDeEmpresaComparavel(nome) : ''
+  if (escrito.length >= 3 && empresa.razao_social && escrito === nomeDeEmpresaComparavel(empresa.razao_social)) {
+    return { razao_social: razao, por: 'nome' }
+  }
+  return null
+}
+
+/** A pergunta quando o tomador é a própria empresa: sem tomador ou outro cliente. */
+export function textoDaPropriaEmpresa(razaoSocial: string, noMeioDoPedido = false): string {
+  return mensagem({
+    titulo: 'Tomador',
+    blocos: [
+      `${razaoSocial} é a própria empresa que emite a nota, e a Sefin não aceita a empresa como tomadora da própria nota. Nada foi emitido.`,
+      noMeioDoPedido
+        ? 'Se a nota é para um consumidor que não se identificou, responda *sem tomador*. Se é para outro cliente, me mande o CPF ou CNPJ e o e-mail dele.'
+        : 'Se a nota é para um consumidor que não se identificou, mande o pedido dizendo isso, por exemplo: nota de 150 para consumidor não identificado. Se é para outro cliente, mande o nome e o CPF ou CNPJ dele.',
+    ],
+    acao: 'Para desistir, responda *descartar*.',
+  })
+}
+
 async function completarTomador(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
   const documento = documentoNoTexto(texto)
   const email = emailNoTexto(texto)
+  // "é consumidor não identificado", "sem tomador": o pedido segue sem tomador, sem documento nem e-mail.
+  if (!documento && marcaSemTomador(texto)) {
+    ctx.pedidoId = pedido.id
+    const conversa: Conversa = { ...pedido.conversa, tomador_nao_informado: true, modelo_id: null }
+    // Sem o nome escrito antes: nada de cliente salvo depois da nota.
+    delete conversa.tomador
+    delete conversa.modelo_nome
+    conversa.pedindoDescricao = precisaDeDescricao(conversa.servico)
+    logEvent('agente.tomador_nao_informado', { request_id: pedido.id, tenant_id: pedido.tenant_id })
+    if (conversa.pedindoDescricao) {
+      await atualizarPedido(ctx.deps.db, pedido.id, 'confirmar', conversa, ctx.agora)
+      await responder(ctx, TEXTOS.perguntaDeDescricao)
+    } else {
+      await enviarResumo(ctx, pedido.id, pedido.tenant_id, conversa)
+    }
+    return true
+  }
+  // O CNPJ da própria empresa não é tomador (E0202): a Sefin recusaria. Pergunta de novo, o pedido continua aberto.
+  if (documento) {
+    const propria = await propriaEmpresaComoTomador(ctx.deps.db, pedido.tenant_id, null, documento)
+    if (propria) {
+      ctx.pedidoId = pedido.id
+      logEvent('agente.tomador_e_a_empresa', { tenant_id: pedido.tenant_id, por: propria.por })
+      await responder(ctx, textoDaPropriaEmpresa(propria.razao_social, true))
+      return true
+    }
+  }
   if (!documento && !email) {
     // Parece um CPF ou CNPJ, mas os dígitos verificadores não batem.
     if (texto.replace(/\D/g, '').length < 11) return false
@@ -1677,7 +1800,7 @@ export const ehDescricaoPadrao = (texto: string) =>
 async function escolherDescricao(ctx: Contexto, pedido: Pedido, texto: string): Promise<boolean> {
   ctx.pedidoId = pedido.id
   const atual = pedido.conversa
-  if (!atual.tomador || !atual.servico || !atual.valor) return false
+  if ((!atual.tomador && !atual.tomador_nao_informado) || !atual.servico || !atual.valor) return false
   let descricao = atual.servico.descricao
   if (!ehDescricaoPadrao(texto)) {
     const escrita = texto.trim().replace(/\s+/g, ' ')
@@ -1860,7 +1983,7 @@ async function novoPedido(ctx: Contexto, texto: string, escolhendo?: Pedido): Pr
   let tokens: { entrada: number; saida: number }
   try {
     const resultado = await ctx.deps.interprete.interpretar(paraIa)
-    parsed = comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa))
+    parsed = comSemTomadorDoTexto(comCidadeDaObra(comLocalDoTexto(comInfoComplementar(servicoSoSePedido(validarParsed(resultado.parsed), paraIa), infoEscrita), paraIa)), paraIa)
     tokens = {
       entrada: Math.max(0, Math.trunc(Number(resultado.tokens?.entrada) || 0)),
       saida: Math.max(0, Math.trunc(Number(resultado.tokens?.saida) || 0)),
@@ -1968,7 +2091,20 @@ async function pedidoDeEmissao(
     return
   }
 
-  const modelo = await resolverModelo(ctx.deps.db, tenantId, parsed)
+  // Tomador não informado (consumidor não identificado): só quando o pedido diz; nunca a própria empresa no lugar.
+  const semTomador = !parsed.documento && marcaSemTomador(parsed.tomador)
+  if (!semTomador) {
+    const propria = await propriaEmpresaComoTomador(ctx.deps.db, tenantId, parsed.tomador, parsed.documento)
+    if (propria) {
+      semPedido()
+      if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
+      logEvent('agente.tomador_e_a_empresa', { tenant_id: tenantId, por: propria.por })
+      await responder(ctx, textoDaPropriaEmpresa(propria.razao_social))
+      return
+    }
+  }
+
+  const modelo = semTomador ? null : await resolverModelo(ctx.deps.db, tenantId, parsed)
   if (modelo && 'ambiguos' in modelo) {
     semPedido()
     if (opcoes.reusar) await descartarSemResposta(ctx, opcoes.reusar)
@@ -2066,6 +2202,27 @@ async function pedidoDeEmissao(
     'select codigo_servico_nacional as codigo from nofiscal.fiscal_tenants where id = $1',
     [tenantId],
   )
+  if (semTomador) {
+    // Sem documento nem e-mail a pedir: direto à descrição ou ao resumo. Sem `modelo_nome`: não vira cliente salvo.
+    const servico: ServicoDoPedido = { codigo: codigoLocacao ?? codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...naObra }
+    const pedindoDescricao = precisaDeDescricao(servico)
+    const conversa: Conversa = {
+      tomador_nao_informado: true,
+      servico,
+      valor,
+      modelo_id: null,
+      pedindoDescricao,
+      emitente,
+      retencao_pedido: retencaoDoParsed(parsed),
+      ...(info ? { informacoes_complementares: info } : {}),
+      ...rascunhoDaObra,
+    }
+    const id = await criarPedido(ctx, { kind: 'emitir', etapa: 'confirmar', parsed, tokens, conversa, tenantId, reusar: opcoes.reusar })
+    logEvent('agente.tomador_nao_informado', { request_id: id, tenant_id: tenantId })
+    if (pedindoDescricao) await responder(ctx, TEXTOS.perguntaDeDescricao)
+    else await enviarResumo(ctx, id, tenantId, conversa)
+    return
+  }
   const conversa: Conversa = {
     tomador: { nome, documento: parsed.documento ?? undefined },
     servico: { codigo: codigoLocacao ?? codigoPedido?.codigo ?? rows[0].codigo, descricao: parsed.descricao ?? DESCRICAO_PADRAO, ...naObra },

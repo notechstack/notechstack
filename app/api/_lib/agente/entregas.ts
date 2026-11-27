@@ -274,8 +274,9 @@ export async function entregarTransicao(deps: EntregasDeps, invoiceId: string, s
       })
     }
 
-    // Critério 30: primeira nota para um tomador sem modelo (nunca numa nota do lote: lá não há pedido).
-    if (pedido?.phone && !pedido.conversa.modelo_id && pedido.conversa.modelo_nome) {
+    // Critério 30: primeira nota para um tomador sem modelo (nunca numa nota do lote: lá não há pedido). Nota sem tomador
+    // (consumidor não identificado) não vira cliente salvo.
+    if (pedido?.phone && !tomador.semTomador && !pedido.conversa.modelo_id && pedido.conversa.modelo_nome) {
       await deps.db.query(`update nofiscal.fiscal_requests set etapa = 'salvar_modelo', updated_at = $2 where id = $1`, [
         pedido.id,
         canais.agora,

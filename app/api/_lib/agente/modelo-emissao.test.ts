@@ -83,7 +83,7 @@ describe('o arquivo que o agente manda', () => {
     expect(MODELO_DA_PLANILHA.endsWith('/agentes/fiscal/dados/modelo-emissao.xlsx')).toBe(true)
   })
 
-  it('passa pelo leitor do lote: colunas do modelo e as duas linhas de exemplo', async () => {
+  it('passa pelo leitor do lote: colunas do modelo e as três linhas de exemplo (a terceira, sem tomador)', async () => {
     const grade = await lerPlanilha(modeloDeEmissao(), 'xlsx')
     const planilha = interpretarGrade(grade, { prestadorObrigatorio: true })
     expect(planilha.ok).toBe(true)
@@ -94,7 +94,8 @@ describe('o arquivo que o agente manda', () => {
       'obra_cep', 'obra_logradouro', 'obra_numero', 'obra_complemento', 'obra_bairro', 'obra_cno',
       'tomador_cep', 'tomador_logradouro', 'tomador_numero', 'tomador_complemento', 'tomador_bairro', 'tomador_municipio_ibge',
     ])
-    expect(planilha.linhas).toHaveLength(2)
+    expect(planilha.linhas).toHaveLength(3)
+    expect(planilha.linhas[2].celulas.nome_tomador).toBe('NAO INFORMADO')
   })
 })
 

@@ -14,6 +14,7 @@ import { motivoDoLocal, PROBLEMAS_DE_LOCAL, problemaDoLocal, resolverMunicipio }
 import { exigeObra, lerObra, type Obra } from '../obra.js'
 import { ehLocacao, lerLocacao, locacaoLigada, type Locacao } from '../locacao.js'
 import { logEvent } from '../log.js'
+import { marcaSemTomador, MOTIVO_CODIGO_EXIGE_TOMADOR, NOME_TOMADOR_NAO_INFORMADO, problemaDoCodigoSemTomador } from '../tomador-nao-informado.js'
 import type { InvoicePayload } from '../validation.js'
 import {
   COLUNAS_DA_RETENCAO,
@@ -68,6 +69,9 @@ const MAX_XLSX_DESCOMPACTADO = 60 * 1024 * 1024
 // linhas com código de construção civil (E0370, obra.ts) e ignorados nas demais. `tomador_*` (Robson, Bragantina,
 // 24/11/2026), opcionais: o endereço do tomador, que prevalece sobre o da Receita; com CPF, é o único jeito de a nota
 // sair com endereço. `tomador_municipio_ibge` aceita o código IBGE ou "Cidade/UF" (cabeçalho `tomador_municipio` vale).
+// Tomador não informado (Bragantina, 27/11/2026; tomador-nao-informado.ts): `cpf_cnpj_tomador` vazio e `nome_tomador`
+// NAO INFORMADO (ou "consumidor não identificado"), sem e-mail, endereço nem retenção. A nota sai sem tomador, não vira
+// cliente salvo e não entra na checagem de nota repetida (várias notas iguais de consumidor são o normal numa clínica).
 // `imovel_*` e `bem_*` (26/11/2026), opcionais: os dados da locação (locacao.ts), obrigatórios nas linhas com código
 // 99.03.01 (imóvel: cidade, CEP, rua, número, residencial sim/não; ou o CIB) e 99.04.01 (bem: NCM, descrição,
 // quantidade) e ignorados nas demais.
@@ -448,7 +452,7 @@ export function textoDasColunas(p: { desconhecidas: string[]; faltando: Campo[];
         'A primeira linha precisa ter estes nomes:',
         topicos([
           'cnpj_prestador (pode faltar se a conta tem uma só empresa ativa)',
-          'cpf_cnpj_tomador',
+          `cpf_cnpj_tomador (vazio, com ${NOME_TOMADOR_NAO_INFORMADO} em nome_tomador, para consumidor não identificado)`,
           'nome_tomador',
           'email_tomador (opcional)',
           'valor',
@@ -609,26 +613,38 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     const empresa = cnpjPrestador ? porCnpj.get(cnpjPrestador.padStart(14, '0')) : ativas.length === 1 ? ativas[0] : undefined
     if (!empresa) return falha('PRESTADOR_DESCONHECIDO')
 
-    const lidoDocumento = lerDocumentoDaCelula(celulas.cpf_cnpj_tomador)
-    if ('erro' in lidoDocumento) return falha(lidoDocumento.erro, empresa.id)
-    const { documento } = lidoDocumento
     const nome = textoDaCelula(celulas.nome_tomador).slice(0, 150).trim()
+    // Sem tomador: documento vazio e a marca no nome. Documento vazio sem a marca é falta de dado, não nota sem tomador.
+    const documentoEscrito = textoDaCelula(celulas.cpf_cnpj_tomador)
+    const semTomador = !documentoEscrito && marcaSemTomador(nome)
+    let documento = ''
+    if (!semTomador) {
+      if (!documentoEscrito) return falha('DOCUMENTO_FALTANDO', empresa.id)
+      const lidoDocumento = lerDocumentoDaCelula(celulas.cpf_cnpj_tomador)
+      if ('erro' in lidoDocumento) return falha(lidoDocumento.erro, empresa.id)
+      documento = lidoDocumento.documento
+      if (marcaSemTomador(nome)) return falha('NAO_INFORMADO_COM_DOCUMENTO', empresa.id)
+      // E0202: a própria empresa não é tomadora da nota dela.
+      if (documento === empresa.cnpj) return falha('TOMADOR_E_O_PRESTADOR', empresa.id)
+    }
     if (!nome) return falha('NOME_FALTANDO', empresa.id)
     const valor = lerValor(celulas.valor ?? null, { pontoEhMilhar })
     if (!valor) return falha('VALOR_INVALIDO', empresa.id)
     const emailEscrito = textoDaCelula(celulas.email_tomador)
+    if (semTomador && emailEscrito) return falha('EMAIL_SEM_TOMADOR', empresa.id)
     const email = emailEscrito ? normalizarEmail(emailEscrito) : null
     if (emailEscrito && !email) return falha('EMAIL_INVALIDO', empresa.id)
     const descricaoEscrita = textoDaCelula(celulas.descricao)
     if (descricaoEscrita.length > 2000) return falha('DESCRICAO_LONGA', empresa.id)
     const pedidoDeRetencao = lerRetencaoDaLinha(celulas)
     if (pedidoDeRetencao === 'ISS_RETIDO_INVALIDO') return falha('ISS_RETIDO_INVALIDO', empresa.id)
+    const tomadorTipo = semTomador ? null : documento.length === 14 ? 'cnpj' : 'cpf'
     const resolvida = resolverRetencao({
       padrao: empresa.retencao ?? SEM_RETENCAO_PADRAO,
       pedido: pedidoDeRetencao,
       valor,
       regime: empresa.regime ?? null,
-      tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
+      tomadorTipo,
     })
     // O problema da retenção só conta depois do código: na locação, a retenção é outra (sem ISS).
 
@@ -639,10 +655,12 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
     const codigoDaLinha = codigoEscrito ? lerCodigoServico(typeof celulas.codigo_servico === 'number' ? celulas.codigo_servico : codigoEscrito) : null
     if (codigoEscrito && !codigoDaLinha) return falha('CODIGO_SERVICO_INVALIDO', empresa.id)
     if (codigoDaLinha && ctx.codigosDaLista && !ctx.codigosDaLista.has(codigoDaLinha)) return falha('CODIGO_SERVICO_FORA_DA_LISTA', empresa.id)
-    const modelo = ctx.modelos.get(`${empresa.id}:${documento}`)
+    const modelo = semTomador ? undefined : ctx.modelos.get(`${empresa.id}:${documento}`)
     const codigo = codigoDaLinha ?? modelo?.codigo ?? empresa.codigo_servico_nacional ?? ''
+    if (semTomador && ehLocacao(codigo)) return falha('LOCACAO_EXIGE_TOMADOR', empresa.id)
     if (!resolvida.ok && !ehLocacao(codigo)) return falha(resolvida.problema, empresa.id)
     if (!/^\d{6}$/.test(codigo)) return falha('CODIGO_SERVICO_FALTANDO', empresa.id)
+    if (semTomador && problemaDoCodigoSemTomador(codigo)) return falha('CODIGO_EXIGE_TOMADOR', empresa.id)
     // Local da prestação: nome com UF ou código IBGE; o mesmo da sede fica de fora (a nota sai como antes).
     const localEscrito = textoDaCelula(celulas.municipio_prestacao)
     let municipioPrestacao: string | null = null
@@ -683,7 +701,7 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
         pedido: pedidoDeRetencao,
         valor,
         regime: empresa.regime ?? null,
-        tomadorTipo: documento.length === 14 ? 'cnpj' : 'cpf',
+        tomadorTipo,
       })
       if (!semIss.ok) return falha(semIss.problema, empresa.id)
       retencaoDaNota = semIss.retencao
@@ -729,8 +747,9 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       bairro: celulas.tomador_bairro,
       municipio: celulas.tomador_municipio_ibge,
     })
+    if (semTomador && (!enderecoEscrito.ok || enderecoEscrito.endereco)) return falha('ENDERECO_SEM_TOMADOR', empresa.id)
     if (!enderecoEscrito.ok) return falha('ENDERECO_TOMADOR_INVALIDO', empresa.id)
-    const payload = payloadDaNota({ documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, {
+    const payload = payloadDaNota(semTomador ? null : { documento, nome, email: email ?? modelo?.email ?? null }, servico, valor, {
       retencao: retencaoDaNota,
       endereco: enderecoEscrito.endereco,
     })
@@ -743,11 +762,13 @@ export function validarLinhas(linhas: LinhaLida[], ctx: ContextoDoLote): ItemDoL
       ...(igualA ? { igualA } : {}),
     })
 
+    const bloqueio = ctx.bloqueios.get(empresa.id)
+    // Sem tomador não há "mesmo tomador": a checagem de repetida e de já emitida no mês não vale.
+    if (semTomador) return pronta(bloqueio ?? null)
     const chave = chaveDaNota(empresa.id, documento, centavosDe(valor), codigo)
     const anterior = primeiraLinha.get(chave)
     if (anterior === undefined) primeiraLinha.set(chave, linha)
 
-    const bloqueio = ctx.bloqueios.get(empresa.id)
     if (bloqueio) return pronta(bloqueio)
     if (anterior !== undefined) return pronta('LINHA_REPETIDA', anterior)
     if (ctx.jaEmitidas.has(chave)) return pronta('JA_EMITIDA_NO_MES')
@@ -837,6 +858,20 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
       return 'a linha tem mais colunas que o cabeçalho: confira se o valor usa vírgula sem aspas'
     case 'DOCUMENTO_INVALIDO':
       return 'CPF ou CNPJ do tomador inválido'
+    case 'DOCUMENTO_FALTANDO':
+      return `falta o CPF ou CNPJ do tomador (para consumidor não identificado, deixe cpf_cnpj_tomador vazio e escreva ${NOME_TOMADOR_NAO_INFORMADO} em nome_tomador)`
+    case 'NAO_INFORMADO_COM_DOCUMENTO':
+      return `nome_tomador diz ${NOME_TOMADOR_NAO_INFORMADO}, mas a linha tem CPF/CNPJ: para nota sem tomador, apague o cpf_cnpj_tomador; senão, escreva o nome do cliente`
+    case 'TOMADOR_E_O_PRESTADOR':
+      return `o CPF/CNPJ do tomador é o da própria ${empresa}, e a Sefin não aceita a empresa como tomadora da própria nota (para consumidor não identificado, deixe cpf_cnpj_tomador vazio e escreva ${NOME_TOMADOR_NAO_INFORMADO} em nome_tomador)`
+    case 'EMAIL_SEM_TOMADOR':
+      return 'nota sem tomador não tem e-mail do tomador: deixe email_tomador vazio'
+    case 'ENDERECO_SEM_TOMADOR':
+      return 'nota sem tomador não tem endereço do tomador: deixe as colunas tomador_* vazias'
+    case 'CODIGO_EXIGE_TOMADOR':
+      return `sem tomador não dá: ${MOTIVO_CODIGO_EXIGE_TOMADOR}`
+    case 'LOCACAO_EXIGE_TOMADOR':
+      return 'nota de locação exige o tomador (o inquilino) identificado'
     case 'DOCUMENTO_AMBIGUO':
       return 'o CPF/CNPJ do tomador perdeu os zeros à esquerda e pode ser os dois: formate a coluna como texto'
     case 'NOME_FALTANDO':
@@ -889,6 +924,7 @@ export function motivoDoProblema(codigo: string, d: { empresa?: string | null; i
     case 'INSS_INVALIDO':
     case 'RETENCOES_ACIMA_DO_VALOR':
     case 'ENDERECO_TOMADOR':
+    case 'RETENCAO_SEM_TOMADOR':
       return motivoDaRetencao(codigo)
     case 'CERT_MISSING':
       return `${empresa} ainda não tem certificado A1`

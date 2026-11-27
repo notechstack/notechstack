@@ -80,6 +80,7 @@ export const INSTRUCOES = [
   'Extraia só o que estiver escrito na mensagem; nunca invente. Campo ausente fica null.',
   '- intencao: "emitir" quando pede uma nota nova; "cancelar" quando pede para cancelar uma nota; "outro" para o resto.',
   '- tomador: o nome do cliente para quem é a nota, como a pessoa escreveu, corrigindo só erros de digitação evidentes.',
+  '- Nota sem tomador: quando a mensagem diz que o cliente não é identificado ("consumidor não identificado", "sem tomador", "consumidor final", "cliente não informado", "tomador não informado", "consumidores diversos"), tomador = "NAO INFORMADO", documento e modelo null. Nunca use como tomador a empresa que emite a nota.',
   '- modelo: preencha com o mesmo nome do tomador quando a pessoa se refere a um cliente habitual pelo nome; senão null.',
   '- documento: CPF ou CNPJ do cliente, só os dígitos, quando aparecer na mensagem.',
   '- valor: o valor em reais com ponto decimal e duas casas, por exemplo "1500.00" para "mil e quinhentos" ou "1.500,00".',
