@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="/shared/site.css?v=1">
 <link rel="stylesheet" href="/shared/card-nav.css">
 <link rel="stylesheet" href="/shared/site-layout.css">
-<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=27">
+<link rel="stylesheet" href="/agentes/fiscal/fiscal.css?v=29">
 <script src="/shared/card-nav.js" defer></script>
 <!-- Nesta página a telemetria só sai do navegador com a medição permitida (mesma chave do aviso de cookies) -->
 <script>window.noTelemetriaConsentKey='no_fiscal_consent';</script>
@@ -65,7 +65,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "O agente fala direto com os sistemas do governo?", "acceptedAnswer": {"@type": "Answer", "text": "Sim. Cada nota é transmitida direto à Sefin Nacional, o ambiente oficial da NFS-e de padrão nacional do governo, pela API oficial e assinada com o certificado A1 da sua empresa. Não há portal nem intermediário no caminho: a nota sai com chave de acesso e QR Code, e você e o seu cliente a encontram no portal oficial nfse.gov.br."}},
     {"@type": "Question", "name": "O agente emite NF-e, a nota de produto?", "acceptedAnswer": {"@type": "Answer", "text": "Sim, no plano Escritório. É a NF-e modelo 55, para MEI e empresas do Simples Nacional que vendem mercadoria, em qualquer estado, em venda para dentro ou para fora do estado. Você preenche a planilha modelo e a envia em Minha conta, na aba NF-e: o agente confere as linhas, mostra o que vai sair e só emite depois da sua confirmação. Cada nota vai direto à Sefaz do estado, assinada com o certificado A1 da própria empresa, e volta com o DANFE em PDF e o XML. Cancelamento e carta de correção saem pelo mesmo painel. Antes da primeira nota, o agente confere a inscrição estadual da empresa na Sefaz e emite uma nota de teste, sem valor fiscal."}},
     {"@type": "Question", "name": "O que é o módulo Guias?", "acceptedAnswer": {"@type": "Answer", "text": "É o envio das guias de imposto aos clientes do escritório, um módulo do plano Escritório. Você envia os PDFs das guias em Minha conta: DAS, DAS-MEI, DARF, DCTFWeb, boletos de honorários e parcelamentos. O agente lê de quem é cada guia, você confere e dispara. O cliente recebe a guia pelo WhatsApp, com o PDF, e por e-mail, e é lembrado no vencimento. Nada é enviado sem o seu clique em Disparar."}},
-    {"@type": "Question", "name": "Preciso criar conta para testar?", "acceptedAnswer": {"@type": "Answer", "text": "Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: os primeiros 7 dias da assinatura são grátis."}},
+    {"@type": "Question", "name": "Preciso criar conta para testar?", "acceptedAnswer": {"@type": "Answer", "text": "Sim. Para emitir, você cria a conta e cadastra o seu CNPJ. Os primeiros 7 dias da assinatura são grátis, então dá para testar com notas de verdade antes da primeira cobrança. Os vídeos desta página mostram como a conversa funciona, com dados fictícios."}},
     {"@type": "Question", "name": "Que empresas podem usar?", "acceptedAnswer": {"@type": "Answer", "text": "MEI e empresas do Simples Nacional (ME e EPP), em qualquer município do Brasil: quem presta serviço emite NFS-e, e quem vende mercadoria emite NF-e, no plano Escritório. Empresas do Lucro Presumido ou Real emitem NFS-e nas cidades que usam o Emissor Nacional para todas as empresas, como Rio de Janeiro, Porto Alegre e Vitória. Na NFS-e, o MEI emite pelo padrão nacional desde 2023, e a ME e a EPP do Simples também, desde novembro de 2026, mesmo onde a prefeitura tem sistema próprio. O cadastro confere tudo pelo CNPJ, direto nos dados da Receita Federal, e avisa logo no primeiro passo se algo não bate. A nota é assinada com o certificado digital A1 da empresa; no plano Escritório, a empresa cliente também pode emitir NFS-e por procuração eletrônica ao escritório."}},
     {"@type": "Question", "name": "Sou MEI. Posso usar?", "acceptedAnswer": {"@type": "Answer", "text": "Pode. Desde 2023, o MEI que presta serviço emite a NFS-e pelo padrão nacional, em qualquer município, e é por esse mesmo caminho que o agente emite. No cadastro, o CNPJ já mostra que você é MEI, e você não precisa informar percentual de tributos: a nota do MEI não leva esse campo. Para a emissão automática, você precisa de um certificado digital A1 do CNPJ (e-CNPJ), que se compra em qualquer certificadora."}},
     {"@type": "Question", "name": "Minha empresa é do Lucro Presumido ou do Lucro Real. Funciona?", "acceptedAnswer": {"@type": "Answer", "text": "Funciona nas cidades em que a prefeitura usa o Emissor Nacional para todas as empresas, como Rio de Janeiro, Porto Alegre e Vitória. Numa cidade onde ainda não emitimos esse regime, a primeira nota confirma; se a prefeitura não aceitar, a empresa vai para a lista de espera. No cadastro, o CNPJ fora do Simples abre a escolha entre Lucro Presumido e Lucro Real, e a nota sai pelo padrão nacional com os percentuais aproximados de tributos que a contabilidade informa, e com ISS e INSS retidos quando a empresa tiver retenção. Na cidade de São Paulo e em outras com sistema próprio, esses regimes ainda emitem pelo sistema da prefeitura. Se a sua cidade ainda não está na lista, fale com a Nó pelo WhatsApp."}},
@@ -74,7 +74,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     {"@type": "Question", "name": "Como funciona a procuração eletrônica?", "acceptedAnswer": {"@type": "Answer", "text": "É a autorização oficial que uma empresa dá a outra para agir por ela nos serviços do governo. No plano Escritório, a empresa cliente autoriza o escritório no Portal de Serviços da Receita Federal (servicos.receitafederal.gov.br), com a conta gov.br, marcando o serviço NFS-e. A partir daí, as notas de serviço dela saem assinadas com o certificado A1 do escritório, sem que ela precise ter um A1 próprio. O agente confere a procuração direto no sistema nacional antes de emitir. A procuração vale só para a NFS-e e só da empresa cliente para o escritório: a NF-e é sempre assinada com o A1 da própria empresa, e a Nó nunca assina nota de cliente."}},
     {"@type": "Question", "name": "Como fica o meu certificado digital A1?", "acceptedAnswer": {"@type": "Answer", "text": "Você envia o arquivo A1 e a senha uma única vez, na própria página de cadastro do site da Nó, logo depois do pagamento, nunca pelo WhatsApp. Os dois ficam cifrados no cofre do banco (Supabase Vault), com a chave de cifragem guardada fora dele, e só o motor de emissão os lê, um CNPJ por vez, na hora de assinar. Você pode apagar o certificado quando quiser. Quando o A1 estiver perto de vencer, o agente avisa no WhatsApp, e você envia o arquivo novo em Minha conta, no site da Nó."}},
     {"@type": "Question", "name": "Quem recebe a cópia da nota?", "acceptedAnswer": {"@type": "Answer", "text": "Você recebe PDF e XML no WhatsApp e no e-mail. No plano Pro, o cliente e o contador também recebem a cópia de cada nota por e-mail, sem você precisar lembrar."}},
-    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso."}},
+    {"@type": "Question", "name": "Quanto custa?", "acceptedAnswer": {"@type": "Answer", "text": "A assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso."}},
     {"@type": "Question", "name": "Como funcionam os planos?", "acceptedAnswer": {"@type": "Answer", "text": "O plano é a franquia de documentos por mês. Inicial e Pro são para uma empresa que emite NFS-e. O Escritório atende quantas empresas você quiser e tem cinco faixas, de 500 a 10.000 documentos por mês. No Escritório, você marca o que vai emitir: NFS-e, NF-e e Guias. O primeiro tipo de nota já vem no preço do plano; o outro tipo de nota e o Guias são módulos, somados à mensalidade. Notas e guias usam a mesma franquia, e o preço muda na hora, no card do plano e no cadastro, conforme você marca."}},
     {"@type": "Question", "name": "Quero emitir só NF-e. Preciso pagar pela NFS-e?", "acceptedAnswer": {"@type": "Answer", "text": "Não. No plano Escritório, marque só NF-e: ela passa a ser o tipo de nota incluído no preço do plano. Se depois você precisar de NFS-e, ela entra como módulo."}},
     {"@type": "Question", "name": "O que conta como documento?", "acceptedAnswer": {"@type": "Answer", "text": "Cada nota emitida, de serviço ou de produto, e cada guia enviada no mês. A franquia é do escritório inteiro, somando todas as empresas, e renova todo mês."}},
@@ -95,41 +95,17 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <body class="fi-body">
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NK87FH8W" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <!-- site-nav:start -->
-<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agentes/">Agentes</a><a href="/contato/">Contato</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a nó</a><a href="/agencia/">Agência</a></div></div><div class="no-card"><b>Agentes</b><div><a href="/agentes/">Conheça os agentes</a><a href="/agentes/auditor/">nó.auditor</a><a href="/agentes/fiscal/">nó.fiscal</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a></div></div></div></div></div></nav>
+<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks"><a href="/">Home</a><a href="/agentes/">Agentes</a><a href="/agentes/fiscal/conta/">Login</a></div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid"><div class="no-card"><b>Home</b><div><a href="/">Conheça a nó</a><a href="/agencia/">Agência</a></div></div><div class="no-card"><b>Agentes</b><div><a href="/agentes/">Conheça os agentes</a><a href="/agentes/auditor/">nó.auditor</a><a href="/agentes/fiscal/">nó.fiscal</a></div></div><div class="no-card"><b>Contato</b><div><a href="/contato/">Conte sua ideia</a></div></div></div></div></div></nav>
 <!-- site-nav:end -->
 
 <main class="fi-main" id="conteudo">
 
-  <!-- ── Hero: título centralizado + bloco fluido com o simulador (conversa encenada no navegador) ── -->
+  <!-- ── Hero (Lucca, 27/11/2026): só o título; os mockups da seção seguinte entram logo abaixo, na primeira tela ── -->
   <section class="fi-hero" aria-labelledby="fi-titulo">
     <p class="fi-lockup"><span class="fi-lockup-no">nó</span><span class="fi-lockup-sub">.fiscal</span></p>
     <h1 id="fi-titulo">Já pensou em emitir sua nota fiscal direto no WhatsApp?</h1>
-    <p class="fi-sub" id="fi-hero-sub">A ideia é simples: agora, participantes do Simples Nacional devem emitir a <a class="no-termo" data-termo="nfse-nacional" href="#planos">NFS-e seguindo um padrão nacional</a>. Envelopamos isso dentro do seu WhatsApp.</p>
-    <!-- CTA do hero só nos ângulos de remarketing (?angulo=, fiscal.js); na página padrão o simulador é o CTA -->
+    <!-- CTA do hero só nos ângulos de remarketing (?angulo=, fiscal.js); escondido na página padrão -->
     <p class="fi-hero-cta" id="fi-hero-cta" hidden><a class="fi-btn fi-btn--verde" id="fi-hero-cta-link" href="#planos">Escolher meu plano</a></p>
-
-    <div class="fi-canvas" id="simulador">
-      <canvas class="fi-canvas-gl" id="fi-fluido" aria-hidden="true"></canvas>
-      <span class="fi-canvas-selo" id="fi-sim-restantes" aria-live="polite">3 testes grátis</span>
-      <div class="fi-canvas-conteudo">
-        <div class="fi-chat" id="fi-chat" role="log" aria-live="polite" aria-relevant="additions" hidden></div>
-        <form class="fi-barra" id="fi-form" novalidate>
-          <span class="fi-barra-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h5M10 17h5"/></svg></span>
-          <label class="fi-sr" for="fi-input">Diga para quem é a nota e o valor</label>
-          <input class="fi-input" id="fi-input" name="mensagem" type="text" autocomplete="off" maxlength="240" placeholder="Diga para quem é a nota e o valor">
-          <button class="fi-enviar" id="fi-enviar" type="submit" aria-label="Enviar mensagem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
-        </form>
-        <div class="fi-chips" id="fi-chips" aria-label="Exemplos de mensagem">
-          <button type="button" class="fi-chip" data-exemplo="nota pra Studio Lima, 350 reais"><span class="fi-chip-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M12 11v6M9 14h6"/></svg></span>Nota pra Studio Lima, R$ 350</button>
-          <button type="button" class="fi-chip" data-exemplo="emite uma nota de 1.200,00 pra Padaria Bom Dia, modelo consultoria"><span class="fi-chip-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h4"/></svg></span>R$ 1.200 com o modelo “consultoria”</button>
-          <button type="button" class="fi-chip" data-exemplo="cancela a última nota"><span class="fi-chip-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v4h4"/><path d="m10 10 4 4M14 10l-4 4"/></svg></span>Cancelar a última nota</button>
-        </div>
-      </div>
-    </div>
-    <p class="fi-canvas-nota">Simulação no seu navegador: nenhuma nota é emitida e nada é enviado à Sefin. <span>Medição <b id="fi-consent-estado" aria-live="polite">recusada</b> · <button type="button" class="fi-link-btn" data-consent-prefs>Preferências de cookies</button></span></p>
-    <!-- Referências do sistema oficial (Lucca, 13/11/2026): quem chega não conhece "Sefin"; estes selos dizem, de relance,
-         que a nota sai pelo sistema do governo. Ícones próprios e nomes em texto, sem reproduzir marcas oficiais. -->
-    <ul class="fi-oficial fi-oficial--hero" aria-label="Integração com o sistema oficial"><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M4 10h16"/><path d="m12 3 9 5H3z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/></svg></span><span><b>NFS-e Nacional</b><small>API oficial do governo</small></span></li><li><span class="fi-oficial-ico fi-oficial-ico--gov"><span class="fi-gov" aria-hidden="true"><i class="g1">g</i><i class="g2">o</i><i class="g3">v</i><i class="g4">.br</i></span></span><span><b>nfse.gov.br</b><small>Toda nota se confere lá</small></span></li><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9.5 9 1.8 1.8L15 7.3"/><path d="m8.5 13.6-1.5 7.4 5-2.6 5 2.6-1.5-7.4"/></svg></span><span><b>ICP-Brasil</b><small>Assinada com o seu A1</small></span></li><li><span class="fi-oficial-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-4.5"/></svg></span><span><b>Receita Federal</b><small>CNPJ conferido no cadastro</small></span></li></ul>
   </section>
 
   <!-- ── Funcionalidades (Lucca, 13/11/2026, v2): uma seção por recurso, com pouco texto. O mockup é o aparelho do
@@ -149,6 +125,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Escreva o cliente e o valor. Ele mostra o resumo e só emite com o seu “confirmar”.</p>
         <ul class="fi-fx-pontos"><li>Pedido em uma frase</li><li>PDF e XML na hora</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-corrigir">
       <div class="fi-fx-midia fi-fx-midia--fone">
@@ -162,6 +139,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Antes de emitir, responda “corrigir”. Depois, peça o cancelamento no mesmo chat.</p>
         <ul class="fi-fx-pontos"><li>Correção no resumo</li><li>Cancelamento oficial na Sefin</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
     <article class="fi-fx fi-reveal" id="fx-cliente">
       <div class="fi-fx-midia fi-fx-midia--fone">
@@ -175,6 +153,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Na próxima nota, basta o nome e o valor. Pra rever uma nota, escreva “nota 123”.</p>
         <ul class="fi-fx-pontos"><li>Cliente vira modelo</li><li>PDF de volta na conversa</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-copias">
       <div class="fi-fx-midia fi-fx-midia--notifs" aria-hidden="true">
@@ -196,6 +175,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Cada nota já sai por e-mail pra quem precisa. E o resumo do mês chega no seu WhatsApp.</p>
         <ul class="fi-fx-pontos"><li>E-mail automático</li><li>Resumo mensal ou semanal</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
     <article class="fi-fx fi-reveal" id="fx-planilha">
       <div class="fi-fx-midia fi-fx-midia--largo">
@@ -209,6 +189,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Mande a planilha no WhatsApp, confira o resumo e as notas saem de uma vez.</p>
         <ul class="fi-fx-pontos"><li>Até 1.000 linhas</li><li>Linha com erro fica de fora</li><li>Relatório e PDFs no painel</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
     <article class="fi-fx fi-fx--inv fi-reveal" id="fx-empresas">
       <!-- Mockup em HTML (Lucca, 13/11/2026): o vídeo do painel no notebook ficava ilegível no celular. A tela resume
@@ -235,8 +216,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <p>Cada empresa cliente emite com o próprio A1 ou por procuração eletrônica ao escritório.</p>
         <ul class="fi-fx-pontos"><li>Dados pela Receita</li><li>A1 ou procuração</li></ul>
       </div>
+      <a class="fi-fx-cta" href="#planos">Ver planos e valores <span aria-hidden="true">&gt;</span></a>
     </article>
-    <p class="fi-fxs-nota">Telas de demonstração, com dados fictícios.</p>
+    <p class="fi-fxs-nota">Telas de demonstração, com dados fictícios. <span>Medição <b id="fi-consent-estado" aria-live="polite">recusada</b> · <button type="button" class="fi-link-btn" data-consent-prefs>Preferências de cookies</button></span></p>
   </section>
 
   <!-- ── Planos (Lucca, 23/11/2026, v4): três cards. O plano vende documentos por mês e, no Escritório, o cliente marca o que emite
@@ -383,7 +365,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Preciso criar conta para testar?</summary>
-          <p>Não. O simulador desta página roda no seu navegador: você escreve a mensagem, o agente mostra como entende o pedido e como seria a nota. Nada é enviado à Sefin. São 3 simulações gratuitas. Para emitir de verdade, crie a conta e cadastre o seu CNPJ: os primeiros 7 dias da assinatura são grátis.</p>
+          <p>Sim. Para emitir, você cria a conta e cadastra o seu CNPJ. Os primeiros 7 dias da assinatura são grátis, então dá para testar com notas de verdade antes da primeira cobrança. Os vídeos desta página mostram como a conversa funciona, com dados fictícios.</p>
         </details>
         <details>
           <summary>Que empresas podem usar?</summary>
@@ -419,7 +401,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Quanto custa?</summary>
-          <p>A simulação no site é grátis, e a assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso.</p>
+          <p>A assinatura começa com 7 dias grátis: a primeira cobrança só acontece depois deles. Para uma empresa: Inicial, R$ 49/mês, até 20 notas por mês; Pro, R$ 129/mês, até 100. Para escritórios, com empresas ilimitadas: R$ 297/mês (500 documentos por mês), R$ 497/mês (1.000), R$ 797/mês (2.000), R$ 1.497/mês (5.000) ou R$ 2.497/mês (10.000); acima disso, sob medida. No Escritório, o segundo tipo de nota e o módulo Guias custam R$ 197/mês cada, ou R$ 297/mês os dois juntos. No anual, o desconto é de 20% no Inicial e no Pro e de 25% a 45% no Escritório. A assinatura é pelo Pagar.me, com aceite dos Termos de uso.</p>
         </details>
         <details id="como-funcionam-os-planos">
           <summary>Como funcionam os planos?</summary>
@@ -463,7 +445,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         </details>
         <details>
           <summary>Que dados vocês guardam?</summary>
-          <p>Os dados da sua empresa (CNPJ, razão social, inscrição municipal, município), os modelos de serviço, e de cada nota: CPF ou CNPJ e nome do tomador, descrição, valor, XML e PDF. É o que a legislação fiscal exige guardar. Não vendemos esses dados e eles não vão para o Google. As mensagens do agente passam pela Meta, que opera o WhatsApp, como qualquer conversa de WhatsApp. O texto das conversas com o agente fica guardado por 90 dias, e a equipe da nó pode lê-las e responder por esse mesmo número. O simulador desta página só guarda a contagem dos 3 testes, no seu navegador. Detalhes na <a href="/privacidade/">política de privacidade</a>.</p>
+          <p>Os dados da sua empresa (CNPJ, razão social, inscrição municipal, município), os modelos de serviço, e de cada nota: CPF ou CNPJ e nome do tomador, descrição, valor, XML e PDF. É o que a legislação fiscal exige guardar. Não vendemos esses dados e eles não vão para o Google. As mensagens do agente passam pela Meta, que opera o WhatsApp, como qualquer conversa de WhatsApp. O texto das conversas com o agente fica guardado por 90 dias, e a equipe da nó pode lê-las e responder por esse mesmo número. Detalhes na <a href="/privacidade/">política de privacidade</a>.</p>
         </details>
       </div>
     </div>

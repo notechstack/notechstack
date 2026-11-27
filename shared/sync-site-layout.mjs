@@ -23,6 +23,10 @@ const groups = [
   ['Contato', [['Conte sua ideia', '/contato/']]],
 ];
 const topLinks = [['Home', '/'], ['Agentes', '/agentes/'], ['Contato', '/contato/']];
+// Exceção por página (Lucca, 27/11/2026): só na LP do nó.fiscal o botão em destaque é "Login" e leva ao painel da conta.
+const topLinksByRoute = {
+  '/agentes/fiscal/': [['Home', '/'], ['Agentes', '/agentes/'], ['Login', '/agentes/fiscal/conta/']],
+};
 const link = ([label, href]) => `<a href="${href}">${label}</a>`;
 const footer = `<footer class="no-site-footer">
   <div class="ft-brand">
@@ -35,7 +39,7 @@ const footer = `<footer class="no-site-footer">
 </footer>`;
 let stale = false;
 for (const [route, file] of Object.entries(pages)) {
-  const nav = `<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks">${topLinks.map(([label, href]) => `<a href="${href}"${route === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid">${groups.map(([title, links]) => `<div class="no-card"><b>${title}</b><div>${links.map(link).join('')}</div></div>`).join('')}</div></div></div></nav>`;
+  const nav = `<nav class="no-card-nav" aria-label="Navegação principal"><div class="no-card-top"><button class="no-card-toggle" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="no-card-panel"><span></span><span></span></button><a class="no-card-brand" href="/" aria-label="Nó — página inicial"><img src="/brand/logo/svg/no-tinta-ponto-ambar.svg" alt="nó." width="46" height="30"></a><div class="no-card-toplinks">${(topLinksByRoute[route] || topLinks).map(([label, href]) => `<a href="${href}"${route === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div></div><div id="no-card-panel" class="no-card-panel" aria-hidden="true" inert><div class="no-card-panel-inner"><div class="no-card-grid">${groups.map(([title, links]) => `<div class="no-card"><b>${title}</b><div>${links.map(link).join('')}</div></div>`).join('')}</div></div></div></nav>`;
   const url = new URL('../' + file, import.meta.url);
   const before = await readFile(url, 'utf8');
   let after = before;
