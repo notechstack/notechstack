@@ -1,7 +1,7 @@
-// Lucca, 13/11/2026: LP preparada para o remarketing. (1) O anúncio leva ?angulo=<chave> e o hero repete a promessa
+// Lucca, 13/11/2026: LP preparada para o remarketing. O anúncio leva ?angulo=<chave> e o hero repete a promessa
 // dele (a1, preco, escritorio); quem já simulou e volta sem ângulo vê "voltou"; chave desconhecida = página padrão.
-// (2) A simulação concluída vira evento próprio (dataLayer nofiscal_simulacao e Pixel SimulacaoNota, só com aceite),
-// o público mais quente do remarketing.
+// Lucca, 27/11/2026: o hero ficou só com o título e os mockups; o simulador e o subtítulo saíram da página, e com
+// eles os testes do evento de simulação. O ângulo agora troca o título e mostra o CTA.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { abrirPagina, HTML } from './pagina-falsa.mjs';
@@ -29,7 +29,6 @@ for (const [angulo, h1, href] of [
   test(`?angulo=${angulo}: hero do anúncio, CTA visível e ângulo na visita`, () => {
     const p = abrirPagina({ search: '?angulo=' + angulo + '&utm_source=meta' });
     assert.equal(p.el('fi-titulo').textContent, h1);
-    assert.ok(p.el('fi-hero-sub').textContent.length > 40, 'subtítulo trocado');
     assert.equal(p.el('fi-hero-cta').hidden, false);
     assert.ok(p.el('fi-hero-cta-link').textContent.length > 0);
     assert.equal(p.ctx.document.documentElement.atributos['data-angulo'], angulo);
@@ -55,34 +54,15 @@ test('quem já simulou e volta sem ângulo vê "voltou"; o ângulo do anúncio v
   assert.equal(q.el('fi-titulo').textContent, 'Só falta o certificado A1.');
 });
 
-test('simulação concluída: nofiscal_simulacao no dataLayer e SimulacaoNota no Pixel com aceite', async () => {
-  const fbq = [];
-  const p = abrirPagina({
-    armazenamento: new Map([['no_fiscal_consent', 'granted']]),
-    extras: { fbq: (...a) => fbq.push(a), noMarketingHostAllowed: () => true, fetch: () => Promise.resolve({ ok: true }) }
-  });
-  await p.emitirProntia();
-  const ev = doDl(p, 'nofiscal_simulacao');
-  assert.equal(ev.length, 1);
-  assert.equal(ev[0].simulacoes, 1);
-  assert.equal(ev[0].limite, undefined);
-  const px = fbq.find((a) => a[0] === 'trackCustom' && a[1] === 'SimulacaoNota');
-  assert.ok(px, 'Pixel recebeu SimulacaoNota');
-  assert.deepEqual(js(px[2]), { simulacoes: 1 });
-  assert.equal(px[3].eventID, ev[0].event_id);
-  assert.equal(p.ctx.noFiscalMedicao.capi.length, 0, 'sinal de público, não vai à CAPI');
-  // a 3ª simulação marca o limite
-  await p.emitirProntia();
-  await p.emitirProntia();
-  assert.equal(doDl(p, 'nofiscal_simulacao').at(-1).limite, true);
+test('hero só com o título: sem simulador, sem subtítulo, e os mockups levam aos planos', () => {
+  assert.doesNotMatch(HTML, /id="simulador"|id="fi-hero-sub"|id="fi-form"/);
+  assert.doesNotMatch(HTML, /simulador desta página|simulações gratuitas/);
+  assert.equal((HTML.match(/<a class="fi-fx-cta" href="#planos">Ver planos e valores /g) || []).length, 6);
+  assert.equal((HTML.match(/data-consent-prefs/g) || []).length, 1, 'continua havendo como reabrir as preferências de cookies');
 });
 
-test('simulação sem aceite: dataLayer sim, Pixel não', async () => {
-  const fbq = [];
-  const p = abrirPagina({ extras: { fbq: (...a) => fbq.push(a) } });
-  await p.emitirProntia();
-  assert.equal(doDl(p, 'nofiscal_simulacao').length, 1);
-  assert.equal(fbq.filter((a) => a[0] === 'track' || a[0] === 'trackCustom').length, 0);
+test('navbar da LP do fiscal: o botão em destaque é Login e leva ao painel', () => {
+  assert.ok(HTML.includes('<a href="/agentes/">Agentes</a><a href="/agentes/fiscal/conta/">Login</a></div>'));
 });
 
 test('FAQ do Lucro Presumido: lista de espera pelo WhatsApp vira Lead "presumido"', () => {
